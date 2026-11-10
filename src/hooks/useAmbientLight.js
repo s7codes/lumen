@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { approach, frameDelta, stepSpring } from '../lib/spring.js';
 import { clampNumber } from '../security/sanitize.js';
 
 export const LIGHT_REST = { x: 0.74, y: 0.34 };
@@ -6,9 +7,8 @@ export const LIGHT_REST = { x: 0.74, y: 0.34 };
 // Spring constant k (1/s^2) and damping c (1/s). Critical damping is
 // 2 * sqrt(k) ~= 18.97, so c = 12 lets the light overshoot slightly and
 // settle like a pendant on a cable instead of snapping to the cursor.
-const STIFFNESS = 90;
-const DAMPING = 12;
-const MAX_DT = 1 / 30;
+export const LIGHT_SPRING = { stiffness: 90, damping: 12 };
+const ENERGY_RATE = 6;
 const SETTLE_EPSILON = 0.0004;
 
 function formatPercent(value) {
@@ -47,17 +47,15 @@ export function useAmbientLight(surfaceRef, readoutRef) {
     };
 
     const step = (now) => {
-      const dt = Math.min(Math.max((now - lastTime) / 1000, 0), MAX_DT);
+      const dt = frameDelta(now, lastTime);
       lastTime = now;
 
-      // Semi-implicit Euler: a = k * (target - position) - c * velocity
-      s.vx += (STIFFNESS * (s.tx - s.x) - DAMPING * s.vx) * dt;
-      s.vy += (STIFFNESS * (s.ty - s.y) - DAMPING * s.vy) * dt;
-      s.x += s.vx * dt;
-      s.y += s.vy * dt;
+      const { stiffness, damping } = LIGHT_SPRING;
+      [s.x, s.vx] = stepSpring(s.x, s.vx, s.tx, dt, stiffness, damping);
+      [s.y, s.vy] = stepSpring(s.y, s.vy, s.ty, dt, stiffness, damping);
 
       const speed = Math.hypot(s.vx, s.vy);
-      s.energy += (Math.min(speed / 1.6, 1) - s.energy) * Math.min(dt * 6, 1);
+      s.energy = approach(s.energy, Math.min(speed / 1.6, 1), ENERGY_RATE, dt);
 
       render();
 
