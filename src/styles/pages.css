@@ -1,11 +1,13 @@
 /* Catalog */
 
+/* Filters and tools share one frosted bento bar above the grid. */
 .catalog__controls {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-6);
+  padding: var(--space-4) var(--space-5) var(--space-4) var(--space-4);
 }
 
 .catalog-filter {
@@ -146,8 +148,9 @@
   display: flex;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-top: var(--space-9);
-  margin-bottom: var(--space-7);
+  margin-top: var(--space-7);
+  margin-bottom: var(--space-5);
+  padding-inline: var(--space-2);
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;

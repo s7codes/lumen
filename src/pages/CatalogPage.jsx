@@ -98,7 +98,7 @@ export default function CatalogPage() {
       />
 
       <div className="catalog container">
-        <div className="catalog__controls">
+        <div className="catalog__controls bento">
           <div className="catalog-filter" role="group" aria-label="Category">
             {FILTERS.map((filter) => (
               <button

@@ -1,7 +1,8 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { efficacyLmPerW, getCategory, getFinish, STOCK_LABELS } from '../data/products.js';
 import { useBag } from '../hooks/useBag.js';
+import { useCardTilt } from '../hooks/useCardTilt.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { formatLeadTime, formatUsd, padIndex } from '../lib/format.js';
 import { rgbTriplet } from '../lib/photometry.js';
@@ -32,6 +33,8 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
   const { add, quantityOf } = useBag();
   const [ownFinish, setOwnFinish] = useState(product.defaultFinish);
   const uid = useId();
+  const cardRef = useRef(null);
+  useCardTilt(cardRef);
 
   const finishId = product.finishes.includes(controlledFinish) ? controlledFinish : ownFinish;
   const finish = getFinish(finishId);
@@ -56,6 +59,7 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
 
   return (
     <article
+      ref={cardRef}
       className="product-card"
       aria-labelledby={headingId}
       data-finish={finishId}

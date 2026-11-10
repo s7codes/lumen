@@ -1,21 +1,58 @@
-/* Product grid: no rules, no tiles. Air and type scale separate the parts. */
+/* Product grid: a bento wall of frosted tiles on a tight gutter. */
 
 .product-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-  gap: var(--space-10) clamp(var(--space-6), 3vw, var(--space-8));
+  gap: var(--bento-gap);
 }
 
 .product-grid__cell {
   min-width: 0;
 }
 
-/* Product card */
+/* Product card: a bento tile. useCardTilt writes the inline transform and
+   the --glow-* properties; the glow is tinted by the fixture's own CCT. */
 
 .product-card {
+  --glow-x: 50%;
+  --glow-y: 30%;
+  --glow-a: 0;
+
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
+  padding: var(--space-5);
+  border: 1px solid var(--bento-edge);
+  border-radius: var(--bento-radius);
+  background: var(--bento-surface);
+  -webkit-backdrop-filter: blur(var(--bento-blur));
+  backdrop-filter: blur(var(--bento-blur));
+  isolation: isolate;
+  transition:
+    border-color var(--duration-slow) var(--ease-out),
+    box-shadow var(--duration-hover) var(--ease-cinematic);
+}
+
+.product-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(
+    var(--tilt-glow-radius) circle at var(--glow-x) var(--glow-y),
+    rgba(var(--light-rgb), 0.11) 0%,
+    rgba(var(--light-rgb), 0.04) 38%,
+    transparent 70%
+  );
+  opacity: var(--glow-a);
+  pointer-events: none;
+}
+
+.product-card:hover {
+  border-color: var(--bento-edge-hover);
+  box-shadow: 0 32px 64px -32px rgba(0, 0, 0, 0.8);
 }
 
 .product-card__head {
@@ -45,7 +82,7 @@
    the stage; overflow keeps the card's footprint fixed. */
 .product-card__figure {
   padding: var(--space-6) var(--space-5);
-  border-radius: var(--radius-md);
+  border-radius: var(--bento-radius-inner);
   background: var(--bg-stage);
   overflow: hidden;
 }

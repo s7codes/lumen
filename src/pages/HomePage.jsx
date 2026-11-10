@@ -69,7 +69,7 @@ function AmbientHero() {
         Track T-24 / Pendant P-1 / 2700K
       </p>
 
-      <div className="hero__content container">
+      <div className="hero__content" data-testid="hero-copy">
         <p className="index-label">
           <span className="index-label__num">01</span> / Overview
         </p>
@@ -125,7 +125,7 @@ export default function HomePage() {
       <section className="spec-strip" aria-label="System specification">
         <dl className="spec-strip__grid container reveal-stagger">
           {SPECS.map((spec, i) => (
-            <div key={spec.value} ref={reveal} className="spec-strip__item reveal-up">
+            <div key={spec.value} ref={reveal} className="spec-strip__item bento reveal-up">
               <dt className="index-label">
                 <span className="index-label__num">Spec</span> {String(i + 1).padStart(2, '0')}
               </dt>
@@ -164,7 +164,7 @@ export default function HomePage() {
             </li>
           ))}
         </ul>
-        <div ref={reveal} className="modules__foot reveal-up">
+        <div ref={reveal} className="modules__foot bento reveal-up">
           <p className="modules__count mono">
             {padIndex(PRODUCTS.length)} modules / {padIndex(CATEGORIES.length)} families / one 24V bus
           </p>
@@ -188,7 +188,7 @@ export default function HomePage() {
         <ul className="entries__grid reveal-stagger">
           {ENTRIES.map(({ to, index, section, title, body, Glyph }) => (
             <li key={to} ref={reveal} className="reveal-up">
-              <Link to={to} className="entry-card">
+              <Link to={to} className="entry-card bento">
                 <span className="index-label">
                   <span className="index-label__num">{index}</span> / {section}
                 </span>

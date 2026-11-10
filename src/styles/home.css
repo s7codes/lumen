@@ -1,16 +1,20 @@
-/* Ambient hero: lighting coordinates are written by useAmbientLight */
+/* Ambient hero: lighting coordinates are written by useAmbientLight.
+   Two tracks: the type owns the left, the right track stays empty so the
+   pendant has open air to swing through. */
 
 .hero {
   --light-x: 74%;
   --light-y: 34%;
   --light-energy: 0;
   --lamp-y: max(var(--light-y), 56px);
+  --hero-inset: clamp(20px, 5.5vw, 120px);
 
   position: relative;
-  display: flex;
-  align-items: flex-end;
+  display: grid;
+  grid-template-columns: minmax(0, 920px) minmax(0, 1fr);
+  align-items: end;
   min-height: max(640px, calc(100svh - var(--nav-height)));
-  padding-bottom: clamp(var(--space-9), 9vw, var(--space-11));
+  padding: var(--space-7) var(--hero-inset) clamp(var(--space-7), 5vw, var(--space-10));
   overflow: hidden;
   background: var(--bg-canvas);
   isolation: isolate;
@@ -138,7 +142,7 @@
 .hero__tag {
   position: absolute;
   top: var(--space-5);
-  left: var(--grid-margin);
+  left: var(--hero-inset);
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
@@ -147,11 +151,16 @@
 
 .hero__content {
   position: relative;
+  grid-column: 1;
+  justify-self: start;
+  margin-top: clamp(var(--space-4), 10vh - 40px, var(--space-10));
+  text-align: left;
 }
 
 .hero__title {
   max-width: 11ch;
   margin-top: var(--space-6);
+  color: var(--text-primary);
   font-size: var(--text-display);
   font-weight: var(--weight-strong);
   line-height: var(--leading-display);
@@ -173,7 +182,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-4);
-  margin-top: var(--space-8);
+  margin-top: var(--space-7);
 }
 
 /* The overview pulls into focus once on load, one line of the spec at a time. */
@@ -196,7 +205,7 @@
 
 .hero__readout {
   position: absolute;
-  right: var(--grid-margin);
+  right: var(--hero-inset);
   bottom: var(--space-5);
   display: flex;
   gap: var(--space-3);
@@ -211,13 +220,19 @@
   color: var(--lumen-amber);
 }
 
+@media (max-width: 959px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 767px) {
   .hero {
     padding-bottom: var(--space-9);
   }
 
   .hero__readout {
-    left: var(--grid-margin);
+    left: var(--hero-inset);
     right: auto;
   }
 }
@@ -227,7 +242,7 @@
 .spec-strip__grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-7);
+  gap: var(--bento-gap);
   padding-top: var(--section-space);
 }
 
@@ -235,6 +250,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  padding: var(--bento-pad);
+  min-height: 220px;
+}
+
+.spec-strip__item .spec-strip__detail {
+  margin-top: auto;
 }
 
 .spec-strip__value {
@@ -248,13 +269,16 @@
 
 .spec-strip__detail {
   font-size: var(--text-xs);
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 @media (max-width: 767px) {
   .spec-strip__grid {
     grid-template-columns: 1fr;
-    gap: var(--space-8);
+  }
+
+  .spec-strip__item {
+    min-height: 0;
   }
 }
 
@@ -283,22 +307,26 @@
 .entries__grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-8) var(--space-7);
+  gap: var(--bento-gap);
 }
 
 .entry-card {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   height: 100%;
+  padding: var(--bento-pad);
+}
+
+.entry-card:hover {
+  border-color: var(--bento-edge-hover);
 }
 
 .entry-card__glyph {
   display: block;
   margin-bottom: var(--space-4);
   padding: var(--space-8) var(--space-7);
-  border-radius: var(--radius-md);
+  border-radius: var(--bento-radius-inner);
   background: var(--bg-stage);
   color: var(--text-muted);
   overflow: hidden;
@@ -359,7 +387,6 @@
 @media (max-width: 959px) {
   .entries__grid {
     grid-template-columns: 1fr;
-    gap: var(--space-9);
   }
 }
 
@@ -400,8 +427,8 @@
 .lab__rig {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-  gap: clamp(var(--space-7), 5vw, var(--space-9));
-  align-items: start;
+  gap: var(--bento-gap);
+  align-items: stretch;
 }
 
 /* Bench lighting model. --lab-level is the dimmer duty (0-1), --lab-light the
@@ -420,9 +447,10 @@
   --slat-lrv: 0.14;
 
   position: relative;
-  min-height: clamp(480px, 46vw, 640px);
+  min-height: clamp(480px, 46vw, 680px);
   overflow: hidden;
-  border-radius: var(--radius-md);
+  border: 1px solid var(--bento-edge);
+  border-radius: var(--bento-radius);
   background: #050504;
   isolation: isolate;
 }
@@ -572,6 +600,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-7);
+  padding: var(--bento-pad);
 }
 
 .lab-control {
@@ -900,7 +929,7 @@
 .modules__grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-9) clamp(var(--space-6), 3vw, var(--space-8));
+  gap: var(--bento-gap);
 }
 
 .modules__cell {
@@ -913,7 +942,8 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-top: var(--space-10);
+  margin-top: var(--bento-gap);
+  padding: var(--space-5) var(--bento-pad);
 }
 
 .modules__count {
@@ -926,6 +956,5 @@
 @media (max-width: 959px) {
   .modules__grid {
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-10);
   }
 }

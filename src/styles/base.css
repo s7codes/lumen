@@ -81,6 +81,17 @@ svg {
   padding-inline: var(--grid-margin);
 }
 
+/* Bento: a frosted, hairline-edged tile for major layout blocks. */
+.bento {
+  position: relative;
+  border: 1px solid var(--bento-edge);
+  border-radius: var(--bento-radius);
+  background: var(--bento-surface);
+  -webkit-backdrop-filter: blur(var(--bento-blur));
+  backdrop-filter: blur(var(--bento-blur));
+  transition: border-color var(--duration-slow) var(--ease-out);
+}
+
 .index-label {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);

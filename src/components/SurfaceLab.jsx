@@ -93,7 +93,7 @@ export function SurfaceLab() {
         </p>
       </div>
 
-      <div className="lab-panel">
+      <div className="lab-panel bento" data-testid="lab-panel">
         <div className="lab-control">
           <div className="lab-control__head">
             <label htmlFor="lab-dimmer" className="lab-control__label">

@@ -14,10 +14,10 @@
   --border-strong: rgba(242, 238, 231, 0.16);
   --border-solid: #2a2825;
 
-  /* Typography */
-  --text-primary: #f2eee7;
-  --text-secondary: #a59f95;
-  --text-muted: #6b665e;
+  /* Typography: pure white display type, legible silver for body and data */
+  --text-primary: #ffffff;
+  --text-secondary: #b8b8b8;
+  --text-muted: #7c7c80;
   --text-inverse: #0b0b0a;
 
   /* Tungsten amber */
@@ -66,7 +66,7 @@
   --text-headline: clamp(2.5rem, 1.25rem + 4.6vw, 5.75rem);
   --text-display: clamp(3.25rem, 1.1rem + 7.4vw, 9rem);
 
-  --weight-light: 300;
+  --weight-light: 350;
   --weight-regular: 400;
   --weight-strong: 640;
 
@@ -100,6 +100,19 @@
   --radius-xs: 2px;
   --radius-sm: 3px;
   --radius-md: 4px;
+
+  /* Bento: major layout containers only. Controls keep the micro radii. */
+  --bento-surface: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+  --bento-edge: rgba(255, 255, 255, 0.06);
+  --bento-edge-hover: rgba(255, 255, 255, 0.12);
+  --bento-blur: 16px;
+  --bento-radius: 16px;
+  --bento-radius-inner: 12px;
+  --bento-gap: clamp(12px, 1.25vw, 20px);
+  --bento-pad: clamp(20px, 2.2vw, 36px);
+
+  /* Cursor glow radius for product cards; position is written by useCardTilt */
+  --tilt-glow-radius: 380px;
 
   /* Chrome */
   --nav-height: 56px;
@@ -148,6 +161,28 @@
   --z-hud: 5;
 
   color-scheme: dark;
+}
+
+/* Wide and 2K displays: widen the frame and lift the type scale so body copy
+   holds at viewing distance. Spacing tokens are px and do not move. */
+@media (min-width: 1920px) {
+  :root {
+    --grid-max: 1600px;
+  }
+
+  html {
+    font-size: 106.25%;
+  }
+}
+
+@media (min-width: 2400px) {
+  :root {
+    --grid-max: 1760px;
+  }
+
+  html {
+    font-size: 112.5%;
+  }
 }
 
 :root[data-mode='technical'] {
