@@ -1,77 +1,64 @@
 import { getFinish, getProduct } from '../data/products.js';
 import { kelvinToRgb } from './photometry.js';
-import { clearanceCallouts, furnitureLayout, moduleBox } from './room-3d.js';
+import { CAMERA_ZOOM, clearanceCallouts, furnitureLayout, moduleBox } from './room-3d.js';
 
 /*
- * Deterministic 3D compiler for the room planner. It projects the room, the
- * furniture and every mounted module through a perspective pinhole camera
- * and returns flat 2D polygons in draw order, so the view renders as plain
- * SVG with no WebGL context. Units: cm in, viewport px out.
+ * Scene description for the WebGL room viewport. Converts the room state
+ * (cm, x along the main wall, y up from the floor, z into the room) into
+ * plain mesh, material and light records in metres. Pure and deterministic,
+ * so it is testable without a WebGL context. RoomCanvas only maps these
+ * records onto React Three Fiber primitives.
  */
 
+export const CM = 0.01;
 const DEG = Math.PI / 180;
 const FOV_DEG = 38;
 const FRAME_FILL_WIDE = 1.26;
 const WIDE_ASPECT = 1.6;
-const LABEL_CHAR_PX = 6;
-const LABEL_PAD_PX = 10;
-const LABEL_MARGIN_PX = 6;
-const WALL_T = 12;
-const SLAB_T = 10;
+const WALL_T_CM = 12;
+const SLAB_T_CM = 10;
 const GRID_CM = 50;
 const AXIS_OVERRUN_CM = 26;
-const POOL_SEGMENTS = 20;
+const TICK_CM = 5;
 
-const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const m = (cm) => Number((cm * CM).toFixed(4));
+const v3 = (p) => p.map(m);
 
-function normalize(a) {
-  const length = Math.hypot(a[0], a[1], a[2]) || 1;
-  return [a[0] / length, a[1] / length, a[2] / length];
+function hex(rgb) {
+  return `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
 }
 
-/* Colour */
+/* Lighting rigs. Same room surfaces in both modes: only the light changes. */
 
-function hexToRgb(hex) {
-  const n = Number.parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function rgb(color) {
-  return `rgb(${color.map((c) => Math.round(Math.min(255, Math.max(0, c)))).join(', ')})`;
-}
-
-function scale(color, k) {
-  return color.map((c) => c * k);
-}
-
-function mix(a, b, t) {
-  return a.map((c, i) => c + (b[i] - c) * t);
-}
-
-const PALETTES = {
+export const LIGHTING_RIGS = Object.freeze({
   night: {
-    surface: { back: '#1d1c1a', left: '#181715', right: '#161513', floor: '#11100e' },
-    poche: '#2c2a27',
-    shade: { front: 0.58, top: 0.74, left: 0.46, right: 0.4, bottom: 0.3, back: 0.3 },
-    patchPeak: 0.6,
-    emitterOff: [62, 58, 53],
-    shadow: 'rgba(0, 0, 0, 0.5)',
-    wallShadow: 0,
+    background: '#0b0b0a',
+    ambient: { color: '#ffd8ae', intensity: 0.06 },
+    hemisphere: { sky: '#46506a', ground: '#16120d', intensity: 0.1 },
+    sun: { color: '#a9bad6', intensity: 0.22, from: [-0.35, 1.1, 1.2] },
+    led: 1,
+    emissive: 2.6,
+    grid: { color: '#f2eee7', opacity: 0.06 },
   },
   daylight: {
-    surface: { back: '#e7e2d9', left: '#d9d3c8', right: '#cfc8bc', floor: '#c6c0b4' },
-    poche: '#2b2926',
-    shade: { front: 0.94, top: 1.06, left: 0.82, right: 0.72, bottom: 0.6, back: 0.6 },
-    patchPeak: 0.2,
-    emitterOff: [150, 144, 134],
-    shadow: 'rgba(30, 26, 20, 0.16)',
-    wallShadow: 0.1,
+    background: '#0b0b0a',
+    ambient: { color: '#fff6ea', intensity: 0.85 },
+    hemisphere: { sky: '#f3efe8', ground: '#8d8578', intensity: 0.55 },
+    sun: { color: '#fff1dc', intensity: 2.4, from: [-0.45, 1.25, 1] },
+    led: 0.45,
+    emissive: 1.1,
+    grid: { color: '#0b0b0a', opacity: 0.08 },
   },
-};
+});
 
-const FURNITURE_TONES = {
+const SURFACES = Object.freeze({
+  wall: '#e4dfd6',
+  side: '#d8d2c7',
+  floor: '#9a9389',
+  poche: '#2c2a27',
+});
+
+const FURNITURE_TONES = Object.freeze({
   shadow: '#0d0c0b',
   oak: '#c4a57c',
   linen: '#d8d2c6',
@@ -79,612 +66,347 @@ const FURNITURE_TONES = {
   steel: '#2c2e30',
   felt: '#5b5853',
   'felt-hi': '#68655f',
-};
+});
+
+// Timber reads matte, powder-coated obsidian has a soft sheen.
+const FINISH_SURFACE = Object.freeze({
+  walnut: { roughness: 0.62, metalness: 0 },
+  oak: { roughness: 0.66, metalness: 0 },
+  obsidian: { roughness: 0.38, metalness: 0.25 },
+  chalk: { roughness: 0.82, metalness: 0 },
+});
 
 /* Camera */
 
 /**
- * Orbit camera around a target on the room's centre line. Distance fits the
- * room's bounding sphere to the shorter viewport side, divided by zoom. A
- * square viewport fits the whole sphere; a wide one lets it overfill the
- * height by up to 26 percent, because a room seen from above is wider than
- * it is tall. At maximum zoom the distance still exceeds the sphere radius,
- * so every room point has positive depth and no near-plane clipping is needed.
+ * Orbit frame for a room and a viewport aspect. Distance at zoom 1 fits the
+ * room's bounding sphere to the shorter viewport side; a wide viewport lets
+ * it overfill the height by up to 26 percent. Three.js fov is vertical, so a
+ * portrait viewport widens it to keep 38 deg across its width.
  */
-export function createRig(room, camera, viewport) {
-  const { widthCm: W, depthCm: D, heightCm: H } = room;
-  const target = [W / 2, H * 0.42, D * 0.44];
+export function cameraFrame(room, aspect) {
+  const W = room.widthCm * CM;
+  const H = room.heightCm * CM;
+  const D = room.depthCm * CM;
   const half = (FOV_DEG / 2) * DEG;
   const radius = 0.5 * Math.hypot(W, H, D);
-  const aspect = viewport.w / viewport.h;
-  const fill = 1 + (FRAME_FILL_WIDE - 1) * Math.min(1, Math.max(0, (aspect - 1) / (WIDE_ASPECT - 1)));
-  const distance = radius / (Math.tan(half) * fill) / camera.zoom;
+  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 1.6;
+  const fill = 1 + (FRAME_FILL_WIDE - 1) * Math.min(1, Math.max(0, (safeAspect - 1) / (WIDE_ASPECT - 1)));
+  const base = radius / (Math.tan(half) * fill);
+  const fov = safeAspect >= 1 ? FOV_DEG : (2 * Math.atan(Math.tan(half) / safeAspect)) / DEG;
+  return {
+    target: [W / 2, H * 0.42, D * 0.44],
+    base,
+    fov,
+    minDistance: base / CAMERA_ZOOM.max,
+    maxDistance: base / CAMERA_ZOOM.min,
+  };
+}
+
+/** Eye position for a yaw / pitch / zoom camera. Yaw 0 looks straight at the main wall. */
+export function cameraPosition(frame, camera) {
+  const distance = frame.base / camera.zoom;
   const yaw = camera.yaw * DEG;
   const pitch = camera.pitch * DEG;
-  const eye = [
-    target[0] + distance * Math.sin(yaw) * Math.cos(pitch),
-    target[1] + distance * Math.sin(pitch),
-    target[2] + distance * Math.cos(yaw) * Math.cos(pitch),
+  const [tx, ty, tz] = frame.target;
+  return [
+    tx + distance * Math.sin(yaw) * Math.cos(pitch),
+    ty + distance * Math.sin(pitch),
+    tz + distance * Math.cos(yaw) * Math.cos(pitch),
   ];
-  const forward = normalize(sub(target, eye));
-  const right = normalize(cross(forward, [0, 1, 0]));
-  const up = cross(right, forward);
-  const focal = Math.min(viewport.w, viewport.h) / (2 * Math.tan(half));
-  return { eye, forward, right, up, focal, cx: viewport.w / 2, cy: viewport.h * 0.52 };
 }
 
-export function project(rig, p) {
-  const v = sub(p, rig.eye);
-  const depth = Math.max(1, dot(v, rig.forward));
-  const s = rig.focal / depth;
-  return [rig.cx + dot(v, rig.right) * s, rig.cy - dot(v, rig.up) * s, depth];
+/** Inverse of cameraPosition. The result is unclamped; sanitizeCamera rounds it. */
+export function cameraFromPosition(frame, position) {
+  const dx = position[0] - frame.target[0];
+  const dy = position[1] - frame.target[1];
+  const dz = position[2] - frame.target[2];
+  const distance = Math.hypot(dx, dy, dz) || frame.base;
+  return {
+    yaw: Math.atan2(dx, dz) / DEG,
+    pitch: Math.asin(Math.max(-1, Math.min(1, dy / distance))) / DEG,
+    zoom: frame.base / distance,
+  };
 }
 
-function facing(rig, normal, point) {
-  return dot(normal, sub(rig.eye, point)) > 0;
+/** OrbitControls limits matching CAMERA_YAW and CAMERA_PITCH (polar angle runs from +Y). */
+export function orbitLimits(yawRange, pitchRange) {
+  return {
+    minAzimuthAngle: yawRange.min * DEG,
+    maxAzimuthAngle: yawRange.max * DEG,
+    minPolarAngle: (90 - pitchRange.max) * DEG,
+    maxPolarAngle: (90 - pitchRange.min) * DEG,
+  };
 }
 
-function points2d(rig, pts) {
-  return pts.map((p) => project(rig, p));
-}
+/* Room shell */
 
-function pointsAttr(projected) {
-  return projected.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-}
-
-/* Boxes */
-
-const FACE_DEFS = [
-  { id: 'front', n: [0, 0, 1], corners: [4, 5, 7, 6] },
-  { id: 'back', n: [0, 0, -1], corners: [1, 0, 2, 3] },
-  { id: 'left', n: [-1, 0, 0], corners: [0, 4, 6, 2] },
-  { id: 'right', n: [1, 0, 0], corners: [5, 1, 3, 7] },
-  { id: 'top', n: [0, 1, 0], corners: [6, 7, 3, 2] },
-  { id: 'bottom', n: [0, -1, 0], corners: [0, 1, 5, 4] },
-];
-
-// Corner index bits: 1 = x1, 2 = y1, 4 = z1. An edge joins corners that
-// differ in one bit; its two faces are fixed by the other two bits.
-const EDGE_DEFS = (() => {
-  const faceOf = (axis, high) => ['left', 'right', 'bottom', 'top', 'back', 'front'][axis * 2 + (high ? 1 : 0)];
-  const edges = [];
-  for (let a = 0; a < 8; a += 1) {
-    for (let bit = 0; bit < 3; bit += 1) {
-      const b = a | (1 << bit);
-      if (b === a) continue;
-      const others = [0, 1, 2].filter((axis) => axis !== bit);
-      edges.push({ a, b, faces: others.map((axis) => faceOf(axis, (a >> axis) & 1)) });
-    }
-  }
-  return edges;
-})();
-
-function boxCorners(box) {
-  return Array.from({ length: 8 }, (_, i) => [
-    i & 1 ? box.x1 : box.x0,
-    i & 2 ? box.y1 : box.y0,
-    i & 4 ? box.z1 : box.z0,
-  ]);
-}
-
-function boxCenter(box) {
-  return [(box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2, (box.z0 + box.z1) / 2];
-}
-
-function boxFaces(rig, box) {
-  const corners = boxCorners(box);
-  const projected = corners.map((p) => project(rig, p));
-  const faces = FACE_DEFS.map((def) => ({
-    id: def.id,
-    visible: facing(rig, def.n, corners[def.corners[0]]),
-    projected: def.corners.map((i) => projected[i]),
-  }));
-  return { corners, projected, faces };
-}
-
-function boxEdges(geometry) {
-  const visible = new Set(geometry.faces.filter((face) => face.visible).map((face) => face.id));
-  return EDGE_DEFS.map(({ a, b, faces }) => {
-    const [x1, y1] = geometry.projected[a];
-    const [x2, y2] = geometry.projected[b];
-    return { x1, y1, x2, y2, hidden: !faces.some((id) => visible.has(id)) };
-  });
-}
-
-function screenBounds(projected) {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const [x, y] of projected) {
-    minX = Math.min(minX, x);
-    minY = Math.min(minY, y);
-    maxX = Math.max(maxX, x);
-    maxY = Math.max(maxY, y);
-  }
-  return { minX, minY, maxX, maxY };
-}
-
-function boundsOverlap(a, b) {
-  return a.minX < b.maxX && b.minX < a.maxX && a.minY < b.maxY && b.minY < a.maxY;
+function slab(id, color, box) {
+  return {
+    id,
+    color,
+    size: [m(box.x1 - box.x0), m(box.y1 - box.y0), m(box.z1 - box.z0)],
+    position: [m((box.x0 + box.x1) / 2), m((box.y0 + box.y1) / 2), m((box.z0 + box.z1) / 2)],
+  };
 }
 
 /**
- * Painter order for two disjoint axis-aligned boxes. Any plane that separates
- * them decides it: the box on the far side from the eye cannot occlude the
- * other, so it draws first. Returns -1 (a first), 1 (b first) or 0 when the
- * boxes interpenetrate and depth has to break the tie.
+ * Interior faces are single-sided planes facing into the room, so a wall the
+ * camera has orbited past culls itself. Side walls also carry a `cull` axis:
+ * the poche slab behind them hides once the eye crosses that plane.
  */
-function compareBoxes(a, b, eye) {
-  const lo = ['x0', 'y0', 'z0'];
-  const hi = ['x1', 'y1', 'z1'];
-  for (let axis = 0; axis < 3; axis += 1) {
-    if (a[hi[axis]] <= b[lo[axis]]) return eye[axis] > a[hi[axis]] ? -1 : 1;
-    if (b[hi[axis]] <= a[lo[axis]]) return eye[axis] > b[hi[axis]] ? 1 : -1;
-  }
-  return 0;
-}
-
-/** Topological painter sort; free nodes go farthest first, cycles fall back to depth. */
-function orderSolids(solids, eye) {
-  const n = solids.length;
-  const after = Array.from({ length: n }, () => []);
-  const indegree = new Array(n).fill(0);
-
-  for (let i = 0; i < n; i += 1) {
-    for (let j = i + 1; j < n; j += 1) {
-      if (!boundsOverlap(solids[i].bounds, solids[j].bounds)) continue;
-      const order = compareBoxes(solids[i].box, solids[j].box, eye);
-      if (order === 0) continue;
-      const [first, second] = order < 0 ? [i, j] : [j, i];
-      after[first].push(second);
-      indegree[second] += 1;
-    }
-  }
-
-  const done = new Array(n).fill(false);
-  const result = [];
-  while (result.length < n) {
-    let pick = -1;
-    for (let i = 0; i < n; i += 1) {
-      if (done[i] || indegree[i] > 0) continue;
-      if (pick === -1 || solids[i].distance > solids[pick].distance) pick = i;
-    }
-    if (pick === -1) {
-      for (let i = 0; i < n; i += 1) {
-        if (!done[i] && (pick === -1 || solids[i].distance > solids[pick].distance)) pick = i;
-      }
-    }
-    done[pick] = true;
-    result.push(solids[pick]);
-    for (const next of after[pick]) indegree[next] -= 1;
-  }
-  return result;
-}
-
-/* Room shell: section-cut slabs around an open front and an open ceiling */
-
-function shellSlabs(room, rig) {
+function buildShell(room) {
   const { widthCm: W, depthCm: D, heightCm: H } = room;
-  const slabs = [
-    { id: 'floor', interior: 'top', box: { x0: -WALL_T, x1: W + WALL_T, y0: -SLAB_T, y1: 0, z0: -WALL_T, z1: D } },
-    { id: 'back', interior: 'front', box: { x0: -WALL_T, x1: W + WALL_T, y0: 0, y1: H, z0: -WALL_T, z1: 0 } },
-  ];
-  // A side wall is drawn only while the eye is inside its plane: past it, the
-  // wall would stand between the camera and the room, so it is cut away.
-  if (rig.eye[0] > 0) slabs.push({ id: 'left', interior: 'right', box: { x0: -WALL_T, x1: 0, y0: 0, y1: H, z0: 0, z1: D } });
-  if (rig.eye[0] < W) slabs.push({ id: 'right', interior: 'left', box: { x0: W, x1: W + WALL_T, y0: 0, y1: H, z0: 0, z1: D } });
-  return slabs;
-}
-
-function buildShell(room, rig, palette) {
-  const polygons = [];
-  for (const slab of shellSlabs(room, rig)) {
-    const geometry = boxFaces(rig, slab.box);
-    for (const face of geometry.faces) {
-      if (!face.visible) continue;
-      const interior = face.id === slab.interior;
-      polygons.push({
-        key: `${slab.id}-${face.id}`,
-        surface: interior ? slab.id : null,
-        fill: interior ? palette.surface[slab.id] : palette.poche,
-        points: pointsAttr(face.projected),
-      });
-    }
-  }
-  return polygons;
-}
-
-function buildGrid(room, rig) {
-  const { widthCm: W, depthCm: D } = room;
-  const lines = [];
-  const segment = (key, a, b) => {
-    const [x1, y1] = project(rig, a);
-    const [x2, y2] = project(rig, b);
-    lines.push({ key, x1, y1, x2, y2 });
-  };
-  for (let x = GRID_CM; x < W; x += GRID_CM) segment(`x${x}`, [x, 0, 0], [x, 0, D]);
-  for (let z = GRID_CM; z < D; z += GRID_CM) segment(`z${z}`, [0, 0, z], [W, 0, z]);
-  return lines;
-}
-
-/* Light cast on the main wall and the floor */
-
-function clampWall(room, [x, y]) {
-  return [Math.min(room.widthCm, Math.max(0, x)), Math.min(room.heightCm, Math.max(0, y)), 0.4];
-}
-
-function clampFloor(room, [x, z]) {
-  return [Math.min(room.widthCm, Math.max(0, x)), 0.4, Math.min(room.depthCm, Math.max(0, z))];
-}
-
-function wash(room, xa, xb, yEdge, reach, spread, direction) {
-  const yFar = yEdge + direction * reach;
-  const mid = (xa + xb) / 2;
+  const T = WALL_T_CM;
   return {
-    type: 'linear',
-    pts: [
-      [xa, yEdge],
-      [xb, yEdge],
-      [xb + spread, yFar],
-      [xa - spread, yFar],
-    ].map((p) => clampWall(room, p)),
-    from: [mid, yEdge, 0.4],
-    to: [mid, yFar, 0.4],
+    surfaces: [
+      { id: 'floor', color: SURFACES.floor, size: [m(W), m(D)], position: [m(W / 2), 0, m(D / 2)], rotation: [-Math.PI / 2, 0, 0] },
+      { id: 'back', color: SURFACES.wall, size: [m(W), m(H)], position: [m(W / 2), m(H / 2), 0], rotation: [0, 0, 0] },
+      { id: 'left', color: SURFACES.side, size: [m(D), m(H)], position: [0, m(H / 2), m(D / 2)], rotation: [0, Math.PI / 2, 0], cull: { axis: 0, below: 0 } },
+      { id: 'right', color: SURFACES.side, size: [m(D), m(H)], position: [m(W), m(H / 2), m(D / 2)], rotation: [0, -Math.PI / 2, 0], cull: { axis: 0, above: m(W) } },
+    ],
+    poche: [
+      slab('floor', SURFACES.poche, { x0: -T, x1: W + T, y0: -SLAB_T_CM, y1: -0.2, z0: -T, z1: D }),
+      slab('back', SURFACES.poche, { x0: -T, x1: W + T, y0: 0, y1: H, z0: -T, z1: -0.2 }),
+      { ...slab('left', SURFACES.poche, { x0: -T, x1: -0.2, y0: 0, y1: H, z0: 0, z1: D }), cull: { axis: 0, below: 0 } },
+      { ...slab('right', SURFACES.poche, { x0: W + 0.2, x1: W + T, y0: 0, y1: H, z0: 0, z1: D }), cull: { axis: 0, above: m(W) } },
+    ],
   };
 }
 
-function circle(cx, cy, r) {
-  return Array.from({ length: POOL_SEGMENTS }, (_, i) => {
-    const a = (i / POOL_SEGMENTS) * Math.PI * 2;
-    return [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
-  });
+function buildGrid(room) {
+  const { widthCm: W, depthCm: D } = room;
+  const points = [];
+  for (let x = GRID_CM; x < W; x += GRID_CM) points.push([m(x), 0.002, 0], [m(x), 0.002, m(D)]);
+  for (let z = GRID_CM; z < D; z += GRID_CM) points.push([0, 0.002, m(z)], [m(W), 0.002, m(z)]);
+  return points;
 }
 
-function wallGlow(room, cx, cy, r) {
-  return { type: 'radial', pts: circle(cx, cy, r).map((p) => clampWall(room, p)), center: [cx, cy, 0.4] };
-}
-
-function floorPool(room, cx, cz, r) {
-  return { type: 'radial', pts: circle(cx, cz, r).map((p) => clampFloor(room, p)), center: [cx, 0.4, cz] };
-}
-
-/** Light patches for one lit module, as 3D polygons on the wall and floor planes. */
-export function lightPatches(item, room) {
-  const product = getProduct(item.productId);
-  if (!item.led || product.watts === 0) return [];
-  const b = moduleBox(item);
-  const xMid = (b.x0 + b.x1) / 2;
-
-  switch (product.shape) {
-    case 'shelf':
-      return [wash(room, b.x0 - 4, b.x1 + 4, b.y0, 78, 20, -1)];
-    case 'cube':
-      return [wash(room, b.x0, b.x1, b.y0, 34, 8, -1)];
-    case 'sideboard': {
-      const patches = [wash(room, b.x0 - 4, b.x1 + 4, b.y0, Math.min(b.y0, 90), 16, -1)];
-      if (b.y0 < 80) patches.push(floorPool(room, xMid, b.z1 * 0.6, (b.x1 - b.x0) * 0.55));
-      return patches;
-    }
-    case 'lightbar':
-      return [wash(room, b.x0, b.x1, b.y0, 56, 14, -1), wash(room, b.x0, b.x1, b.y1, 56, 14, 1)];
-    case 'column':
-      return [wallGlow(room, xMid, b.y0 + (b.y1 - b.y0) * 0.55, 112), floorPool(room, xMid, b.z1 * 0.5 + 12, 58)];
-    case 'spot':
-      return [wash(room, xMid - 6, xMid + 6, b.y0, 136, 44, -1)];
-    case 'frame':
-      return [wallGlow(room, xMid, (b.y0 + b.y1) / 2, Math.max(b.x1 - b.x0, b.y1 - b.y0) * 0.72)];
-    default:
-      return [];
-  }
-}
-
-function buildPatches(room, items, rig, palette) {
-  const patches = [];
-  for (const item of items) {
-    const product = getProduct(item.productId);
-    const strength = Math.min(1.25, Math.max(0.55, product.lumens / 1200));
-    const color = kelvinToRgb(product.kelvin ?? 2700).join(', ');
-    lightPatches(item, room).forEach((patch, i) => {
-      const projected = points2d(rig, patch.pts);
-      const base = { key: `${item.uid}-${i}`, uid: item.uid, color, peak: palette.patchPeak * strength };
-      if (patch.type === 'linear') {
-        const [x1, y1] = project(rig, patch.from);
-        const [x2, y2] = project(rig, patch.to);
-        patches.push({ ...base, type: 'linear', points: pointsAttr(projected), x1, y1, x2, y2 });
-      } else {
-        const [cx, cy] = project(rig, patch.center);
-        const r = Math.max(1, ...projected.map(([x, y]) => Math.hypot(x - cx, y - cy)));
-        patches.push({ ...base, type: 'radial', points: pointsAttr(projected), cx, cy, r });
-      }
-    });
-  }
-  return patches;
-}
-
-/* Module surface details on the front face */
-
-function frontRect(b, x0, x1, y0, y1) {
-  const z = b.z1 + 0.05;
-  return [
-    [x0, y0, z],
-    [x1, y0, z],
-    [x1, y1, z],
-    [x0, y1, z],
+function roomEdges(room) {
+  const { widthCm: W, depthCm: D, heightCm: H } = room;
+  const c = (x, y, z) => v3([x, y, z]);
+  const corners = [c(0, 0, 0), c(W, 0, 0), c(0, H, 0), c(W, H, 0), c(0, 0, D), c(W, 0, D), c(0, H, D), c(W, H, D)];
+  const pairs = [
+    [0, 1], [2, 3], [4, 5], [6, 7],
+    [0, 2], [1, 3], [4, 6], [5, 7],
+    [0, 4], [1, 5], [2, 6], [3, 7],
   ];
+  return pairs.flatMap(([a, b]) => [corners[a], corners[b]]);
 }
 
-function moduleDetails(product, b) {
+/* Modules */
+
+function boxRecord(box) {
+  return {
+    size: [m(box.x1 - box.x0), m(box.y1 - box.y0), m(box.z1 - box.z0)],
+    position: [m((box.x0 + box.x1) / 2), m((box.y0 + box.y1) / 2), m((box.z0 + box.z1) / 2)],
+  };
+}
+
+/** Thin emissive strips where the LED channel actually sits on each part. */
+function emitterBoxes(shape, b) {
   const xMid = (b.x0 + b.x1) / 2;
-  switch (product.shape) {
+  switch (shape) {
     case 'shelf':
-      return [{ kind: 'emit', pts: frontRect(b, b.x0 + 2, b.x1 - 2, b.y0, b.y0 + 1.4) }];
+      return [{ x0: b.x0 + 2, x1: b.x1 - 2, y0: b.y0 - 0.4, y1: b.y0 + 0.6, z0: b.z1 - 3, z1: b.z1 - 1 }];
     case 'cube':
-      return [
-        { kind: 'recess', pts: frontRect(b, b.x0 + 1.8, b.x1 - 1.8, b.y0 + 1.8, b.y1 - 1.8) },
-        { kind: 'emit', pts: frontRect(b, b.x0 + 1.8, b.x1 - 1.8, b.y1 - 3.4, b.y1 - 1.8) },
-      ];
+      return [{ x0: b.x0 + 2, x1: b.x1 - 2, y0: b.y1 - 3.4, y1: b.y1 - 2, z0: b.z1 - 2, z1: b.z1 + 0.2 }];
     case 'sideboard':
-      return [
-        { kind: 'line', pts: frontRect(b, xMid - 0.3, xMid + 0.3, b.y0 + 1.2, b.y1 - 1.2) },
-        { kind: 'emit', pts: frontRect(b, b.x0 + 2, b.x1 - 2, b.y0, b.y0 + 0.9) },
-      ];
+      return [{ x0: b.x0 + 2, x1: b.x1 - 2, y0: b.y0 - 0.4, y1: b.y0 + 0.5, z0: b.z1 - 4, z1: b.z1 - 2 }];
     case 'lightbar':
-      return [{ kind: 'emit', pts: frontRect(b, b.x0 + 1, b.x1 - 1, b.y0 + 1.2, b.y0 + 3.6) }];
+      return [{ x0: b.x0 + 1, x1: b.x1 - 1, y0: b.y0 + 1.2, y1: b.y0 + 3.6, z0: b.z1 - 0.2, z1: b.z1 + 0.3 }];
     case 'column':
-      return [{ kind: 'emit', pts: frontRect(b, xMid - 3, xMid + 3, b.y0 + 4, b.y1 - 6) }];
+      return [{ x0: xMid - 1.5, x1: xMid + 1.5, y0: b.y0 + 4, y1: b.y1 - 6, z0: b.z1 - 1.2, z1: b.z1 + 0.6 }];
     case 'spot':
-      return [{ kind: 'emit', pts: frontRect(b, b.x0 + 3, b.x1 - 3, b.y0 + 1, b.y0 + 4) }];
-    case 'frame':
-      return [{ kind: 'felt', pts: frontRect(b, b.x0 + 3, b.x1 - 3, b.y0 + 3, b.y1 - 3) }];
-    case 'track':
-      return [{ kind: 'line', pts: frontRect(b, b.x0 + 1, b.x1 - 1, b.y0 + 1.1, b.y0 + 1.9) }];
+      return [{ x0: b.x0 + 3, x1: b.x1 - 3, y0: b.y0 - 0.3, y1: b.y0 + 0.4, z0: b.z0 + 3, z1: b.z1 - 3 }];
     default:
       return [];
   }
 }
 
-function detailFill(kind, lit, light, palette, shadeFront) {
-  if (kind === 'emit') return lit ? rgb(light) : rgb(palette.emitterOff);
-  if (kind === 'recess') return rgb(lit ? mix([12, 11, 10], light, 0.32) : [12, 11, 10]);
-  if (kind === 'felt') return rgb(scale([58, 56, 52], shadeFront));
-  return 'rgba(0, 0, 0, 0.42)';
+/**
+ * The real light each lit module throws, in metres. Spot lights wash the
+ * wall and floor below shelves and bars; the column and the backlit frame
+ * are omnidirectional. Intensity scales with the part's rated lumens.
+ */
+function moduleLights(item, product, b, room, rig) {
+  if (!item.led || product.watts === 0) return [];
+  const color = hex(kelvinToRgb(product.kelvin ?? 2700));
+  const strength = (product.lumens / 1000) * rig.led;
+  const xMid = (b.x0 + b.x1) / 2;
+  const yMid = (b.y0 + b.y1) / 2;
+  const spot = (id, from, to, angleDeg, intensity, distanceCm) => ({
+    id,
+    type: 'spot',
+    color,
+    position: v3(from),
+    target: v3(to),
+    angle: angleDeg * DEG,
+    penumbra: 0.85,
+    intensity: Number((intensity * strength).toFixed(3)),
+    distance: m(distanceCm),
+    decay: 2,
+  });
+  const point = (id, at, intensity, distanceCm) => ({
+    id,
+    type: 'point',
+    color,
+    position: v3(at),
+    intensity: Number((intensity * strength).toFixed(3)),
+    distance: m(distanceCm),
+    decay: 2,
+  });
+
+  switch (product.shape) {
+    case 'shelf':
+      return [spot('wash', [xMid, b.y0 - 1, b.z1 - 4], [xMid, Math.max(0, b.y0 - 160), 2], 58, 5.5, 360)];
+    case 'cube':
+      return [spot('wash', [xMid, b.y0 - 1, b.z1 - 6], [xMid, Math.max(0, b.y0 - 120), 2], 46, 4.5, 280)];
+    case 'sideboard':
+      return [spot('graze', [xMid, b.y0 - 1, b.z1 - 6], [xMid, 0, b.z1 * 0.8], 72, 5, 260)];
+    case 'lightbar':
+      return [
+        spot('down', [xMid, b.y0 - 0.5, b.z1 + 1], [xMid, Math.max(0, b.y0 - 140), 2], 62, 3.2, 300),
+        spot('up', [xMid, b.y1 + 0.5, b.z1 + 1], [xMid, Math.min(room.heightCm, b.y1 + 140), 2], 62, 3.2, 300),
+      ];
+    case 'column':
+      return [point('glow', [xMid, b.y0 + (b.y1 - b.y0) * 0.58, b.z1 + 6], 4.8, 340)];
+    case 'spot':
+      return [spot('beam', [xMid, b.y0 - 0.5, (b.z0 + b.z1) / 2], [xMid, Math.max(0, b.y0 - 150), 2], 26, 7, 360)];
+    case 'frame':
+      return [point('halo', [xMid, yMid, 0.6], 1.6, 120)];
+    default:
+      return [];
+  }
 }
 
-/* Solids */
-
-function solidFaces(geometry, base, palette) {
-  return geometry.faces
-    .filter((face) => face.visible)
-    .map((face) => ({
-      key: face.id,
-      fill: rgb(scale(base, palette.shade[face.id])),
-      points: pointsAttr(face.projected),
-    }));
-}
-
-function moduleSolid(item, rig, palette, withEdges) {
+function moduleRecord(item, room, rig, conflicts, selectedUid) {
   const product = getProduct(item.productId);
   const finish = getFinish(item.finish);
   const box = moduleBox(item);
-  const geometry = boxFaces(rig, box);
-  const base = hexToRgb(finish.hex);
   const lit = item.led && product.watts > 0;
-  const light = kelvinToRgb(product.kelvin ?? 2700);
-  const frontVisible = geometry.faces[0].visible;
-  const details = frontVisible
-    ? moduleDetails(product, box).map((detail, i) => ({
-        key: `${detail.kind}-${i}`,
-        kind: detail.kind,
-        lit: detail.kind === 'emit' && lit,
-        fill: detailFill(detail.kind, lit, light, palette, palette.shade.front),
-        points: pointsAttr(points2d(rig, detail.pts)),
-      }))
-    : [];
+  const light = hex(kelvinToRgb(product.kelvin ?? 2700));
+  const cylinder = product.shape === 'column' || product.shape === 'spot';
+  const { w, h, d } = product.dimsCm;
 
   return {
-    key: item.uid,
-    kind: 'module',
     uid: item.uid,
-    item,
-    product,
+    productId: product.id,
+    name: product.name,
+    sku: product.sku,
+    shape: product.shape,
+    finish: finish.id,
+    color: finish.hex,
+    ...(FINISH_SURFACE[finish.id] ?? FINISH_SURFACE.chalk),
+    geometry: cylinder ? 'cylinder' : 'box',
+    radius: cylinder ? m(Math.min(w, d) / 2) : null,
+    ...boxRecord(box),
     box,
-    geometry,
-    bounds: screenBounds(geometry.projected),
-    distance: Math.hypot(...sub(boxCenter(box), rig.eye)),
-    faces: solidFaces(geometry, base, palette),
-    details,
-    edges: withEdges ? boxEdges(geometry) : null,
+    xCm: item.xCm,
+    yCm: item.yCm,
+    dims: `${w}x${h}x${d}`,
+    led: product.watts > 0 ? String(item.led) : 'none',
+    lit,
+    emitters: emitterBoxes(product.shape, box).map((e, i) => ({
+      key: `${item.uid}-e${i}`,
+      color: light,
+      intensity: lit ? rig.emissive : 0,
+      ...boxRecord(e),
+    })),
+    felt:
+      product.shape === 'frame'
+        ? { color: '#3a3834', ...boxRecord({ x0: box.x0 + 3, x1: box.x1 - 3, y0: box.y0 + 3, y1: box.y1 - 3, z0: box.z1 - 1, z1: box.z1 + 0.15 }) }
+        : null,
+    lights: moduleLights(item, product, box, room, rig),
+    selected: item.uid === selectedUid,
+    conflict: conflicts.has(item.uid),
   };
 }
 
-function furnitureSolids(furniture, rig, palette, withEdges) {
+function furnitureRecords(room) {
+  const furniture = furnitureLayout(room);
   if (!furniture) return [];
-  return furniture.parts.map((p) => {
-    const geometry = boxFaces(rig, p.box);
-    return {
-      key: `furniture-${p.id}`,
-      kind: 'furniture',
-      part: p.id,
-      box: p.box,
-      geometry,
-      bounds: screenBounds(geometry.projected),
-      distance: Math.hypot(...sub(boxCenter(p.box), rig.eye)),
-      faces: solidFaces(geometry, hexToRgb(FURNITURE_TONES[p.tone]), palette),
-      details: [],
-      edges: withEdges ? boxEdges(geometry) : null,
-    };
-  });
+  return furniture.parts.map((p) => ({
+    part: p.id,
+    color: FURNITURE_TONES[p.tone],
+    box: p.box,
+    ...boxRecord(p.box),
+  }));
 }
 
-/* Contact shadows */
+/* Technical annotations */
 
-function buildShadows(room, items, furniture, rig, palette) {
-  const shadows = [];
-  const floorQuad = (key, b, grow) => {
-    const pts = [
-      [b.x0 - grow, b.z0],
-      [b.x1 + grow, b.z0],
-      [b.x1 + grow, b.z1 + grow],
-      [b.x0 - grow, b.z1 + grow],
-    ].map((p) => clampFloor(room, p));
-    shadows.push({ key, fill: palette.shadow, points: pointsAttr(points2d(rig, pts)) });
-  };
-
-  if (furniture) floorQuad('furniture', furniture.bounds, 4);
-  for (const item of items) {
-    const box = moduleBox(item);
-    if (box.y0 === 0) floorQuad(`floor-${item.uid}`, box, 3);
-    if (palette.wallShadow > 0 && box.y0 > 0) {
-      const pts = [
-        [box.x0 + 2, box.y0 - 5],
-        [box.x1 + 5, box.y0 - 5],
-        [box.x1 + 5, box.y1 - 3],
-        [box.x0 + 2, box.y1 - 3],
-      ].map((p) => clampWall(room, p));
-      shadows.push({
-        key: `wall-${item.uid}`,
-        fill: `rgba(30, 26, 20, ${palette.wallShadow})`,
-        points: pointsAttr(points2d(rig, pts)),
-      });
-    }
-  }
-  return shadows;
-}
-
-/* Technical overlay */
-
-export function labelWidth(text) {
-  return text.length * LABEL_CHAR_PX + LABEL_PAD_PX;
-}
-
-/** Keeps a label box fully inside the viewport; x is the box centre. */
-function placeLabel(viewport, text, x, y) {
-  const half = labelWidth(text) / 2;
-  const minX = half + LABEL_MARGIN_PX;
-  const maxX = viewport.w - half - LABEL_MARGIN_PX;
-  const minY = 8 + LABEL_MARGIN_PX;
-  const maxY = viewport.h - 8 - LABEL_MARGIN_PX;
-  return {
-    lx: maxX > minX ? Math.min(maxX, Math.max(minX, x)) : viewport.w / 2,
-    ly: Math.min(maxY, Math.max(minY, y)),
-  };
-}
-
-function segment(rig, key, a, b) {
-  const [x1, y1] = project(rig, a);
-  const [x2, y2] = project(rig, b);
-  return { key, x1, y1, x2, y2 };
-}
-
-function buildRoomEdges(room, rig) {
-  const box = { x0: 0, x1: room.widthCm, y0: 0, y1: room.heightCm, z0: 0, z1: room.depthCm };
-  const geometry = boxFaces(rig, box);
-  return EDGE_DEFS.map(({ a, b }, i) => {
-    const [x1, y1] = geometry.projected[a];
-    const [x2, y2] = geometry.projected[b];
-    return { key: `room-${i}`, x1, y1, x2, y2 };
-  });
-}
-
-function buildAxes(room, rig, viewport) {
+function buildAxes(room) {
   const { widthCm: W, depthCm: D, heightCm: H } = room;
   const axes = [
-    { id: 'x', length: W, label: `X ${W} cm`, dir: [1, 0, 0], tick: [0, 0, 5] },
-    { id: 'y', length: H, label: `Y ${H} cm`, dir: [0, 1, 0], tick: [5, 0, 0] },
-    { id: 'z', length: D, label: `Z ${D} cm`, dir: [0, 0, 1], tick: [5, 0, 0] },
+    { id: 'x', length: W, label: `X ${W} cm`, dir: [1, 0, 0], tick: [0, 0, TICK_CM] },
+    { id: 'y', length: H, label: `Y ${H} cm`, dir: [0, 1, 0], tick: [TICK_CM, 0, 0] },
+    { id: 'z', length: D, label: `Z ${D} cm`, dir: [0, 0, 1], tick: [TICK_CM, 0, 0] },
   ];
   return axes.map((axis) => {
-    const end = axis.dir.map((c) => c * (axis.length + AXIS_OVERRUN_CM));
+    const at = (t) => axis.dir.map((c) => c * t);
     const ticks = [];
     for (let t = GRID_CM; t <= axis.length; t += GRID_CM) {
-      const at = axis.dir.map((c) => c * t);
-      ticks.push(segment(rig, `${axis.id}${t}`, at, at.map((c, i) => c + axis.tick[i])));
+      ticks.push(v3(at(t)), v3(at(t).map((c, i) => c + axis.tick[i])));
     }
-    const [x, y] = project(rig, axis.dir.map((c) => c * (axis.length + AXIS_OVERRUN_CM + 8)));
     return {
       id: axis.id,
       label: axis.label,
-      line: segment(rig, axis.id, [0, 0, 0], end),
-      ticks,
-      ...placeLabel(viewport, axis.label, x, y),
+      points: [v3([0, 0, 0]), v3(at(axis.length + AXIS_OVERRUN_CM)), ...ticks],
+      labelAt: v3(at(axis.length + AXIS_OVERRUN_CM + 10)),
     };
   });
 }
 
-function buildCallouts(state, selectedUid, rig, viewport) {
-  return clearanceCallouts(state, selectedUid).map((callout) => {
-    const [x1, y1] = project(rig, callout.from);
-    const [x2, y2] = project(rig, callout.to);
-    const length = Math.hypot(x2 - x1, y2 - y1) || 1;
-    const nx = (-(y2 - y1) / length) * 4;
-    const ny = ((x2 - x1) / length) * 4;
-    return {
-      ...callout,
-      x1,
-      y1,
-      x2,
-      y2,
-      ticks: [
-        { x1: x1 - nx, y1: y1 - ny, x2: x1 + nx, y2: y1 + ny },
-        { x1: x2 - nx, y1: y2 - ny, x2: x2 + nx, y2: y2 + ny },
-      ],
-      ...placeLabel(viewport, callout.label, (x1 + x2) / 2, (y1 + y2) / 2),
-    };
-  });
-}
-
-function outline(solid) {
-  return solid.geometry.faces
-    .filter((face) => face.visible)
-    .map((face) => ({ key: face.id, points: pointsAttr(face.projected) }));
+function buildCallouts(state, selectedUid) {
+  return clearanceCallouts(state, selectedUid).map((callout) => ({
+    id: callout.id,
+    label: callout.label,
+    tone: callout.tone,
+    valueCm: callout.valueCm,
+    points: [v3(callout.from), v3(callout.to)],
+    labelAt: v3(callout.from.map((c, i) => (c + callout.to[i]) / 2)),
+  }));
 }
 
 /**
- * Compiles the room into draw-ordered 2D primitives for one camera and
- * viewport. Pure and deterministic: the same inputs give the same output.
- * The wireframe view adds box and room edges without the technical annotations.
+ * Compiles the room into mesh, light and annotation records. The wireframe
+ * view turns faces to smoked glass and adds box and room edges; the
+ * technical view adds axes, SKU tags and clearance callouts on top.
  */
-export function buildScene({ state, camera, viewport, conflicts, selectedUid, technical, wireframe = false }) {
+export function buildScene({ state, conflicts = new Map(), selectedUid = null, technical = false, wireframe = false }) {
   const { room, items } = state;
-  const palette = PALETTES[room.lighting] ?? PALETTES.night;
-  const rig = createRig(room, camera, viewport);
-  const furniture = furnitureLayout(room);
+  const rig = LIGHTING_RIGS[room.lighting] ?? LIGHTING_RIGS.night;
+  const modules = items.map((item) => moduleRecord(item, room, rig, conflicts, selectedUid));
+  const furniture = furnitureRecords(room);
+  const shell = buildShell(room);
+  const edges = technical || wireframe;
 
-  const solids = orderSolids(
-    [
-      ...items.map((item) => moduleSolid(item, rig, palette, technical || wireframe)),
-      ...furnitureSolids(furniture, rig, palette, technical || wireframe),
-    ],
-    rig.eye,
-  );
-
-  const selected = solids.find((solid) => solid.uid === selectedUid) ?? null;
-  const flagged = solids.filter((solid) => solid.uid && conflicts.has(solid.uid));
+  const lights = modules.flatMap((module) => module.lights.map((light) => ({ ...light, uid: module.uid })));
+  const meshes =
+    shell.surfaces.length +
+    shell.poche.length +
+    furniture.length +
+    modules.reduce((sum, module) => sum + 1 + module.emitters.length + (module.felt ? 1 : 0), 0);
 
   return {
     lighting: room.lighting,
-    shell: buildShell(room, rig, palette),
-    grid: buildGrid(room, rig),
-    shadows: buildShadows(room, items, furniture, rig, palette),
-    patches: buildPatches(room, items, rig, palette),
-    solids,
-    selection: selected ? outline(selected) : null,
-    conflicts: flagged.map((solid) => ({ uid: solid.uid, faces: outline(solid) })),
-    wire: wireframe && !technical ? { roomEdges: buildRoomEdges(room, rig) } : null,
-    technical: technical
-      ? {
-          roomEdges: buildRoomEdges(room, rig),
-          axes: buildAxes(room, rig, viewport),
-          callouts: buildCallouts(state, selectedUid, rig, viewport),
-          tags: solids
-            .filter((solid) => solid.kind === 'module')
-            .map((solid) => {
-              const [x, y] = project(rig, [solid.box.x0, solid.box.y1, solid.box.z1]);
-              const sku = solid.product.sku;
-              return { uid: solid.uid, sku, ...placeLabel(viewport, sku, x + labelWidth(sku) / 2, y - 12) };
-            }),
-        }
+    rig,
+    size: v3([room.widthCm, room.heightCm, room.depthCm]),
+    shell,
+    grid: buildGrid(room),
+    modules,
+    furniture,
+    lights,
+    wireframe: wireframe && !technical,
+    technical,
+    edges,
+    roomEdges: edges ? roomEdges(room) : null,
+    axes: technical ? buildAxes(room) : null,
+    callouts: technical ? buildCallouts(state, selectedUid) : null,
+    tags: technical
+      ? modules.map((module) => ({ uid: module.uid, sku: module.sku, at: v3([module.box.x0, module.box.y1 + 6, module.box.z1]) }))
       : null,
+    stats: { meshes, lights: lights.length + 3 },
   };
 }
