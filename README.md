@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v0.10.0-e8923a)
+![Release](https://img.shields.io/badge/release-v0.10.1-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![three.js](https://img.shields.io/badge/three.js-r187-2a2825)
@@ -11,7 +11,11 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v0.10.0**. Design polish and account revival. The hero headline is
+Current release: **v0.10.1**. Cart naming throughout: every visible label, button, toast
+and live announcement that said bag now says cart (**Add to Cart**, **Clear cart**,
+**Sync Wall to Cart**, **Sync Room to Cart**). Stored carts carry over unchanged.
+
+**v0.10.0**. Design polish and account revival. The hero headline is
 capped at 7rem (`--text-hero`) and sits on a 9vw inset (up to 220px), lower in the frame.
 The navbar controls are one row of 32px glass pills: the Arch / Tech track, Account and
 **Cart**. `/account` is rebuilt as a bento grid: a profile tile with **Sign Out** on its
@@ -97,8 +101,8 @@ tests/                  Playwright specs, named by architectural domain
 | `/catalog`   | Catalog       | Category, search and sort over 8 parts, finish swatch     |
 | `/catalog/:id` | Spec sheet  | Orthographic set, photometry or bus curve, launchers      |
 | `/checkout`  | Project Quote | BOM, driver, currency, trade code, print, export, submit  |
-| `/room-3d`   | Room Planner  | WebGL room, furniture clearances, 2D wall bridge, bag sync |
-| `/studio-2d` | Wall Studio   | To-scale elevation planner, telemetry, sync to bag        |
+| `/room-3d`   | Room Planner  | WebGL room, furniture clearances, 2D wall bridge, cart sync |
+| `/studio-2d` | Wall Studio   | To-scale elevation planner, telemetry, sync to cart       |
 | `/account`   | Account       | Signed in only: saved spatial projects, order history     |
 
 ## Design system
@@ -185,7 +189,7 @@ custom properties, so React never re-renders on pointer movement.
   settle, unfold, transient status lines). Under `prefers-reduced-motion: reduce` every
   section renders at rest, keys do not drift and status lines stay put.
 
-## Catalog and bag
+## Catalog and cart
 
 - `src/data/products.js` is the single source for parts: SKU, price, dimensions, 24V load,
   lumen output, CCT, CRI, mounting points, lead time and the finishes each part ships in.
@@ -194,9 +198,10 @@ custom properties, so React never re-renders on pointer movement.
 - Each catalog card draws a front elevation at the largest standard scale that fits
   (1:2 to 1:50). Architectural mode shows finish and editorial copy; technical mode adds
   dimension lines, anchor points and the telemetry grid (SKU, load, lm, lm/W, CRI).
-- The navbar **Cart (n)** pill opens the drawer, titled Cart. Internally the store, hook
-  and storage key keep the `bag` name; product actions still read **Add to Bag**.
-- The bag is stored under `lumen_bag_v1` through `safeStorage`. Every read is rebuilt line
+- The navbar **Cart (n)** pill opens the cart drawer. Every visible label says cart:
+  **Add to Cart**, **Clear cart**, **Sync Wall to Cart**, **Sync Room to Cart** and the toasts.
+  Internally the store, hook, CSS classes, test ids and storage key keep the `bag` name.
+- The cart is stored under `lumen_bag_v1` through `safeStorage`. Every read is rebuilt line
   by line: unknown products, finishes a part does not ship in and quantities outside
   1-99 are dropped, duplicates merge, and the cleaned value is written back. Other tabs
   follow through the `storage` event and pass through the same validation.
@@ -236,7 +241,7 @@ custom properties, so React never re-renders on pointer movement.
   drops unknown parts and finishes, rounds and clamps coordinates, reissues bad or
   duplicate ids and caps the wall at 48 modules. Export writes the same envelope.
 - The summary reports modules, connected 24V load, live flux, price and driver. **Sync
-  Wall to Bag** groups modules by part and finish, merges them into the shared bag and
+  Wall to Cart** groups modules by part and finish, merges them into the shared cart and
   opens the drawer, where the PSU is sized on the full connected load.
 
 ## Room Planner
@@ -266,7 +271,7 @@ custom properties, so React never re-renders on pointer movement.
 - The canvas renders on demand (`frameloop="demand"`), only when the scene, the camera or
   its size changes. The three.js chunk loads lazily; until it arrives, or when the
   browser has no WebGL context, the viewport shows a plain notice while the inspector,
-  camera HUD, bag sync and 2D bridge stay fully live.
+  camera HUD, cart sync and 2D bridge stay fully live.
 - A hidden scene-graph mirror beside the canvas lists every module, light, furniture
   part, selection, conflict and annotation with the data the GPU draws, plus each
   module's projected screen position. The E2E suite reads it, so it runs with or
@@ -290,7 +295,7 @@ custom properties, so React never re-renders on pointer movement.
   floor and ceiling. Labels are DOM elements projected over the canvas.
 - **Load from 2D Wall Studio** reads `lumen_wall_studio_v1`, or the Nordic Reading Wall
   when it is empty. **Push to 2D Wall Studio** writes the main wall back, capped at the
-  400 cm studio width. **Sync Room to Bag** merges the modules and opens the drawer.
+  400 cm studio width. **Sync Room to Cart** merges the modules and opens the drawer.
 - State persists under `lumen_room_3d_v1` and is rebuilt on every read with the wall
   layout's per-module rules plus a clamped envelope, furniture, lighting and camera.
 
@@ -312,12 +317,12 @@ custom properties, so React never re-renders on pointer movement.
   stays inside a 3% drop.
 - **Mount in 2D Wall Studio** and **Place in 3D Room** write the part, in the chosen
   finish, to the first clear spot in `lumen_wall_studio_v1` or `lumen_room_3d_v1`, then
-  open the planner with that module selected. **Add to Bag** takes a quantity.
+  open the planner with that module selected. **Add to Cart** takes a quantity.
 
 ## Checkout and quote
 
-- **Configure Quote & Checkout** in the bag drawer opens `/checkout`. The BOM lists every
-  bag line plus the 24V driver sized on the connected load (60W, 150W or a multi-bus
+- **Configure Quote & Checkout** in the cart drawer opens `/checkout`. The BOM lists every
+  cart line plus the 24V driver sized on the connected load (60W, 150W or a multi-bus
   array of 150W units); the driver line can be excluded, which flags the quote.
 - USD, EUR (0.92) and HUF (360), persisted under `lumen_currency_v1`. Rates are exact
   ratios, so every amount is an integer of cents or whole forints. Discount and 27% VAT
@@ -357,7 +362,7 @@ custom properties, so React never re-renders on pointer movement.
   Fault) and a 1px countdown, and unmounts after 4 seconds; a dismiss key closes one
   early. The stack ignores the pointer except for that key, so a toast never blocks a
   control.
-- `useToast().addToast(message, tone)` reports bag additions and removals, cleared bags,
+- `useToast().addToast(message, tone)` reports cart additions and removals, cleared carts,
   checkout requisitions and quote exports, planner saves (Wall Studio JSON export and
   import, room push to Wall Studio) and sign in or out. Messages pass `sanitizeText` and
   render as text nodes.

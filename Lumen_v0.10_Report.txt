@@ -168,9 +168,40 @@ Added
 NOTES AND FOLLOW-UPS
 ------------------------------------------------------------------------
 
-- Only the navbar control and the drawer title say Cart. Product actions
-  ("Add to Bag", "In bag n"), drawer actions ("Clear bag") and toasts still
-  say bag. Renaming all of these is a separate copy pass with its own test
-  updates.
 - The oak glow is scoped to /account. The .page-atmosphere class can be added
   to any other page wrapper to extend it.
+
+------------------------------------------------------------------------
+v0.10.1 - CART NAMING PATCH
+------------------------------------------------------------------------
+
+v0.10.0 renamed only the navbar trigger and drawer title. v0.10.1 finishes
+the copy pass: every visible label, button, toast and screen reader
+announcement that said bag now says cart.
+
+Renamed (20 strings, 10 files)
+- Product card and spec sheet: "Add to Bag" to "Add to Cart", "In bag n" to
+  "In cart n", "Not in bag" to "Not in cart".
+- Drawer: "Clear bag" to "Clear cart", "Your bag is empty." to "Your cart is
+  empty.", list label "Bag contents" to "Cart contents".
+- Toasts and live announcements: "added to cart.", "removed ... from the
+  cart.", "Cart cleared: n items removed."
+- Planners: "Sync Wall to Cart", "Sync Room to Cart", and the status lines
+  "Synced n modules as n cart lines."
+- Page copy: the Home Wall Studio card, Room Planner and Wall Studio ledes,
+  and the empty checkout notice.
+
+Kept on purpose
+- Internal names stay bag: the useBag hook, BagProvider and BagDrawer
+  components, CSS classes, test ids and the lumen_bag_v1 storage key.
+  Renaming the storage key would drop every cart already saved in a
+  visitor's browser, and the other names are never shown to users.
+
+Tests
+- Role names, toast text and status line assertions updated to the cart
+  copy in auth-and-toast, bag-drawer, product-detail-and-checkout,
+  room-planner-3d, surface-lab, ux-animations and wall-studio specs.
+
+Release
+- package.json and package-lock.json: 0.10.0 to 0.10.1; README updated;
+  tagged v0.10.1. The v0.10.0 tag is left where it was.
