@@ -2,9 +2,11 @@ import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 4173;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
+const SERVE = `npm run preview -- --host 127.0.0.1 --port ${PORT} --strictPort`;
 
 // E2E runs against the production build so the strict CSP in index.html is
-// exercised exactly as it ships. The dev server relaxes it for HMR.
+// exercised exactly as it ships. The dev server relaxes it for HMR. CI builds
+// in its own workflow step, so there the web server only serves dist/.
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
@@ -23,7 +25,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run build && npm run preview -- --host 127.0.0.1 --port ${PORT} --strictPort`,
+    command: process.env.CI ? SERVE : `npm run build && ${SERVE}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
