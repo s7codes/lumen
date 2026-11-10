@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { ORDER_HISTORY } from '../src/data/order-history.js';
+import { PROJECTS_STORAGE_KEY, QUOTES_STORAGE_KEY } from '../src/api/client.js';
 import { SESSION_STORAGE_KEY } from '../src/lib/auth.js';
 import { formatUsd, padIndex } from '../src/lib/format.js';
 import { layoutFromPreset, serializeLayout, summarizeWall, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
@@ -12,6 +12,20 @@ import {
 
 const SESSION_KEY = `lumen:${SESSION_STORAGE_KEY}`;
 const WALL_KEY = `lumen:${WALL_STORAGE_KEY}`;
+const PROJECTS_KEY = `lumen:${PROJECTS_STORAGE_KEY}`;
+const QUOTES_KEY = `lumen:${QUOTES_STORAGE_KEY}`;
+const STORED_QUOTE = {
+  ref: 'LMN-R-7F3A91C2',
+  quoteId: 'LMN-Q-20261021-4K9Q2T',
+  submittedAt: '2026-10-21T09:30:00.000Z',
+  reference: 'Atelier Vesterbro, reading wall',
+  preparedFor: 'Studio Halvorsen',
+  currency: 'USD',
+  grossMinor: 179800,
+  lines: 6,
+  loadW: 108,
+  status: 'Pending review',
+};
 const GUEST = { name: 'Studio Guest', email: 'guest@lumen.com' };
 // Test value for the local mock form only; the app discards it on submit.
 const TEST_PASSWORD = 'nordic-test-0042';
@@ -134,33 +148,45 @@ test.describe('authentication shell', () => {
 });
 
 test.describe('account dashboard', () => {
-  test('lists the locally stored wall as a saved project next to the order history', async ({ page }) => {
+  test('lists the cloud-saved wall next to submitted quotes and opens its saved revision', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     const layout = layoutFromPreset('nordic-reading-wall');
     const summary = summarizeWall(layout);
+    const stored = { kind: 'wall', revision: 2, savedAt: '2026-11-02T08:15:00.000Z', data: serializeLayout(layout) };
 
     await page.goto('/');
     await seed(page, [
       [SESSION_KEY, JSON.stringify(GUEST)],
-      [WALL_KEY, JSON.stringify(serializeLayout(layout))],
+      [PROJECTS_KEY, JSON.stringify([stored])],
+      [QUOTES_KEY, JSON.stringify([STORED_QUOTE])],
+      // An empty local draft: opening the card must check the saved revision out over it.
+      [WALL_KEY, JSON.stringify({ ...serializeLayout(layout), items: [] })],
     ]);
     await page.goto('/account');
     await expect(page.getByRole('heading', { level: 2, name: 'Saved Spatial Projects' })).toBeVisible();
     await expect(page.getByRole('heading', { level: 2, name: 'Order History' })).toBeVisible();
+    await expect(page.getByTestId('projects-loading')).toBeVisible();
+    await expect(page.getByTestId('account-fact-sync')).toHaveText('Syncing');
 
     const projects = page.getByTestId('saved-project');
     await expect(projects).toHaveCount(1);
+    await expect(page.getByTestId('projects-loading')).toHaveCount(0);
+    await expect(page.getByTestId('account-fact-sync')).toHaveText('Up to date');
+    await expect(page.getByTestId('account-fact-projects')).toHaveText('01');
     const wall = page.locator('[data-testid="saved-project"][data-project="wall"]');
     await expect(wall.getByRole('heading', { level: 3 })).toHaveText('Wall A');
     await expect(wall.getByTestId('saved-project-modules')).toHaveText(padIndex(layout.items.length));
     await expect(wall.getByTestId('saved-project-price')).toHaveText(formatUsd(summary.priceUsd));
     await expect(wall.getByRole('img')).toHaveAttribute('aria-label', `Wall A elevation, ${layout.items.length} modules`);
     await expect(wall.locator('.project-card__module')).toHaveCount(layout.items.length);
+    await expect(wall.getByTestId('saved-project-revision')).toHaveText('Rev 02');
 
     const orders = page.getByTestId('order-row');
-    await expect(orders).toHaveCount(ORDER_HISTORY.length);
-    await expect(orders.first()).toContainText(ORDER_HISTORY[0].quoteId);
-    await expect(orders.first()).toContainText(formatUsd(ORDER_HISTORY[0].grossUsd));
+    await expect(orders).toHaveCount(1);
+    await expect(orders.first()).toContainText(STORED_QUOTE.quoteId);
+    await expect(orders.first()).toContainText(STORED_QUOTE.reference);
+    await expect(orders.first().getByTestId('order-gross')).toHaveText('USD 1,798.00');
+    await expect(orders.first()).toContainText('Requisition LMN-R-7F3A91C2');
 
     for (const width of [360, 1280]) {
       await page.setViewportSize({ width, height: 900 });
@@ -173,12 +199,23 @@ test.describe('account dashboard', () => {
     expect(errors).toEqual([]);
   });
 
-  test('shows an empty state when nothing is stored on this device', async ({ page }) => {
+  test('shows hairline empty states when nothing is saved to the cloud, even with a local draft', async ({ page }) => {
     await page.goto('/');
-    await seed(page, [[SESSION_KEY, JSON.stringify(GUEST)]]);
+    await seed(page, [
+      [SESSION_KEY, JSON.stringify(GUEST)],
+      [WALL_KEY, JSON.stringify(serializeLayout(layoutFromPreset('nordic-reading-wall')))],
+    ]);
     await page.goto('/account');
-    await expect(page.getByTestId('saved-projects-empty')).toBeVisible();
+    const empty = page.getByTestId('saved-projects-empty');
+    await expect(empty).toBeVisible();
+    await expect(empty).toContainText('No spatial projects yet.');
     await expect(page.getByTestId('saved-project')).toHaveCount(0);
+    await expect(page.getByTestId('order-history-empty')).toContainText('No quotes submitted yet.');
+    await expect(page.getByTestId('order-row')).toHaveCount(0);
+    await expect(page.getByTestId('account-fact-projects')).toHaveText('00');
+
+    await empty.getByRole('link', { name: 'Start 2D Wall Studio' }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
   });
 
   test('profile, projects and quotes sit in bento tiles with Sign Out anchored top right of the profile', async ({
