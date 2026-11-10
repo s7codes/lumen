@@ -185,6 +185,21 @@ test.describe('app shell', () => {
     }
   });
 
+  test('structural grid stays a 1% subliminal texture in architectural mode, sections get 160px of air', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    const column = page.locator('.structural-grid__col').first();
+    await expect(column).toHaveCSS('border-left-color', 'rgba(242, 238, 231, 0.01)');
+    // 12.5vw at 1280 wide.
+    await expect(page.getByTestId('core-modules')).toHaveCSS('padding-top', '160px');
+    await expect(page.getByTestId('surface-lab')).toHaveCSS('padding-top', '160px');
+
+    await page.getByRole('group', { name: 'Display mode' }).getByRole('button', { name: 'Technical' }).click();
+    await expect(column).toHaveCSS('border-left-color', 'rgba(232, 146, 58, 0.07)');
+  });
+
   test('display mode switch persists through validated storage and rejects tampered values', async ({
     page,
   }) => {

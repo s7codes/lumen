@@ -182,7 +182,7 @@ test.describe('account dashboard', () => {
 });
 
 test.describe('toast notifications', () => {
-  test('a success toast slides in bottom-right above every layer and unmounts after four seconds', async ({ page }) => {
+  test('a success toast floats in as a glass pill, bottom centre above every layer, and unmounts after four seconds', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/catalog');
 
@@ -204,19 +204,37 @@ test.describe('toast notifications', () => {
       return {
         position: style.position,
         zIndex: style.zIndex,
-        right: Math.round(root.clientWidth - rect.right),
         bottom: Math.round(root.clientHeight - rect.bottom),
       };
     });
-    expect(placement).toEqual({ position: 'fixed', zIndex: '100', right: 16, bottom: 16 });
-
-    // Enters on translateY + opacity; a flat zero-blur plinth, never a glow.
-    const motion = await toast.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return { animation: style.animationName, shadow: style.boxShadow };
+    expect(placement).toEqual({ position: 'fixed', zIndex: '100', bottom: 24 });
+    // Scaling from the centre during entry never moves the pill off the axis.
+    const offAxis = await toast.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return Math.abs(rect.left + rect.width / 2 - document.documentElement.clientWidth / 2);
     });
-    expect(motion.animation).toBe('toast-in');
-    expect(motion.shadow).toMatch(/0px 4px 0px 0px$/);
+    expect(offAxis).toBeLessThan(1);
+
+    // Translucent pill on a backdrop blur. Depth is a dark ambient shadow and a
+    // hairline top highlight; no layer carries a coloured glow.
+    const glass = await toast.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        animation: style.animationName,
+        radius: style.borderTopLeftRadius,
+        background: style.backgroundColor,
+        backdrop: style.backdropFilter,
+        layers: style.boxShadow.split(/,(?![^(]*\))/).map((layer) => layer.trim()),
+      };
+    });
+    expect(glass.animation).toBe('toast-in');
+    expect(glass.radius).toBe('999px');
+    expect(glass.background).toBe('rgba(30, 29, 27, 0.56)');
+    expect(glass.backdrop).toContain('blur(28px)');
+    expect(glass.layers).toHaveLength(2);
+    for (const layer of glass.layers) {
+      expect(layer.endsWith('inset') || layer.startsWith('rgba(0, 0, 0,')).toBe(true);
+    }
 
     // Still up at three seconds, unmounted shortly after the four-second mark.
     await page.waitForTimeout(Math.max(0, 3000 - (Date.now() - shownAt)));
