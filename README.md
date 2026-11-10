@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v0.3.0-e8923a)
+![Release](https://img.shields.io/badge/release-v0.4.0-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![CSP](https://img.shields.io/badge/CSP-strict-44484b)
@@ -10,11 +10,13 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v0.3.0**. Interactive 2D Wall Studio on `/studio-2d` with drag,
-collision and slope checks, undo history and JSON layouts; one-click wall to bag sync
-with live 24V telemetry; frame-rate independent pendant physics; GitHub Actions CI.
+Current release: **v0.4.0**. Interactive 3D Room Planner on `/room-3d` with an orbit
+camera, furniture references, clearance callouts and a two-way bridge to the 2D Wall
+Studio and the bag; the cantilever and light aperture brand mark; a flat Arch / Tech
+mode switch with no glowing indicators.
 
-Previous: **v0.2.0**. Canonical product dataset, filterable catalog with procedural scale
+Previous: **v0.3.0**. Interactive 2D Wall Studio on `/studio-2d`, one-click wall to bag
+sync, frame-rate independent pendant physics, GitHub Actions CI. **v0.2.0**. Canonical product dataset, filterable catalog with procedural scale
 elevations, persistent bag with a 24V load and driver calculator, and a surface and
 dimming lab on the overview. **v0.1.0**. Repository genesis, design tokens, routing
 shell, security foundation and E2E harness.
@@ -25,7 +27,9 @@ shell, security foundation and E2E harness.
 - Playwright for end-to-end verification against the production build
 - Inter Tight and IBM Plex Mono, self-hosted through Fontsource (no third-party requests);
   the build preloads the three Latin faces so text never reflows after first paint
-- Planned: Three.js / React Three Fiber room engine, embedded Spatial Studio, API in `server/`
+- Room engine: an in-house perspective compiler that renders to SVG. No WebGL context, so
+  it runs identically in headless Chromium and on low-end GPUs, with no extra dependency
+- Planned: embedded Spatial Studio, API in `server/`
 
 ## Layout
 
@@ -40,16 +44,19 @@ src/
                         ModeSwitch, ProductCard, ProductElevation, SurfaceLab,
                         PageHeader, WorkspaceFrame, icons
     studio/             WallStage, StudioPalette, StudioInspector, StudioToolbar,
-                        StudioSummary, shared field and switch controls
+                        StudioSummary, shared field, switch and finish controls
+    room3d/             RoomViewport, RoomControls, RoomInspector, RoomToolbar,
+                        RoomSummary
   data/                 products.js (parts, finishes, categories), wall-presets.js
   pages/                Home, Catalog, RoomPlanner, WallStudio, NotFound
   hooks/                useAmbientLight, useBag, useDisplayMode, useDocumentTitle,
-                        useWallStudio
+                        useRoom3d, useWallStudio
   lib/                  bag store and PSU sizing, wall studio geometry and history,
-                        closed-form spring, display mode store, photometry,
-                        formatting, route manifest
+                        room model and 2D bridge (room-3d), scene compiler
+                        (room-scene), closed-form spring, display mode store,
+                        photometry, formatting, route manifest
   security/sanitize.js  safeJsonParse, safeStorage, input validators
-  styles/               tokens, base, shell, home, pages, product, studio
+  styles/               tokens, base, shell, home, pages, product, studio, room3d
 server/                 reserved for the API and cloud persistence phase
 tests/                  Playwright specs, named by architectural domain
   support/              shared runtime, CSP and overflow guards
@@ -61,7 +68,7 @@ tests/                  Playwright specs, named by architectural domain
 | ------------ | ------------- | --------------------------------------------------------- |
 | `/`          | Overview      | Pendant hero, surface and dimming lab, core modules       |
 | `/catalog`   | Catalog       | Category, search and sort over 8 parts, finish swatch     |
-| `/room-3d`   | Room Planner  | Viewport frame and inspector for the R3F engine           |
+| `/room-3d`   | Room Planner  | 3D room, furniture clearances, 2D wall bridge, bag sync   |
 | `/studio-2d` | Wall Studio   | To-scale elevation planner, telemetry, sync to bag        |
 
 ## Design system
@@ -71,6 +78,13 @@ tungsten amber (`#e8923a`) as the single accent, anodized aluminum neutrals. Hai
 borders, 2-4px radii, tabular-nums index labels (`01 / OVERVIEW`). A 12-column
 structural grid is exposed behind the shell. Technical mode tints it amber and reveals
 measurement overlays; the choice persists through validated storage.
+
+The mark is a 24 x 24 monogram: structural spine, base return and a cantilevered shelf
+slab in alabaster, with a 2 x 6.5 tungsten aperture held between slab and base. It pairs
+with `LUMEN` tracked at 0.14em; `public/favicon.svg` carries the same geometry on basalt.
+The display mode switch is two typographic segments in a 1px frame, and the engaged one
+inverts to solid alabaster. Buttons, switches and badges never glow: light belongs only to
+the simulated fixtures.
 
 The hero light is a damped spring (`k = 90`, `c = 12`, slightly under-damped). Each rAF
 frame advances it by the elapsed time, `dt = min((now - lastTime) / 1000, 0.05)`, using
@@ -122,6 +136,31 @@ custom properties, so React never re-renders on pointer movement.
 - The summary reports modules, connected 24V load, live flux, price and driver. **Sync
   Wall to Bag** groups modules by part and finish, merges them into the shared bag and
   opens the drawer, where the PSU is sized on the full connected load.
+
+## Room Planner
+
+- Rooms run 240-500 cm wide, 200-450 cm deep and 220-320 cm to the ceiling (default
+  320 x 280 x 250 cm). The main wall sits at Z 0 and shares Wall Studio coordinates:
+  `Left X` and `Bottom Y` in cm, modules extruded to their catalog depth.
+- `src/lib/room-scene.js` projects the room through an orbit pinhole camera (yaw -65 to
+  65 deg, pitch 8 to 50 deg, zoom 0.6-1.8x). Faces are back-face culled, a side wall that
+  turns away from the camera is cut like a section model, and solids are painter-sorted
+  by separating planes, which is exact for disjoint boxes. Same input, same polygons.
+- Presets (Perspective, Front Elevation, Corner Iso, Reset Camera) glide in on the
+  closed-form spring, critically damped. Pointer drag orbits, wheel and pinch zoom, and
+  the arrow keys, `+`, `-` and `Home` drive the camera from the keyboard.
+- Floor references: Low Platform Bed 160cm, Architect Desk 140cm, Modular Sofa 200cm.
+  Modules are tested against them as true 3D boxes, so an art frame can hang behind a
+  sofa back while a sideboard cannot.
+- Night Ambient (2700K) or Daylight Studio. Each lit module casts washes, halos and floor
+  pools in its own CCT; switching its 24V channel off removes the light.
+- Technical mode adds wireframe edges (hidden edges dashed), X / Y / Z axes in cm, SKU
+  tags and clearance callouts: walkway, headroom over the furniture, floor and ceiling.
+- **Load from 2D Wall Studio** reads `lumen_wall_studio_v1`, or the Nordic Reading Wall
+  when it is empty. **Push to 2D Wall Studio** writes the main wall back, capped at the
+  400 cm studio width. **Sync Room to Bag** merges the modules and opens the drawer.
+- State persists under `lumen_room_3d_v1` and is rebuilt on every read with the wall
+  layout's per-module rules plus a clamped envelope, furniture, lighting and camera.
 
 ## Security
 
