@@ -1,24 +1,26 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v0.6.0-e8923a)
+![Release](https://img.shields.io/badge/release-v0.7.0-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
+![three.js](https://img.shields.io/badge/three.js-r187-2a2825)
 ![CSP](https://img.shields.io/badge/CSP-strict-44484b)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v0.6.0**. Motion and progressive disclosure. Overview and catalog
-sections slide up into place as they enter the viewport, grids cascade card by card;
-primary actions are tactile keys that lift off a hard plinth and pull toward the
-pointer; the planners open in a quiet default with glass side panels, folded dimension
-inputs, coordinates only for a selected module, a floating camera HUD with a camera
-settings popover (yaw, pitch, zoom, wireframe), and the rest of the UI stepping back
-while a module is dragged or the room is orbited.
+Current release: **v0.7.0**. WebGL room, account shell and toasts. `/room-3d` now
+renders through three.js and React Three Fiber: OrbitControls, a shadow-mapped sun, and
+every lit module throwing a real spot or point light in its own CCT onto the wall and
+floor. A front-end account shell adds sign in, a protected `/account` dashboard with
+saved spatial projects and quote history, and a React toast stack replaces the hidden
+bag status line.
 
-Previous: **v0.5.0**. Product specification sheets on `/catalog/:id` with three
+Previous: **v0.6.0**. Motion and progressive disclosure: scroll reveals, tactile keys,
+glass planner panels, folded dimension inputs and a camera settings popover.
+**v0.5.0**. Product specification sheets on `/catalog/:id` with three
 to-scale orthographic views, a polar intensity diagram (or the 24V bus voltage drop
 curve for hardware) and direct launchers into both planners; a project checkout on
 `/checkout` with automatic driver provisioning, USD / EUR / HUF, trade codes, a
@@ -35,8 +37,9 @@ shell, security foundation and E2E harness.
 - Playwright for end-to-end verification against the production build
 - Inter Tight and IBM Plex Mono, self-hosted through Fontsource (no third-party requests);
   the build preloads the three Latin faces so text never reflows after first paint
-- Room engine: an in-house perspective compiler that renders to SVG. No WebGL context, so
-  it runs identically in headless Chromium and on low-end GPUs, with no extra dependency
+- Room engine: three.js r187 through React Three Fiber 9 and drei 10 (OrbitControls,
+  Edges, Html). The WebGL chunk is lazy-loaded with the room planner, so the entry
+  bundle stays under 500 kB
 - Planned: embedded Spatial Studio, API in `server/`
 
 ## Layout
@@ -49,27 +52,30 @@ src/
   main.jsx              boot: fonts, tokens, persisted display mode, router
   router.jsx            route table, per-entry history key seeding
   components/           LayoutShell, Navbar, Footer, BagProvider, BagDrawer,
-                        ModeSwitch, ProductCard, ProductElevation, SurfaceLab,
-                        PageHeader, WorkspaceFrame, BlueprintViews,
+                        AuthModal, ModeSwitch, ProductCard, ProductElevation,
+                        SurfaceLab, PageHeader, WorkspaceFrame, BlueprintViews,
                         PhotometricCurve, icons
     studio/             WallStage, StudioPalette, StudioInspector, StudioToolbar,
                         StudioSummary, shared field, switch and finish controls
-    room3d/             RoomViewport, RoomControls, RoomInspector, RoomToolbar,
-                        RoomSummary, CameraSettings
-  data/                 products.js (parts, finishes, categories), wall-presets.js
+    room3d/             RoomViewport, RoomCanvas (lazy WebGL), RoomControls,
+                        RoomInspector, RoomToolbar, RoomSummary, CameraSettings
+  contexts/             AuthContext (session, RequireAuth), ToastContext
+  data/                 products.js (parts, finishes, categories), wall-presets.js,
+                        order-history.js (sample quote archive)
   pages/                Home, Catalog, ProductDetail, Checkout, RoomPlanner,
-                        WallStudio, NotFound
+                        WallStudio, Account, NotFound
   hooks/                useAmbientLight, useBag, useDisplayMode, useDocumentTitle,
-                        useLaunchedModule, useMagneticField, useRoom3d,
-                        useScrollReveal, useWallStudio
+                        useLaunchedModule, useMagneticField, useModalDialog,
+                        useRoom3d, useScrollReveal, useWallStudio
   lib/                  bag store and PSU sizing, wall studio geometry and history,
-                        room model and 2D bridge (room-3d), scene compiler
-                        (room-scene), closed-form spring, display mode store,
-                        photometry and intensity model, 24V bus electrical model,
-                        quote engine, formatting, route manifest
+                        room model and 2D bridge (room-3d), WebGL scene description
+                        and orbit frame (room-scene), mock session (auth),
+                        closed-form spring, display mode store, photometry and
+                        intensity model, 24V bus electrical model, quote engine,
+                        formatting, route manifest
   security/sanitize.js  safeJsonParse, safeStorage, input validators
-  styles/               tokens, base, animations, shell, home, pages, product,
-                        product-detail, checkout, studio, room3d
+  styles/               tokens, base, animations, shell, toast, home, pages, product,
+                        product-detail, checkout, studio, room3d, account
 server/                 reserved for the API and cloud persistence phase
 tests/                  Playwright specs, named by architectural domain
   support/              shared runtime, CSP and overflow guards
@@ -83,8 +89,9 @@ tests/                  Playwright specs, named by architectural domain
 | `/catalog`   | Catalog       | Category, search and sort over 8 parts, finish swatch     |
 | `/catalog/:id` | Spec sheet  | Orthographic set, photometry or bus curve, launchers      |
 | `/checkout`  | Project Quote | BOM, driver, currency, trade code, print, export, submit  |
-| `/room-3d`   | Room Planner  | 3D room, furniture clearances, 2D wall bridge, bag sync   |
+| `/room-3d`   | Room Planner  | WebGL room, furniture clearances, 2D wall bridge, bag sync |
 | `/studio-2d` | Wall Studio   | To-scale elevation planner, telemetry, sync to bag        |
+| `/account`   | Account       | Signed in only: saved spatial projects, order history     |
 
 ## Design system
 
@@ -184,28 +191,50 @@ custom properties, so React never re-renders on pointer movement.
 - Rooms run 240-500 cm wide, 200-450 cm deep and 220-320 cm to the ceiling (default
   320 x 280 x 250 cm). The main wall sits at Z 0 and shares Wall Studio coordinates:
   `Left X` and `Bottom Y` in cm, modules extruded to their catalog depth.
-- `src/lib/room-scene.js` projects the room through an orbit pinhole camera (yaw -65 to
-  65 deg, pitch 8 to 50 deg, zoom 0.6-1.8x). Faces are back-face culled, a side wall that
-  turns away from the camera is cut like a section model, and solids are painter-sorted
-  by separating planes, which is exact for disjoint boxes. Same input, same polygons.
+- WebGL engine. `src/lib/room-scene.js` is a pure scene description: it turns the room
+  state (cm) into mesh, material and light records in metres, deterministic and
+  testable without a GPU. `RoomCanvas.jsx` maps those records onto React Three Fiber:
+  `BoxGeometry` and `CylinderGeometry` primitives with `MeshStandardMaterial` in the
+  finish colour (Walnut, Oak, Obsidian, Chalk; timber matte, obsidian with a soft
+  sheen), single-sided interior wall planes that cull themselves once the camera orbits
+  past, and section-cut poche slabs that hide the same way.
+- Lighting: ambient and hemisphere fill plus a directional sun with a 1024 px PCF shadow
+  map. Every lit module adds its own light in its CCT: a `SpotLight` washing the wall
+  below shelves, cubes, sideboards, lightbars (up and down) and the monopoint spot, a
+  `PointLight` for the floor column and the backlit art frame halo. Intensity scales with
+  rated lumens. Switching the 24V channel off removes the light and darkens the emitter.
+- Camera: drei `OrbitControls` (no pan, no damping) clamped to yaw -65 to 65 deg, pitch
+  8 to 50 deg and zoom 0.6-1.8x through azimuth, polar and distance limits. A drag
+  commits on release, wheel zoom after a 180 ms pause; the committed yaw / pitch / zoom
+  persists and drives the lens back, so presets, keys and reloads land exactly.
 - Presets (Perspective, Front Elevation, Corner Iso, Reset Camera) glide in on the
-  closed-form spring, critically damped. Pointer drag orbits, wheel and pinch zoom, and
-  the arrow keys, `+`, `-` and `Home` drive the camera from the keyboard.
+  closed-form spring, critically damped. The arrow keys, `+`, `-` and `Home` drive the
+  camera from the keyboard. Modules are picked by raycast; a drag never selects.
+- The canvas renders on demand (`frameloop="demand"`), only when the scene, the camera or
+  its size changes. The three.js chunk loads lazily; until it arrives, or when the
+  browser has no WebGL context, the viewport shows a plain notice while the inspector,
+  camera HUD, bag sync and 2D bridge stay fully live.
+- A hidden scene-graph mirror beside the canvas lists every module, light, furniture
+  part, selection, conflict and annotation with the data the GPU draws, plus each
+  module's projected screen position. The E2E suite reads it, so it runs with or
+  without WebGL in CI.
 - The camera controls float over the scene as glass pills: presets and reset on the
   left, zoom and a **Camera settings** fader button on the right. The popover holds the
   live readout, Yaw, Pitch and Zoom faders (sanitized through `sanitizeCamera`) and a
-  **Wireframe** switch that turns faces to smoked glass and draws every box and room
-  edge, hidden edges dashed. It closes on Escape, a second press or any press outside.
+  **Wireframe** switch that turns materials to smoked glass and outlines every box and
+  the room. It closes on Escape, a second press or any press outside.
   Wireframe is view state for the session; the camera persists. Below 768px the HUD
   docks above the scene. While the room is orbited the surrounding panels step back.
 - Room dimensions fold into a **Dimensions** summary row like the Wall Studio's.
 - Floor references: Low Platform Bed 160cm, Architect Desk 140cm, Modular Sofa 200cm.
   Modules are tested against them as true 3D boxes, so an art frame can hang behind a
   sofa back while a sideboard cannot.
-- Night Ambient (2700K) or Daylight Studio. Each lit module casts washes, halos and floor
-  pools in its own CCT; switching its 24V channel off removes the light.
-- Technical mode adds wireframe edges (hidden edges dashed), X / Y / Z axes in cm, SKU
-  tags and clearance callouts: walkway, headroom over the furniture, floor and ceiling.
+- Night Ambient (2700K) or Daylight Studio. The room surfaces stay the same; night drops
+  the fill to a dim moonlit sun so the LED washes carry the room, daylight raises the
+  sun and fill until the fixtures read as accents.
+- Technical mode adds edge outlines (hidden edges drawn faint through the solids), X / Y
+  / Z axes in cm, SKU tags and clearance callouts: walkway, headroom over the furniture,
+  floor and ceiling. Labels are DOM elements projected over the canvas.
 - **Load from 2D Wall Studio** reads `lumen_wall_studio_v1`, or the Nordic Reading Wall
   when it is empty. **Push to 2D Wall Studio** writes the main wall back, capped at the
   400 cm studio width. **Sync Room to Bag** merges the modules and opens the drawer.
@@ -248,12 +277,37 @@ custom properties, so React never re-renders on pointer movement.
   **Download Spec JSON** exports the `lumen.quote` envelope with the BOM in minor units.
   **Submit Project Requisition** validates the form and issues an `LMN-R-` reference.
 
+## Account
+
+- **Sign In** in the navbar opens a modal dialog (focus trap, Escape, focus returned) with
+  Email and Password. Validation is local: a plausible address and at least 8
+  characters. This is a front-end session shell until the API in `server/` lands: no
+  request leaves the browser, the password is discarded on submit, and the session
+  stores only `{ name: "Studio Guest", email }` under `lumen_session_v1`. A tampered
+  session payload reads as signed out.
+- Once signed in the trigger becomes an **Account** link. `/account` sits behind
+  `RequireAuth` and redirects to `/` when signed out. It lists **Saved Spatial Projects**
+  (the stored Wall Studio wall and 3D room as cards with an elevation thumbnail, envelope,
+  module count, 24V load, driver and list price, marked Local until cloud sync) beside
+  **Order History** (sample quote records until the order API is connected).
+
+## Notifications
+
+- `ToastProvider` renders one polite live region, fixed bottom-right at `z-index: 100`.
+  Toasts enter on `translateY` and opacity, carry a tone rule (OK, Note, Check, Fault)
+  and a 1px countdown, and unmount after 4 seconds; a dismiss key closes one early. The
+  stack ignores the pointer except for that key, so a toast never blocks a control.
+- `useToast().addToast(message, tone)` reports bag additions and removals, cleared bags,
+  checkout requisitions and quote exports, planner saves (Wall Studio JSON export and
+  import, room push to Wall Studio) and sign in or out. Messages pass `sanitizeText` and
+  render as text nodes.
+
 ## Security
 
 - Production CSP: `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'`
   and friends. No inline scripts, no eval. The dev server widens `script-src` and
   `connect-src` only for React Fast Refresh and the HMR socket. Builds ship the policy
-  untouched, and the E2E suite runs against the build to prove it.
+  untouched, and the E2E suite runs against the build to prove it, WebGL canvas included.
 - `safeJsonParse` strips `__proto__`, `constructor` and `prototype` at every depth, caps
   input length and nesting, and never throws.
 - `safeStorage` namespaces keys under `lumen:`, validates every read, and degrades to a
