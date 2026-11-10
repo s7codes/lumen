@@ -93,6 +93,24 @@ export function sanitizeText(value, { maxLength = 256 } = {}) {
     .slice(0, maxLength);
 }
 
+/**
+ * sanitizeText for multi-line notes: keeps line breaks (at most one blank line
+ * in a row), collapses spaces and tabs inside each line, caps length.
+ */
+export function sanitizeMultilineText(value, { maxLength = 1000 } = {}) {
+  if (typeof value !== 'string') return '';
+  return value
+    .normalize('NFC')
+    .replace(/\r\n?/g, '\n')
+    .replace(CONTROL_CHARS, '')
+    .split('\n')
+    .map((line) => line.replace(/[^\S\n]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, maxLength);
+}
+
 export function clampNumber(value, min, max, fallback = min) {
   const n = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
   if (typeof n !== 'number' || !Number.isFinite(n)) return fallback;

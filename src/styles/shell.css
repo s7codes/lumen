@@ -910,3 +910,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.bag-summary__checkout {
+  justify-content: space-between;
+  width: 100%;
+}

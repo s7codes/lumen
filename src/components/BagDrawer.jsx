@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useBag } from '../hooks/useBag.js';
 import { MAX_LINE_QTY } from '../lib/bag.js';
 import { formatUsd, padIndex } from '../lib/format.js';
+import { ArrowRight } from './icons.jsx';
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -74,7 +75,7 @@ function LoadMeter({ psu }) {
   );
 }
 
-function BagSummary({ count, subtotalUsd, loadW, psu, onClear }) {
+function BagSummary({ count, subtotalUsd, loadW, psu, onClear, onCheckout }) {
   const [armed, setArmed] = useState(false);
   const percent = Math.round(psu.utilisation * 100);
   let note = 'Passive parts only, no driver load';
@@ -103,6 +104,17 @@ function BagSummary({ count, subtotalUsd, loadW, psu, onClear }) {
       <p className="bag-summary__note mono" data-testid="bag-psu-note">
         {note}
       </p>
+      {count > 0 && (
+        <Link
+          to="/checkout"
+          className="button button--primary bag-summary__checkout"
+          data-testid="proceed-to-checkout"
+          onClick={onCheckout}
+        >
+          Configure Quote & Checkout
+          <ArrowRight />
+        </Link>
+      )}
       {count > 0 && (
         <button
           type="button"
@@ -224,7 +236,14 @@ export function BagDrawer({ open, onClose, returnFocus }) {
           </div>
         )}
 
-        <BagSummary count={count} subtotalUsd={subtotalUsd} loadW={loadW} psu={psu} onClear={clear} />
+        <BagSummary
+          count={count}
+          subtotalUsd={subtotalUsd}
+          loadW={loadW}
+          psu={psu}
+          onClear={clear}
+          onCheckout={onClose}
+        />
       </aside>
     </div>
   );

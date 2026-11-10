@@ -1,8 +1,10 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { LayoutShell } from './components/LayoutShell.jsx';
 import CatalogPage from './pages/CatalogPage.jsx';
+import CheckoutPage from './pages/CheckoutPage.jsx';
 import HomePage from './pages/HomePage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
+import ProductDetailPage from './pages/ProductDetailPage.jsx';
 import RoomPlannerPage from './pages/RoomPlannerPage.jsx';
 import WallStudioPage from './pages/WallStudioPage.jsx';
 
@@ -22,6 +24,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <HomePage /> },
       { path: 'catalog', element: <CatalogPage /> },
+      { path: 'catalog/:id', element: <ProductDetailPage /> },
+      { path: 'checkout', element: <CheckoutPage /> },
       { path: 'room-3d', element: <RoomPlannerPage /> },
       { path: 'studio-2d', element: <WallStudioPage /> },
       { path: '*', element: <NotFoundPage /> },

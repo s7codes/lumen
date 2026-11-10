@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { efficacyLmPerW, getCategory, getFinish, STOCK_LABELS } from '../data/products.js';
 import { useBag } from '../hooks/useBag.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
@@ -76,7 +77,13 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
 
       <div className="product-card__body">
         <h3 id={headingId} className="product-card__name">
-          {product.name}
+          <Link
+            to={`/catalog/${product.id}?finish=${finishId}`}
+            className="product-card__link"
+            data-testid="product-spec-link"
+          >
+            {product.name}
+          </Link>
         </h3>
         <p className="product-card__dims mono">
           W {w} / H {h} / D {d} cm

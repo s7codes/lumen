@@ -8,6 +8,7 @@ import { WallStage } from '../components/studio/WallStage.jsx';
 import { useBag, useBagDrawer } from '../hooks/useBag.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
+import { useLaunchedModule } from '../hooks/useLaunchedModule.js';
 import { useWallStudio } from '../hooks/useWallStudio.js';
 import {
   aggregateBagLines,
@@ -54,6 +55,7 @@ export default function WallStudioPage() {
   const syncRef = useRef(null);
 
   useHistoryShortcuts(actions);
+  useLaunchedModule(layout.items, actions);
 
   // While dragging, geometry, conflicts and readouts follow the preview
   // position; the history only receives the final drop.

@@ -385,3 +385,16 @@
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
+
+.product-card__link {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size var(--duration-base) var(--ease-out);
+}
+
+.product-card__link:hover,
+.product-card__link:focus-visible {
+  background-size: 100% 1px;
+}

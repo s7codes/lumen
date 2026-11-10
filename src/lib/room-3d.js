@@ -512,3 +512,18 @@ export function exportToWallStudio(state) {
   persistLayout(result.layout);
   return result;
 }
+
+/* Launcher from a product page */
+
+/** Same contract as appendToWallStudio, for the stored 3D room. */
+export function appendToRoom(productId, finish) {
+  const product = getProduct(productId);
+  if (!productHasFinish(product, finish)) return null;
+  const state = loadRoomState();
+  const result = mountInRoom(state, product.id);
+  if (!result) return null;
+  const item = { ...result.item, finish };
+  const next = { ...state, items: [...state.items, item] };
+  persistRoomState(next);
+  return { item, clear: result.clear, count: next.items.length };
+}

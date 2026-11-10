@@ -1,0 +1,470 @@
+/* Checkout and quote */
+
+.checkout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr);
+  gap: var(--space-4);
+  align-items: start;
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-8);
+  border-top: 1px solid var(--border-strong);
+}
+
+.checkout__controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.checkout__sheet {
+  min-width: 0;
+}
+
+.checkout-empty {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-bottom: var(--space-8);
+}
+
+.checkout-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.checkout-panel__note {
+  min-height: 1.4em;
+  font-size: var(--text-2xs);
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+.checkout-panel__note[data-tone='fault'] {
+  color: var(--signal-fault-soft);
+}
+
+.segment-switch--row {
+  grid-auto-flow: column;
+}
+
+.segment-switch--row .segment-switch__option + .segment-switch__option {
+  border-top: 0;
+  border-left: 1px solid var(--border-strong);
+}
+
+.promo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.promo__field {
+  flex: 1 1 160px;
+}
+
+.promo__field .field__input {
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.promo__apply {
+  height: 32px;
+}
+
+.checkout-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-hairline);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.checkout-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--text-primary);
+}
+
+.checkout-toggle > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.checkout-toggle__meta {
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+}
+
+.checkout-toggle[data-disabled] {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.checkout-field__textarea {
+  height: auto;
+  min-height: 96px;
+  padding-block: var(--space-2);
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.checkout-field[data-invalid] .field__input {
+  border-color: var(--signal-fault);
+}
+
+.checkout-field__error,
+.checkout-field__hint {
+  font-size: var(--text-2xs);
+}
+
+.checkout-field__error {
+  color: var(--signal-fault-soft);
+}
+
+.checkout-field__hint {
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.checkout-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-hairline);
+}
+
+.checkout-actions .button {
+  justify-content: center;
+}
+
+.requisition {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--text-primary);
+  border-radius: var(--radius-sm);
+}
+
+.requisition__ref {
+  font-size: var(--text-lg);
+  letter-spacing: 0.04em;
+}
+
+/* Quote sheet: reads as a printed specification, on screen and on paper */
+
+.quote-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.quote-sheet__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.quote-sheet__issuer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.quote-sheet__brand {
+  font-size: var(--text-md);
+  font-weight: 500;
+  letter-spacing: var(--tracking-heading);
+  color: var(--text-primary);
+}
+
+.quote-sheet__meta,
+.quote-sheet__project,
+.quote-sheet__electrical {
+  display: grid;
+  gap: var(--space-2) var(--space-4);
+}
+
+.quote-sheet__meta {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.quote-sheet__meta > div {
+  display: contents;
+}
+
+.quote-sheet__project {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quote-sheet__electrical {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.quote-sheet__notes {
+  grid-column: 1 / -1;
+}
+
+.quote-sheet dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.quote-sheet dd {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.quote-sheet__notes dd {
+  white-space: pre-line;
+}
+
+.quote-sheet__title {
+  font-size: var(--text-xl);
+  font-weight: 500;
+  line-height: var(--leading-snug);
+  letter-spacing: var(--tracking-display);
+}
+
+.quote-sheet__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.quote-sheet__warning {
+  font-size: var(--text-2xs);
+  color: var(--signal-fault-soft);
+}
+
+.bom-wrap {
+  overflow-x: auto;
+}
+
+.bom {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.bom th,
+.bom td {
+  padding: var(--space-2) var(--space-2);
+  border-bottom: 1px solid var(--border-hairline);
+  text-align: left;
+  vertical-align: top;
+  font-weight: 400;
+}
+
+.bom th:first-child,
+.bom td:first-child {
+  padding-left: 0;
+}
+
+.bom th:last-child,
+.bom td:last-child {
+  padding-right: 0;
+}
+
+.bom thead th {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom-color: var(--border-strong);
+}
+
+.bom tbody th {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--space-2);
+}
+
+.bom__index {
+  grid-row: span 2;
+  color: var(--text-muted);
+}
+
+.bom__name {
+  color: var(--text-primary);
+}
+
+.bom__meta {
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.bom__num {
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.bom tr[data-testid='quote-driver-line'] .bom__name {
+  color: var(--lumen-amber-soft);
+}
+
+.quote-totals {
+  display: grid;
+  margin-left: auto;
+  width: min(100%, 360px);
+}
+
+.quote-totals__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--border-hairline);
+  font-size: var(--text-xs);
+}
+
+.quote-totals__row dt {
+  color: var(--text-secondary);
+}
+
+.quote-totals__row--gross {
+  border-top: 1px solid var(--text-primary);
+  border-bottom: 0;
+  font-size: var(--text-md);
+  font-weight: 500;
+}
+
+.quote-totals__row--gross dt {
+  color: var(--text-primary);
+}
+
+.quote-sheet__foot {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-hairline);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+@media (max-width: 1023px) {
+  .checkout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 599px) {
+  .quote-sheet {
+    padding: var(--space-3);
+  }
+
+  .quote-sheet__project,
+  .quote-sheet__electrical {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bom__unit {
+    display: none;
+  }
+
+  .checkout-panel {
+    padding: var(--space-3);
+  }
+}
+
+/* Print: only the quote sheet, black on white, A4 margins. Scoped with :has()
+   so printing any other view is unaffected. */
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  html:has(.quote-sheet),
+  body:has(.quote-sheet) {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  body:has(.quote-sheet) .structural-grid,
+  body:has(.quote-sheet) .navbar,
+  body:has(.quote-sheet) .footer,
+  body:has(.quote-sheet) .skip-link,
+  body:has(.quote-sheet) .no-print,
+  body:has(.quote-sheet) .drawer-root {
+    display: none !important;
+  }
+
+  body:has(.quote-sheet) .checkout {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+
+  .quote-sheet {
+    gap: 6mm;
+    padding: 0;
+    border: 0;
+    background: #fff;
+    color: #000;
+    --text-primary: #000;
+    --text-secondary: #333;
+    --text-muted: #555;
+    --border-hairline: #bbb;
+    --border-strong: #000;
+    --lumen-amber-soft: #000;
+    --signal-fault-soft: #000;
+  }
+
+  .quote-sheet * {
+    color: inherit;
+  }
+
+  .quote-sheet dt,
+  .quote-sheet .index-label,
+  .bom thead th,
+  .bom__meta,
+  .quote-sheet__foot {
+    color: #444 !important;
+  }
+
+  .bom-wrap {
+    overflow: visible;
+  }
+
+  .bom__unit {
+    display: table-cell !important;
+  }
+
+  .bom tr {
+    break-inside: avoid;
+  }
+
+  .quote-totals {
+    break-inside: avoid;
+  }
+}

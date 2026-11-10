@@ -1,0 +1,475 @@
+/* Product detail */
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-bottom: var(--space-8);
+}
+
+.detail__crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-block: var(--space-3);
+  border-top: 1px solid var(--border-strong);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.detail__crumbs a {
+  color: var(--text-secondary);
+}
+
+.detail__crumbs a:hover {
+  color: var(--text-primary);
+}
+
+.detail__crumbs [aria-current] {
+  color: var(--text-primary);
+}
+
+.detail__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  grid-template-areas:
+    'drawing order'
+    'photometry order';
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.detail__drawing {
+  grid-area: drawing;
+}
+
+.detail__order {
+  grid-area: order;
+}
+
+.detail__photometry {
+  grid-area: photometry;
+}
+
+.detail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.detail-panel__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.detail-panel__title {
+  font-size: var(--text-lg);
+  font-weight: 500;
+  line-height: var(--leading-snug);
+  letter-spacing: var(--tracking-heading);
+}
+
+.detail__unit {
+  font-size: var(--text-2xs);
+  font-weight: 400;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.detail__sheet {
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+}
+
+.spec-table--inline {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-4);
+}
+
+.detail__buy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.detail__add {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.detail__in-bag {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.detail__launchers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-hairline);
+}
+
+.detail__launch {
+  justify-content: space-between;
+}
+
+.detail__status {
+  min-height: 1.5em;
+  font-size: var(--text-2xs);
+  color: var(--signal-fault-soft);
+}
+
+/* Orthographic drawing */
+
+.bp {
+  width: 100%;
+  height: auto;
+  font-family: var(--font-mono);
+}
+
+.bp line,
+.bp rect,
+.bp circle,
+.bp polyline {
+  vector-effect: non-scaling-stroke;
+}
+
+.bp__sheet {
+  fill: none;
+  stroke: var(--border-hairline);
+}
+
+.bp__body {
+  stroke: var(--text-primary);
+  stroke-width: 1;
+}
+
+.bp__body--rear {
+  fill: rgba(242, 238, 231, 0.03);
+  stroke-dasharray: 4 2;
+}
+
+.bp__inner {
+  fill: var(--bg-inset);
+  stroke: var(--text-secondary);
+}
+
+.bp__inner--felt {
+  fill: rgba(242, 238, 231, 0.05);
+}
+
+.bp__void {
+  fill: var(--bg-inset);
+  stroke: var(--text-secondary);
+}
+
+.bp__plaster {
+  stroke: none;
+}
+
+.bp__hatch-line {
+  stroke: var(--text-muted);
+  stroke-width: 0.6;
+}
+
+.bp__thin {
+  stroke: var(--text-secondary);
+}
+
+.bp__led {
+  stroke: var(--lumen-amber);
+  stroke-width: 1.5;
+}
+
+.bp__led-fill {
+  fill: var(--lumen-amber-dim);
+  stroke: var(--lumen-amber);
+}
+
+.bp__halo {
+  fill: none;
+  stroke: var(--lumen-amber);
+  stroke-dasharray: 3 2;
+}
+
+.bp__bus {
+  stroke: var(--lumen-amber);
+  stroke-dasharray: 6 3;
+}
+
+.bp__channel {
+  fill: var(--lumen-amber-dim);
+  stroke: var(--lumen-amber);
+}
+
+.bp__leader {
+  fill: none;
+  stroke: var(--lumen-amber);
+  stroke-width: 0.75;
+}
+
+.bp__dim line {
+  stroke: var(--text-secondary);
+  stroke-width: 0.75;
+}
+
+.bp__dim .bp__ext {
+  stroke: var(--text-muted);
+}
+
+.bp__dim .bp__tick {
+  stroke: var(--text-primary);
+}
+
+.bp__dim-text,
+.bp__label,
+.bp__note,
+.bp__title-main,
+.bp__title-meta {
+  fill: var(--text-secondary);
+  font-size: 6.5px;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.bp__dim-text {
+  fill: var(--text-primary);
+}
+
+.bp__label {
+  fill: var(--lumen-amber-soft);
+}
+
+.bp__note {
+  fill: var(--text-muted);
+  font-size: 5.5px;
+}
+
+.bp__title line {
+  stroke: var(--border-strong);
+}
+
+.bp__title-main {
+  fill: var(--text-primary);
+  font-weight: 500;
+}
+
+.bp__datum line {
+  stroke: var(--text-secondary);
+}
+
+.bp__center {
+  stroke: var(--text-muted);
+  stroke-dasharray: 6 2 1 2;
+}
+
+.bp__anchor circle {
+  fill: var(--bg-inset);
+  stroke: var(--lumen-amber);
+}
+
+.bp__anchor line {
+  stroke: var(--lumen-amber);
+  stroke-width: 0.75;
+}
+
+/* Photometric and electrical panels */
+
+.photometric {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.photometric__figure,
+.photometric__data {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.photometric__controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.photometric__slider {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.photometric__slider input[type='range'] {
+  width: 100%;
+  accent-color: var(--text-primary);
+}
+
+.photometric__slider output {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  color: var(--text-secondary);
+}
+
+.photometric__note {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.polar,
+.bus-chart {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  font-family: var(--font-mono);
+}
+
+.polar line,
+.polar circle,
+.polar polygon,
+.bus-chart line,
+.bus-chart circle {
+  vector-effect: non-scaling-stroke;
+}
+
+.polar__grid circle,
+.polar__grid line,
+.bus-chart__grid line {
+  fill: none;
+  stroke: var(--border-hairline);
+}
+
+.polar__labels text,
+.bus-chart__labels text,
+.polar__unit,
+.bus-chart__axis {
+  fill: var(--text-muted);
+  font-size: 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The distribution curve is simulated light, so it alone takes the amber wash. */
+.polar__curve {
+  fill: var(--lumen-amber-dim);
+  stroke: var(--lumen-amber);
+  stroke-width: 1.25;
+}
+
+.polar__probe,
+.bus-chart__marker {
+  stroke: var(--text-primary);
+  stroke-dasharray: 3 2;
+}
+
+.polar__probe-hit,
+.bus-chart__point {
+  fill: var(--bg-inset);
+  stroke: var(--text-primary);
+}
+
+.bus-chart__limit {
+  stroke: var(--signal-fault);
+  stroke-dasharray: 5 3;
+}
+
+.bus-chart__limit-text {
+  fill: var(--signal-fault-soft);
+  font-size: 7px;
+}
+
+.bus-chart__series line {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+}
+
+.bus-chart__series text {
+  fill: var(--text-muted);
+  font-size: 7px;
+}
+
+.bus-chart__series[data-active] line {
+  stroke: var(--lumen-amber);
+  stroke-width: 1.75;
+}
+
+.bus-chart__series[data-active] text {
+  fill: var(--lumen-amber-soft);
+}
+
+.lux-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.lux-table caption {
+  padding-bottom: var(--space-2);
+  text-align: left;
+}
+
+.lux-table th,
+.lux-table td {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-hairline);
+  text-align: left;
+  font-weight: 400;
+}
+
+.lux-table thead th {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.lux-table tbody th {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.lux-table td {
+  text-align: right;
+  color: var(--text-primary);
+}
+
+@media (max-width: 1023px) {
+  .detail__grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'drawing'
+      'order'
+      'photometry';
+  }
+}
+
+@media (max-width: 767px) {
+  .photometric {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .spec-table--inline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .detail-panel {
+    padding: var(--space-3);
+  }
+}

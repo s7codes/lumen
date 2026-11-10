@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v0.4.0-e8923a)
+![Release](https://img.shields.io/badge/release-v0.5.0-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![CSP](https://img.shields.io/badge/CSP-strict-44484b)
@@ -10,12 +10,14 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v0.4.0**. Interactive 3D Room Planner on `/room-3d` with an orbit
-camera, furniture references, clearance callouts and a two-way bridge to the 2D Wall
-Studio and the bag; the cantilever and light aperture brand mark; a flat Arch / Tech
-mode switch with no glowing indicators.
+Current release: **v0.5.0**. Product specification sheets on `/catalog/:id` with three
+to-scale orthographic views, a polar intensity diagram (or the 24V bus voltage drop
+curve for hardware) and direct launchers into both planners; a project checkout on
+`/checkout` with automatic driver provisioning, USD / EUR / HUF, trade codes, a
+printable quote, JSON export and requisition.
 
-Previous: **v0.3.0**. Interactive 2D Wall Studio on `/studio-2d`, one-click wall to bag
+Previous: **v0.4.0**. Interactive 3D Room Planner on `/room-3d`, 2D wall bridge, brand
+mark and flat Arch / Tech mode switch. **v0.3.0**. Interactive 2D Wall Studio on `/studio-2d`, one-click wall to bag
 sync, frame-rate independent pendant physics, GitHub Actions CI. **v0.2.0**. Canonical product dataset, filterable catalog with procedural scale
 elevations, persistent bag with a 24V load and driver calculator, and a surface and
 dimming lab on the overview. **v0.1.0**. Repository genesis, design tokens, routing
@@ -42,21 +44,25 @@ src/
   router.jsx            route table, per-entry history key seeding
   components/           LayoutShell, Navbar, Footer, BagProvider, BagDrawer,
                         ModeSwitch, ProductCard, ProductElevation, SurfaceLab,
-                        PageHeader, WorkspaceFrame, icons
+                        PageHeader, WorkspaceFrame, BlueprintViews,
+                        PhotometricCurve, icons
     studio/             WallStage, StudioPalette, StudioInspector, StudioToolbar,
                         StudioSummary, shared field, switch and finish controls
     room3d/             RoomViewport, RoomControls, RoomInspector, RoomToolbar,
                         RoomSummary
   data/                 products.js (parts, finishes, categories), wall-presets.js
-  pages/                Home, Catalog, RoomPlanner, WallStudio, NotFound
+  pages/                Home, Catalog, ProductDetail, Checkout, RoomPlanner,
+                        WallStudio, NotFound
   hooks/                useAmbientLight, useBag, useDisplayMode, useDocumentTitle,
-                        useRoom3d, useWallStudio
+                        useLaunchedModule, useRoom3d, useWallStudio
   lib/                  bag store and PSU sizing, wall studio geometry and history,
                         room model and 2D bridge (room-3d), scene compiler
                         (room-scene), closed-form spring, display mode store,
-                        photometry, formatting, route manifest
+                        photometry and intensity model, 24V bus electrical model,
+                        quote engine, formatting, route manifest
   security/sanitize.js  safeJsonParse, safeStorage, input validators
-  styles/               tokens, base, shell, home, pages, product, studio, room3d
+  styles/               tokens, base, shell, home, pages, product, product-detail,
+                        checkout, studio, room3d
 server/                 reserved for the API and cloud persistence phase
 tests/                  Playwright specs, named by architectural domain
   support/              shared runtime, CSP and overflow guards
@@ -68,6 +74,8 @@ tests/                  Playwright specs, named by architectural domain
 | ------------ | ------------- | --------------------------------------------------------- |
 | `/`          | Overview      | Pendant hero, surface and dimming lab, core modules       |
 | `/catalog`   | Catalog       | Category, search and sort over 8 parts, finish swatch     |
+| `/catalog/:id` | Spec sheet  | Orthographic set, photometry or bus curve, launchers      |
+| `/checkout`  | Project Quote | BOM, driver, currency, trade code, print, export, submit  |
 | `/room-3d`   | Room Planner  | 3D room, furniture clearances, 2D wall bridge, bag sync   |
 | `/studio-2d` | Wall Studio   | To-scale elevation planner, telemetry, sync to bag        |
 
@@ -162,6 +170,42 @@ custom properties, so React never re-renders on pointer movement.
 - State persists under `lumen_room_3d_v1` and is rebuilt on every read with the wall
   layout's per-module rules plus a clamped envelope, furniture, lighting and camera.
 
+## Spec sheets
+
+- Every catalog and overview card title links to `/catalog/:id?finish=<id>`. Unknown or
+  malformed ids render a not-found state; a finish the part does not ship in falls back
+  to its default.
+- Three procedural SVG views at the largest standard scale that fits (1:1 to 1:50):
+  Front Elevation, Side Section (Z depth, cut hatch, 12 x 8 mm 24V bus channel, wall or
+  plaster datum) and Mounting & Anchor Detail (rear view, chained anchor centres in cm,
+  fixing schedule). Anchors come from the same function the Wall Studio draws with.
+- Photometry: each lobe is `I(t) = I0 cos^m(t)` with `I0 = flux (m + 1) / 2pi`, so the
+  polar curve integrates back to the catalog lumens. The spot uses `m` solved from its
+  36 deg beam. A probe slider reads intensity at any angle; on-axis lux at 0.5, 1.0 and
+  2.0 m follows the inverse-square law.
+- The Track Bus 200 shows its 24V feed instead: 6.25 A at 150 W, 2 x 2.5 mm2 copper,
+  end-fed worst-case drop for 60 / 100 / 150 W against run length, and the run that
+  stays inside a 3% drop.
+- **Mount in 2D Wall Studio** and **Place in 3D Room** write the part, in the chosen
+  finish, to the first clear spot in `lumen_wall_studio_v1` or `lumen_room_3d_v1`, then
+  open the planner with that module selected. **Add to Bag** takes a quantity.
+
+## Checkout and quote
+
+- **Configure Quote & Checkout** in the bag drawer opens `/checkout`. The BOM lists every
+  bag line plus the 24V driver sized on the connected load (60W, 150W or a multi-bus
+  array of 150W units); the driver line can be excluded, which flags the quote.
+- USD, EUR (0.92) and HUF (360), persisted under `lumen_currency_v1`. Rates are exact
+  ratios, so every amount is an integer of cents or whole forints. Discount and 27% VAT
+  are each rounded once, half up, and gross is their sum, so
+  `net - discount + vat === gross` holds exactly in every currency.
+- Trade codes `LUMEN10`, `TRADE15`, `STUDIO20`, case and whitespace insensitive.
+- Project reference, client and installation notes are sanitized (`sanitizeText`,
+  `sanitizeMultilineText`) and rendered as text only.
+- **Print Official Quote** prints only the quote sheet on A4 in black on white.
+  **Download Spec JSON** exports the `lumen.quote` envelope with the BOM in minor units.
+  **Submit Project Requisition** validates the form and issues an `LMN-R-` reference.
+
 ## Security
 
 - Production CSP: `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'`
@@ -182,7 +226,7 @@ Requires Node `^20.19.0` or `>=22.12.0`.
 ```
 npm install
 npx playwright install chromium   # first run only
-npm run dev                       # http://localhost:5173
+npm run dev                       # http://127.0.0.1:5173 (also http://localhost:5173)
 npm run build
 npm run preview                   # http://localhost:4173
 npx playwright test               # builds, serves preview, runs the E2E suite
@@ -197,5 +241,8 @@ npx playwright test               # builds, serves preview, runs the E2E suite
 ## Workflow
 
 - `main` holds tagged releases, `develop` integrates, each milestone lands on `feat/*`.
+- Releases advance `develop` and `main` by pointer (`git branch -f`) from the finished
+  feature branch, never by switching back first, so no working-tree directories are
+  deleted on synced (OneDrive) folders.
 - Lower-case Conventional Commits: `feat:`, `fix:`, `chore:`, `test:`, `security:`, `docs:`.
 - Test files are named by domain, for example `app-shell.spec.js`.

@@ -8,6 +8,7 @@ import { RoomViewport } from '../components/room3d/RoomViewport.jsx';
 import { useBag, useBagDrawer } from '../hooks/useBag.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
+import { useLaunchedModule } from '../hooks/useLaunchedModule.js';
 import { useRoom3d } from '../hooks/useRoom3d.js';
 import { exportToWallStudio, findRoomConflicts, getFurniture } from '../lib/room-3d.js';
 import { aggregateBagLines, summarizeWall } from '../lib/wall-studio.js';
@@ -27,6 +28,7 @@ export default function RoomPlannerPage() {
   const { openBag } = useBagDrawer();
   const [status, setStatus] = useState('');
   const syncRef = useRef(null);
+  useLaunchedModule(state.items, actions);
 
   const conflicts = useMemo(() => findRoomConflicts(state), [state]);
   const summary = useMemo(() => summarizeWall(state), [state]);

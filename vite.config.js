@@ -51,7 +51,10 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
+  // Bound to the IPv4 loopback so Chromium-based browsers on Windows reach the
+  // dev server at both 127.0.0.1 and localhost without an IPv6 mismatch.
   server: {
+    host: '127.0.0.1',
     port: 5173,
   },
   preview: {

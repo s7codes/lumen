@@ -428,3 +428,22 @@ export function redoHistory(history) {
     future: history.future.slice(1),
   };
 }
+
+/* Launcher from a product page */
+
+/**
+ * Mounts one part in the stored wall at the first clear spot, in the finish
+ * chosen on the product page, and writes the layout back. Returns null when
+ * the part is unknown, does not ship in that finish, or the wall is full.
+ */
+export function appendToWallStudio(productId, finish) {
+  const product = getProduct(productId);
+  if (!productHasFinish(product, finish)) return null;
+  const layout = loadLayout();
+  const result = mountProduct(layout, product.id);
+  if (!result) return null;
+  const item = { ...result.item, finish };
+  const next = { ...layout, items: [...layout.items, item] };
+  persistLayout(next);
+  return { item, clear: result.clear, count: next.items.length };
+}

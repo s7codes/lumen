@@ -167,3 +167,104 @@
     width: 100%;
   }
 }
+
+/* Segment switch: flat inversion for the engaged option, no glow */
+
+.segment-switch {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  overflow: hidden;
+}
+
+.segment-switch__option {
+  min-width: 0;
+  min-height: 32px;
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.segment-switch__option + .segment-switch__option {
+  border-left: 1px solid var(--border-strong);
+}
+
+.segment-switch__option:hover:not([aria-pressed='true']) {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.segment-switch__option[aria-pressed='true'] {
+  background: var(--text-primary);
+  color: var(--text-inverse);
+}
+
+.segment-switch__option:focus-visible {
+  outline: 1px solid var(--lumen-amber);
+  outline-offset: -3px;
+  border-radius: 0;
+}
+
+.segment-switch__index {
+  opacity: 0.6;
+}
+
+.segment-switch--wide {
+  display: grid;
+  width: 100%;
+}
+
+/* Spec table: hairline rows, mono values */
+
+.spec-table {
+  display: grid;
+  border-top: 1px solid var(--border-hairline);
+}
+
+.spec-table__row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr);
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.spec-table dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.spec-table dd {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 767px) {
+  .segment-switch--wide {
+    grid-auto-flow: row;
+  }
+
+  .segment-switch--wide .segment-switch__option + .segment-switch__option {
+    border-left: 0;
+    border-top: 1px solid var(--border-strong);
+  }
+}
