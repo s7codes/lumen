@@ -1,16 +1,19 @@
 import { expect, test } from '@playwright/test';
-import { getProduct } from '../src/data/products.js';
+import { getFinish, getProduct } from '../src/data/products.js';
 import { BAG_STORAGE_KEY, recommendPsu } from '../src/lib/bag.js';
 import { formatUsd } from '../src/lib/format.js';
 import {
+  CAMERA_PITCH,
+  CAMERA_YAW,
   createRoomState,
   furnitureLayout,
   ROOM_FORMAT,
   ROOM_STORAGE_KEY,
   ROOM_VERSION,
+  sanitizeCamera,
   sanitizeRoomState,
 } from '../src/lib/room-3d.js';
-import { buildScene } from '../src/lib/room-scene.js';
+import { buildScene, cameraFrame, cameraFromPosition, cameraPosition, orbitLimits } from '../src/lib/room-scene.js';
 import { aggregateBagLines, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
 import {
   collectRuntimeErrors,
@@ -41,8 +44,37 @@ function viewport(page) {
   return page.getByTestId('room-viewport');
 }
 
+// Scene nodes live in the hidden scene-graph mirror next to the WebGL canvas.
 function roomModule(page, uid) {
   return page.locator(`[data-testid="room-module"][data-uid="${uid}"]`);
+}
+
+function roomLights(page, uid) {
+  return page.locator(`[data-testid="room-light"][data-uid="${uid}"]`);
+}
+
+/** Waits for the lazy WebGL chunk and returns 'webgl2', 'webgl' or 'unavailable'. */
+async function rendererOf(page) {
+  await expect(viewport(page)).not.toHaveAttribute('data-renderer', 'loading', { timeout: 20_000 });
+  return viewport(page).getAttribute('data-renderer');
+}
+
+/**
+ * Clicks a module where it is actually drawn on the canvas, so selection goes
+ * through the WebGL raycaster. Falls back to the module list without WebGL.
+ */
+async function pickInScene(page, uid, name) {
+  if ((await rendererOf(page)) === 'unavailable') {
+    await page.getByTestId('room-module-list').getByRole('button', { name }).click();
+    return;
+  }
+  const node = roomModule(page, uid);
+  await expect(node).toHaveAttribute('data-screen-x', /^\d+$/);
+  await viewport(page).scrollIntoViewIfNeeded();
+  const canvas = await page.getByTestId('room-canvas').boundingBox();
+  const x = Number(await node.getAttribute('data-screen-x'));
+  const y = Number(await node.getAttribute('data-screen-y'));
+  await page.mouse.click(canvas.x + x, canvas.y + y);
 }
 
 function inspector(page) {
@@ -237,25 +269,29 @@ test.describe('room planner', () => {
     await expect(inspector(page).getByTestId('room-inspector-name')).toHaveText('Floating Shelf 110');
     await expect(inspector(page).getByTestId('room-inspector-dims')).toHaveText('LMN-SH-110 / W 110 x H 8 x D 25 cm');
 
-    // A box seen from outside shows between one and three faces.
-    const faces = Number(await shelf.getAttribute('data-faces'));
-    expect(faces).toBeGreaterThanOrEqual(1);
-    expect(faces).toBeLessThanOrEqual(3);
-    await expect(page.locator('[data-testid="light-patch"][data-uid="m1"]')).toHaveCount(1);
+    // Product primitives: the shelf is a box in its finish colour with one LED wash light.
+    await expect(shelf).toHaveAttribute('data-geometry', 'box');
+    await expect(shelf).toHaveAttribute('data-color', getFinish('walnut').hex);
+    await expect(roomLights(page, 'm1')).toHaveCount(1);
+    await expect(roomLights(page, 'm1')).toHaveAttribute('data-type', 'spot');
 
     await mount(page, 'Corner Floor Column 140');
     const column = roomModule(page, 'm2');
     await expect(column).toHaveAttribute('data-x-cm', '151');
     await expect(column).toHaveAttribute('data-y-cm', '0');
-    await expect(page.locator('[data-testid="light-patch"][data-uid="m2"]')).toHaveCount(2);
+    await expect(column).toHaveAttribute('data-geometry', 'cylinder');
+    await expect(roomLights(page, 'm2')).toHaveCount(1);
+    await expect(roomLights(page, 'm2')).toHaveAttribute('data-type', 'point');
 
-    // Selecting in the scene itself.
-    await shelf.click();
+    // Selecting in the scene itself: a raycast pick on the canvas.
+    await expect(inspector(page).getByTestId('room-inspector-name')).toHaveText('Corner Floor Column 140');
+    await pickInScene(page, 'm1', /Floating Shelf 110/);
     await expect(inspector(page).getByTestId('room-inspector-name')).toHaveText('Floating Shelf 110');
-    await expect(page.getByTestId('room-selection')).toHaveCount(1);
+    await expect(page.getByTestId('room-selection')).toHaveAttribute('data-uid', 'm1');
 
     await inspector(page).getByRole('radio', { name: 'Oak' }).check();
     await expect(shelf).toHaveAttribute('data-finish', 'oak');
+    await expect(shelf).toHaveAttribute('data-color', getFinish('oak').hex);
     await commitField(page, 'room-module-x', 40);
     await commitField(page, 'room-module-y', 120);
     await expect(shelf).toHaveAttribute('data-x-cm', '40');
@@ -266,10 +302,10 @@ test.describe('room planner', () => {
 
     await inspector(page).getByTestId('room-led-channel').click();
     await expect(shelf).toHaveAttribute('data-led', 'false');
-    await expect(page.locator('[data-testid="light-patch"][data-uid="m1"]')).toHaveCount(0);
+    await expect(roomLights(page, 'm1')).toHaveCount(0);
     await inspector(page).getByTestId('room-led-channel').click();
     await expect(shelf).toHaveAttribute('data-led', 'true');
-    await expect(page.locator('[data-testid="light-patch"][data-uid="m1"]')).toHaveCount(1);
+    await expect(roomLights(page, 'm1')).toHaveCount(1);
 
     await openDimensions(page, 'room-dimensions');
     await commitField(page, 'room-width', 900);
@@ -341,40 +377,64 @@ test.describe('room planner', () => {
     expect(errors).toEqual([]);
   });
 
-  test('pointer orbit, wheel zoom and keyboard stay inside the camera limits', async ({ page }) => {
+  test('OrbitControls orbit and wheel zoom commit inside the camera limits, keys step exactly', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await openRoom(page);
     const stage = viewport(page);
+    const renderer = await rendererOf(page);
     await stage.scrollIntoViewIfNeeded();
     const box = await stage.boundingBox();
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
+    const cameraOf = async () => ({
+      yaw: Number(await stage.getAttribute('data-camera-yaw')),
+      pitch: Number(await stage.getAttribute('data-camera-pitch')),
+      zoom: Number(await stage.getAttribute('data-camera-zoom')),
+    });
 
-    await page.mouse.move(cx, cy);
-    await page.mouse.down();
-    await page.mouse.move(cx + 200, cy + 60, { steps: 8 });
-    await page.mouse.up();
-    // Yaw -24 - 200 * 0.3 clamps at -65; pitch 24 + 60 * 0.22 = 37.2.
-    await expectCamera(page, { yaw: -65, pitch: 37.2, zoom: 1 });
+    if (renderer === 'unavailable') {
+      test.info().annotations.push({ type: 'webgl', description: 'unavailable: pointer orbit skipped' });
+    } else {
+      // Dragging right swings the eye toward negative yaw until the azimuth limit.
+      await page.mouse.move(cx, cy);
+      await page.mouse.down();
+      await page.mouse.move(cx + 400, cy + 60, { steps: 10 });
+      await page.mouse.up();
+      await expect(stage).toHaveAttribute('data-camera-yaw', String(CAMERA_YAW.min));
+      const afterFirst = await cameraOf();
+      expect(afterFirst.pitch).toBeGreaterThan(24);
+      expect(afterFirst.pitch).toBeLessThan(CAMERA_PITCH.max);
+      expect(afterFirst.zoom).toBe(1);
 
-    await page.mouse.move(cx, cy);
-    await page.mouse.down();
-    await page.mouse.move(cx - 100, cy + 400, { steps: 8 });
-    await page.mouse.up();
-    await expect(stage).toHaveAttribute('data-camera-pitch', '50');
-    await expect(stage).toHaveAttribute('data-camera-yaw', '-35');
+      await page.mouse.move(cx, cy);
+      await page.mouse.down();
+      await page.mouse.move(cx - 100, cy + 600, { steps: 10 });
+      await page.mouse.up();
+      await expect(stage).toHaveAttribute('data-camera-pitch', String(CAMERA_PITCH.max));
+      expect((await cameraOf()).yaw).toBeGreaterThan(CAMERA_YAW.min);
 
-    await page.mouse.move(cx, cy);
-    await page.mouse.wheel(0, -300);
-    await expect(stage).toHaveAttribute('data-camera-zoom', '1.43');
-    await page.mouse.wheel(0, -3000);
-    await expect(stage).toHaveAttribute('data-camera-zoom', '1.8');
+      // One wheel notch dollies 5 percent; a burst stops at the zoom limit. Wheel
+      // input reaches the page asynchronously, so count deliveries before moving on.
+      await stage.evaluate((el) => {
+        window.__wheels = 0;
+        el.addEventListener('wheel', () => (window.__wheels += 1), { capture: true });
+      });
+      await page.mouse.move(cx, cy);
+      await page.mouse.wheel(0, -100);
+      await expect(stage).toHaveAttribute('data-camera-zoom', '1.05');
+      for (let i = 0; i < 20; i += 1) await page.mouse.wheel(0, -100);
+      await expect.poll(() => page.evaluate(() => window.__wheels)).toBe(21);
+      await expect(stage).toHaveAttribute('data-camera-zoom', '1.8');
+      await expect.poll(async () => (await readStoredRoom(page)).camera.zoom).toBe(1.8);
+    }
 
     await stage.focus();
-    await page.keyboard.press('ArrowRight');
-    await expect(stage).toHaveAttribute('data-camera-yaw', '-30');
-    await page.keyboard.press('ArrowDown');
-    await expect(stage).toHaveAttribute('data-camera-pitch', '46');
+    await page.keyboard.press('Home');
+    await expectCamera(page, { yaw: -24, pitch: 24, zoom: 1 });
+    await page.keyboard.press('ArrowLeft');
+    await expect(stage).toHaveAttribute('data-camera-yaw', '-29');
+    await page.keyboard.press('ArrowUp');
+    await expect(stage).toHaveAttribute('data-camera-pitch', '28');
     await page.keyboard.press('Home');
     await expectCamera(page, { yaw: -24, pitch: 24, zoom: 1 });
 
@@ -414,21 +474,13 @@ test.describe('room planner', () => {
     await expect(page.getByTestId('camera-zoom')).toHaveText('1.50x');
     await expect.poll(async () => (await readStoredRoom(page)).camera).toEqual({ yaw: 30, pitch: 40, zoom: 1.5 });
 
-    // Wireframe turns faces to smoked glass and draws every box edge.
+    // Wireframe turns materials to smoked glass and outlines every box.
     await expect(page.getByTestId('room-wireframe')).toHaveCount(0);
     const wire = page.getByTestId('camera-wireframe');
     await wire.click();
     await expect(wire).toHaveAttribute('aria-checked', 'true');
     await expect(viewport(page)).toHaveAttribute('data-wireframe', 'true');
-    const wireframe = page.getByTestId('room-wireframe');
-    await expect(wireframe).toHaveCount(1);
-    expect(await wireframe.locator('.room3d-wire__edges line').count()).toBe(12);
-    expect(await wireframe.locator('.room3d-wire__room line').count()).toBeGreaterThan(0);
-    const faceOpacity = await roomModule(page, 'm1')
-      .locator('polygon')
-      .first()
-      .evaluate((el) => getComputedStyle(el).fillOpacity);
-    expect(Number(faceOpacity)).toBeLessThan(0.2);
+    await expect(page.getByTestId('room-wireframe')).toHaveAttribute('data-edges', '1');
 
     // Escape closes and returns focus to the trigger; an outside press closes too.
     await page.keyboard.press('Escape');
@@ -451,6 +503,7 @@ test.describe('room planner', () => {
   test('orbiting the camera dims the panels around the viewport', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await openRoom(page);
+    test.skip((await rendererOf(page)) === 'unavailable', 'Pointer orbit needs a WebGL context.');
     const stage = viewport(page);
     await stage.scrollIntoViewIfNeeded();
     const box = await stage.boundingBox();
@@ -476,11 +529,16 @@ test.describe('room planner', () => {
     await page.getByRole('radio', { name: 'Modular Sofa 200cm' }).check();
 
     const overlay = page.getByTestId('room-technical-overlay');
-    await expect(overlay).toBeVisible();
-    await expect(overlay.getByTestId('axis-label').locator('text')).toHaveText(['X 320 cm', 'Y 250 cm', 'Z 280 cm']);
+    await expect(overlay).toHaveCount(1);
+    await expect(overlay.getByTestId('axis-label')).toHaveText(['X 320 cm', 'Y 250 cm', 'Z 280 cm']);
     await expect(overlay.getByTestId('room-sku-tag')).toHaveText(['LMN-SH-110']);
-    expect(await overlay.locator('.room3d-tech__edges line').count()).toBe(12 * 8);
-    expect(await overlay.locator('.room3d-tech__edges line.is-hidden').count()).toBeGreaterThan(0);
+    // One shelf plus the seven sofa parts carry edge outlines.
+    await expect(overlay).toHaveAttribute('data-edges', '8');
+    if ((await rendererOf(page)) !== 'unavailable') {
+      // Labels projected over the canvas.
+      await expect(page.locator('.room3d-label--axis')).toHaveText(['X 320 cm', 'Y 250 cm', 'Z 280 cm']);
+      await expect(page.locator('.room3d-label--tag')).toHaveText(['LMN-SH-110']);
+    }
 
     const callout = (id) => overlay.locator(`[data-testid="clearance-callout"][data-callout="${id}"]`);
     // Shelf m1 is selected after mounting: X 105, Y 146, 110 x 8 cm, under a 250 cm ceiling.
@@ -501,6 +559,7 @@ test.describe('room planner', () => {
 
     await page.getByRole('group', { name: 'Display mode' }).getByRole('button', { name: 'Architectural' }).click();
     await expect(page.getByTestId('room-technical-overlay')).toHaveCount(0);
+    await expect(page.locator('.room3d-label')).toHaveCount(0);
   });
 
   test('tampered lumen_room_3d_v1 payloads fall back or are rebuilt without errors', async ({ page }) => {
@@ -671,36 +730,71 @@ test.describe('2D and 3D bridge', () => {
   });
 });
 
-test.describe('scene compiler', () => {
-  test('is deterministic and culls every box to at most three faces', () => {
-    const state = sanitizeRoomState({
-      format: ROOM_FORMAT,
-      version: ROOM_VERSION,
-      room: { widthCm: 360, depthCm: 300, heightCm: 260, furniture: 'sofa-200', lighting: 'night' },
-      camera: { yaw: 30, pitch: 20, zoom: 1.2 },
-      items: [
-        { uid: 'm1', productId: 'floating-shelf-110', finish: 'oak', xCm: 40, yCm: 120, led: true },
-        { uid: 'm2', productId: 'compact-sideboard-75', finish: 'walnut', xCm: 200, yCm: 100, led: true },
-      ],
-    });
-    const input = {
-      state,
-      camera: state.camera,
-      viewport: { w: 960, h: 600 },
-      conflicts: new Map(),
-      selectedUid: 'm1',
-      technical: true,
-    };
-    const a = buildScene(input);
-    const b = buildScene(input);
-    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+test.describe('scene description', () => {
+  const state = sanitizeRoomState({
+    format: ROOM_FORMAT,
+    version: ROOM_VERSION,
+    room: { widthCm: 360, depthCm: 300, heightCm: 260, furniture: 'sofa-200', lighting: 'night' },
+    camera: { yaw: 30, pitch: 20, zoom: 1.2 },
+    items: [
+      { uid: 'm1', productId: 'floating-shelf-110', finish: 'oak', xCm: 40, yCm: 120, led: true },
+      { uid: 'm2', productId: 'compact-sideboard-75', finish: 'walnut', xCm: 200, yCm: 100, led: false },
+      { uid: 'm3', productId: 'corner-floor-column-140', finish: 'obsidian', xCm: 300, yCm: 0, led: true },
+      { uid: 'm4', productId: 'acoustic-art-frame-50x70', finish: 'chalk', xCm: 120, yCm: 30, led: true },
+    ],
+  });
 
-    for (const solid of a.solids) expect(solid.faces.length).toBeLessThanOrEqual(3);
-    // Painter order: the sofa back stands on the base, so with the eye above it draws later.
-    const order = a.solids.map((solid) => solid.key);
-    expect(order.indexOf('furniture-back')).toBeGreaterThan(order.indexOf('furniture-base'));
-    expect(order.indexOf('furniture-seat-left')).toBeGreaterThan(order.indexOf('furniture-base'));
-    expect(a.technical.axes.map((axis) => axis.label)).toEqual(['X 360 cm', 'Y 260 cm', 'Z 300 cm']);
+  test('maps modules to finish-coloured primitives and lit modules to real lights, deterministically', () => {
+    const input = { state, conflicts: new Map(), selectedUid: 'm1', technical: true };
+    const scene = buildScene(input);
+    expect(JSON.stringify(scene)).toBe(JSON.stringify(buildScene(input)));
+
+    const byUid = Object.fromEntries(scene.modules.map((module) => [module.uid, module]));
+    expect(byUid.m1).toMatchObject({ geometry: 'box', color: getFinish('oak').hex, size: [1.1, 0.08, 0.25], selected: true });
+    expect(byUid.m1.position).toEqual([0.95, 1.24, 0.125]);
+    expect(byUid.m2.color).toBe(getFinish('walnut').hex);
+    expect(byUid.m3).toMatchObject({ geometry: 'cylinder', color: getFinish('obsidian').hex });
+    expect(byUid.m4.color).toBe(getFinish('chalk').hex);
+
+    // LED off: no light and a dark emitter. LED on: spot wash, point glow, backlit halo.
+    expect(byUid.m2.lights).toEqual([]);
+    expect(byUid.m2.emitters.every((emitter) => emitter.intensity === 0)).toBe(true);
+    expect(byUid.m1.lights.map((light) => light.type)).toEqual(['spot']);
+    expect(byUid.m3.lights.map((light) => light.type)).toEqual(['point']);
+    expect(byUid.m4.lights.map((light) => light.type)).toEqual(['point']);
+    const wash = byUid.m1.lights[0];
+    expect(wash.target[1]).toBeLessThan(wash.position[1]);
+    expect(wash.intensity).toBeGreaterThan(0);
+    expect(scene.stats.lights).toBe(3 + 3);
+
+    // Daylight keeps the rig shape with a stronger sun and LEDs that read weaker against it.
+    const day = buildScene({ ...input, state: { ...state, room: { ...state.room, lighting: 'daylight' } } });
+    expect(day.rig.sun.intensity).toBeGreaterThan(scene.rig.sun.intensity);
+    expect(day.modules[0].lights[0].intensity).toBeLessThan(wash.intensity);
+
+    expect(scene.furniture).toHaveLength(furnitureLayout(state.room).parts.length);
+    expect(scene.axes.map((axis) => axis.label)).toEqual(['X 360 cm', 'Y 260 cm', 'Z 300 cm']);
+    expect(scene.callouts.map((callout) => callout.id)).toContain('walkway');
+  });
+
+  test('orbit frame round-trips yaw, pitch and zoom and mirrors the camera limits', () => {
+    const cameras = [
+      { yaw: -65, pitch: 8, zoom: 0.6 },
+      { yaw: 30, pitch: 20, zoom: 1.2 },
+      { yaw: 65, pitch: 50, zoom: 1.8 },
+    ];
+    const radius = 0.5 * Math.hypot(3.6, 2.6, 3.0);
+    for (const aspect of [0.6, 1, 1.6, 2.4]) {
+      const frame = cameraFrame(state.room, aspect);
+      for (const camera of cameras) {
+        expect(sanitizeCamera(cameraFromPosition(frame, cameraPosition(frame, camera)))).toEqual(camera);
+      }
+      // Even fully zoomed in, the eye stays outside the room's bounding sphere.
+      expect(frame.minDistance).toBeGreaterThan(radius);
+    }
+    const limits = orbitLimits(CAMERA_YAW, CAMERA_PITCH);
+    expect(limits.minPolarAngle).toBeCloseTo(((90 - CAMERA_PITCH.max) * Math.PI) / 180, 10);
+    expect(limits.maxAzimuthAngle).toBeCloseTo((CAMERA_YAW.max * Math.PI) / 180, 10);
   });
 });
 
@@ -722,10 +816,54 @@ test.describe('runtime guards', () => {
         await page.goto('/room-3d');
         await expect(page.locator('html')).toHaveAttribute('data-mode', mode);
         await expect(page.getByTestId('room-module')).toHaveCount(9);
+        await rendererOf(page);
         expect(await horizontalOverflow(page), `${mode} at ${width}px`).toBeLessThanOrEqual(0);
       }
       expect(await readCspViolations(page), `CSP violations in ${mode} mode`).toEqual([]);
     }
+    expect(errors).toEqual([]);
+  });
+
+  test('the WebGL canvas boots on the production CSP with no violations', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await installCspRecorder(page);
+    await openRoom(page);
+    const renderer = await rendererOf(page);
+    test.skip(renderer === 'unavailable', 'No WebGL context in this browser.');
+    expect(['webgl2', 'webgl']).toContain(renderer);
+    const canvas = page.getByTestId('room-canvas').locator('canvas');
+    await expect(canvas).toHaveCount(1);
+    const [w, h] = await canvas.evaluate((el) => [el.width, el.height]);
+    expect(w).toBeGreaterThan(0);
+    expect(h).toBeGreaterThan(0);
+    expect(await readCspViolations(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test('without a WebGL context the planner falls back cleanly and keeps the scene state live', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await installCspRecorder(page);
+    await page.addInitScript(() => {
+      const original = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function getContext(type, ...rest) {
+        return /webgl/i.test(type) ? null : original.call(this, type, ...rest);
+      };
+    });
+    await openRoom(page);
+
+    await expect(viewport(page)).toHaveAttribute('data-renderer', 'unavailable');
+    await expect(page.getByTestId('room-webgl-fallback')).toBeVisible();
+    await expect(page.getByTestId('room-canvas')).toHaveCount(0);
+
+    await mount(page, 'Floating Shelf 110');
+    await expect(roomModule(page, 'm1')).toHaveAttribute('data-x-cm', '105');
+    await expect(roomLights(page, 'm1')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Front Elevation' }).click();
+    await expectCamera(page, { yaw: 0, pitch: 8, zoom: 1.1 });
+    await page.getByRole('button', { name: 'Camera settings' }).click();
+    await expect(page.getByTestId('camera-readout')).toHaveText('Yaw 0.0 / Pitch 8.0 / Zoom 1.10x');
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+    expect(await readCspViolations(page)).toEqual([]);
     expect(errors).toEqual([]);
   });
 });

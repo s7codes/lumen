@@ -112,7 +112,9 @@ test.describe('core modules', () => {
 
     await expect(page.getByRole('button', { name: 'Bag (1)' })).toBeVisible();
     await expect(frame.getByTestId('in-bag')).toHaveText('In bag 1');
-    await expect(page.getByRole('status')).toHaveText('Acoustic Art Frame 50x70, Chalk added to bag.');
+    await expect(page.getByRole('region', { name: 'Notifications' }).getByTestId('toast-message')).toHaveText(
+      'Acoustic Art Frame 50x70, Chalk added to bag.',
+    );
 
     await modules.getByRole('link', { name: 'Explore Full Catalog' }).click();
     await expect(page).toHaveURL((url) => url.pathname === '/catalog');
