@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v1.0.0-e8923a)
+![Release](https://img.shields.io/badge/release-v1.0.1-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![three.js](https://img.shields.io/badge/three.js-r187-2a2825)
@@ -11,10 +11,11 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v1.0.0**, the flagship release. The app talks to an asynchronous
-client (`src/api/client.js`) instead of writing straight to storage: walls and rooms
-save to Lumen Cloud as revisioned projects, requisitions submit through the same layer,
-and `/account` reads both back behind a loading state. Empty projects, quotes and carts
+Current release: **v1.0.1**, a CI hotfix on the flagship release: the 3D room's camera
+settings popover now stays on the stage at every width. The flagship release, v1.0.0,
+moved the app onto an asynchronous client (`src/api/client.js`) instead of writing
+straight to storage: walls and rooms save to Lumen Cloud as revisioned projects,
+requisitions submit through the same layer, and `/account` reads both back behind a loading state. Empty projects, quotes and carts
 show hairline isometric drawings with one clear next step. The two planners load as
 their own chunks behind a centered loading frame, which takes 50 kB off the entry script
 and 29 kB off the entry stylesheet.
@@ -23,6 +24,7 @@ and 29 kB off the entry stylesheet.
 
 | Version | Scope |
 | ------- | ----- |
+| v1.0.1  | Camera settings popover pinned inside the 3D stage, explicit room layout layers, occlusion-checked E2E |
 | v1.0.0  | Async Lumen Cloud client, revisioned project saves, cloud requisitions, empty states, planner code splitting |
 | v0.10.1 | Cart naming on every visible label, toast and announcement |
 | v0.10.0 | Hero inset and cap, glass pill navbar, bento account page, product card entrance |
@@ -354,7 +356,10 @@ custom properties, so React never re-renders on pointer movement.
   left, zoom and a **Camera settings** fader button on the right. The popover holds the
   live readout, Yaw, Pitch and Zoom faders (sanitized through `sanitizeCamera`) and a
   **Wireframe** switch that turns materials to smoked glass and outlines every box and
-  the room. It closes on Escape, a second press or any press outside.
+  the room. It closes on Escape, a second press or any press outside. The fader button
+  pins to the right edge of the HUD on whichever row it wraps to, so the right-anchored
+  panel always opens inward over the stage; the room column sits on its own layer above
+  the controls and inspector and below the navbar.
   Wireframe is view state for the session; the camera persists. Below 768px the HUD
   docks above the scene. While the room is orbited the surrounding panels step back.
 - Room dimensions fold into a **Dimensions** summary row like the Wall Studio's.

@@ -1,7 +1,119 @@
-LUMEN v1.0.0 - FLAGSHIP RELEASE REPORT
+LUMEN v1.0.1 - CI HOTFIX REPORT
+Camera Settings Popover Stacking Context and Viewport Collision
+Branch: feat/fix-camera-popover-zindex
+Date: 2026-11-11
+
+------------------------------------------------------------------------
+v1.0.1 SUMMARY
+------------------------------------------------------------------------
+
+One spec failed on GitHub Actions (ubuntu-latest) and passed locally:
+tests/room-planner-3d.spec.js, "camera settings popover hides yaw, pitch,
+zoom and the wireframe view until opened", at the click on
+getByTestId('camera-wireframe'). Playwright reported the click target
+intercepted by the bed-160 radio and a palette item inside
+.room3d-layout__controls, and by a navbar link after scrolling.
+
+Result: 105 of 105 Playwright E2E specs pass against the production build.
+The fix is CSS only; no component markup changed.
+
+------------------------------------------------------------------------
+v1.0.1 ROOT CAUSE
+------------------------------------------------------------------------
+
+Measured at 1280 x 720 before the fix:
+- .workspace-frame and .workspace-frame__viewport clip with
+  overflow: hidden. The camera HUD and its popover live inside them.
+- The HUD is a wrapping flex row: presets pill, zoom pill, fader button.
+  When the row is too narrow the fader button wraps to a second row at
+  the stage's left edge (x 329; stage starts at x 305).
+- .camera-settings__panel is anchored right: 0 to that button and is
+  256 px wide, so it opened at x 114, about 190 px past the stage's left
+  edge, into the controls column (x 48 to 288).
+- The overflowing part of the panel is clipped, so it is neither painted
+  nor hit-testable. The centre of the Wireframe switch (x 240) landed on
+  the glass controls panel. Those panels open their own stacking contexts
+  through backdrop-filter and come later in the DOM, so nothing in the
+  room column could outrank them.
+
+Why only on CI: Linux fallback fonts are wider than Windows fonts, so the
+HUD wraps at 1280 px on ubuntu-latest and not in local headless runs.
+
+------------------------------------------------------------------------
+v1.0.1 FIX
+------------------------------------------------------------------------
+
+Files: src/styles/room3d.css, src/styles/tokens.css
+
+Popover geometry
+- .camera-settings takes margin-left: auto, so the fader button pins to
+  the right edge of the HUD on whichever row it wraps to. The
+  right-anchored panel now always opens inward, over the stage.
+- The panel is capped at max-width calc(100vw - 48px) and max-height
+  calc(100vh - nav height - 48px), scrolls internally past that, and
+  contains overscroll.
+- Buttons and faders in the popover carry scroll-margin-top of nav height
+  + 16 px, so scrolling one into view never parks it under the sticky
+  navbar.
+
+Explicit layer order
+- New tokens --z-room-stage: 2 and --z-room-panels: 1.
+- .room3d-layout__main is position: relative at --z-room-stage;
+  .room3d-layout__controls and .room3d-layout__inspector are relative at
+  --z-room-panels. The room column outranks the glass side panels at
+  every breakpoint, and all three stay inside the shell's layer (z 1),
+  below the navbar (--z-nav: 20).
+- .camera-settings sits at z 1 inside the HUD, above the other pills, so
+  the open panel is never under the zoom pill or the notice.
+
+Inspected, unchanged: CameraSettings.jsx, RoomToolbar.jsx, RoomViewport.jsx
+and RoomPlannerPage.jsx. The markup was sound; the geometry was not.
+
+Measured after the fix (panel / switch hit test):
+- 1280 x 720: panel x 645-896 inside stage x 305-920; centre hits switch
+- 1024 x 768: panel x 692-943 inside stage x 290-967; centre hits switch
+- 375 x 667:  panel x 95-346 inside stage x 17-358; centre hits switch,
+  no horizontal page overflow
+
+------------------------------------------------------------------------
+v1.0.1 TESTS
+------------------------------------------------------------------------
+
+tests/room-planner-3d.spec.js
+- New helper expectUnoccluded(locator): scrolls the control into view,
+  runs document.elementFromPoint at its centre and asserts the hit is the
+  control or a descendant, not inside .room3d-layout__controls or .navbar,
+  and that the control's box lies fully inside the stage viewport.
+- The camera popover test calls it right before the Wireframe click, then
+  reopens the popover at 1024 x 768 and 375 x 667 and checks the switch
+  again at both sizes.
+- The narrow viewports force the HUD wrap that Linux fonts cause at
+  1280 px, so the CI failure reproduces on any OS. With the CSS fix
+  stashed the test fails locally (onTarget false, insideStage false);
+  with it applied it passes.
+
+Runs
+- npx playwright test tests/room-planner-3d.spec.js: 15 passed
+- npx playwright test: 105 passed, 0 failed (12 spec files)
+
+------------------------------------------------------------------------
+v1.0.1 RELEASE
+------------------------------------------------------------------------
+
+- package.json and package-lock.json: 1.0.0 -> 1.0.1 (footer shows
+  Rev 1.0.1).
+- README.md: release badge, current release note, history row and the
+  camera HUD paragraph.
+- Lumen_v1.0.0_Release_Report.txt renamed to this file, still the only
+  report. The v1.0.0 report follows unchanged as the baseline.
+- Branches: feat/fix-camera-popover-zindex, fast-forwarded into develop
+  and main by pointer, tagged v1.0.1 and pushed.
+
+========================================================================
+BASELINE: LUMEN v1.0.0 - FLAGSHIP RELEASE
 Asynchronous API Layer, Cloud States, Lazy Loading and Production Polish
 Branch: feat/v1-flagship-launch
-Date: 2026-11-11
+========================================================================
 
 ------------------------------------------------------------------------
 SUMMARY
