@@ -463,9 +463,14 @@
   align-items: center;
 }
 
-.room3d-bridge__sync {
+.room3d-bridge__sync,
+.room3d-bridge__save {
   height: 32px;
   margin-left: auto;
+}
+
+.room3d-bridge__save + .room3d-bridge__sync {
+  margin-left: 0;
 }
 
 .room3d-bridge__sync:disabled {
@@ -506,7 +511,8 @@
     justify-content: center;
   }
 
-  .room3d-bridge__sync {
+  .room3d-bridge__sync,
+  .room3d-bridge__save {
     margin-left: 0;
   }
 }

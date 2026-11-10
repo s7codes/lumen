@@ -7,6 +7,7 @@ import { RoomToolbar } from '../components/room3d/RoomToolbar.jsx';
 import { RoomViewport } from '../components/room3d/RoomViewport.jsx';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useBag, useBagDrawer } from '../hooks/useBag.js';
+import { useCloudSave } from '../hooks/useCloudSave.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { useLaunchedModule } from '../hooks/useLaunchedModule.js';
@@ -31,6 +32,7 @@ export default function RoomPlannerPage() {
   const [status, setStatus] = useState('');
   const [wireframe, setWireframe] = useState(false);
   const syncRef = useRef(null);
+  const cloud = useCloudSave('room');
   useLaunchedModule(state.items, actions);
 
   const conflicts = useMemo(() => findRoomConflicts(state), [state]);
@@ -88,11 +90,13 @@ export default function RoomPlannerPage() {
             conflictCount={conflicts.size}
             status={status}
             syncRef={syncRef}
+            cloudStatus={cloud.status}
             onImport={() => {
               actions.importWall();
               setStatus('');
             }}
             onExport={pushToWall}
+            onSave={() => cloud.save(state)}
             onSync={syncToBag}
           />
         </div>

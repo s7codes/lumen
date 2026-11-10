@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom';
 import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
+import { CloudSaveButton } from '../CloudSaveButton.jsx';
 import { ArrowRight } from '../icons.jsx';
 
-export function RoomSummary({ summary, conflictCount, status, syncRef, onImport, onExport, onSync }) {
+export function RoomSummary({ summary, conflictCount, status, syncRef, cloudStatus, onImport, onExport, onSave, onSync }) {
   const { modules, loadW, activeW, lumens, priceUsd, psu } = summary;
   const empty = modules === 0;
 
@@ -56,6 +57,13 @@ export function RoomSummary({ summary, conflictCount, status, syncRef, onImport,
           <Link to="/studio-2d" className="tool-button room3d-bridge__link">
             Open Wall Studio
           </Link>
+          <CloudSaveButton
+            status={cloudStatus}
+            disabled={empty}
+            onSave={onSave}
+            className="room3d-bridge__save"
+            testId="save-room-to-cloud"
+          />
           <button
             ref={syncRef}
             type="button"

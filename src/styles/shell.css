@@ -944,3 +944,105 @@
   justify-content: space-between;
   width: 100%;
 }
+
+/* Route fallback: centered in the main frame while a workspace chunk loads */
+
+.route-fallback {
+  position: relative;
+  min-height: max(480px, calc(100svh - 160px));
+  background: radial-gradient(60% 50% at 50% 50%, rgba(242, 238, 231, 0.025) 0%, transparent 70%);
+}
+
+.route-fallback__center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  justify-items: center;
+  gap: var(--space-5);
+  width: min(320px, calc(100% - 32px));
+  text-align: center;
+  transform: translate(-50%, -50%);
+  animation: route-fallback-in 1000ms var(--ease-cinematic) both;
+}
+
+/* A soft highlight sweeps across the mark through a moving mask. */
+.route-fallback__mark {
+  display: inline-grid;
+  color: var(--text-primary);
+  -webkit-mask-image: linear-gradient(100deg, rgba(0, 0, 0, 0.35) 35%, #000 50%, rgba(0, 0, 0, 0.35) 65%);
+  mask-image: linear-gradient(100deg, rgba(0, 0, 0, 0.35) 35%, #000 50%, rgba(0, 0, 0, 0.35) 65%);
+  -webkit-mask-size: 300% 100%;
+  mask-size: 300% 100%;
+  animation: route-fallback-shimmer 1800ms var(--ease-in-out) infinite;
+}
+
+.route-fallback__mark--still {
+  -webkit-mask-image: none;
+  mask-image: none;
+  animation: none;
+}
+
+.route-fallback__track {
+  position: relative;
+  display: block;
+  width: 160px;
+  height: 1px;
+  overflow: hidden;
+  background: var(--border-hairline);
+}
+
+.route-fallback__bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: var(--text-primary);
+  animation: route-fallback-bar 1400ms var(--ease-in-out) infinite;
+}
+
+.route-fallback__title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-strong);
+  letter-spacing: var(--tracking-heading);
+  color: var(--text-primary);
+}
+
+.route-fallback__label {
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+@keyframes route-fallback-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes route-fallback-shimmer {
+  from {
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+  to {
+    -webkit-mask-position: 0 0;
+    mask-position: 0 0;
+  }
+}
+
+@keyframes route-fallback-bar {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}

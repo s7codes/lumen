@@ -6,6 +6,7 @@ import { StudioSummary } from '../components/studio/StudioSummary.jsx';
 import { StudioToolbar } from '../components/studio/StudioToolbar.jsx';
 import { WallStage } from '../components/studio/WallStage.jsx';
 import { useBag, useBagDrawer } from '../hooks/useBag.js';
+import { useCloudSave } from '../hooks/useCloudSave.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { useLaunchedModule } from '../hooks/useLaunchedModule.js';
@@ -53,6 +54,7 @@ export default function WallStudioPage() {
   const [drag, setDrag] = useState(null);
   const [syncNote, setSyncNote] = useState('');
   const syncRef = useRef(null);
+  const cloud = useCloudSave('wall');
 
   useHistoryShortcuts(actions);
   useLaunchedModule(layout.items, actions);
@@ -138,6 +140,8 @@ export default function WallStudioPage() {
             conflictCount={conflicts.size}
             syncNote={syncNote}
             syncRef={syncRef}
+            cloudStatus={cloud.status}
+            onSave={() => cloud.save(layout)}
             onSync={syncToBag}
           />
         </div>

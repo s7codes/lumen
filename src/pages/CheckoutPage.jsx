@@ -1,5 +1,7 @@
-import { useId, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useId, useMemo, useRef, useState } from 'react';
+import { submitQuote } from '../api/client.js';
+import { SpinnerRing } from '../components/CloudSaveButton.jsx';
+import { EmptyState } from '../components/EmptyState.jsx';
 import { ArrowRight } from '../components/icons.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -15,7 +17,6 @@ import {
   ISSUER,
   loadCurrency,
   persistCurrency,
-  requisitionRef,
   resolvePromo,
   sanitizeProject,
   serializeQuote,
@@ -256,6 +257,8 @@ export default function CheckoutPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [confirmed, setConfirmed] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
   const { addToast } = useToast();
 
   const quote = useMemo(
@@ -296,8 +299,9 @@ export default function CheckoutPage() {
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }));
   };
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
+    if (submitLock.current) return;
     const next = validateProject(project);
     setErrors(next);
     if (Object.keys(next).length > 0) {
@@ -305,9 +309,18 @@ export default function CheckoutPage() {
       document.getElementById(`${uid}-${first}`)?.focus();
       return;
     }
-    const ref = requisitionRef();
-    setConfirmed({ ref, quoteId: quote.quoteId, project, gross: quote.totals.gross, currency: quote.currency });
-    addToast(`Requisition ${ref} logged for ${project.reference}.`, 'success');
+    submitLock.current = true;
+    setSubmitting(true);
+    try {
+      const record = await submitQuote({ quote, project });
+      setConfirmed({ ref: record.ref, quoteId: record.quoteId, project, gross: quote.totals.gross, currency: quote.currency });
+      addToast(`Requisition ${record.ref} logged for ${project.reference}.`, 'success');
+    } catch (error) {
+      addToast(error?.name === 'ApiError' ? error.message : 'Submission failed. Try again.', 'error');
+    } finally {
+      submitLock.current = false;
+      setSubmitting(false);
+    }
   };
 
   const exportJson = () => {
@@ -325,13 +338,17 @@ export default function CheckoutPage() {
           lede="The cart is empty, so there is nothing to quote yet. Specify parts in the catalog or send a planned wall or room to the cart."
         />
         <div className="container checkout-empty" data-testid="checkout-empty">
-          <Link to="/catalog" className="button">
-            Browse catalog
-            <ArrowRight />
-          </Link>
-          <Link to="/studio-2d" className="button">
-            Open Wall Studio
-          </Link>
+          <div className="checkout-empty__card bento">
+            <EmptyState
+              art="shelf"
+              title="No parts specified yet."
+              body="Compose a wall in the studio or specify parts from the catalog. The quote, driver sizing and VAT build here."
+              actions={[
+                { to: '/studio-2d', label: 'Start 2D Wall Studio', primary: true },
+                { to: '/catalog', label: 'Browse Catalog' },
+              ]}
+            />
+          </div>
         </div>
       </>
     );
@@ -484,9 +501,27 @@ export default function CheckoutPage() {
               <button type="button" className="button" data-testid="download-quote" onClick={exportJson}>
                 Download Spec JSON
               </button>
-              <button type="submit" className="button button--primary" data-testid="submit-requisition">
-                Submit Project Requisition
-                <ArrowRight />
+              <button
+                type="submit"
+                className="button button--primary cloud-save"
+                data-testid="submit-requisition"
+                data-state={submitting ? 'saving' : 'idle'}
+                disabled={submitting}
+                aria-busy={submitting || undefined}
+              >
+                {submitting ? (
+                  <>
+                    <span className="cloud-save__icon">
+                      <SpinnerRing />
+                    </span>
+                    Submitting to Lumen Cloud...
+                  </>
+                ) : (
+                  <>
+                    Submit Project Requisition
+                    <ArrowRight />
+                  </>
+                )}
               </button>
             </div>
 

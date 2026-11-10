@@ -1,7 +1,8 @@
 import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
+import { CloudSaveButton } from '../CloudSaveButton.jsx';
 import { ArrowRight } from '../icons.jsx';
 
-export function StudioSummary({ summary, conflictCount, syncNote, syncRef, onSync }) {
+export function StudioSummary({ summary, conflictCount, syncNote, syncRef, cloudStatus, onSave, onSync }) {
   const { modules, loadW, activeW, lumens, priceUsd, psu } = summary;
   const empty = modules === 0;
 
@@ -43,17 +44,26 @@ export function StudioSummary({ summary, conflictCount, syncNote, syncRef, onSyn
             ? `${conflictCount} ${conflictCount === 1 ? 'module' : 'modules'} in conflict`
             : 'Driver sized on full connected load'}
         </p>
-        <button
-          ref={syncRef}
-          type="button"
-          className="button button--primary studio-summary__sync"
-          data-testid="sync-wall-to-bag"
-          disabled={empty}
-          onClick={onSync}
-        >
-          Sync Wall to Cart
-          <ArrowRight />
-        </button>
+        <div className="studio-summary__buttons">
+          <CloudSaveButton
+            status={cloudStatus}
+            disabled={empty}
+            onSave={onSave}
+            className="studio-summary__save"
+            testId="save-wall-to-cloud"
+          />
+          <button
+            ref={syncRef}
+            type="button"
+            className="button button--primary studio-summary__sync"
+            data-testid="sync-wall-to-bag"
+            disabled={empty}
+            onClick={onSync}
+          >
+            Sync Wall to Cart
+            <ArrowRight />
+          </button>
+        </div>
         <p className="studio-summary__status mono" role="status" aria-live="polite" data-testid="sync-status">
           {syncNote}
         </p>

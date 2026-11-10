@@ -215,19 +215,51 @@
   margin-top: auto;
 }
 
-.account-empty {
+/* Cloud loading: shimmering placeholder rows while the account syncs */
+
+.cloud-loading {
   display: grid;
-  gap: var(--space-6);
-  max-width: 44ch;
-  font-size: var(--text-md);
-  font-weight: var(--weight-light);
-  color: var(--text-secondary);
+  gap: var(--space-5);
 }
 
-.account-empty__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
+.cloud-loading__rows {
+  display: grid;
+  gap: var(--bento-gap);
+}
+
+.cloud-loading__row {
+  display: block;
+  height: 112px;
+  border: 1px solid var(--bento-edge);
+  border-radius: var(--bento-radius-inner);
+  background:
+    linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.045) 50%, transparent 70%) 0 0 / 250% 100%,
+    rgba(255, 255, 255, 0.012);
+  animation: cloud-loading-sweep 1600ms var(--ease-in-out) infinite;
+}
+
+.cloud-loading__row:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.cloud-loading__row:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+.cloud-loading__label {
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+@keyframes cloud-loading-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
 }
 
 /* Order history: hairline-ruled rows inside the quotes panel */
@@ -274,6 +306,11 @@
 
 .order-row__status[data-status='in-production'] {
   color: var(--lumen-amber-soft);
+}
+
+.order-row__status[data-status='pending-review'] {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text-primary);
 }
 
 .order-row__status[data-status='delivered'] {

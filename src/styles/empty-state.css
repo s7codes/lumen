@@ -1,0 +1,110 @@
+/* Empty states: hairline drawing, silver copy, one clear next step */
+
+.empty-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-5);
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+}
+
+.empty-state[data-compact] {
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-3);
+}
+
+/* 160-unit viewBox drawn at 200px: a 0.8 stroke lands on one device pixel. */
+.empty-art {
+  width: 200px;
+  height: auto;
+  overflow: visible;
+}
+
+.empty-state[data-compact] .empty-art {
+  width: 150px;
+}
+
+.empty-art path {
+  stroke-width: 0.8;
+  stroke-linecap: square;
+}
+
+.empty-art__edge {
+  stroke: rgba(255, 255, 255, 0.46);
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: empty-art-draw 1600ms var(--ease-cinematic) 120ms forwards;
+}
+
+.empty-art__hidden {
+  stroke: rgba(255, 255, 255, 0.16);
+  stroke-dasharray: 2 3;
+}
+
+.empty-art__floor {
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-dasharray: 1 3;
+}
+
+.empty-art__dim {
+  stroke: var(--text-muted);
+  opacity: 0.5;
+}
+
+.empty-art__accent {
+  stroke: var(--lumen-amber);
+  stroke-width: 1.2;
+  opacity: 0;
+  animation: empty-art-aperture 900ms var(--ease-cinematic) 1100ms forwards;
+}
+
+.empty-state__copy {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 40ch;
+}
+
+.empty-state__title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-light);
+  letter-spacing: var(--tracking-heading);
+  line-height: var(--leading-snug);
+  color: #a1a1aa;
+}
+
+.empty-state__body {
+  font-size: var(--text-xs);
+  line-height: var(--leading-body);
+  color: var(--text-muted);
+}
+
+.empty-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+}
+
+@keyframes empty-art-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes empty-art-aperture {
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .empty-art__edge {
+    stroke-dashoffset: 0;
+    animation: none;
+  }
+
+  .empty-art__accent {
+    opacity: 1;
+    animation: none;
+  }
+}

@@ -1523,6 +1523,13 @@
   color: var(--signal-fault-soft);
 }
 
+.studio-summary__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 .studio-summary__sync {
   justify-content: center;
 }
@@ -1556,6 +1563,10 @@
 
   .studio-summary__action {
     align-items: stretch;
+  }
+
+  .studio-summary__buttons > * {
+    flex: 1 1 100%;
   }
 
   .studio-summary__note,

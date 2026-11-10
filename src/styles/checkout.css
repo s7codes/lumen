@@ -22,10 +22,14 @@
 }
 
 .checkout-empty {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  padding-bottom: var(--space-8);
+  padding-bottom: var(--section-space);
+}
+
+.checkout-empty__card {
+  display: grid;
+  place-items: center;
+  min-height: 420px;
+  padding: var(--bento-pad);
 }
 
 .checkout-panel {

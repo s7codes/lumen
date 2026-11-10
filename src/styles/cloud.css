@@ -1,0 +1,102 @@
+/* Cloud save: in-place sync state on the save key, no status dots */
+
+.cloud-save {
+  justify-content: center;
+}
+
+.cloud-save__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+}
+
+.cloud-save:hover:not(:disabled) svg {
+  transform: translateY(-2px);
+}
+
+.cloud-save__labels {
+  display: inline-grid;
+}
+
+.cloud-save__label {
+  grid-area: 1 / 1;
+  text-align: center;
+  visibility: hidden;
+}
+
+.cloud-save__label[data-active] {
+  visibility: visible;
+  animation: cloud-save-label 420ms var(--ease-cinematic) both;
+}
+
+.cloud-save:disabled {
+  cursor: default;
+}
+
+.cloud-save:disabled:not([data-state='saving']) {
+  opacity: 0.4;
+}
+
+/* While saving the key settles flat and dims its fill, but stays legible. */
+.cloud-save[data-state='saving'] {
+  --lift: 0px;
+  --plinth: 0px;
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  cursor: progress;
+}
+
+.cloud-save[data-state='saved'] {
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+  color: var(--text-inverse);
+}
+
+.cloud-save[data-state='error'] {
+  border-color: var(--signal-fault);
+}
+
+.cloud-save__ring {
+  animation: cloud-save-spin 900ms linear infinite;
+}
+
+.cloud-save__check path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: cloud-save-draw 520ms var(--ease-cinematic) forwards;
+}
+
+@keyframes cloud-save-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cloud-save-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes cloud-save-label {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cloud-save__ring {
+    animation: none;
+  }
+
+  .cloud-save__check path {
+    stroke-dashoffset: 0;
+  }
+}
