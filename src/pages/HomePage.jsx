@@ -6,6 +6,7 @@ import { SurfaceLab } from '../components/SurfaceLab.jsx';
 import { CATEGORIES, PRODUCTS } from '../data/products.js';
 import { useAmbientLight } from '../hooks/useAmbientLight.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
+import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { padIndex } from '../lib/format.js';
 import '../styles/home.css';
 
@@ -99,8 +100,9 @@ function AmbientHero() {
 }
 
 function SectionHead({ index, section, titleId, title, lede }) {
+  const reveal = useScrollReveal();
   return (
-    <header className="section-head">
+    <header ref={reveal} className="section-head reveal-up">
       <p className="index-label">
         <span className="index-label__num">{index}</span> / {section}
       </p>
@@ -115,15 +117,16 @@ function SectionHead({ index, section, titleId, title, lede }) {
 
 export default function HomePage() {
   useDocumentTitle(null);
+  const reveal = useScrollReveal();
 
   return (
     <>
       <AmbientHero />
 
       <section className="spec-strip" aria-label="System specification">
-        <dl className="spec-strip__grid container">
+        <dl className="spec-strip__grid container reveal-stagger">
           {SPECS.map((spec, i) => (
-            <div key={spec.value} className="spec-strip__item">
+            <div key={spec.value} ref={reveal} className="spec-strip__item reveal-up">
               <dt className="index-label">
                 <span className="index-label__num">Spec</span> {String(i + 1).padStart(2, '0')}
               </dt>
@@ -142,7 +145,9 @@ export default function HomePage() {
           title="Read a finish under real light before it is specified."
           lede="One LED channel on the 24V bus, a dimmer, three colour temperatures and four production finishes. Load, output and reflected light are calculated from fixture data as you adjust them."
         />
-        <SurfaceLab />
+        <div ref={reveal} className="reveal-up">
+          <SurfaceLab />
+        </div>
       </section>
 
       <section className="modules container" aria-labelledby="modules-title" data-testid="core-modules">
@@ -153,14 +158,14 @@ export default function HomePage() {
           title="Three modules that anchor most walls."
           lede="A lit shelf, a corner column and an acoustic frame. Each mounts to the same bus and ships in the same four finishes."
         />
-        <ul className="modules__grid">
+        <ul className="modules__grid reveal-stagger">
           {FLAGSHIPS.map(({ product, index }) => (
-            <li key={product.id} className="modules__cell">
+            <li key={product.id} ref={reveal} className="modules__cell reveal-up">
               <ProductCard product={product} index={index} />
             </li>
           ))}
         </ul>
-        <div className="modules__foot">
+        <div ref={reveal} className="modules__foot reveal-up">
           <p className="modules__count mono">
             {padIndex(PRODUCTS.length)} modules / {padIndex(CATEGORIES.length)} families / one 24V bus
           </p>
@@ -172,7 +177,7 @@ export default function HomePage() {
       </section>
 
       <section className="entries container" aria-labelledby="entries-title">
-        <header className="entries__head">
+        <header ref={reveal} className="entries__head reveal-up">
           <p className="index-label">
             <span className="index-label__num">04</span> / Workspaces
           </p>
@@ -181,9 +186,9 @@ export default function HomePage() {
           </h2>
         </header>
 
-        <ul className="entries__grid">
+        <ul className="entries__grid reveal-stagger">
           {ENTRIES.map(({ to, index, section, title, body, Glyph }) => (
-            <li key={to}>
+            <li key={to} ref={reveal} className="reveal-up">
               <Link to={to} className="entry-card">
                 <span className="index-label">
                   <span className="index-label__num">{index}</span> / {section}

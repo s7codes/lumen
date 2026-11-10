@@ -96,9 +96,30 @@
   /* Motion */
   --ease-out: cubic-bezier(0.2, 0.7, 0.1, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-reveal: cubic-bezier(0.2, 0.8, 0.2, 1);
   --duration-fast: 120ms;
   --duration-base: 220ms;
   --duration-slow: 420ms;
+  --duration-reveal: 800ms;
+
+  /* Scroll reveal: travel and per-item stagger step */
+  --reveal-distance: 40px;
+  --reveal-stagger: 100ms;
+
+  /* Tactile keys: a hovered key lifts off a hard-edged plinth (zero blur)
+     and drifts toward the pointer by at most the magnet range. */
+  --key-lift: 2px;
+  --key-plinth: 4px;
+  --key-plinth-primary: #8c4f1b;
+  --key-plinth-neutral: #2a2825;
+  --magnet-range-x: 4px;
+  --magnet-range-y: 3px;
+
+  /* Glass panels for floating studio chrome */
+  --glass-surface: rgba(18, 17, 16, 0.46);
+  --glass-hud: rgba(11, 11, 10, 0.62);
+  --glass-blur: 18px;
+  --z-hud: 5;
 
   color-scheme: dark;
 }

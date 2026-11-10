@@ -1,0 +1,105 @@
+/* Motion system. Scroll reveals, entrance keyframes and transient notices.
+   Every hidden state is gated on html[data-reveal='on'], which the reveal
+   hook sets only when IntersectionObserver exists. */
+
+/* Scroll reveal */
+
+:root[data-reveal='on'] .reveal-up {
+  opacity: 0;
+  transform: translateY(var(--reveal-distance));
+  transition:
+    opacity var(--duration-reveal) var(--ease-reveal),
+    transform var(--duration-reveal) var(--ease-reveal);
+  transition-delay: calc(var(--reveal-step, 0) * var(--reveal-stagger));
+}
+
+:root[data-reveal='on'] .reveal-up[data-revealed] {
+  opacity: 1;
+  transform: none;
+}
+
+:root[data-reveal='on'] .reveal-up[data-revealed='instant'] {
+  transition: none;
+}
+
+/* Entrance and disclosure keyframes */
+
+@keyframes lumen-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+
+@keyframes lumen-unfold {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+    clip-path: inset(0 0 100% 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+    clip-path: inset(0 0 -8px 0);
+  }
+}
+
+@keyframes lumen-settle {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes lumen-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes lumen-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+/* A status line holds long enough to be read, then steps back. The text
+   stays in the live region for assistive technology. */
+@keyframes lumen-notice {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  5% {
+    opacity: 1;
+    transform: none;
+  }
+
+  80% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.notice-transient {
+  display: inline-block;
+  animation: lumen-notice 6s var(--ease-out) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-reveal='on'] .reveal-up {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .notice-transient {
+    animation: none;
+  }
+}
