@@ -11,8 +11,14 @@
   align-items: start;
 }
 
+/* Explicit layer order. The glass side panels open their own stacking
+   contexts through backdrop-filter and come later in the DOM, so without
+   this they paint over anything that leaves the stage. All three stay
+   below the sticky navbar (--z-nav). */
 .room3d-layout__main {
   grid-area: main;
+  position: relative;
+  z-index: var(--z-room-stage);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -21,11 +27,15 @@
 
 .room3d-layout__controls {
   grid-area: controls;
+  position: relative;
+  z-index: var(--z-room-panels);
   min-width: 0;
 }
 
 .room3d-layout__inspector {
   grid-area: inspector;
+  position: relative;
+  z-index: var(--z-room-panels);
   min-width: 0;
 }
 
@@ -237,10 +247,19 @@
   backdrop-filter: blur(12px);
 }
 
-/* Camera settings popover */
+/* Camera settings popover. The viewport clips with overflow: hidden, so the
+   trigger is pinned to the right edge of the HUD on every row it wraps to.
+   The right-anchored panel then always opens inward, over the stage, never
+   past its left edge into the controls column. */
 
 .camera-settings {
   position: relative;
+  z-index: 1;
+  margin-left: auto;
+}
+
+.camera-settings :is(button, input) {
+  scroll-margin-top: calc(var(--nav-height) + var(--space-4));
 }
 
 .camera-settings__toggle {
@@ -284,6 +303,10 @@
   flex-direction: column;
   gap: var(--space-3);
   width: 256px;
+  max-width: calc(100vw - 2 * var(--space-5));
+  max-height: calc(100vh - var(--nav-height) - 2 * var(--space-5));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--space-4);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
