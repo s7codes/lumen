@@ -44,6 +44,28 @@ function viewport(page) {
   return page.getByTestId('room-viewport');
 }
 
+/**
+ * Hit-tests the centre of a HUD control the way a real pointer would. The
+ * stage clips with overflow: hidden, so a control that leaks past it is
+ * painted over by the controls column or, after a scroll, the sticky navbar.
+ */
+async function expectUnoccluded(locator) {
+  await locator.scrollIntoViewIfNeeded();
+  const probe = await locator.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const stage = el.closest('.workspace-frame__viewport').getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return {
+      onTarget: Boolean(hit) && el.contains(hit),
+      inControls: Boolean(hit?.closest('.room3d-layout__controls')),
+      inNavbar: Boolean(hit?.closest('.navbar')),
+      insideStage:
+        box.left >= stage.left && box.right <= stage.right && box.top >= stage.top && box.bottom <= stage.bottom,
+    };
+  });
+  expect(probe).toEqual({ onTarget: true, inControls: false, inNavbar: false, insideStage: true });
+}
+
 // Scene nodes live in the hidden scene-graph mirror next to the WebGL canvas.
 function roomModule(page, uid) {
   return page.locator(`[data-testid="room-module"][data-uid="${uid}"]`);
@@ -477,6 +499,7 @@ test.describe('room planner', () => {
     // Wireframe turns materials to smoked glass and outlines every box.
     await expect(page.getByTestId('room-wireframe')).toHaveCount(0);
     const wire = page.getByTestId('camera-wireframe');
+    await expectUnoccluded(wire);
     await wire.click();
     await expect(wire).toHaveAttribute('aria-checked', 'true');
     await expect(viewport(page)).toHaveAttribute('data-wireframe', 'true');
@@ -497,6 +520,20 @@ test.describe('room planner', () => {
     await page.reload();
     await expect(page.getByTestId('room-wireframe')).toHaveCount(0);
     await expectCamera(page, { yaw: 30, pitch: 40, zoom: 1.5 });
+
+    // Wider Linux CI fonts wrap the HUD; narrower viewports force the same
+    // wrap locally. The open panel must stay on the stage at every width.
+    for (const size of [
+      { width: 1024, height: 768 },
+      { width: 375, height: 667 },
+    ]) {
+      await page.setViewportSize(size);
+      await toggle.click();
+      await expect(panel).toBeVisible();
+      await expectUnoccluded(wire);
+      await page.keyboard.press('Escape');
+      await expect(panel).toBeHidden();
+    }
     expect(errors).toEqual([]);
   });
 
