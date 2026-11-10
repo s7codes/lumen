@@ -1,9 +1,15 @@
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CatalogGlyph, RoomGlyph, WallGlyph } from '../components/icons.jsx';
+import { ProductCard } from '../components/ProductCard.jsx';
+import { SurfaceLab } from '../components/SurfaceLab.jsx';
+import { CATEGORIES, PRODUCTS } from '../data/products.js';
 import { useAmbientLight } from '../hooks/useAmbientLight.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
+import { padIndex } from '../lib/format.js';
 import '../styles/home.css';
+
+const FLAGSHIPS = PRODUCTS.flatMap((product, i) => (product.flagship ? [{ product, index: i + 1 }] : []));
 
 const SPECS = [
   { value: '24V DC Modular Bus', detail: 'Class 2 SELV / hot-swap nodes' },
@@ -92,6 +98,21 @@ function AmbientHero() {
   );
 }
 
+function SectionHead({ index, section, titleId, title, lede }) {
+  return (
+    <header className="section-head">
+      <p className="index-label">
+        <span className="index-label__num">{index}</span> / {section}
+      </p>
+      <h2 id={titleId} className="section-head__title">
+        {title}
+      </h2>
+      {lede && <p className="section-head__lede">{lede}</p>}
+      <span className="section-head__rule" aria-hidden="true" />
+    </header>
+  );
+}
+
 export default function HomePage() {
   useDocumentTitle(null);
 
@@ -113,9 +134,48 @@ export default function HomePage() {
         </dl>
       </section>
 
+      <section className="lab container" aria-labelledby="lab-title" data-testid="surface-lab">
+        <SectionHead
+          index="02"
+          section="Surface & Dimming Lab"
+          titleId="lab-title"
+          title="Read a finish under real light before it is specified."
+          lede="One LED channel on the 24V bus, a dimmer, three colour temperatures and four production finishes. Load, output and reflected light are calculated from fixture data as you adjust them."
+        />
+        <SurfaceLab />
+      </section>
+
+      <section className="modules container" aria-labelledby="modules-title" data-testid="core-modules">
+        <SectionHead
+          index="03"
+          section="Core Modules"
+          titleId="modules-title"
+          title="Three modules that anchor most walls."
+          lede="A lit shelf, a corner column and an acoustic frame. Each mounts to the same bus and ships in the same four finishes."
+        />
+        <ul className="modules__grid">
+          {FLAGSHIPS.map(({ product, index }) => (
+            <li key={product.id} className="modules__cell">
+              <ProductCard product={product} index={index} />
+            </li>
+          ))}
+        </ul>
+        <div className="modules__foot">
+          <p className="modules__count mono">
+            {padIndex(PRODUCTS.length)} modules / {padIndex(CATEGORIES.length)} families / one 24V bus
+          </p>
+          <Link to="/catalog" className="button">
+            Explore Full Catalog
+            <ArrowRight />
+          </Link>
+        </div>
+      </section>
+
       <section className="entries container" aria-labelledby="entries-title">
         <header className="entries__head">
-          <p className="index-label">Workspaces</p>
+          <p className="index-label">
+            <span className="index-label__num">04</span> / Workspaces
+          </p>
           <h2 id="entries-title" className="entries__title">
             Start from a part, a room or a wall.
           </h2>
