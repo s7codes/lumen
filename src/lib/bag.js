@@ -80,6 +80,13 @@ export function bagReducer(state, action) {
       const index = findLine(state, action.id, action.finish);
       return index === -1 ? state : state.filter((_, i) => i !== index);
     }
+    case 'merge': {
+      if (!Array.isArray(action.lines)) return state;
+      return action.lines.reduce(
+        (next, line) => bagReducer(next, { type: 'add', id: line?.id, finish: line?.finish, qty: line?.qty }),
+        state,
+      );
+    }
     case 'clear':
       return state.length === 0 ? state : [];
     case 'hydrate': {

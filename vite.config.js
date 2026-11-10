@@ -19,8 +19,35 @@ function devCspRelax() {
   };
 }
 
+// Fonts are requested only once React renders text, so without a hint they
+// swap in after first paint and reflow the page. Preloading the three Latin
+// faces every view uses starts them alongside the entry script.
+const PRELOAD_FONTS = [
+  /inter-tight-latin-wght-normal-[\w-]+\.woff2$/,
+  /ibm-plex-mono-latin-400-normal-[\w-]+\.woff2$/,
+  /ibm-plex-mono-latin-500-normal-[\w-]+\.woff2$/,
+];
+
+function fontPreload() {
+  return {
+    name: 'lumen:font-preload',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(_html, ctx) {
+        const files = Object.keys(ctx.bundle ?? {});
+        return PRELOAD_FONTS.flatMap((pattern) => files.filter((file) => pattern.test(file))).map((file) => ({
+          tag: 'link',
+          attrs: { rel: 'preload', href: `/${file}`, as: 'font', type: 'font/woff2', crossorigin: '' },
+          injectTo: 'head',
+        }));
+      },
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), devCspRelax()],
+  plugins: [react(), devCspRelax(), fontPreload()],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },

@@ -121,7 +121,7 @@ function BagSummary({ count, subtotalUsd, loadW, psu, onClear }) {
   );
 }
 
-export function BagDrawer({ open, onClose, returnFocusRef }) {
+export function BagDrawer({ open, onClose, returnFocus }) {
   const panelRef = useRef(null);
   const closeRef = useRef(null);
   const listRef = useRef(null);
@@ -130,7 +130,7 @@ export function BagDrawer({ open, onClose, returnFocusRef }) {
   useEffect(() => {
     if (!open) return undefined;
 
-    const trigger = returnFocusRef?.current;
+    const trigger = returnFocus;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     closeRef.current?.focus();
@@ -159,9 +159,9 @@ export function BagDrawer({ open, onClose, returnFocusRef }) {
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = previousOverflow;
-      trigger?.focus();
+      if (trigger?.isConnected) trigger.focus();
     };
-  }, [open, onClose, returnFocusRef]);
+  }, [open, onClose, returnFocus]);
 
   // Removing a line unmounts the focused button. Keep focus inside the dialog.
   useEffect(() => {

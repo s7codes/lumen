@@ -30,6 +30,16 @@
   --alu-700: #44484b;
   --alu-sheen: linear-gradient(180deg, #d3d6d8 0%, #a9adb0 46%, #8e9295 54%, #bcc0c2 100%);
 
+  /* Daylight plaster for elevation drawings */
+  --plaster-100: #e9e5dd;
+  --plaster-300: #c9c2b5;
+  --plaster-ink: rgba(11, 11, 10, 0.1);
+
+  /* Fault signal: clearance and collision states only */
+  --signal-fault: #c8553d;
+  --signal-fault-soft: #e08a74;
+  --signal-fault-dim: rgba(200, 85, 61, 0.1);
+
   /* Structural grid */
   --grid-line: rgba(242, 238, 231, 0.035);
   --grid-label: transparent;

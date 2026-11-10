@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { useBag } from '../hooks/useBag.js';
+import { useBag, useBagDrawer } from '../hooks/useBag.js';
 import { NAV_ROUTES } from '../lib/routes.js';
 import { BagDrawer } from './BagDrawer.jsx';
 import { LumenMark } from './icons.jsx';
@@ -8,9 +8,8 @@ import { ModeSwitch } from './ModeSwitch.jsx';
 
 export function Navbar() {
   const { count } = useBag();
-  const [bagOpen, setBagOpen] = useState(false);
+  const { open: bagOpen, returnFocus, openBag, closeBag } = useBagDrawer();
   const bagTriggerRef = useRef(null);
-  const closeBag = useCallback(() => setBagOpen(false), []);
 
   // The drawer renders outside <header>: the navbar's backdrop-filter would
   // otherwise become the containing block for its position: fixed panel.
@@ -48,7 +47,7 @@ export function Navbar() {
               aria-haspopup="dialog"
               aria-expanded={bagOpen}
               aria-controls="bag-drawer"
-              onClick={() => setBagOpen(true)}
+              onClick={() => openBag(bagTriggerRef.current)}
             >
               Bag <span className="bag-trigger__count">({count})</span>
             </button>
@@ -56,7 +55,7 @@ export function Navbar() {
         </div>
       </header>
 
-      <BagDrawer open={bagOpen} onClose={closeBag} returnFocusRef={bagTriggerRef} />
+      <BagDrawer open={bagOpen} onClose={closeBag} returnFocus={returnFocus} />
     </>
   );
 }

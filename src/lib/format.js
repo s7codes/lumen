@@ -5,6 +5,12 @@ const USD = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0,
 });
 
+const INTEGER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+
+export function formatInt(value) {
+  return INTEGER.format(Number.isFinite(value) ? value : 0);
+}
+
 export function formatUsd(value) {
   return USD.format(Number.isFinite(value) ? value : 0);
 }
