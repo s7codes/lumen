@@ -1,4 +1,5 @@
 import { Outlet, ScrollRestoration } from 'react-router-dom';
+import { BagProvider } from './BagProvider.jsx';
 import { Footer } from './Footer.jsx';
 import { Navbar } from './Navbar.jsx';
 import '../styles/shell.css';
@@ -21,7 +22,7 @@ function StructuralGrid() {
 
 export function LayoutShell() {
   return (
-    <>
+    <BagProvider>
       <a href="#main" className="skip-link">
         Skip to content
       </a>
@@ -34,6 +35,6 @@ export function LayoutShell() {
         <Footer />
       </div>
       <ScrollRestoration />
-    </>
+    </BagProvider>
   );
 }

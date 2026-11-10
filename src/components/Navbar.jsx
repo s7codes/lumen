@@ -1,13 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
+import { useBag } from '../hooks/useBag.js';
 import { NAV_ROUTES } from '../lib/routes.js';
 import { BagDrawer } from './BagDrawer.jsx';
 import { LumenMark } from './icons.jsx';
 import { ModeSwitch } from './ModeSwitch.jsx';
 
-const BAG_COUNT = 0;
-
 export function Navbar() {
+  const { count } = useBag();
   const [bagOpen, setBagOpen] = useState(false);
   const bagTriggerRef = useRef(null);
   const closeBag = useCallback(() => setBagOpen(false), []);
@@ -50,7 +50,7 @@ export function Navbar() {
               aria-controls="bag-drawer"
               onClick={() => setBagOpen(true)}
             >
-              Bag <span className="bag-trigger__count">({BAG_COUNT})</span>
+              Bag <span className="bag-trigger__count">({count})</span>
             </button>
           </div>
         </div>

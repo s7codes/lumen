@@ -1,15 +1,7 @@
-import { useCallback, useState } from 'react';
-import { applyMode, isDisplayMode, persistMode, readStoredMode } from '../lib/display-mode.js';
+import { useSyncExternalStore } from 'react';
+import { getMode, setMode, subscribeMode } from '../lib/display-mode.js';
 
 export function useDisplayMode() {
-  const [mode, setModeState] = useState(readStoredMode);
-
-  const setMode = useCallback((next) => {
-    if (!isDisplayMode(next)) return;
-    applyMode(next);
-    persistMode(next);
-    setModeState(next);
-  }, []);
-
+  const mode = useSyncExternalStore(subscribeMode, getMode);
   return [mode, setMode];
 }

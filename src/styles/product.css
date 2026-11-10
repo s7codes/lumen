@@ -1,0 +1,396 @@
+/* Product grid: collapsed hairlines so the cells read as one ruled sheet */
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  border-top: 1px solid var(--border-hairline);
+  border-left: 1px solid var(--border-hairline);
+}
+
+.product-grid__cell {
+  min-width: 0;
+  border-right: 1px solid var(--border-hairline);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+/* Product card */
+
+.product-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-surface);
+  transition: background-color var(--duration-base) var(--ease-out);
+}
+
+.product-card:hover {
+  background: var(--bg-elevated);
+}
+
+.product-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.product-card__stock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.product-card__stock::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--alu-500);
+}
+
+.product-card__stock[data-stock='in-stock']::before {
+  background: var(--lumen-amber);
+  box-shadow: 0 0 6px var(--lumen-amber-glow);
+}
+
+.product-card__figure {
+  padding: var(--space-3);
+  background-color: var(--bg-inset);
+  border-bottom: 1px solid var(--border-hairline);
+  transition: background-color var(--duration-slow) var(--ease-out);
+}
+
+.product-card[data-mode='technical'] .product-card__figure {
+  background-image:
+    linear-gradient(rgba(232, 146, 58, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 146, 58, 0.06) 1px, transparent 1px);
+  background-size: 12px 12px;
+  background-position: -1px -1px;
+}
+
+.product-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+}
+
+.product-card__name {
+  font-size: var(--text-md);
+  font-weight: 500;
+  line-height: var(--leading-snug);
+  letter-spacing: var(--tracking-heading);
+}
+
+.product-card__dims {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.product-card__summary {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.product-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: auto;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-hairline);
+}
+
+.product-card__price {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-md);
+}
+
+.product-card__in-bag {
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--lumen-amber-soft);
+}
+
+.product-card__add {
+  flex-shrink: 0;
+  height: 36px;
+  padding-inline: var(--space-3);
+}
+
+/* Engineering telemetry, technical mode only */
+
+.telemetry {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--border-hairline);
+  border-left: 1px solid var(--border-hairline);
+}
+
+.telemetry__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-2);
+  border-right: 1px solid var(--border-hairline);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.telemetry dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.telemetry dd {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+/* Finish swatches */
+
+.swatches {
+  min-width: 0;
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-4);
+  border: 0;
+}
+
+.swatches__legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.swatches__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swatch {
+  position: relative;
+  display: block;
+  width: 22px;
+  height: 22px;
+}
+
+.swatch__input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.swatch__chip {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(135deg, var(--swatch-hi) 0%, var(--swatch) 45%, var(--swatch-lo) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 0 0 1px var(--border-hairline);
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.swatch:hover .swatch__chip {
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 0 0 1px var(--text-secondary);
+}
+
+.swatch__input:checked + .swatch__chip {
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 0 0 2px var(--bg-surface),
+    0 0 0 3px var(--lumen-amber);
+}
+
+.swatch__input:focus-visible + .swatch__chip {
+  outline: 1px solid var(--lumen-amber);
+  outline-offset: 5px;
+}
+
+.swatches__name {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.swatches__surface {
+  margin-top: var(--space-2);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Procedural elevation drawing. Finish and light colours arrive as custom
+   properties on the card, so a swatch change only rewrites four variables. */
+
+.elev {
+  width: 100%;
+  max-width: 440px;
+  height: auto;
+  margin-inline: auto;
+  aspect-ratio: 240 / 150;
+}
+
+.elev__stop-hi {
+  stop-color: var(--finish-hi);
+}
+
+.elev__stop-base {
+  stop-color: var(--finish-base);
+}
+
+.elev__stop-shade {
+  stop-color: var(--finish-shade);
+}
+
+.elev__stop-light {
+  stop-color: rgb(var(--light-rgb));
+}
+
+.elev__edge,
+.elev__joint {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.elev__grain {
+  fill: none;
+  stroke: var(--finish-shade);
+  stroke-opacity: 0.5;
+  stroke-width: 0.35;
+}
+
+.elev__grain--fine {
+  stroke-opacity: 0.28;
+  stroke-width: 0.25;
+}
+
+.elev__brush {
+  stroke: var(--finish-hi);
+  stroke-opacity: 0.22;
+  stroke-width: 0.2;
+}
+
+.elev__void {
+  fill: #0d0c0b;
+}
+
+.elev__led {
+  fill: rgb(var(--light-rgb));
+}
+
+.elev__diffuser {
+  fill: rgb(var(--light-rgb));
+  fill-opacity: 0.9;
+}
+
+.elev__metal {
+  fill: var(--alu-500);
+}
+
+.elev__felt {
+  fill: #2a2825;
+}
+
+.elev__groove {
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 0.6;
+}
+
+.elev__flange {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.elev__bus {
+  stroke: var(--lumen-amber);
+  stroke-opacity: 0.8;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.elev__ground line {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.elev__ground line + line {
+  stroke-opacity: 0.5;
+}
+
+.elev__axis {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 6 2 1 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.elev__dim line {
+  stroke: var(--lumen-amber);
+  stroke-opacity: 0.75;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.elev__dim-text {
+  fill: var(--lumen-amber-soft);
+  font-family: var(--font-mono);
+  font-size: 6.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.elev__anchor circle,
+.elev__anchor line {
+  fill: none;
+  stroke: var(--text-primary);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.elev__label {
+  fill: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 5.5px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}

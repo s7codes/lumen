@@ -4,6 +4,8 @@ export const DISPLAY_MODES = ['architectural', 'technical'];
 export const DEFAULT_MODE = 'architectural';
 
 const STORAGE_KEY = 'display-mode';
+const listeners = new Set();
+let currentMode = null;
 
 export function isDisplayMode(value) {
   return isOneOf(value, DISPLAY_MODES);
@@ -19,4 +21,22 @@ export function applyMode(mode) {
 
 export function persistMode(mode) {
   if (isDisplayMode(mode)) safeStorage.write(STORAGE_KEY, mode);
+}
+
+export function getMode() {
+  if (currentMode === null) currentMode = readStoredMode();
+  return currentMode;
+}
+
+export function setMode(next) {
+  if (!isDisplayMode(next) || next === getMode()) return;
+  currentMode = next;
+  applyMode(next);
+  persistMode(next);
+  listeners.forEach((listener) => listener());
+}
+
+export function subscribeMode(listener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
