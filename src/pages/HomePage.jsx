@@ -40,7 +40,7 @@ const ENTRIES = [
     index: '04',
     section: 'Wall Studio',
     title: 'Wall Studio',
-    body: 'Compose shelves, lights and panels on a to-scale elevation, check clearances, send the parts list to the bag.',
+    body: 'Compose shelves, lights and panels on a to-scale elevation, check clearances, send the parts list to the cart.',
     Glyph: WallGlyph,
   },
 ];

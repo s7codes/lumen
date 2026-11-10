@@ -89,7 +89,7 @@ export default function WallStudioPage() {
     addMany(lines, 'Wall A');
     const modules = layout.items.length;
     setSyncNote(
-      `Synced ${modules} ${modules === 1 ? 'module' : 'modules'} as ${lines.length} bag ${lines.length === 1 ? 'line' : 'lines'}.`,
+      `Synced ${modules} ${modules === 1 ? 'module' : 'modules'} as ${lines.length} cart ${lines.length === 1 ? 'line' : 'lines'}.`,
     );
     openBag(syncRef.current);
   };
@@ -102,7 +102,7 @@ export default function WallStudioPage() {
         index="04"
         section="Wall Studio"
         title="Wall Studio"
-        lede="A to-scale 2D elevation planner. Mount parts from the index, drag them into place, check clearances against the wall and roof slope, then send the bill of materials to the bag."
+        lede="A to-scale 2D elevation planner. Mount parts from the index, drag them into place, check clearances against the wall and roof slope, then send the bill of materials to the cart."
         meta={[
           ['Scale', `1 cm = ${PX_PER_CM} px`],
           ['Snap', `${wall.snap ? GRID_STEP_CM : FINE_STEP_CM} cm`],

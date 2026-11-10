@@ -30,7 +30,7 @@ export function BagProvider({ children }) {
       dispatch({ type: 'add', id, finish, qty });
       const product = getProduct(id);
       const finishData = getFinish(finish);
-      if (product && finishData) announce(`${product.name}, ${finishData.label} added to bag.`);
+      if (product && finishData) announce(`${product.name}, ${finishData.label} added to cart.`);
     },
     [announce],
   );
@@ -40,7 +40,7 @@ export function BagProvider({ children }) {
       if (!Array.isArray(lines) || lines.length === 0) return;
       dispatch({ type: 'merge', lines });
       const count = lines.reduce((sum, line) => sum + (Number.isInteger(line?.qty) ? line.qty : 0), 0);
-      announce(`${label}: ${count} ${count === 1 ? 'item' : 'items'} added to bag.`);
+      announce(`${label}: ${count} ${count === 1 ? 'item' : 'items'} added to cart.`);
     },
     [announce],
   );

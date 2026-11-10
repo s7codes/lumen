@@ -322,7 +322,7 @@ export default function CheckoutPage() {
           index="05"
           section="Checkout"
           title="Project Quote"
-          lede="The bag is empty, so there is nothing to quote yet. Specify parts in the catalog or send a planned wall or room to the bag."
+          lede="The cart is empty, so there is nothing to quote yet. Specify parts in the catalog or send a planned wall or room to the cart."
         />
         <div className="container checkout-empty" data-testid="checkout-empty">
           <Link to="/catalog" className="button">

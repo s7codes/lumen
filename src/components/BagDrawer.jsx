@@ -126,7 +126,7 @@ function BagSummary({ count, subtotalUsd, loadW, psu, onClear, onCheckout }) {
             else setArmed(true);
           }}
         >
-          {armed ? `Confirm: clear ${count} ${count === 1 ? 'item' : 'items'}` : 'Clear bag'}
+          {armed ? `Confirm: clear ${count} ${count === 1 ? 'item' : 'items'}` : 'Clear cart'}
         </button>
       )}
     </footer>
@@ -142,12 +142,12 @@ export function BagDrawer({ open, onClose, returnFocus }) {
 
   const removeLine = (line) => {
     remove(line.id, line.finish.id);
-    addToast(`Removed ${line.product.name}, ${line.finish.label} from the bag.`, 'info');
+    addToast(`Removed ${line.product.name}, ${line.finish.label} from the cart.`, 'info');
   };
 
   const clearBag = () => {
     clear();
-    addToast(`Bag cleared: ${count} ${count === 1 ? 'item' : 'items'} removed.`, 'info');
+    addToast(`Cart cleared: ${count} ${count === 1 ? 'item' : 'items'} removed.`, 'info');
   };
 
   useModalDialog({ open, panelRef, initialFocusRef: closeRef, returnFocus, onClose });
@@ -189,7 +189,7 @@ export function BagDrawer({ open, onClose, returnFocus }) {
 
         {lines.length > 0 ? (
           <div className="drawer__body drawer__body--lines">
-            <ul ref={listRef} className="bag-lines" aria-label="Bag contents" tabIndex={-1}>
+            <ul ref={listRef} className="bag-lines" aria-label="Cart contents" tabIndex={-1}>
               {lines.map((line) => (
                 <BagLine
                   key={line.key}
@@ -202,7 +202,7 @@ export function BagDrawer({ open, onClose, returnFocus }) {
           </div>
         ) : (
           <div className="drawer__body">
-            <p className="drawer__empty">Your bag is empty.</p>
+            <p className="drawer__empty">Your cart is empty.</p>
             <p className="drawer__hint">
               Systems configured in the planners are added here as a complete parts list: fixtures,
               rail lengths, drivers and mounting hardware.

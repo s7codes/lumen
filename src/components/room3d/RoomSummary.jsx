@@ -64,7 +64,7 @@ export function RoomSummary({ summary, conflictCount, status, syncRef, onImport,
             disabled={empty}
             onClick={onSync}
           >
-            Sync Room to Bag
+            Sync Room to Cart
             <ArrowRight />
           </button>
         </div>

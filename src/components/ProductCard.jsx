@@ -155,7 +155,7 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
           <span className="mono">{formatUsd(product.priceUsd)}</span>
           {inBag > 0 && (
             <span className="product-card__in-bag mono" data-testid="in-bag">
-              In bag {inBag}
+              In cart {inBag}
             </span>
           )}
         </p>
@@ -164,7 +164,7 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
           className="button button--primary product-card__add"
           onClick={() => add(product.id, finishId)}
         >
-          Add to Bag
+          Add to Cart
           <span className="visually-hidden">
             : {product.name}, {finish.label}
           </span>

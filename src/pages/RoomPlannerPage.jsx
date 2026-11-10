@@ -51,7 +51,7 @@ export default function RoomPlannerPage() {
     const lines = aggregateBagLines(state.items);
     if (lines.length === 0) return;
     addMany(lines, 'Room 3D');
-    setStatus(`Synced ${plural(state.items.length, 'module')} as ${plural(lines.length, 'bag line')}.`);
+    setStatus(`Synced ${plural(state.items.length, 'module')} as ${plural(lines.length, 'cart line')}.`);
     openBag(syncRef.current);
   };
 
@@ -61,7 +61,7 @@ export default function RoomPlannerPage() {
         index="03"
         section="3D Room"
         title="Room Planner"
-        lede="A dimensioned room with the main wall at Z 0. Mount parts in three dimensions, check clearances against a floor reference, and move the wall between the 2D studio, the room and the bag."
+        lede="A dimensioned room with the main wall at Z 0. Mount parts in three dimensions, check clearances against a floor reference, and move the wall between the 2D studio, the room and the cart."
         meta={[
           ['Engine', 'WebGL 2 / React Three Fiber'],
           ['Units', 'cm'],

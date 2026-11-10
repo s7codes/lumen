@@ -249,7 +249,7 @@ function ProductDetail({ product }) {
                 data-testid="detail-add-to-bag"
                 onClick={() => add(product.id, finishId, qty)}
               >
-                Add to Bag
+                Add to Cart
                 <span className="visually-hidden">
                   : {qty} x {product.name}, {finish.label}
                 </span>
@@ -257,7 +257,7 @@ function ProductDetail({ product }) {
               </button>
             </div>
             <p className="detail__in-bag mono" data-testid="detail-in-bag">
-              {inBag > 0 ? `In bag ${inBag} / ${finish.label}` : `Not in bag / ${finish.label}`}
+              {inBag > 0 ? `In cart ${inBag} / ${finish.label}` : `Not in cart / ${finish.label}`}
             </p>
 
             <div className="detail__launchers">

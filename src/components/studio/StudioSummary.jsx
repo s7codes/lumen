@@ -51,7 +51,7 @@ export function StudioSummary({ summary, conflictCount, syncNote, syncRef, onSyn
           disabled={empty}
           onClick={onSync}
         >
-          Sync Wall to Bag
+          Sync Wall to Cart
           <ArrowRight />
         </button>
         <p className="studio-summary__status mono" role="status" aria-live="polite" data-testid="sync-status">
