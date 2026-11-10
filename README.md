@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v0.9.0-e8923a)
+![Release](https://img.shields.io/badge/release-v0.10.0-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![three.js](https://img.shields.io/badge/three.js-r187-2a2825)
@@ -11,16 +11,17 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v0.9.0**. Spatial design, hero alignment and bento layouts. The hero
-copy anchors to the left page inset and sits low in the frame, leaving the right track
-open for the pendant. Type runs pure white (`#ffffff`) over silver body copy (`#b8b8b8`),
-and from 1920px the frame widens and the root type steps up for 2K displays. Everything
-below the hero sits in frosted bento tiles: the spec strip, the surface lab bench and
-panel, core modules, workspaces, the catalog filter bar and every product card. Product
-cards tilt toward the pointer on a dt-integrated spring and carry a cursor glow tinted
-to the fixture's own colour temperature.
+Current release: **v0.10.0**. Design polish and account revival. The hero headline is
+capped at 7rem (`--text-hero`) and sits on a 9vw inset (up to 220px), lower in the frame.
+The navbar controls are one row of 32px glass pills: the Arch / Tech track, Account and
+**Cart**. `/account` is rebuilt as a bento grid: a profile tile with **Sign Out** on its
+top-right corner, then Saved Spatial Projects beside Order History, under a faint
+oak-amber wash from the top right. Product cards bring their own entrance, growing from
+0.95 scale as they enter the viewport.
 
-Previous: **v0.8.0**. Cinematic redesign and declutter: a 1% structural grid, 160-200px
+Previous: **v0.9.0**. Spatial design, hero alignment and bento layouts: pure white type
+over silver body copy, frosted bento tiles below the hero and spring-driven card tilt
+with a CCT-tinted cursor glow. **v0.8.0**. Cinematic redesign and declutter: a 1% structural grid, 160-200px
 section spacing, a headline scale up to 9rem, blur-scale reveals and glass toast pills.
 **v0.7.0**. WebGL room on React Three Fiber with a shadow-mapped sun and
 per-module LED lights, a front-end account shell with a protected `/account`
@@ -119,13 +120,20 @@ backdrop blur, a 1px `rgba(255,255,255,0.06)` edge and a 16px radius, the one ex
 to the micro radii. Tiles sit on a tight 12-20px gutter (`--bento-gap`) so the air
 between sections stays the dominant rhythm; inner stages such as product drawings and
 workspace glyphs use 12px. The hero is a two-track grid: copy in a left track capped at
-920px and flush with the page inset (`--hero-inset`, up to 120px), the right track left
-empty for the pendant.
+920px on a measured inset (`--hero-inset: clamp(24px, 9vw, 220px)`), the right track left
+empty for the pendant. The headline uses `--text-hero`, `clamp(3rem, 1.2rem + 5.2vw,
+7rem)`, tracked at -0.04em; the larger `--text-display` scale is no longer used by the hero.
+
+Navbar controls share one pill key (`--pill-*` tokens): 32px tall, 24px radius,
+`rgba(255,255,255,0.05)` fill on a 12px backdrop blur and a 1px `rgba(255,255,255,0.08)`
+edge, set 8px apart and flush with the frame's right inset. Hovered Account and Cart pills
+brighten their edge and rise 1px. Below 560px the pills tighten their padding so the row
+fits a 360px phone.
 
 The mark is a 24 x 24 monogram: structural spine, base return and a cantilevered shelf
 slab in white, with a 2 x 6.5 tungsten aperture held between slab and base. It pairs
 with `LUMEN` tracked at 0.14em; `public/favicon.svg` carries the same geometry on basalt.
-The display mode switch is two typographic segments in a 1px frame, and the engaged one
+The display mode switch is two pill segments inside a glass track, and the engaged one
 inverts to solid white. Buttons, switches and badges never glow: light belongs only to
 the simulated fixtures.
 
@@ -141,14 +149,20 @@ custom properties, so React never re-renders on pointer movement.
 
 - Scroll reveal: `useScrollReveal` returns a ref for any reveal target. One shared
   `IntersectionObserver` (bottom margin -12%) fires it once, on
-  `cubic-bezier(0.16, 1, 0.3, 1)`. Media (`.reveal-cinematic`: core modules, the surface
-  lab, catalog cards) resolves from `scale(1.05)`, `blur(8px)` and zero opacity over
-  1200 ms; copy (`.reveal-up`) rises 28px out of a 4px blur over 1100 ms. The rest state
+  `cubic-bezier(0.16, 1, 0.3, 1)`. Media (`.reveal-cinematic`: the surface lab, the
+  account tiles) resolves from `scale(1.05)`, `blur(8px)` and zero opacity over
+  1200 ms; copy (`.reveal-up`) rises 28px out of a 4px blur over 1100 ms.
+- Card entrance: every `ProductCard` is its own reveal target (`.reveal-card`). It grows
+  from `scale: 0.95` out of a 4px blur and zero opacity over 1000 ms on the same curve,
+  wherever the card is placed. It animates the individual `scale` property, so the tilt
+  transform composes with it, and runs as keyframes, so the card's own border and shadow
+  transitions are left alone. Cards stagger through the nearest `.reveal-stagger`
+  ancestor, so a grid still lands at 0, 100 and 200 ms. The rest state
   is `filter: none`, never `blur(0)`, so a settled element is not a containing block.
   Elements that enter in the same frame are ordered top to bottom, left to right, and
   each `.reveal-stagger` parent hands its children one 100 ms step apiece, so a row of
-  three cards lands at 0, 100 and 200 ms. Once the opacity transition ends,
-  `data-reveal-settled` drops the `will-change` hints. Content already scrolled past on
+  three cards lands at 0, 100 and 200 ms. Once the opacity transition (or the card
+  entrance animation) ends, `data-reveal-settled` drops the `will-change` hints. Content already scrolled past on
   a restored position appears without motion. The hidden state is gated on
   `html[data-reveal='on']`, set only when the observer exists.
 - Hover: product drawings and workspace glyphs scale to 1.045 over 900 ms inside a
@@ -180,6 +194,8 @@ custom properties, so React never re-renders on pointer movement.
 - Each catalog card draws a front elevation at the largest standard scale that fits
   (1:2 to 1:50). Architectural mode shows finish and editorial copy; technical mode adds
   dimension lines, anchor points and the telemetry grid (SKU, load, lm, lm/W, CRI).
+- The navbar **Cart (n)** pill opens the drawer, titled Cart. Internally the store, hook
+  and storage key keep the `bag` name; product actions still read **Add to Bag**.
 - The bag is stored under `lumen_bag_v1` through `safeStorage`. Every read is rebuilt line
   by line: unknown products, finishes a part does not ship in and quantities outside
   1-99 are dropped, duplicates merge, and the cleaned value is written back. Other tabs
@@ -323,10 +339,14 @@ custom properties, so React never re-renders on pointer movement.
   stores only `{ name: "Studio Guest", email }` under `lumen_session_v1`. A tampered
   session payload reads as signed out.
 - Once signed in the trigger becomes an **Account** link. `/account` sits behind
-  `RequireAuth` and redirects to `/` when signed out. It lists **Saved Spatial Projects**
-  (the stored Wall Studio wall and 3D room as cards with an elevation thumbnail, envelope,
-  module count, 24V load, driver and list price, marked Local until cloud sync) beside
-  **Order History** (sample quote records until the order API is connected).
+  `RequireAuth` and redirects to `/` when signed out. The page is one bento grid under a
+  fixed oak-amber wash (`--glow-oak`, a 5% `#e8923a` radial falling off by 40% from the
+  top right). A full-width profile tile shows the name, email, storage, sync state and
+  project and quote counts, with **Sign Out** on its top-right corner (below the identity
+  on phones). Beneath it, **Saved Spatial Projects** (the stored Wall Studio wall and 3D
+  room as inset cards with an elevation thumbnail, envelope, module count, 24V load,
+  driver and list price, marked Local until cloud sync) sits beside **Order History**
+  (hairline-ruled sample quote records until the order API is connected).
 
 ## Notifications
 
