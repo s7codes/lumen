@@ -120,11 +120,11 @@ test.describe('product specification view', () => {
     await expect(page.getByTestId('detail-qty')).toHaveText('3');
     await page.getByTestId('detail-add-to-bag').click();
     await expect(page.getByRole('button', { name: 'Cart (3)' })).toBeVisible();
-    await expect(page.getByTestId('detail-in-bag')).toHaveText('In bag 3 / Oak');
+    await expect(page.getByTestId('detail-in-bag')).toHaveText('In cart 3 / Oak');
 
     await page.getByRole('radio', { name: 'Walnut' }).check();
     await expect(page).toHaveURL(/finish=walnut$/);
-    await expect(page.getByTestId('detail-in-bag')).toHaveText('Not in bag / Walnut');
+    await expect(page.getByTestId('detail-in-bag')).toHaveText('Not in cart / Walnut');
 
     expect(errors).toEqual([]);
     expect(await readCspViolations(page)).toEqual([]);

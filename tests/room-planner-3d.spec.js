@@ -700,7 +700,7 @@ test.describe('2D and 3D bridge', () => {
     const drawer = page.getByRole('dialog', { name: 'Cart' });
     await expect(drawer).toBeVisible();
     await expect(page.getByTestId('room-bridge-status')).toHaveText(
-      `Synced 4 modules as ${lines.length} bag lines.`,
+      `Synced 4 modules as ${lines.length} cart lines.`,
     );
     await expect(drawer.getByTestId('bag-line')).toHaveCount(lines.length);
     for (const line of lines) {

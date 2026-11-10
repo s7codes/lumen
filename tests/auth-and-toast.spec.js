@@ -253,14 +253,14 @@ test.describe('toast notifications', () => {
     await page.goto('/catalog');
 
     const card = page.getByRole('article', { name: 'Floating Shelf 110' });
-    await card.getByRole('button', { name: /add to bag/i }).click();
+    await card.getByRole('button', { name: /add to cart/i }).click();
     const shownAt = Date.now();
 
     const region = page.getByRole('region', { name: 'Notifications' });
     const toast = region.getByTestId('toast');
     await expect(toast).toHaveCount(1);
     await expect(toast).toHaveAttribute('data-tone', 'success');
-    await expect(toast.getByTestId('toast-message')).toHaveText('Floating Shelf 110, Walnut added to bag.');
+    await expect(toast.getByTestId('toast-message')).toHaveText('Floating Shelf 110, Walnut added to cart.');
     await expect(region.getByRole('status')).toHaveAttribute('aria-live', 'polite');
 
     const placement = await region.evaluate((el) => {
@@ -314,7 +314,7 @@ test.describe('toast notifications', () => {
     await page.setViewportSize({ width: 360, height: 780 });
     await page.goto('/catalog');
     for (const name of ['Floating Shelf 110', 'Modular Cube 36', 'Compact Sideboard 75']) {
-      await page.getByRole('article', { name }).getByRole('button', { name: /add to bag/i }).click();
+      await page.getByRole('article', { name }).getByRole('button', { name: /add to cart/i }).click();
     }
     const toasts = page.getByTestId('toast');
     await expect(toasts).toHaveCount(3);

@@ -336,7 +336,7 @@ test.describe('tactile keys', () => {
   test('a primary key lifts off a zero-blur plinth, pulls toward the pointer and settles back', async ({ page }) => {
     await page.goto('/');
     const card = page.getByRole('article', { name: 'Floating Shelf 110' });
-    const key = card.getByRole('button', { name: /add to bag/i });
+    const key = card.getByRole('button', { name: /add to cart/i });
     await key.scrollIntoViewIfNeeded();
     // Wait for the card entrance to finish scaling, or the pointer would aim at a moving key.
     await waitForCardAtRest(card);
@@ -381,6 +381,6 @@ test.describe('tactile keys', () => {
     await expect(arrow).toHaveCSS('transform', 'none');
     await sync.hover();
     await expect(arrow).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 4, 0)');
-    await expect(sync).toHaveAccessibleName('Sync Wall to Bag');
+    await expect(sync).toHaveAccessibleName('Sync Wall to Cart');
   });
 });

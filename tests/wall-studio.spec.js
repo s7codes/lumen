@@ -329,7 +329,7 @@ test.describe('wall studio', () => {
     await sync.click();
     const drawer = page.getByRole('dialog', { name: 'Cart' });
     await expect(drawer).toBeVisible();
-    await expect(page.getByTestId('sync-status')).toHaveText('Synced 9 modules as 7 bag lines.');
+    await expect(page.getByTestId('sync-status')).toHaveText('Synced 9 modules as 7 cart lines.');
     await expect(page.getByRole('button', { name: 'Cart (9)' })).toBeVisible();
 
     const lines = drawer.getByTestId('bag-line');

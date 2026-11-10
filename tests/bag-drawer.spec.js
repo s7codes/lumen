@@ -14,7 +14,7 @@ const STORAGE_KEY = `lumen:${BAG_STORAGE_KEY}`;
 async function addFromCatalog(page, name, finish) {
   const card = page.getByRole('article', { name });
   if (finish) await card.getByRole('radio', { name: finish }).check();
-  await card.getByRole('button', { name: /add to bag/i }).click();
+  await card.getByRole('button', { name: /add to cart/i }).click();
 }
 
 async function openBag(page) {
@@ -84,11 +84,11 @@ test.describe('bag drawer', () => {
     await press(`Remove ${column}`);
     await expect(lines).toHaveCount(1);
     await expectTotals('$185', 16, '1x Lumen 60W 24V Driver');
-    await expect(drawer.getByRole('list', { name: 'Bag contents' })).toBeFocused();
+    await expect(drawer.getByRole('list', { name: 'Cart contents' })).toBeFocused();
 
-    await drawer.getByRole('button', { name: 'Clear bag' }).click();
+    await drawer.getByRole('button', { name: 'Clear cart' }).click();
     await drawer.getByRole('button', { name: 'Confirm: clear 1 item' }).click();
-    await expect(drawer.getByText('Your bag is empty.')).toBeVisible();
+    await expect(drawer.getByText('Your cart is empty.')).toBeVisible();
     await expectTotals('$0', 0, 'No driver required');
     await expect(drawer.getByRole('button', { name: 'Close' })).toBeFocused();
     expect(await readStoredBag(page)).toBeNull();
@@ -127,7 +127,7 @@ test.describe('bag drawer', () => {
     const lightbar = page.getByRole('article', { name: 'Linear Lightbar 60' });
     await expect(lightbar.getByTestId('in-bag')).toHaveCount(0);
     await lightbar.getByRole('radio', { name: 'Chalk' }).check();
-    await expect(lightbar.getByTestId('in-bag')).toHaveText('In bag 2');
+    await expect(lightbar.getByTestId('in-bag')).toHaveText('In cart 2');
   });
 
   test('malformed or hostile storage payloads fall back to an empty bag without throwing', async ({ page }) => {
@@ -229,7 +229,7 @@ test.describe('bag drawer', () => {
     const close = drawer.getByRole('button', { name: 'Close' });
     await expect(close).toBeFocused();
     await page.keyboard.press('Shift+Tab');
-    await expect(drawer.getByRole('button', { name: 'Clear bag' })).toBeFocused();
+    await expect(drawer.getByRole('button', { name: 'Clear cart' })).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(close).toBeFocused();
   });

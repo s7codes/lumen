@@ -108,12 +108,12 @@ test.describe('core modules', () => {
 
     const frame = modules.getByRole('article', { name: 'Acoustic Art Frame 50x70' });
     await frame.getByRole('radio', { name: 'Chalk' }).check();
-    await frame.getByRole('button', { name: /add to bag/i }).click();
+    await frame.getByRole('button', { name: /add to cart/i }).click();
 
     await expect(page.getByRole('button', { name: 'Cart (1)' })).toBeVisible();
-    await expect(frame.getByTestId('in-bag')).toHaveText('In bag 1');
+    await expect(frame.getByTestId('in-bag')).toHaveText('In cart 1');
     await expect(page.getByRole('region', { name: 'Notifications' }).getByTestId('toast-message')).toHaveText(
-      'Acoustic Art Frame 50x70, Chalk added to bag.',
+      'Acoustic Art Frame 50x70, Chalk added to cart.',
     );
 
     await modules.getByRole('link', { name: 'Explore Full Catalog' }).click();
