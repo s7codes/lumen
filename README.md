@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v0.7.0-e8923a)
+![Release](https://img.shields.io/badge/release-v0.8.0-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![three.js](https://img.shields.io/badge/three.js-r187-2a2825)
@@ -11,14 +11,17 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v0.7.0**. WebGL room, account shell and toasts. `/room-3d` now
-renders through three.js and React Three Fiber: OrbitControls, a shadow-mapped sun, and
-every lit module throwing a real spot or point light in its own CCT onto the wall and
-floor. A front-end account shell adds sign in, a protected `/account` dashboard with
-saved spatial projects and quote history, and a React toast stack replaces the hidden
-bag status line.
+Current release: **v0.8.0**. Cinematic redesign and declutter. The structural grid drops
+to a 1% texture, the overview and catalog lose their ruled sheets and card fills in
+favour of 160-200px section spacing and a headline scale up to 9rem, and media resolves
+into view from a 1.05 scale and 8px blur. Product drawings sit on a soft lit stage and
+ease forward on hover, and toasts become glass pills at the bottom centre. The
+production CSS now ships the standard `backdrop-filter`, so glass surfaces blur in
+Chromium builds.
 
-Previous: **v0.6.0**. Motion and progressive disclosure: scroll reveals, tactile keys,
+Previous: **v0.7.0**. WebGL room on React Three Fiber with a shadow-mapped sun and
+per-module LED lights, a front-end account shell with a protected `/account`
+dashboard, and a React toast stack. **v0.6.0**. Motion and progressive disclosure: scroll reveals, tactile keys,
 glass planner panels, folded dimension inputs and a camera settings popover.
 **v0.5.0**. Product specification sheets on `/catalog/:id` with three
 to-scale orthographic views, a polar intensity diagram (or the 24V bus voltage drop
@@ -95,11 +98,15 @@ tests/                  Playwright specs, named by architectural domain
 
 ## Design system
 
-All values live in `src/styles/tokens.css`. Warm basalt surfaces, alabaster type,
-tungsten amber (`#e8923a`) as the single accent, anodized aluminum neutrals. Hairline
-borders, 2-4px radii, tabular-nums index labels (`01 / OVERVIEW`). A 12-column
-structural grid is exposed behind the shell. Technical mode tints it amber and reveals
-measurement overlays; the choice persists through validated storage.
+All values live in `src/styles/tokens.css`. Near-black basalt canvas (`#050505`),
+alabaster type, tungsten amber (`#e8923a`) as the single accent, anodized aluminum
+neutrals. 2-4px radii, tabular-nums index labels (`01 / OVERVIEW`). Sections are
+separated by air and type scale, not rules or tiles: `--section-space` is 160px at
+1280 wide and 200px from 1600, headlines run 640 weight against 300 weight ledes, and
+product drawings sit on `--bg-stage`, a soft radial plinth with no outline. The
+12-column structural grid sits behind the shell at 1% and fades out down the viewport.
+Technical mode tints it amber, keeps it full height and reveals measurement overlays;
+the choice persists through validated storage.
 
 The mark is a 24 x 24 monogram: structural spine, base return and a cantilevered shelf
 slab in alabaster, with a 2 x 6.5 tungsten aperture held between slab and base. It pairs
@@ -118,13 +125,20 @@ custom properties, so React never re-renders on pointer movement.
 
 ## Motion
 
-- Scroll reveal: `useScrollReveal` returns a ref for any `.reveal-up` element. One shared
-  `IntersectionObserver` (bottom margin -10%) fires it once: 40px of travel and a fade over
-  800 ms on `cubic-bezier(0.2, 0.8, 0.2, 1)`. Elements that enter in the same frame are
-  ordered top to bottom, left to right, and each `.reveal-stagger` parent hands its
-  children one 100 ms step apiece, so a row of three cards lands at 0, 100 and 200 ms.
-  Content already scrolled past on a restored position appears without motion. The
-  hidden state is gated on `html[data-reveal='on']`, set only when the observer exists.
+- Scroll reveal: `useScrollReveal` returns a ref for any reveal target. One shared
+  `IntersectionObserver` (bottom margin -12%) fires it once, on
+  `cubic-bezier(0.16, 1, 0.3, 1)`. Media (`.reveal-cinematic`: core modules, the surface
+  lab, catalog cards) resolves from `scale(1.05)`, `blur(8px)` and zero opacity over
+  1200 ms; copy (`.reveal-up`) rises 28px out of a 4px blur over 1100 ms. The rest state
+  is `filter: none`, never `blur(0)`, so a settled element is not a containing block.
+  Elements that enter in the same frame are ordered top to bottom, left to right, and
+  each `.reveal-stagger` parent hands its children one 100 ms step apiece, so a row of
+  three cards lands at 0, 100 and 200 ms. Once the opacity transition ends,
+  `data-reveal-settled` drops the `will-change` hints. Content already scrolled past on
+  a restored position appears without motion. The hidden state is gated on
+  `html[data-reveal='on']`, set only when the observer exists.
+- Hover: product drawings and workspace glyphs scale to 1.045 over 900 ms inside a
+  clipped stage, so the card never changes size.
 - Tactile keys: every `.button` lifts 2px on hover off a 4px plinth drawn as a zero-blur
   offset `box-shadow`. `useMagneticField` is one delegated pointer listener that pulls
   the hovered key toward a fine pointer by at most 4 x 3 px; the plinth stays where the
@@ -293,10 +307,13 @@ custom properties, so React never re-renders on pointer movement.
 
 ## Notifications
 
-- `ToastProvider` renders one polite live region, fixed bottom-right at `z-index: 100`.
-  Toasts enter on `translateY` and opacity, carry a tone rule (OK, Note, Check, Fault)
-  and a 1px countdown, and unmount after 4 seconds; a dismiss key closes one early. The
-  stack ignores the pointer except for that key, so a toast never blocks a control.
+- `ToastProvider` renders one polite live region, fixed 24px above the bottom edge and
+  centred, at `z-index: 100`. Each toast is a translucent pill on a 28px backdrop blur
+  with a hairline top highlight and a dark ambient shadow, never a coloured glow. It
+  pulls into focus from a slight blur and scale, carries a tone label (OK, Note, Check,
+  Fault) and a 1px countdown, and unmounts after 4 seconds; a dismiss key closes one
+  early. The stack ignores the pointer except for that key, so a toast never blocks a
+  control.
 - `useToast().addToast(message, tone)` reports bag additions and removals, cleared bags,
   checkout requisitions and quote exports, planner saves (Wall Studio JSON export and
   import, room push to Wall Studio) and sign in or out. Messages pass `sanitizeText` and
