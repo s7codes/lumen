@@ -93,7 +93,7 @@ export function Navbar() {
               aria-controls="bag-drawer"
               onClick={() => openBag(bagTriggerRef.current)}
             >
-              Bag <span className="bag-trigger__count">({count})</span>
+              Cart <span className="bag-trigger__count">({count})</span>
             </button>
           </div>
         </div>

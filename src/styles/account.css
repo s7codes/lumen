@@ -1,43 +1,105 @@
-/* Account dashboard */
+/* Account dashboard: one bento grid. The profile tile spans the frame and
+   carries the session action; projects and quotes sit side by side below. */
 
-.account-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3) var(--space-5);
-  padding-bottom: var(--section-space);
+.account-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: var(--bento-gap);
+  align-items: start;
 }
 
-.account-bar__user {
+@media (max-width: 959px) {
+  .account-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Profile */
+
+.account-profile {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'identity action'
+    'facts facts';
+  gap: var(--space-7) var(--space-6);
+  padding: var(--bento-pad);
+}
+
+.account-profile__identity {
+  grid-area: identity;
   min-width: 0;
+}
+
+.account-profile__name {
+  margin-top: var(--space-4);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-strong);
+  line-height: 1.08;
+  letter-spacing: var(--tracking-headline);
+  overflow-wrap: anywhere;
+}
+
+.account-profile__email {
+  margin-top: var(--space-2);
   font-size: var(--text-xs);
   letter-spacing: 0.02em;
   color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 
-/* Two open columns. No panels: the headline scale and the gutter do the
-   separating. */
-.account-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
-  gap: var(--section-space) clamp(var(--space-8), 7vw, var(--space-10));
-  align-items: start;
+.account-profile__sign-out {
+  grid-area: action;
+  align-self: start;
 }
 
-@media (max-width: 959px) {
-  .account-layout {
+.account-profile__facts {
+  grid-area: facts;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--bento-edge);
+  font-size: var(--text-2xs);
+}
+
+.account-profile__facts dt {
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-muted);
+}
+
+.account-profile__facts dd {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+}
+
+@media (max-width: 559px) {
+  .account-profile {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'identity'
+      'action'
+      'facts';
+    gap: var(--space-5);
+  }
+
+  .account-profile__facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
+/* Panels */
+
 .account-panel {
   min-width: 0;
+  padding: var(--bento-pad);
 }
 
 .account-panel__head {
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-7);
 }
 
 .account-panel__title {
@@ -55,12 +117,12 @@
   color: var(--text-muted);
 }
 
-/* Saved project cards */
+/* Saved project cards: inset tiles inside the projects panel */
 
 .project-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
-  gap: var(--space-9) var(--space-7);
+  gap: var(--bento-gap);
 }
 
 .project-card {
@@ -68,6 +130,15 @@
   flex-direction: column;
   gap: var(--space-5);
   min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--bento-edge);
+  border-radius: var(--bento-radius-inner);
+  background: rgba(255, 255, 255, 0.015);
+  transition: border-color var(--duration-slow) var(--ease-out);
+}
+
+.project-card:hover {
+  border-color: var(--bento-edge-hover);
 }
 
 .project-card__head {
@@ -159,16 +230,22 @@
   gap: var(--space-3);
 }
 
-/* Order history */
+/* Order history: hairline-ruled rows inside the quotes panel */
 
 .order-list {
   display: grid;
-  gap: var(--space-8);
 }
 
 .order-row {
   display: grid;
   gap: var(--space-3);
+  padding-block: var(--space-5);
+  border-top: 1px solid var(--bento-edge);
+}
+
+.order-row:first-child {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .order-row__head {

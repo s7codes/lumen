@@ -1,9 +1,10 @@
-import { useId, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { efficacyLmPerW, getCategory, getFinish, STOCK_LABELS } from '../data/products.js';
 import { useBag } from '../hooks/useBag.js';
 import { useCardTilt } from '../hooks/useCardTilt.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
+import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { formatLeadTime, formatUsd, padIndex } from '../lib/format.js';
 import { rgbTriplet } from '../lib/photometry.js';
 import { PlusGlyph } from './icons.jsx';
@@ -34,6 +35,19 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
   const [ownFinish, setOwnFinish] = useState(product.defaultFinish);
   const uid = useId();
   const cardRef = useRef(null);
+  const reveal = useScrollReveal();
+  // Callback refs attach before effects run, so useCardTilt still finds the node.
+  const attachCard = useCallback(
+    (node) => {
+      cardRef.current = node;
+      const release = reveal(node);
+      return () => {
+        release?.();
+        cardRef.current = null;
+      };
+    },
+    [reveal],
+  );
   useCardTilt(cardRef);
 
   const finishId = product.finishes.includes(controlledFinish) ? controlledFinish : ownFinish;
@@ -59,8 +73,8 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
 
   return (
     <article
-      ref={cardRef}
-      className="product-card"
+      ref={attachCard}
+      className="product-card reveal-card"
       aria-labelledby={headingId}
       data-finish={finishId}
       data-mode={mode}

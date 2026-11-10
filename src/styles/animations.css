@@ -43,6 +43,39 @@
   transition: none;
 }
 
+/* Product card entrance. The card grows from 0.95 and fades in as it enters
+   the viewport. It animates the individual scale property, so the inline
+   tilt transform from useCardTilt composes with it, and it uses keyframes,
+   so the card's own border and shadow transitions are left alone. */
+
+:root[data-reveal='on'] .reveal-card:not([data-revealed]) {
+  opacity: 0;
+  scale: var(--reveal-card-scale);
+}
+
+:root[data-reveal='on'] .reveal-card[data-revealed='in'] {
+  animation: lumen-card-in var(--duration-card) var(--ease-cinematic) backwards;
+  animation-delay: calc(var(--reveal-step, 0) * var(--reveal-stagger));
+}
+
+:root[data-reveal='on'] .reveal-card[data-revealed='in']:not([data-reveal-settled]) {
+  will-change: opacity, scale, filter;
+}
+
+@keyframes lumen-card-in {
+  from {
+    opacity: 0;
+    scale: var(--reveal-card-scale);
+    filter: blur(var(--reveal-text-blur));
+  }
+
+  to {
+    opacity: 1;
+    scale: 1;
+    filter: none;
+  }
+}
+
 /* Entrance and disclosure keyframes */
 
 @keyframes lumen-rise {
@@ -134,6 +167,13 @@
     transform: none;
     filter: none;
     transition: none;
+  }
+
+  :root[data-reveal='on'] .reveal-card:not([data-revealed]),
+  :root[data-reveal='on'] .reveal-card[data-revealed] {
+    opacity: 1;
+    scale: none;
+    animation: none;
   }
 
   .notice-transient {

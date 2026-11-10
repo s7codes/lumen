@@ -179,7 +179,7 @@ export function BagDrawer({ open, onClose, returnFocus }) {
               <span className="index-label__num">{padIndex(count)}</span> / Items
             </p>
             <h2 id="bag-drawer-title" className="drawer__title">
-              Bag
+              Cart
             </h2>
           </div>
           <button ref={closeRef} type="button" className="drawer__close" onClick={onClose}>

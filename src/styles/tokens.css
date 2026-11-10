@@ -65,6 +65,7 @@
   --text-xl: clamp(1.75rem, 1.35rem + 1.4vw, 2.5rem);
   --text-headline: clamp(2.5rem, 1.25rem + 4.6vw, 5.75rem);
   --text-display: clamp(3.25rem, 1.1rem + 7.4vw, 9rem);
+  --text-hero: clamp(3rem, 1.2rem + 5.2vw, 7rem);
 
   --weight-light: 350;
   --weight-regular: 400;
@@ -75,6 +76,7 @@
   --leading-snug: 1.25;
   --leading-body: 1.55;
   --tracking-display: -0.052em;
+  --tracking-hero: -0.04em;
   --tracking-headline: -0.042em;
   --tracking-heading: -0.02em;
   --tracking-label: 0.08em;
@@ -114,6 +116,17 @@
   /* Cursor glow radius for product cards; position is written by useCardTilt */
   --tilt-glow-radius: 380px;
 
+  /* Navbar pills: mode switch, account and cart share one soft glass key */
+  --pill-height: 32px;
+  --pill-radius: 24px;
+  --pill-surface: rgba(255, 255, 255, 0.05);
+  --pill-surface-hover: rgba(255, 255, 255, 0.08);
+  --pill-edge: rgba(255, 255, 255, 0.08);
+  --pill-edge-hover: rgba(255, 255, 255, 0.18);
+
+  /* Page atmosphere: a faint oak-amber light falling in from the top right */
+  --glow-oak: radial-gradient(circle at top right, rgba(232, 146, 58, 0.05), transparent 40%);
+
   /* Chrome */
   --nav-height: 56px;
   --z-grid: 0;
@@ -141,6 +154,8 @@
   --reveal-scale: 1.05;
   --reveal-blur: 8px;
   --reveal-stagger: 100ms;
+  --reveal-card-scale: 0.95;
+  --duration-card: 1000ms;
   --hover-zoom: 1.045;
 
   /* Tactile keys: a hovered key lifts off a hard-edged plinth (zero blur)

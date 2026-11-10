@@ -7,9 +7,11 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { ORDER_HISTORY } from '../data/order-history.js';
 import { getFinish, getProduct } from '../data/products.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
+import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { formatUsd, padIndex } from '../lib/format.js';
 import { getFurniture, LIGHTING_MODES, loadRoomState } from '../lib/room-3d.js';
 import { loadLayout, summarizeWall } from '../lib/wall-studio.js';
+import '../styles/pages.css';
 import '../styles/account.css';
 
 /** Main-wall elevation drawn from stored module positions (floor at the bottom). */
@@ -160,6 +162,7 @@ export default function AccountPage() {
   const { user, signOut } = useAuth();
   const { addToast } = useToast();
   const [projects] = useState(readProjects);
+  const reveal = useScrollReveal();
 
   const leave = () => {
     signOut();
@@ -167,34 +170,57 @@ export default function AccountPage() {
   };
 
   return (
-    <>
+    <div className="page-atmosphere" data-testid="account-page">
       <PageHeader
         index="06"
         section="Account"
         title="Account"
         lede="Saved spatial projects and quote history in one place. Projects are read from this browser today and move to cloud storage when the Lumen API ships."
-        meta={[
-          ['Name', user.name],
-          ['Email', user.email],
-          ['Storage', 'Local device'],
-          ['Sync', 'Pending API'],
-        ]}
       />
 
-      <div className="container account-bar">
-        <p className="account-bar__user mono" data-testid="account-user">
-          Signed in as {user.name} / {user.email}
-        </p>
-        <button type="button" className="button" data-testid="sign-out" onClick={leave}>
-          Sign Out
-        </button>
-      </div>
+      <div className="container account-grid reveal-stagger">
+        <section
+          ref={reveal}
+          className="account-profile bento reveal-cinematic"
+          aria-labelledby="account-profile-title"
+          data-testid="account-profile"
+        >
+          <div className="account-profile__identity" data-testid="account-user">
+            <p className="index-label">
+              <span className="index-label__num">01</span> / Profile
+            </p>
+            <h2 id="account-profile-title" className="account-profile__name">
+              {user.name}
+            </h2>
+            <p className="account-profile__email mono">{user.email}</p>
+          </div>
+          <button type="button" className="button account-profile__sign-out" data-testid="sign-out" onClick={leave}>
+            Sign Out
+          </button>
+          <dl className="account-profile__facts mono">
+            {[
+              ['Storage', 'Local device'],
+              ['Sync', 'Pending API'],
+              ['Projects', padIndex(projects.length)],
+              ['Quotes', padIndex(ORDER_HISTORY.length)],
+            ].map(([term, value]) => (
+              <div key={term}>
+                <dt>{term}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
 
-      <div className="container account-layout">
-        <section className="account-panel" aria-labelledby="account-projects-title">
+        <section
+          ref={reveal}
+          className="account-panel bento reveal-cinematic"
+          aria-labelledby="account-projects-title"
+          data-testid="account-projects"
+        >
           <header className="account-panel__head">
             <p className="index-label">
-              <span className="index-label__num">01</span> / Projects
+              <span className="index-label__num">02</span> / Projects
             </p>
             <h2 id="account-projects-title" className="account-panel__title">
               Saved Spatial Projects
@@ -221,10 +247,15 @@ export default function AccountPage() {
           )}
         </section>
 
-        <section className="account-panel" aria-labelledby="account-orders-title">
+        <section
+          ref={reveal}
+          className="account-panel bento reveal-cinematic"
+          aria-labelledby="account-orders-title"
+          data-testid="account-orders"
+        >
           <header className="account-panel__head">
             <p className="index-label">
-              <span className="index-label__num">02</span> / Quotes
+              <span className="index-label__num">03</span> / Quotes
             </p>
             <h2 id="account-orders-title" className="account-panel__title">
               Order History
@@ -238,6 +269,6 @@ export default function AccountPage() {
           <p className="account-panel__note mono">Sample records. Live requisitions replace them once the order API is connected.</p>
         </section>
       </div>
-    </>
+    </div>
   );
 }

@@ -18,17 +18,22 @@ let observer = null;
  * hints (will-change on transform, filter, opacity) so a page of revealed
  * cards does not keep dozens of GPU layers alive.
  */
-function settleAfterTransition(el) {
+function settleAfterMotion(el) {
   let timer = 0;
   const settle = () => {
     window.clearTimeout(timer);
     el.removeEventListener('transitionend', onEnd);
+    el.removeEventListener('animationend', onEnd);
     el.setAttribute('data-reveal-settled', '');
   };
+  // Copy and media settle on their opacity transition; product cards run a
+  // keyframe entrance instead, so their own hover transitions stay untouched.
   function onEnd(event) {
-    if (event.target === el && event.propertyName === 'opacity') settle();
+    if (event.target !== el) return;
+    if (event.type === 'animationend' || event.propertyName === 'opacity') settle();
   }
   el.addEventListener('transitionend', onEnd);
+  el.addEventListener('animationend', onEnd);
   timer = window.setTimeout(settle, SETTLE_FALLBACK_MS);
 }
 
@@ -38,12 +43,13 @@ function markRevealed(el, value, step = 0) {
   if (step > 0) el.style.setProperty('--reveal-step', String(step));
   el.setAttribute('data-revealed', value);
   if (value === 'instant') el.setAttribute('data-reveal-settled', '');
-  else settleAfterTransition(el);
+  else settleAfterMotion(el);
 }
 
+// A card reveals itself from inside its grid cell, so the group is the
+// nearest `.reveal-stagger` ancestor rather than the direct parent.
 function staggerGroup(el) {
-  const parent = el.parentElement;
-  return parent && parent.classList.contains('reveal-stagger') ? parent : null;
+  return el.parentElement?.closest('.reveal-stagger') ?? null;
 }
 
 /**
@@ -93,6 +99,8 @@ function getObserver() {
  * - `.reveal-up` (copy) rises a short distance out of a soft blur.
  * - `.reveal-cinematic` (media) resolves from 1.05 scale and an 8px blur to
  *   full focus over 1200 ms on cubic-bezier(0.16, 1, 0.3, 1).
+ * - `.reveal-card` (product cards) grows from 0.95 scale and fades in over
+ *   1000 ms on the same curve.
  */
 export function useScrollReveal() {
   return useCallback((node) => {

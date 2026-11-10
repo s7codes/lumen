@@ -169,31 +169,35 @@
   transform: scaleX(1);
 }
 
+/* Controls: three glass pills on one 32px baseline, flush right. */
 .navbar__controls {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  justify-content: flex-end;
+  justify-self: end;
+  gap: var(--space-2);
 }
 
-/* Mode switch */
-
-/* Mode switch: a two-position mechanical selector. The engaged segment
-   inverts to solid alabaster; nothing on it glows. */
+/* Mode switch: a pill track with two segments. The engaged segment inverts
+   to solid white; nothing on it glows. */
 
 .mode-switch {
-  display: inline-grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  height: 28px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-xs);
-  background: var(--bg-inset);
-  overflow: hidden;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  height: var(--pill-height);
+  padding: 3px;
+  border: 1px solid var(--pill-edge);
+  border-radius: var(--pill-radius);
+  background: var(--pill-surface);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 .mode-switch__segment {
-  min-width: 46px;
-  padding-inline: 10px;
+  min-width: 48px;
+  padding-inline: var(--space-3);
+  border-radius: var(--pill-radius);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   font-weight: 500;
@@ -206,13 +210,9 @@
     background-color var(--duration-fast) var(--ease-out);
 }
 
-.mode-switch__segment + .mode-switch__segment {
-  border-left: 1px solid var(--border-strong);
-}
-
 .mode-switch__segment:hover:not([aria-pressed='true']) {
   color: var(--text-primary);
-  background: var(--bg-elevated);
+  background: var(--pill-surface-hover);
 }
 
 .mode-switch__segment[aria-pressed='true'] {
@@ -223,36 +223,48 @@
 
 .mode-switch__segment:focus-visible {
   outline: 1px solid var(--lumen-amber);
-  outline-offset: -3px;
-  border-radius: 0;
+  outline-offset: 1px;
 }
 
-/* Bag trigger */
+/* Account and cart triggers */
 
 .bag-trigger,
 .account-trigger {
   display: inline-flex;
   align-items: center;
   gap: 0.5ch;
-  height: 28px;
-  padding-inline: var(--space-3);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  height: var(--pill-height);
+  padding-inline: var(--space-4);
+  border: 1px solid var(--pill-edge);
+  border-radius: var(--pill-radius);
+  background: var(--pill-surface);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   font-weight: 500;
+  line-height: 1;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   transition:
     border-color var(--duration-fast) var(--ease-out),
-    background-color var(--duration-fast) var(--ease-out);
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    translate var(--duration-base) var(--ease-out);
 }
 
 .bag-trigger:hover,
 .account-trigger:hover:not([aria-current='page']) {
-  border-color: var(--text-secondary);
-  background: var(--bg-elevated);
+  border-color: var(--pill-edge-hover);
+  background: var(--pill-surface-hover);
+  translate: 0 -1px;
+}
+
+.bag-trigger:focus-visible,
+.account-trigger:focus-visible {
+  border-radius: var(--pill-radius);
 }
 
 .bag-trigger__count {
@@ -301,6 +313,11 @@
   .mode-switch__segment {
     min-width: 40px;
     padding-inline: var(--space-2);
+  }
+
+  .bag-trigger,
+  .account-trigger {
+    padding-inline: var(--space-3);
   }
 
   .navbar__wordmark {

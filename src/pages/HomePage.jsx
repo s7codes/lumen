@@ -159,7 +159,7 @@ export default function HomePage() {
         />
         <ul className="modules__grid reveal-stagger">
           {FLAGSHIPS.map(({ product, index }) => (
-            <li key={product.id} ref={reveal} className="modules__cell reveal-cinematic">
+            <li key={product.id} className="modules__cell">
               <ProductCard product={product} index={index} />
             </li>
           ))}

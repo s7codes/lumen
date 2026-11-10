@@ -1,20 +1,21 @@
 /* Ambient hero: lighting coordinates are written by useAmbientLight.
    Two tracks: the type owns the left, the right track stays empty so the
-   pendant has open air to swing through. */
+   pendant has open air to swing through. The inset scales with the viewport,
+   so the copy holds a measured margin instead of pressing on the edge. */
 
 .hero {
   --light-x: 74%;
   --light-y: 34%;
   --light-energy: 0;
   --lamp-y: max(var(--light-y), 56px);
-  --hero-inset: clamp(20px, 5.5vw, 120px);
+  --hero-inset: clamp(24px, 9vw, 220px);
 
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 920px) minmax(0, 1fr);
   align-items: end;
   min-height: max(640px, calc(100svh - var(--nav-height)));
-  padding: var(--space-7) var(--hero-inset) clamp(var(--space-7), 5vw, var(--space-10));
+  padding: var(--space-7) var(--hero-inset) clamp(var(--space-6), 3.5vw, var(--space-9));
   overflow: hidden;
   background: var(--bg-canvas);
   isolation: isolate;
@@ -153,18 +154,18 @@
   position: relative;
   grid-column: 1;
   justify-self: start;
-  margin-top: clamp(var(--space-4), 10vh - 40px, var(--space-10));
+  margin-top: clamp(var(--space-6), 16vh - 40px, var(--space-11));
   text-align: left;
 }
 
 .hero__title {
-  max-width: 11ch;
+  max-width: 12ch;
   margin-top: var(--space-6);
   color: var(--text-primary);
-  font-size: var(--text-display);
+  font-size: var(--text-hero);
   font-weight: var(--weight-strong);
   line-height: var(--leading-display);
-  letter-spacing: var(--tracking-display);
+  letter-spacing: var(--tracking-hero);
   text-wrap: balance;
 }
 

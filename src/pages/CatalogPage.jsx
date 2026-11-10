@@ -5,7 +5,6 @@ import { ProductCard } from '../components/ProductCard.jsx';
 import { CATEGORIES, CATEGORY_IDS, FINISHES, PRODUCTS } from '../data/products.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
-import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { padIndex } from '../lib/format.js';
 import { isOneOf, sanitizeText } from '../security/sanitize.js';
 import '../styles/pages.css';
@@ -55,7 +54,6 @@ export default function CatalogPage() {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('index');
   const [finishes, setFinishes] = useState(() => new Map());
-  const reveal = useScrollReveal();
 
   const category = readCategory(params);
   const needle = sanitizeText(query, { maxLength: QUERY_MAX }).toLowerCase();
@@ -161,7 +159,7 @@ export default function CatalogPage() {
           {results.length > 0 ? (
             <ul className="product-grid reveal-stagger">
               {results.map((product) => (
-                <li key={product.id} ref={reveal} className="product-grid__cell reveal-cinematic">
+                <li key={product.id} className="product-grid__cell">
                   <ProductCard
                     product={product}
                     index={product.order}
