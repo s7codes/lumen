@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v0.8.0-e8923a)
+![Release](https://img.shields.io/badge/release-v0.9.0-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![three.js](https://img.shields.io/badge/three.js-r187-2a2825)
@@ -11,15 +11,18 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v0.8.0**. Cinematic redesign and declutter. The structural grid drops
-to a 1% texture, the overview and catalog lose their ruled sheets and card fills in
-favour of 160-200px section spacing and a headline scale up to 9rem, and media resolves
-into view from a 1.05 scale and 8px blur. Product drawings sit on a soft lit stage and
-ease forward on hover, and toasts become glass pills at the bottom centre. The
-production CSS now ships the standard `backdrop-filter`, so glass surfaces blur in
-Chromium builds.
+Current release: **v0.9.0**. Spatial design, hero alignment and bento layouts. The hero
+copy anchors to the left page inset and sits low in the frame, leaving the right track
+open for the pendant. Type runs pure white (`#ffffff`) over silver body copy (`#b8b8b8`),
+and from 1920px the frame widens and the root type steps up for 2K displays. Everything
+below the hero sits in frosted bento tiles: the spec strip, the surface lab bench and
+panel, core modules, workspaces, the catalog filter bar and every product card. Product
+cards tilt toward the pointer on a dt-integrated spring and carry a cursor glow tinted
+to the fixture's own colour temperature.
 
-Previous: **v0.7.0**. WebGL room on React Three Fiber with a shadow-mapped sun and
+Previous: **v0.8.0**. Cinematic redesign and declutter: a 1% structural grid, 160-200px
+section spacing, a headline scale up to 9rem, blur-scale reveals and glass toast pills.
+**v0.7.0**. WebGL room on React Three Fiber with a shadow-mapped sun and
 per-module LED lights, a front-end account shell with a protected `/account`
 dashboard, and a React toast stack. **v0.6.0**. Motion and progressive disclosure: scroll reveals, tactile keys,
 glass planner panels, folded dimension inputs and a camera settings popover.
@@ -67,8 +70,9 @@ src/
                         order-history.js (sample quote archive)
   pages/                Home, Catalog, ProductDetail, Checkout, RoomPlanner,
                         WallStudio, Account, NotFound
-  hooks/                useAmbientLight, useBag, useDisplayMode, useDocumentTitle,
-                        useLaunchedModule, useMagneticField, useModalDialog,
+  hooks/                useAmbientLight, useBag, useCardTilt, useDisplayMode,
+                        useDocumentTitle, useLaunchedModule, useMagneticField,
+                        useModalDialog,
                         useRoom3d, useScrollReveal, useWallStudio
   lib/                  bag store and PSU sizing, wall studio geometry and history,
                         room model and 2D bridge (room-3d), WebGL scene description
@@ -98,21 +102,31 @@ tests/                  Playwright specs, named by architectural domain
 
 ## Design system
 
-All values live in `src/styles/tokens.css`. Near-black basalt canvas (`#050505`),
-alabaster type, tungsten amber (`#e8923a`) as the single accent, anodized aluminum
-neutrals. 2-4px radii, tabular-nums index labels (`01 / OVERVIEW`). Sections are
-separated by air and type scale, not rules or tiles: `--section-space` is 160px at
-1280 wide and 200px from 1600, headlines run 640 weight against 300 weight ledes, and
-product drawings sit on `--bg-stage`, a soft radial plinth with no outline. The
-12-column structural grid sits behind the shell at 1% and fades out down the viewport.
-Technical mode tints it amber, keeps it full height and reveals measurement overlays;
-the choice persists through validated storage.
+All values live in `src/styles/tokens.css`. Near-black basalt canvas (`#050505`), pure
+white type (`--text-primary: #ffffff`) over silver body and data copy
+(`--text-secondary: #b8b8b8`), tungsten amber (`#e8923a`) as the single accent,
+anodized aluminum neutrals. Controls keep 2-4px radii; tabular-nums index labels
+(`01 / OVERVIEW`). `--section-space` is 160px at 1280 wide and 200px from 1600, and
+headlines run 640 weight against 350 weight ledes. From 1920px `--grid-max` widens to
+1600px and the root type steps to 17px (18px and 1760px from 2400px), so copy holds on
+2K displays. The 12-column structural grid sits behind the shell at 1% and fades out
+down the viewport. Technical mode tints it amber, keeps it full height and reveals
+measurement overlays; the choice persists through validated storage.
+
+Bento tiles carry every major block below the hero. `.bento` (and the product card)
+is `linear-gradient(145deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))` on a 16px
+backdrop blur, a 1px `rgba(255,255,255,0.06)` edge and a 16px radius, the one exception
+to the micro radii. Tiles sit on a tight 12-20px gutter (`--bento-gap`) so the air
+between sections stays the dominant rhythm; inner stages such as product drawings and
+workspace glyphs use 12px. The hero is a two-track grid: copy in a left track capped at
+920px and flush with the page inset (`--hero-inset`, up to 120px), the right track left
+empty for the pendant.
 
 The mark is a 24 x 24 monogram: structural spine, base return and a cantilevered shelf
-slab in alabaster, with a 2 x 6.5 tungsten aperture held between slab and base. It pairs
+slab in white, with a 2 x 6.5 tungsten aperture held between slab and base. It pairs
 with `LUMEN` tracked at 0.14em; `public/favicon.svg` carries the same geometry on basalt.
 The display mode switch is two typographic segments in a 1px frame, and the engaged one
-inverts to solid alabaster. Buttons, switches and badges never glow: light belongs only to
+inverts to solid white. Buttons, switches and badges never glow: light belongs only to
 the simulated fixtures.
 
 The hero light is a damped spring (`k = 90`, `c = 12`, slightly under-damped). Each rAF
@@ -139,6 +153,15 @@ custom properties, so React never re-renders on pointer movement.
   `html[data-reveal='on']`, set only when the observer exists.
 - Hover: product drawings and workspace glyphs scale to 1.045 over 900 ms inside a
   clipped stage, so the card never changes size.
+- Card tilt and glow: `useCardTilt` maps the pointer inside a product card to
+  `perspective(1000px) rotateX() rotateY()`, at most 4 deg per axis, with the hovered
+  corner lifting toward the viewer so a key under the pointer grows toward it. The tilt
+  runs on the closed-form spring (`k = 170`, `c = 26`, just under critical) in a rAF
+  loop that stops once settled, and is written straight to `style.transform`; at rest
+  the inline transform is removed. The same loop writes `--glow-x`, `--glow-y` and
+  `--glow-a` for a 380px radial glow behind the drawing, tinted by the fixture's CCT.
+  Touch input is ignored; coarse pointers and reduced motion keep the glow and skip
+  the tilt.
 - Tactile keys: every `.button` lifts 2px on hover off a 4px plinth drawn as a zero-blur
   offset `box-shadow`. `useMagneticField` is one delegated pointer listener that pulls
   the hovered key toward a fine pointer by at most 4 x 3 px; the plinth stays where the
