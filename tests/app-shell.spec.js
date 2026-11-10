@@ -140,6 +140,66 @@ test.describe('app shell', () => {
       .toBe(true);
   });
 
+  test('hero copy anchors to the left edge and leaves the right track open for the pendant', async ({ page }) => {
+    for (const viewport of [
+      { width: 1280, height: 720 },
+      { width: 2560, height: 1440 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto('/');
+      const hero = page.getByTestId('ambient-surface');
+      const copy = page.getByTestId('hero-copy');
+      const title = page.locator('.hero__title');
+      await expect(title).toHaveCSS('opacity', '1');
+
+      const heroBox = await hero.boundingBox();
+      const copyBox = await copy.boundingBox();
+      const label = `${viewport.width}x${viewport.height}`;
+      // Flush with the page inset, not centred in the 1440 frame.
+      expect(copyBox.x - heroBox.x, label).toBeLessThanOrEqual(Math.max(120, viewport.width * 0.055) + 1);
+      // The widest rendered line of copy stops well short of the lamp at rest (74%).
+      const inkRight = await copy.evaluate((el) => {
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const range = document.createRange();
+        let right = 0;
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          range.selectNodeContents(node);
+          for (const rect of range.getClientRects()) right = Math.max(right, rect.right);
+        }
+        return right;
+      });
+      expect(inkRight, label).toBeLessThan(heroBox.x + heroBox.width * 0.66);
+      // Lowered into the frame: the copy sits in the lower part of the hero.
+      expect(copyBox.y - heroBox.y, label).toBeGreaterThan(heroBox.height * 0.08);
+      expect(heroBox.y + heroBox.height - (copyBox.y + copyBox.height), label).toBeLessThan(heroBox.height * 0.2);
+    }
+
+    await expect(page.locator('.hero__title')).toHaveCSS('color', 'rgb(255, 255, 255)');
+    await expect(page.locator('.hero__lede')).toHaveCSS('color', 'rgb(184, 184, 184)');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(5, 5, 5)');
+  });
+
+  test('home content below the hero sits in 16px bento tiles', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    const tiles = [
+      page.locator('.spec-strip__item').first(),
+      page.getByTestId('lab-bench'),
+      page.getByTestId('lab-panel'),
+      page.getByTestId('core-modules').locator('.product-card').first(),
+      page.locator('.modules__foot'),
+      page.locator('.entry-card').first(),
+    ];
+    for (const tile of tiles) {
+      const look = await tile.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { radius: style.borderTopLeftRadius, edge: style.borderTopColor, width: style.borderTopWidth };
+      });
+      expect(look).toEqual({ radius: '16px', edge: 'rgba(255, 255, 255, 0.06)', width: '1px' });
+    }
+    await expect(page.getByTestId('lab-panel')).toHaveCSS('backdrop-filter', 'blur(16px)');
+  });
+
   test('a fresh document load starts at the top instead of inheriting another page scroll', async ({
     page,
   }) => {

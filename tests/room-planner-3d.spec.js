@@ -171,9 +171,9 @@ test.describe('brand mark and display mode switch', () => {
       rects.map((rect) => [rect.dataset.part, getComputedStyle(rect).fill]),
     );
     expect(Object.fromEntries(fills)).toEqual({
-      spine: 'rgb(242, 238, 231)',
-      base: 'rgb(242, 238, 231)',
-      cantilever: 'rgb(242, 238, 231)',
+      spine: 'rgb(255, 255, 255)',
+      base: 'rgb(255, 255, 255)',
+      cantilever: 'rgb(255, 255, 255)',
       aperture: 'rgb(232, 146, 58)',
     });
 
@@ -195,9 +195,9 @@ test.describe('brand mark and display mode switch', () => {
     const favicon = await (await request.get('/favicon.svg')).text();
     expect(favicon).toContain('viewBox="0 0 32 32"');
     expect(favicon).toContain('fill="#0b0b0a"');
-    expect(favicon).toContain('<rect x="3" y="3" width="4" height="18" fill="#f2eee7"/>');
-    expect(favicon).toContain('<rect x="3" y="17" width="18" height="4" fill="#f2eee7"/>');
-    expect(favicon).toContain('<rect x="10" y="3" width="11" height="3.5" fill="#f2eee7"/>');
+    expect(favicon).toContain('<rect x="3" y="3" width="4" height="18" fill="#ffffff"/>');
+    expect(favicon).toContain('<rect x="3" y="17" width="18" height="4" fill="#ffffff"/>');
+    expect(favicon).toContain('<rect x="10" y="3" width="11" height="3.5" fill="#ffffff"/>');
     expect(favicon).toContain('<rect x="14.25" y="8.5" width="2" height="6.5" fill="#e8923a"/>');
   });
 
@@ -221,7 +221,7 @@ test.describe('brand mark and display mode switch', () => {
     expect(frame).toEqual({ border: '1px solid', color: 'rgba(242, 238, 231, 0.16)' });
 
     await expect(arch).toHaveAttribute('aria-pressed', 'true');
-    expect(await paint(arch)).toEqual({ background: 'rgb(242, 238, 231)', color: 'rgb(11, 11, 10)', shadow: 'none' });
+    expect(await paint(arch)).toEqual({ background: 'rgb(255, 255, 255)', color: 'rgb(11, 11, 10)', shadow: 'none' });
 
     await tech.click();
     await expect(html).toHaveAttribute('data-mode', 'technical');
@@ -230,7 +230,7 @@ test.describe('brand mark and display mode switch', () => {
     // Polled: the inversion eases over 120 ms.
     await expect
       .poll(() => paint(tech))
-      .toEqual({ background: 'rgb(242, 238, 231)', color: 'rgb(11, 11, 10)', shadow: 'none' });
+      .toEqual({ background: 'rgb(255, 255, 255)', color: 'rgb(11, 11, 10)', shadow: 'none' });
     await expect.poll(async () => (await paint(arch)).background).toBe('rgba(0, 0, 0, 0)');
     expect((await paint(arch)).shadow).toBe('none');
 

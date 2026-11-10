@@ -165,15 +165,64 @@ test.describe('scroll reveal', () => {
   });
 });
 
+// Inline tilt, glow custom properties and the layout footprint of a card.
+function readTilt(card) {
+  return card.evaluate((el) => {
+    const glow = getComputedStyle(el, '::before');
+    const match = el.style.transform.match(
+      /^perspective\((\d+)px\) rotateX\((-?[\d.]+)deg\) rotateY\((-?[\d.]+)deg\)$/,
+    );
+    return {
+      inline: el.style.transform,
+      computed: getComputedStyle(el).transform,
+      perspective: match ? Number(match[1]) : null,
+      rx: match ? Number(match[2]) : 0,
+      ry: match ? Number(match[3]) : 0,
+      glowA: Number.parseFloat(el.style.getPropertyValue('--glow-a') || '0'),
+      glowX: Number.parseFloat(el.style.getPropertyValue('--glow-x') || '0'),
+      glowY: Number.parseFloat(el.style.getPropertyValue('--glow-y') || '0'),
+      glowOpacity: Number.parseFloat(glow.opacity),
+      glowImage: glow.backgroundImage,
+      footprint: `${el.offsetWidth}x${el.offsetHeight}`,
+    };
+  });
+}
+
+async function settledCatalogCard(page, name) {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/catalog');
+  const card = page.getByRole('article', { name });
+  await card.scrollIntoViewIfNeeded();
+  await expect.poll(async () => (await revealState(card.locator('xpath=..'))).at(0).transform).toBe('none');
+  return card;
+}
+
 test.describe('product imagery', () => {
-  test('hovering a catalog card eases its drawing forward inside a fixed, clipped stage', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto('/catalog');
-    const card = page.getByRole('article', { name: 'Floating Shelf 110' });
+  test('a catalog card is a frosted bento tile with a 16px radius and a hairline edge', async ({ page }) => {
+    const card = await settledCatalogCard(page, 'Floating Shelf 110');
+    const tile = await card.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        radius: style.borderTopLeftRadius,
+        border: `${style.borderTopWidth} ${style.borderTopStyle} ${style.borderTopColor}`,
+        image: style.backgroundImage,
+        blur: style.backdropFilter,
+      };
+    });
+    expect(tile.radius).toBe('16px');
+    expect(tile.border).toBe('1px solid rgba(255, 255, 255, 0.06)');
+    expect(tile.image).toBe(
+      'linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%)',
+    );
+    expect(tile.blur).toBe('blur(16px)');
+  });
+
+  test('hovering a catalog card tilts it toward the pointer, lights a cursor glow and eases the drawing forward', async ({
+    page,
+  }) => {
+    const card = await settledCatalogCard(page, 'Floating Shelf 110');
     const stage = card.locator('.product-card__figure');
     const drawing = stage.locator('svg.elev');
-    await card.scrollIntoViewIfNeeded();
-    await expect.poll(async () => (await revealState(card.locator('xpath=..'))).at(0).transform).toBe('none');
 
     await expect(stage).toHaveCSS('overflow', 'hidden');
     // No outline and no solid tile: the stage is a soft gradient only.
@@ -193,15 +242,52 @@ test.describe('product imagery', () => {
     expect(timing).toEqual({ duration: '0.9s', easing: CINEMATIC_EASE });
     await expect(drawing).toHaveCSS('transform', 'none');
 
-    const restBox = await stage.boundingBox();
-    const cardBox = await card.boundingBox();
-    await card.locator('.product-card__name').hover();
+    // At rest the card carries no transform at all and the glow is dark.
+    const rest = await readTilt(card);
+    expect(rest).toMatchObject({ inline: '', computed: 'none', glowA: 0, glowOpacity: 0 });
+    expect(rest.glowImage).toContain('radial-gradient');
+    const stageFootprint = await stage.evaluate((el) => `${el.offsetWidth}x${el.offsetHeight}`);
+
+    // Upper-left quadrant: that corner lifts toward the viewer, so rotateX
+    // goes negative and rotateY positive, each capped at 4 degrees.
+    const box = await card.boundingBox();
+    const pointer = { x: box.width * 0.25, y: box.height * 0.2 };
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.move(box.x + pointer.x, box.y + pointer.y, { steps: 6 });
     await expect(drawing).toHaveCSS('transform', 'matrix(1.045, 0, 0, 1.045, 0, 0)');
-    expect(await stage.boundingBox()).toEqual(restBox);
-    expect(await card.boundingBox()).toEqual(cardBox);
+    await expect.poll(async () => (await readTilt(card)).glowA).toBeGreaterThan(0.95);
+    const tilted = await readTilt(card);
+    expect(tilted.perspective).toBe(1000);
+    expect(tilted.rx).toBeLessThan(-1);
+    expect(tilted.ry).toBeGreaterThan(1);
+    expect(Math.abs(tilted.rx)).toBeLessThanOrEqual(4);
+    expect(Math.abs(tilted.ry)).toBeLessThanOrEqual(4);
+    expect(tilted.computed).toMatch(/^matrix3d\(/);
+    expect(tilted.glowOpacity).toBeGreaterThan(0.95);
+    // The glow sits under the pointer, measured from the card's top-left.
+    expect(Math.abs(tilted.glowX - pointer.x)).toBeLessThan(16);
+    expect(Math.abs(tilted.glowY - pointer.y)).toBeLessThan(16);
+    // Tilt is paint only: the layout footprint of card and stage never moves.
+    expect(tilted.footprint).toBe(rest.footprint);
+    expect(await stage.evaluate((el) => `${el.offsetWidth}x${el.offsetHeight}`)).toBe(stageFootprint);
 
     await page.mouse.move(4, 4);
     await expect(drawing).toHaveCSS('transform', 'none');
+    await expect
+      .poll(async () => {
+        const { inline, computed, glowA } = await readTilt(card);
+        return { inline, computed, glowA };
+      })
+      .toEqual({ inline: '', computed: 'none', glowA: 0 });
+  });
+
+  test('reduced motion keeps the cursor glow but never tilts a card', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const card = await settledCatalogCard(page, 'Corner Floor Column 140');
+    const box = await card.boundingBox();
+    await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.3, { steps: 4 });
+    await expect.poll(async () => (await readTilt(card)).glowA).toBeGreaterThan(0.95);
+    expect(await readTilt(card)).toMatchObject({ inline: '', computed: 'none' });
   });
 });
 

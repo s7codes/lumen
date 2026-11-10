@@ -97,7 +97,7 @@ test.describe('authentication shell', () => {
           return { background: style.backgroundColor, color: style.color, shadow: style.boxShadow };
         }),
       )
-      .toEqual({ background: 'rgb(242, 238, 231)', color: 'rgb(11, 11, 10)', shadow: 'none' });
+      .toEqual({ background: 'rgb(255, 255, 255)', color: 'rgb(11, 11, 10)', shadow: 'none' });
 
     // The session survives a reload.
     await page.reload();
