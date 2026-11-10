@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useToast } from '../../contexts/ToastContext.jsx';
 import { MAX_IMPORT_BYTES, sanitizeLayout, serializeLayout } from '../../lib/wall-studio.js';
 import { safeJsonParse } from '../../security/sanitize.js';
 
@@ -17,12 +18,15 @@ function downloadJson(filename, value) {
 export function StudioToolbar({ layout, canUndo, canRedo, notice, actions }) {
   const fileRef = useRef(null);
   const [armed, setArmed] = useState(false);
+  const { addToast } = useToast();
   const count = layout.items.length;
 
   const exportLayout = () => {
     const { widthCm, heightCm } = layout.wall;
     downloadJson(`lumen-wall-${widthCm}x${heightCm}.json`, serializeLayout(layout));
-    actions.announce(`Exported ${count} ${count === 1 ? 'module' : 'modules'} as JSON.`);
+    const text = `Exported ${count} ${count === 1 ? 'module' : 'modules'} as JSON.`;
+    actions.announce(text);
+    addToast(`Wall layout saved. ${text}`, 'success');
   };
 
   const importFile = async (event) => {
@@ -52,7 +56,9 @@ export function StudioToolbar({ layout, canUndo, canRedo, notice, actions }) {
     const kept = next.items.length;
     const dropped = parsed.items.length - kept;
     const base = `Imported ${kept} ${kept === 1 ? 'module' : 'modules'}`;
-    actions.importLayout(next, dropped > 0 ? `${base}, ${dropped} rejected.` : `${base}.`);
+    const result = dropped > 0 ? `${base}, ${dropped} rejected.` : `${base}.`;
+    actions.importLayout(next, result);
+    addToast(result, dropped > 0 ? 'warn' : 'success');
   };
 
   return (

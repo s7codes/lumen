@@ -1,0 +1,249 @@
+/* Toast notifications: bottom-right stack above every layer. The stack and
+   the toast bodies let the pointer through, so a toast never blocks the
+   control underneath; only the dismiss key takes clicks. */
+
+.toast-region {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: var(--z-toast);
+  width: min(360px, calc(100vw - 2 * var(--space-4)));
+  pointer-events: none;
+}
+
+.toast-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.toast {
+  --toast-rule: var(--text-secondary);
+  position: relative;
+  display: grid;
+  grid-template-columns: 5ch minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-left: 2px solid var(--toast-rule);
+  border-radius: var(--radius-sm);
+  background: var(--glass-hud);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.1);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.1);
+  box-shadow: 0 var(--key-plinth) 0 0 var(--key-plinth-neutral);
+  overflow: hidden;
+  animation: toast-in var(--duration-slow) var(--ease-out) both;
+}
+
+.toast[data-tone='success'] {
+  --toast-rule: var(--lumen-amber);
+}
+
+.toast[data-tone='warn'] {
+  --toast-rule: var(--lumen-amber-soft);
+}
+
+.toast[data-tone='error'] {
+  --toast-rule: var(--signal-fault);
+}
+
+.toast[data-leaving] {
+  animation: toast-out var(--duration-base) var(--ease-in-out) both;
+}
+
+.toast__tone {
+  padding-top: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--toast-rule);
+}
+
+.toast__message {
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.toast__dismiss {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: -2px -4px 0 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  pointer-events: auto;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.toast__dismiss:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.toast__timer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--toast-rule);
+  opacity: 0.6;
+  transform-origin: left;
+  animation: toast-timer 4000ms linear both;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes toast-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .toast[data-leaving] {
+    animation: none;
+  }
+
+  .toast__timer {
+    display: none;
+  }
+}
+
+/* Account trigger in the navbar. Same key as the bag trigger; on /account
+   it inverts flat, like the engaged mode switch segment. */
+
+.account-trigger[aria-current='page'] {
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+  color: var(--text-inverse);
+}
+
+/* Sign-in dialog */
+
+.modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+}
+
+.modal-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 8, 7, 0.72);
+  animation: drawer-fade var(--duration-base) var(--ease-out);
+}
+
+.auth-modal {
+  position: relative;
+  width: min(400px, 100%);
+  max-height: calc(100dvh - 2 * var(--space-4));
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  animation: modal-rise var(--duration-slow) var(--ease-out);
+}
+
+.auth-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.auth-modal__title {
+  margin-top: var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  letter-spacing: var(--tracking-heading);
+}
+
+.auth-modal__form {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.auth-field__input {
+  height: 40px;
+}
+
+.auth-field[data-invalid] .field__input {
+  border-color: var(--signal-fault);
+}
+
+.auth-field__error,
+.auth-field__hint {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.auth-field__error {
+  color: var(--signal-fault-soft);
+}
+
+.auth-field__hint {
+  color: var(--text-muted);
+}
+
+.auth-modal__submit {
+  justify-content: space-between;
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+.auth-modal__note {
+  font-size: 10px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+@keyframes modal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

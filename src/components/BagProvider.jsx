@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+import { useToast } from '../contexts/ToastContext.jsx';
 import { getFinish, getProduct } from '../data/products.js';
 import { BagContext, BagDrawerContext } from '../hooks/useBag.js';
 import { BAG_STORAGE_KEY, bagReducer, loadBag, persistBag, summarizeBag } from '../lib/bag.js';
 
 export function BagProvider({ children }) {
   const [items, dispatch] = useReducer(bagReducer, undefined, loadBag);
-  const [notice, setNotice] = useState({ text: '', serial: 0 });
+  const { addToast } = useToast();
   const [drawer, setDrawer] = useState({ open: false, returnFocus: null });
 
   // Writing on mount also replaces a tampered payload with the sanitized lines.
@@ -22,9 +23,7 @@ export function BagProvider({ children }) {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const announce = useCallback((text) => {
-    setNotice((prev) => ({ text, serial: prev.serial + 1 }));
-  }, []);
+  const announce = useCallback((text) => addToast(text, 'success'), [addToast]);
 
   const add = useCallback(
     (id, finish, qty = 1) => {
@@ -69,9 +68,6 @@ export function BagProvider({ children }) {
     <BagContext.Provider value={value}>
       <BagDrawerContext.Provider value={drawerValue}>
         {children}
-        <div className="visually-hidden" role="status" aria-live="polite">
-          <span key={notice.serial}>{notice.text}</span>
-        </div>
       </BagDrawerContext.Provider>
     </BagContext.Provider>
   );

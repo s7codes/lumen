@@ -92,6 +92,8 @@
   --z-content: 1;
   --z-nav: 20;
   --z-drawer: 40;
+  --z-modal: 50;
+  --z-toast: 100;
 
   /* Motion */
   --ease-out: cubic-bezier(0.2, 0.7, 0.1, 1);

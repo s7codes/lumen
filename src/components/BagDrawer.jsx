@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useToast } from '../contexts/ToastContext.jsx';
 import { useBag } from '../hooks/useBag.js';
+import { useModalDialog } from '../hooks/useModalDialog.js';
 import { MAX_LINE_QTY } from '../lib/bag.js';
 import { formatUsd, padIndex } from '../lib/format.js';
 import { ArrowRight } from './icons.jsx';
 
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const METER_SEGMENTS = 20;
 
 function Stepper({ label, qty, onStep }) {
@@ -138,42 +138,19 @@ export function BagDrawer({ open, onClose, returnFocus }) {
   const closeRef = useRef(null);
   const listRef = useRef(null);
   const { lines, count, subtotalUsd, loadW, psu, step, remove, clear } = useBag();
+  const { addToast } = useToast();
 
-  useEffect(() => {
-    if (!open) return undefined;
+  const removeLine = (line) => {
+    remove(line.id, line.finish.id);
+    addToast(`Removed ${line.product.name}, ${line.finish.label} from the bag.`, 'info');
+  };
 
-    const trigger = returnFocus;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    closeRef.current?.focus();
+  const clearBag = () => {
+    clear();
+    addToast(`Bag cleared: ${count} ${count === 1 ? 'item' : 'items'} removed.`, 'info');
+  };
 
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        onClose();
-        return;
-      }
-      if (event.key !== 'Tab' || !panelRef.current) return;
-
-      const nodes = panelRef.current.querySelectorAll(FOCUSABLE);
-      if (nodes.length === 0) return;
-      const first = nodes[0];
-      const last = nodes[nodes.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      if (trigger?.isConnected) trigger.focus();
-    };
-  }, [open, onClose, returnFocus]);
+  useModalDialog({ open, panelRef, initialFocusRef: closeRef, returnFocus, onClose });
 
   // Removing a line unmounts the focused button. Keep focus inside the dialog.
   useEffect(() => {
@@ -218,7 +195,7 @@ export function BagDrawer({ open, onClose, returnFocus }) {
                   key={line.key}
                   line={line}
                   onStep={(delta) => step(line.id, line.finish.id, delta)}
-                  onRemove={() => remove(line.id, line.finish.id)}
+                  onRemove={() => removeLine(line)}
                 />
               ))}
             </ul>
@@ -241,7 +218,7 @@ export function BagDrawer({ open, onClose, returnFocus }) {
           subtotalUsd={subtotalUsd}
           loadW={loadW}
           psu={psu}
-          onClear={clear}
+          onClear={clearBag}
           onCheckout={onClose}
         />
       </aside>

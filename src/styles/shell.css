@@ -220,7 +220,8 @@
 
 /* Bag trigger */
 
-.bag-trigger {
+.bag-trigger,
+.account-trigger {
   display: inline-flex;
   align-items: center;
   gap: 0.5ch;
@@ -239,7 +240,8 @@
     background-color var(--duration-fast) var(--ease-out);
 }
 
-.bag-trigger:hover {
+.bag-trigger:hover,
+.account-trigger:hover:not([aria-current='page']) {
   border-color: var(--text-secondary);
   background: var(--bg-elevated);
 }

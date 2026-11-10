@@ -1,5 +1,7 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { LayoutShell } from './components/LayoutShell.jsx';
+import { RequireAuth } from './contexts/AuthContext.jsx';
+import AccountPage from './pages/AccountPage.jsx';
 import CatalogPage from './pages/CatalogPage.jsx';
 import CheckoutPage from './pages/CheckoutPage.jsx';
 import HomePage from './pages/HomePage.jsx';
@@ -28,6 +30,14 @@ export const router = createBrowserRouter([
       { path: 'checkout', element: <CheckoutPage /> },
       { path: 'room-3d', element: <RoomPlannerPage /> },
       { path: 'studio-2d', element: <WallStudioPage /> },
+      {
+        path: 'account',
+        element: (
+          <RequireAuth>
+            <AccountPage />
+          </RequireAuth>
+        ),
+      },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

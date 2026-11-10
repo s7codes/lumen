@@ -5,6 +5,7 @@ import { RoomInspector } from '../components/room3d/RoomInspector.jsx';
 import { RoomSummary } from '../components/room3d/RoomSummary.jsx';
 import { RoomToolbar } from '../components/room3d/RoomToolbar.jsx';
 import { RoomViewport } from '../components/room3d/RoomViewport.jsx';
+import { useToast } from '../contexts/ToastContext.jsx';
 import { useBag, useBagDrawer } from '../hooks/useBag.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
@@ -26,6 +27,7 @@ export default function RoomPlannerPage() {
   const { state, selected, notice, actions } = useRoom3d();
   const { addMany } = useBag();
   const { openBag } = useBagDrawer();
+  const { addToast } = useToast();
   const [status, setStatus] = useState('');
   const [wireframe, setWireframe] = useState(false);
   const syncRef = useRef(null);
@@ -42,6 +44,7 @@ export default function RoomPlannerPage() {
     if (capped) text += ` Wall capped at ${widthCm} cm; ${plural(moved, 'module')} pulled inside.`;
     setStatus(text);
     actions.announce(text, capped && moved > 0 ? 'warn' : 'info');
+    addToast(`Room saved to Wall Studio: ${plural(layout.items.length, 'module')}.`, capped && moved > 0 ? 'warn' : 'success');
   };
 
   const syncToBag = () => {
@@ -60,7 +63,7 @@ export default function RoomPlannerPage() {
         title="Room Planner"
         lede="A dimensioned room with the main wall at Z 0. Mount parts in three dimensions, check clearances against a floor reference, and move the wall between the 2D studio, the room and the bag."
         meta={[
-          ['Engine', 'Perspective SVG / no WebGL'],
+          ['Engine', 'WebGL 2 / React Three Fiber'],
           ['Units', 'cm'],
           ['Room', `${room.widthCm} x ${room.depthCm} x ${room.heightCm} cm`],
           ['Reference', getFurniture(room.furniture).label],

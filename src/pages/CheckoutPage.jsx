@@ -2,6 +2,7 @@ import { useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight } from '../components/icons.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
+import { useToast } from '../contexts/ToastContext.jsx';
 import { useBag } from '../hooks/useBag.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { padIndex } from '../lib/format.js';
@@ -255,6 +256,7 @@ export default function CheckoutPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [confirmed, setConfirmed] = useState(null);
+  const { addToast } = useToast();
 
   const quote = useMemo(
     () => buildQuote({ items, currencyCode, promo, includeDriver }),
@@ -303,11 +305,14 @@ export default function CheckoutPage() {
       document.getElementById(`${uid}-${first}`)?.focus();
       return;
     }
-    setConfirmed({ ref: requisitionRef(), quoteId: quote.quoteId, project, gross: quote.totals.gross, currency: quote.currency });
+    const ref = requisitionRef();
+    setConfirmed({ ref, quoteId: quote.quoteId, project, gross: quote.totals.gross, currency: quote.currency });
+    addToast(`Requisition ${ref} logged for ${project.reference}.`, 'success');
   };
 
   const exportJson = () => {
     downloadJson(`lumen-quote-${quote.quoteId}.json`, serializeQuote(quote, project));
+    addToast(`Quote ${quote.quoteId} saved as JSON.`, 'success');
   };
 
   if (count === 0 && !confirmed) {
