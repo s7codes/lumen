@@ -73,6 +73,13 @@ async function loadPreset(page, name) {
   await expect(page.getByTestId('studio-notice')).toHaveText(`Loaded ${name}.`);
 }
 
+// Wall dimensions sit behind a progressive disclosure; open it before typing.
+async function openDimensions(page) {
+  const toggle = page.getByTestId('wall-dimensions').getByRole('button', { name: /^Dimensions/ });
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(page.getByTestId('wall-width')).toBeVisible();
+}
+
 async function commitField(page, testId, value) {
   const input = page.getByTestId(testId);
   await input.fill(String(value));
@@ -180,6 +187,7 @@ test.describe('wall studio', () => {
     await openStudio(page);
     const canvas = wallCanvas(page);
 
+    await openDimensions(page);
     await commitField(page, 'wall-width', 360);
     await expect(canvas).toHaveAttribute('data-width-cm', '360');
     await expect(page.getByTestId('wall-label')).toHaveText('Elevation / Wall A / 360 x 250 cm');
@@ -508,12 +516,81 @@ test.describe('wall studio', () => {
     await expect(bar).toHaveCount(1);
   });
 
+  test('progressive disclosure keeps dimensions folded and coordinates out until a module is selected', async ({
+    page,
+  }) => {
+    const errors = collectRuntimeErrors(page);
+    await openStudio(page);
+
+    const disclosure = page.getByTestId('wall-dimensions');
+    const toggle = disclosure.getByRole('button', { name: /^Dimensions/ });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toContainText('300 x 250 cm');
+    await expect(page.getByTestId('wall-width')).toBeHidden();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('wall-width')).toBeVisible();
+    await commitField(page, 'wall-height', 280);
+    await expect(toggle).toContainText('300 x 280 cm');
+    await toggle.click();
+    await expect(page.getByTestId('wall-width')).toBeHidden();
+
+    // Nothing selected: the inspector lists modules without coordinate inputs,
+    // and each row shows its coordinates only under the pointer.
+    await loadPreset(page, 'Nordic Reading Wall');
+    await expect(inspector(page).getByTestId('module-x')).toHaveCount(0);
+    const row = inspector(page).locator('.module-list__item').first();
+    const coords = row.locator('.module-list__coords');
+    await expect(coords).toHaveCSS('opacity', '0');
+    await row.hover();
+    await expect(coords).toHaveCSS('opacity', '1');
+
+    await page.locator('[data-testid="wall-module"][data-uid="m2"]').click();
+    const position = inspector(page).locator('.studio-inspector__position');
+    await expect(position).toHaveCSS('animation-name', 'lumen-unfold');
+    await expect(inspector(page).getByTestId('module-x')).toBeVisible();
+    await expect(inspector(page).getByTestId('module-x')).toHaveValue('40');
+    await inspector(page).getByRole('button', { name: 'Done' }).click();
+    await expect(inspector(page).getByTestId('module-x')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('dragging a module dims the surrounding chrome and the other modules', async ({ page }) => {
+    await openStudio(page);
+    await loadPreset(page, 'Nordic Reading Wall');
+
+    const palette = page.locator('.studio-layout__palette');
+    const summary = page.getByTestId('wall-summary');
+    const cube = page.locator('[data-testid="wall-module"][data-uid="m4"]');
+    const other = page.locator('[data-testid="wall-module"][data-uid="m5"]');
+    const opacity = (locator) => locator.evaluate((el) => Number(getComputedStyle(el).opacity));
+
+    await cube.scrollIntoViewIfNeeded();
+    const box = await cube.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 - 30, box.y + box.height / 2 - 20, { steps: 8 });
+    await expect(cube).toHaveAttribute('data-dragging', 'true');
+
+    await expect.poll(() => opacity(palette)).toBeLessThan(0.4);
+    await expect.poll(() => opacity(summary)).toBeLessThan(0.4);
+    await expect.poll(() => opacity(other)).toBeLessThan(0.6);
+    expect(await opacity(cube)).toBe(1);
+    await expect(page.getByTestId('drag-readout')).toBeVisible();
+
+    await page.mouse.up();
+    await expect(cube).not.toHaveAttribute('data-dragging');
+    await expect.poll(() => opacity(palette)).toBe(1);
+    await expect.poll(() => opacity(other)).toBe(1);
+  });
+
   test('the studio fits every viewport from 360px to 1600px without overflow', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/');
     await storeDisplayMode(page, 'technical');
     await openStudio(page);
     await loadPreset(page, 'Nordic Reading Wall');
+    await openDimensions(page);
     await commitField(page, 'wall-width', 400);
     await commitField(page, 'wall-height', 320);
     await page.locator('[data-testid="wall-module"][data-uid="m7"]').click();

@@ -28,6 +28,43 @@ export function ArrowRight({ className }) {
   );
 }
 
+export function PlusGlyph() {
+  return (
+    <svg className="glyph-plus" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <path d="M8 2.5v11M2.5 8h11" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
+    </svg>
+  );
+}
+
+// Three faders with square caps: the camera settings trigger.
+export function FaderGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeOpacity="0.45" />
+      <rect x="9" y="2.5" width="2.5" height="3" fill="currentColor" />
+      <rect x="4" y="6.5" width="2.5" height="3" fill="currentColor" />
+      <rect x="10.5" y="10.5" width="2.5" height="3" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function ResetGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <path d="M3.5 6.5A5 5 0 1 1 3 9.5" stroke="currentColor" strokeWidth="1.25" />
+      <path d="M2.5 3v4h4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
+    </svg>
+  );
+}
+
+export function ChevronGlyph({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
+    </svg>
+  );
+}
+
 export function CatalogGlyph() {
   return (
     <svg viewBox="0 0 120 72" fill="none" aria-hidden="true" focusable="false">

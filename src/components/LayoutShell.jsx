@@ -1,4 +1,5 @@
 import { Outlet, ScrollRestoration } from 'react-router-dom';
+import { useMagneticField } from '../hooks/useMagneticField.js';
 import { BagProvider } from './BagProvider.jsx';
 import { Footer } from './Footer.jsx';
 import { Navbar } from './Navbar.jsx';
@@ -21,6 +22,8 @@ function StructuralGrid() {
 }
 
 export function LayoutShell() {
+  useMagneticField();
+
   return (
     <BagProvider>
       <a href="#main" className="skip-link">

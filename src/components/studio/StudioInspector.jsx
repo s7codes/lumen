@@ -41,7 +41,8 @@ function ModuleList({ items, conflicts, onSelect }) {
                   <span className="module-list__index mono">{padIndex(i + 1)}</span>
                   <span className="module-list__name">{product.name}</span>
                   <span className="module-list__meta mono">
-                    {finish.label} / {item.xCm}, {item.yCm}
+                    {finish.label}
+                    <span className="module-list__coords"> / {item.xCm}, {item.yCm}</span>
                   </span>
                 </button>
               </li>
@@ -61,7 +62,7 @@ function ModuleDetail({ item, layout, conflict, actions }) {
   const position = (x, y) => snapToWall(product, wall, x, y);
 
   return (
-    <>
+    <div className="studio-inspector__detail">
       <PanelSection index="04" title="Module" className="studio-inspector__head">
         <p className="studio-inspector__name" data-testid="inspector-name">
           {product.name}
@@ -91,7 +92,7 @@ function ModuleDetail({ item, layout, conflict, actions }) {
         </p>
       </PanelSection>
 
-      <PanelSection index="06" title="Position">
+      <PanelSection index="06" title="Position" className="studio-inspector__position">
         <div className="studio-fields">
           <NumberField
             label="Left X (cm)"
@@ -158,7 +159,7 @@ function ModuleDetail({ item, layout, conflict, actions }) {
           </button>
         </div>
       </PanelSection>
-    </>
+    </div>
   );
 }
 

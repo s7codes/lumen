@@ -59,6 +59,14 @@ async function commitField(page, testId, value) {
   await input.press('Enter');
 }
 
+// Room and wall dimensions sit behind a progressive disclosure.
+async function openDimensions(page, testId) {
+  const disclosure = page.getByTestId(testId);
+  const toggle = disclosure.getByRole('button', { name: /^Dimensions/ });
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(disclosure.getByRole('spinbutton').first()).toBeVisible();
+}
+
 async function expectCamera(page, camera) {
   await expect(viewport(page)).toHaveAttribute('data-camera-yaw', String(camera.yaw));
   await expect(viewport(page)).toHaveAttribute('data-camera-pitch', String(camera.pitch));
@@ -263,6 +271,7 @@ test.describe('room planner', () => {
     await expect(shelf).toHaveAttribute('data-led', 'true');
     await expect(page.locator('[data-testid="light-patch"][data-uid="m1"]')).toHaveCount(1);
 
+    await openDimensions(page, 'room-dimensions');
     await commitField(page, 'room-width', 900);
     await expect(page.getByTestId('room-width')).toHaveValue('500');
     await commitField(page, 'room-width', 400);
@@ -380,6 +389,85 @@ test.describe('room planner', () => {
     await expectCamera(page, { yaw: -9, pitch: 24, zoom: 1 });
   });
 
+  test('camera settings popover hides yaw, pitch, zoom and the wireframe view until opened', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await openRoom(page);
+    await mount(page, 'Floating Shelf 110');
+
+    const toggle = page.getByRole('button', { name: 'Camera settings' });
+    const panel = page.getByTestId('camera-settings');
+    const yaw = page.getByRole('slider', { name: 'Yaw' });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(panel).toBeHidden();
+    await expect(yaw).toBeHidden();
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(panel).toBeVisible();
+    await expect(yaw).toHaveValue('-24');
+
+    await yaw.fill('30');
+    await page.getByRole('slider', { name: 'Pitch' }).fill('40');
+    await page.getByRole('slider', { name: 'Zoom' }).fill('1.5');
+    await expectCamera(page, { yaw: 30, pitch: 40, zoom: 1.5 });
+    await expect(page.getByTestId('camera-readout')).toHaveText('Yaw 30.0 / Pitch 40.0 / Zoom 1.50x');
+    await expect(page.getByTestId('camera-zoom')).toHaveText('1.50x');
+    await expect.poll(async () => (await readStoredRoom(page)).camera).toEqual({ yaw: 30, pitch: 40, zoom: 1.5 });
+
+    // Wireframe turns faces to smoked glass and draws every box edge.
+    await expect(page.getByTestId('room-wireframe')).toHaveCount(0);
+    const wire = page.getByTestId('camera-wireframe');
+    await wire.click();
+    await expect(wire).toHaveAttribute('aria-checked', 'true');
+    await expect(viewport(page)).toHaveAttribute('data-wireframe', 'true');
+    const wireframe = page.getByTestId('room-wireframe');
+    await expect(wireframe).toHaveCount(1);
+    expect(await wireframe.locator('.room3d-wire__edges line').count()).toBe(12);
+    expect(await wireframe.locator('.room3d-wire__room line').count()).toBeGreaterThan(0);
+    const faceOpacity = await roomModule(page, 'm1')
+      .locator('polygon')
+      .first()
+      .evaluate((el) => getComputedStyle(el).fillOpacity);
+    expect(Number(faceOpacity)).toBeLessThan(0.2);
+
+    // Escape closes and returns focus to the trigger; an outside press closes too.
+    await page.keyboard.press('Escape');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toBeFocused();
+    await expect(panel).toBeHidden();
+    await toggle.click();
+    await expect(panel).toBeVisible();
+    await page.getByRole('heading', { level: 1 }).click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    // Session view state: the wireframe survives closing the popover, not a reload.
+    await expect(page.getByTestId('room-wireframe')).toHaveCount(1);
+    await page.reload();
+    await expect(page.getByTestId('room-wireframe')).toHaveCount(0);
+    await expectCamera(page, { yaw: 30, pitch: 40, zoom: 1.5 });
+    expect(errors).toEqual([]);
+  });
+
+  test('orbiting the camera dims the panels around the viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await openRoom(page);
+    const stage = viewport(page);
+    await stage.scrollIntoViewIfNeeded();
+    const box = await stage.boundingBox();
+    const controls = page.locator('.room3d-layout__controls');
+    const opacity = () => controls.evaluate((el) => Number(getComputedStyle(el).opacity));
+
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2, { steps: 6 });
+    await expect(page.getByRole('region', { name: 'Room viewport' })).toHaveAttribute('data-orbiting', 'true');
+    await expect.poll(opacity).toBeLessThan(0.4);
+
+    await page.mouse.up();
+    await expect(page.getByRole('region', { name: 'Room viewport' })).not.toHaveAttribute('data-orbiting');
+    await expect.poll(opacity).toBe(1);
+  });
+
   test('technical mode overlays wireframe edges, X / Y / Z axes and clearance callouts', async ({ page }) => {
     await page.goto('/');
     await storeDisplayMode(page, 'technical');
@@ -407,6 +495,7 @@ test.describe('room planner', () => {
     await expect(callout('headroom')).toContainText('Headroom 18 cm');
     await expect(callout('headroom')).toHaveAttribute('data-tone', 'tight');
 
+    await openDimensions(page, 'room-dimensions');
     await commitField(page, 'room-depth', 200);
     await expect(callout('walkway')).toContainText('Walkway 102 cm');
 
@@ -484,6 +573,7 @@ test.describe('2D and 3D bridge', () => {
     await page.goto('/studio-2d');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
 
+    await openDimensions(page, 'wall-dimensions');
     await commitField(page, 'wall-width', 360);
     await page.getByRole('button', { name: 'Mount Compact Sideboard 75', exact: true }).click();
     await page.getByRole('button', { name: 'Mount Acoustic Art Frame 50x70', exact: true }).click();
@@ -521,6 +611,7 @@ test.describe('2D and 3D bridge', () => {
     const moved = wall.items[0];
     await page.getByTestId('room-module-list').locator(`[data-uid="${moved.uid}"]`).click();
     await commitField(page, 'room-module-x', moved.xCm + 30);
+    await openDimensions(page, 'room-dimensions');
     await commitField(page, 'room-width', 450);
     await page.getByTestId('export-to-wall-studio').click();
     await expect(page.getByTestId('room-bridge-status')).toHaveText(

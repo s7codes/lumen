@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { anchorSchedule, BlueprintDrawing, BLUEPRINT_VIEWS, fmtCm } from '../components/BlueprintViews.jsx';
-import { ArrowRight } from '../components/icons.jsx';
+import { ArrowRight, PlusGlyph } from '../components/icons.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { PhotometricCurve } from '../components/PhotometricCurve.jsx';
 import {
@@ -253,6 +253,7 @@ function ProductDetail({ product }) {
                 <span className="visually-hidden">
                   : {qty} x {product.name}, {finish.label}
                 </span>
+                <PlusGlyph />
               </button>
             </div>
             <p className="detail__in-bag mono" data-testid="detail-in-bag">

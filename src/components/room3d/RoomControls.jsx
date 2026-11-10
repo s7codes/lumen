@@ -3,7 +3,7 @@ import { formatUsd, padIndex } from '../../lib/format.js';
 import { FURNITURE, LIGHTING_MODES, ROOM_DEPTH, ROOM_HEIGHT, ROOM_WIDTH } from '../../lib/room-3d.js';
 import { MAX_WALL_ITEMS } from '../../lib/wall-studio.js';
 import { clampNumber } from '../../security/sanitize.js';
-import { NumberField, PanelSection } from '../studio/controls.jsx';
+import { Disclosure, NumberField, PanelSection } from '../studio/controls.jsx';
 
 function dimension(range) {
   return (value) => clampNumber(Math.round(value), range.min, range.max, range.initial);
@@ -34,39 +34,45 @@ function Segment({ legend, name, options, value, onChange, columns = 2 }) {
 function RoomSettings({ room, onRoom }) {
   return (
     <PanelSection index="01" title="Room">
-      <div className="room3d-fields">
-        <NumberField
-          label="Width (cm)"
-          value={room.widthCm}
-          min={ROOM_WIDTH.min}
-          max={ROOM_WIDTH.max}
-          normalize={dimension(ROOM_WIDTH)}
-          onCommit={(widthCm) => onRoom({ widthCm })}
-          testId="room-width"
-        />
-        <NumberField
-          label="Depth (cm)"
-          value={room.depthCm}
-          min={ROOM_DEPTH.min}
-          max={ROOM_DEPTH.max}
-          normalize={dimension(ROOM_DEPTH)}
-          onCommit={(depthCm) => onRoom({ depthCm })}
-          testId="room-depth"
-        />
-        <NumberField
-          label="Ceiling (cm)"
-          value={room.heightCm}
-          min={ROOM_HEIGHT.min}
-          max={ROOM_HEIGHT.max}
-          normalize={dimension(ROOM_HEIGHT)}
-          onCommit={(heightCm) => onRoom({ heightCm })}
-          testId="room-height"
-        />
-      </div>
-      <p className="studio-panel__note mono">
-        W {ROOM_WIDTH.min}-{ROOM_WIDTH.max} / D {ROOM_DEPTH.min}-{ROOM_DEPTH.max} / H {ROOM_HEIGHT.min}-
-        {ROOM_HEIGHT.max} cm
-      </p>
+      <Disclosure
+        label="Dimensions"
+        summary={`${room.widthCm} x ${room.depthCm} x ${room.heightCm} cm`}
+        testId="room-dimensions"
+      >
+        <div className="room3d-fields">
+          <NumberField
+            label="Width (cm)"
+            value={room.widthCm}
+            min={ROOM_WIDTH.min}
+            max={ROOM_WIDTH.max}
+            normalize={dimension(ROOM_WIDTH)}
+            onCommit={(widthCm) => onRoom({ widthCm })}
+            testId="room-width"
+          />
+          <NumberField
+            label="Depth (cm)"
+            value={room.depthCm}
+            min={ROOM_DEPTH.min}
+            max={ROOM_DEPTH.max}
+            normalize={dimension(ROOM_DEPTH)}
+            onCommit={(depthCm) => onRoom({ depthCm })}
+            testId="room-depth"
+          />
+          <NumberField
+            label="Ceiling (cm)"
+            value={room.heightCm}
+            min={ROOM_HEIGHT.min}
+            max={ROOM_HEIGHT.max}
+            normalize={dimension(ROOM_HEIGHT)}
+            onCommit={(heightCm) => onRoom({ heightCm })}
+            testId="room-height"
+          />
+        </div>
+        <p className="studio-panel__note mono">
+          W {ROOM_WIDTH.min}-{ROOM_WIDTH.max} / D {ROOM_DEPTH.min}-{ROOM_DEPTH.max} / H {ROOM_HEIGHT.min}-
+          {ROOM_HEIGHT.max} cm
+        </p>
+      </Disclosure>
 
       <Segment
         legend="Lighting"

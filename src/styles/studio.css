@@ -49,6 +49,73 @@
   }
 }
 
+/* Side panels float beside the stage as glass toolbars instead of docked
+   columns: they stick under the navbar and scroll on their own. Shared by
+   the 3D room planner. */
+@media (min-width: 960px) {
+  .studio-layout__palette,
+  .studio-layout__inspector,
+  .room3d-layout__controls,
+  .room3d-layout__inspector {
+    position: sticky;
+    top: calc(var(--nav-height) + var(--space-4));
+  }
+
+  :is(.studio-layout__palette, .studio-layout__inspector, .room3d-layout__controls, .room3d-layout__inspector)
+    > .studio-panel {
+    max-height: calc(100vh - var(--nav-height) - var(--space-6));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+}
+
+/* Focus while moving: when a module is dragged on the wall, everything but
+   the wall and its live readouts steps back. */
+:is(.studio-layout, .room3d-layout)
+  :is(
+    .studio-layout__palette,
+    .studio-layout__inspector,
+    .room3d-layout__controls,
+    .room3d-layout__inspector,
+    .studio-summary,
+    .studio-toolbar,
+    .room3d-hud,
+    .workspace-frame__bar:not(.studio-stage__readouts),
+    .wall-ruler,
+    .wall-grid__origin
+  ),
+.shell__main .page-header {
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+
+.studio-layout:has(.wall-module[data-dragging])
+  :is(
+    .studio-layout__palette,
+    .studio-layout__inspector,
+    .studio-summary,
+    .studio-toolbar,
+    .workspace-frame__bar:not(.studio-stage__readouts),
+    .wall-ruler,
+    .wall-grid__origin
+  ),
+.room3d-layout:has(.room3d-stage[data-orbiting])
+  :is(
+    .room3d-layout__controls,
+    .room3d-layout__inspector,
+    .studio-summary,
+    .room3d-hud,
+    .workspace-frame__bar:not(.studio-stage__readouts)
+  ),
+.shell__main:has(.wall-module[data-dragging], .room3d-stage[data-orbiting]) .page-header {
+  opacity: 0.28;
+}
+
+.wall:has(.wall-module[data-dragging]) .wall-module:not([data-dragging]) {
+  opacity: 0.45;
+}
+
 /* Stage frame */
 
 .studio-stage__status[data-conflicts] {
@@ -79,6 +146,17 @@
   white-space: normal;
 }
 
+/* Numeric readouts stay out of the way until the stage is in use. Technical
+   mode keeps them on permanently. */
+:root:not([data-mode='technical']) .studio-stage__readouts > * {
+  opacity: 0;
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+
+:root:not([data-mode='technical']) .workspace-frame:is(:hover, :focus-within, [data-active]) .studio-stage__readouts > * {
+  opacity: 1;
+}
+
 /* Toolbar */
 
 .studio-toolbar {
@@ -88,7 +166,7 @@
   gap: var(--space-2) var(--space-3);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border-hairline);
-  background: var(--bg-elevated);
+  background: transparent;
 }
 
 .studio-toolbar__group {
@@ -117,7 +195,7 @@
   padding-inline: var(--space-3);
   border: 1px solid var(--border-hairline);
   border-radius: var(--radius-sm);
-  background: var(--bg-inset);
+  background: transparent;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   font-weight: 500;
@@ -127,12 +205,19 @@
   white-space: nowrap;
   transition:
     border-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    translate var(--duration-fast) var(--ease-out);
 }
 
 .tool-button:hover:not(:disabled) {
   border-color: var(--border-strong);
+  background: rgba(242, 238, 231, 0.04);
   color: var(--text-primary);
+}
+
+.tool-button:active:not(:disabled) {
+  translate: 0 1px;
 }
 
 .tool-button:disabled {
@@ -458,7 +543,8 @@
   -webkit-user-select: none;
   transition:
     box-shadow var(--duration-fast) var(--ease-out),
-    outline-color var(--duration-fast) var(--ease-out);
+    outline-color var(--duration-fast) var(--ease-out),
+    opacity var(--duration-slow) var(--ease-out);
 }
 
 .wall-module[data-texture='grain'] {
@@ -825,7 +911,9 @@
   min-width: 0;
   border: 1px solid var(--border-hairline);
   border-radius: var(--radius-md);
-  background: var(--bg-surface);
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.1);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.1);
 }
 
 .studio-panel__section {
@@ -859,6 +947,106 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
+}
+
+/* Disclosure: a summary row that unfolds to its controls. Collapsed content
+   is visibility: hidden (and inert in markup) once the fold has closed. */
+
+.disclosure__toggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 12px;
+  grid-template-areas:
+    'label chevron'
+    'summary chevron';
+  align-items: center;
+  gap: 2px var(--space-3);
+  width: 100%;
+  min-height: 36px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.disclosure__toggle:hover,
+.disclosure[data-open] .disclosure__toggle {
+  border-color: var(--border-strong);
+}
+
+.disclosure__toggle:hover {
+  background: rgba(242, 238, 231, 0.03);
+}
+
+.disclosure__label {
+  grid-area: label;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.disclosure__summary {
+  grid-area: summary;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+}
+
+.disclosure__chevron {
+  grid-area: chevron;
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+  transition: transform var(--duration-slow) var(--ease-out);
+}
+
+.disclosure[data-open] .disclosure__chevron {
+  transform: rotate(180deg);
+}
+
+.disclosure__panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--duration-slow) var(--ease-out),
+    visibility 0s linear var(--duration-slow);
+}
+
+.disclosure[data-open] > .disclosure__panel {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition:
+    grid-template-rows var(--duration-slow) var(--ease-out),
+    visibility 0s;
+}
+
+.disclosure__inner {
+  min-height: 0;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    opacity var(--duration-base) var(--ease-out),
+    transform var(--duration-slow) var(--ease-out);
+}
+
+.disclosure__inner > :first-child {
+  margin-top: var(--space-3);
+}
+
+.disclosure[data-open] .disclosure__inner {
+  opacity: 1;
+  transform: none;
+  transition-delay: 60ms;
 }
 
 .studio-field .field__label {
@@ -1097,7 +1285,35 @@
   color: var(--text-secondary);
 }
 
-/* Inspector */
+/* Inspector. Coordinates, extents and anchors exist only once a module is
+   selected; the detail then settles in section by section and the position
+   block unfolds from its heading. */
+
+.studio-inspector__detail > .studio-panel__section {
+  animation: lumen-settle var(--duration-slow) var(--ease-reveal) backwards;
+}
+
+.studio-inspector__detail > :nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.studio-inspector__detail > :nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.studio-inspector__detail > :nth-child(4) {
+  animation-delay: 120ms;
+}
+
+.studio-inspector__detail > .studio-inspector__position {
+  animation-name: lumen-unfold;
+  animation-duration: 560ms;
+}
+
+.studio-inspector .module-list,
+.studio-inspector .studio-panel__empty {
+  animation: lumen-fade var(--duration-slow) var(--ease-out);
+}
 
 .studio-inspector__name {
   font-size: var(--text-md);
@@ -1223,6 +1439,16 @@
   font-size: 10px;
   letter-spacing: 0.04em;
   color: var(--text-muted);
+}
+
+.module-list__coords {
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+
+.module-list__item:is(:hover, :focus-visible) .module-list__coords,
+:root[data-mode='technical'] .module-list__coords {
+  opacity: 1;
 }
 
 /* Telemetry summary and bag sync */

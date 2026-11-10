@@ -3,7 +3,7 @@ import { WALL_PRESETS } from '../../data/wall-presets.js';
 import { formatUsd, padIndex } from '../../lib/format.js';
 import { MAX_WALL_ITEMS, productFits, SLOPE_CM, WALL_HEIGHT, WALL_WIDTH } from '../../lib/wall-studio.js';
 import { clampNumber } from '../../security/sanitize.js';
-import { NumberField, PanelSection, Switch } from './controls.jsx';
+import { Disclosure, NumberField, PanelSection, Switch } from './controls.jsx';
 
 const SURFACE_OPTIONS = [
   { id: 'ambient', label: 'Ambient Dark' },
@@ -17,29 +17,31 @@ function dimension(range) {
 function WallSettings({ wall, onWall }) {
   return (
     <PanelSection index="01" title="Wall">
-      <div className="studio-fields">
-        <NumberField
-          label="Width (cm)"
-          value={wall.widthCm}
-          min={WALL_WIDTH.min}
-          max={WALL_WIDTH.max}
-          normalize={dimension(WALL_WIDTH)}
-          onCommit={(widthCm) => onWall({ widthCm })}
-          testId="wall-width"
-        />
-        <NumberField
-          label="Height (cm)"
-          value={wall.heightCm}
-          min={WALL_HEIGHT.min}
-          max={WALL_HEIGHT.max}
-          normalize={dimension(WALL_HEIGHT)}
-          onCommit={(heightCm) => onWall({ heightCm })}
-          testId="wall-height"
-        />
-      </div>
-      <p className="studio-panel__note mono">
-        W {WALL_WIDTH.min}-{WALL_WIDTH.max} / H {WALL_HEIGHT.min}-{WALL_HEIGHT.max} cm
-      </p>
+      <Disclosure label="Dimensions" summary={`${wall.widthCm} x ${wall.heightCm} cm`} testId="wall-dimensions">
+        <div className="studio-fields">
+          <NumberField
+            label="Width (cm)"
+            value={wall.widthCm}
+            min={WALL_WIDTH.min}
+            max={WALL_WIDTH.max}
+            normalize={dimension(WALL_WIDTH)}
+            onCommit={(widthCm) => onWall({ widthCm })}
+            testId="wall-width"
+          />
+          <NumberField
+            label="Height (cm)"
+            value={wall.heightCm}
+            min={WALL_HEIGHT.min}
+            max={WALL_HEIGHT.max}
+            normalize={dimension(WALL_HEIGHT)}
+            onCommit={(heightCm) => onWall({ heightCm })}
+            testId="wall-height"
+          />
+        </div>
+        <p className="studio-panel__note mono">
+          W {WALL_WIDTH.min}-{WALL_WIDTH.max} / H {WALL_HEIGHT.min}-{WALL_HEIGHT.max} cm
+        </p>
+      </Disclosure>
 
       <div className="studio-switches">
         <Switch label="Grid snap" hint="5 cm" checked={wall.snap} onChange={(snap) => onWall({ snap })} />

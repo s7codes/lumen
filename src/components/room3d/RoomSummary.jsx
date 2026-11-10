@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
+import { ArrowRight } from '../icons.jsx';
 
 export function RoomSummary({ summary, conflictCount, status, syncRef, onImport, onExport, onSync }) {
   const { modules, loadW, activeW, lumens, priceUsd, psu } = summary;
@@ -64,6 +65,7 @@ export function RoomSummary({ summary, conflictCount, status, syncRef, onImport,
             onClick={onSync}
           >
             Sync Room to Bag
+            <ArrowRight />
           </button>
         </div>
         <p className="studio-summary__status mono" role="status" aria-live="polite" data-testid="room-bridge-status">

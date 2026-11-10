@@ -5,6 +5,7 @@ import { useBag } from '../hooks/useBag.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { formatLeadTime, formatUsd, padIndex } from '../lib/format.js';
 import { rgbTriplet } from '../lib/photometry.js';
+import { PlusGlyph } from './icons.jsx';
 import { ProductElevation } from './ProductElevation.jsx';
 import '../styles/product.css';
 
@@ -149,6 +150,7 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
           <span className="visually-hidden">
             : {product.name}, {finish.label}
           </span>
+          <PlusGlyph />
         </button>
       </footer>
     </article>

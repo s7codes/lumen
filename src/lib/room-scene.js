@@ -463,7 +463,7 @@ function solidFaces(geometry, base, palette) {
     }));
 }
 
-function moduleSolid(item, rig, palette, technical) {
+function moduleSolid(item, rig, palette, withEdges) {
   const product = getProduct(item.productId);
   const finish = getFinish(item.finish);
   const box = moduleBox(item);
@@ -494,11 +494,11 @@ function moduleSolid(item, rig, palette, technical) {
     distance: Math.hypot(...sub(boxCenter(box), rig.eye)),
     faces: solidFaces(geometry, base, palette),
     details,
-    edges: technical ? boxEdges(geometry) : null,
+    edges: withEdges ? boxEdges(geometry) : null,
   };
 }
 
-function furnitureSolids(furniture, rig, palette, technical) {
+function furnitureSolids(furniture, rig, palette, withEdges) {
   if (!furniture) return [];
   return furniture.parts.map((p) => {
     const geometry = boxFaces(rig, p.box);
@@ -512,7 +512,7 @@ function furnitureSolids(furniture, rig, palette, technical) {
       distance: Math.hypot(...sub(boxCenter(p.box), rig.eye)),
       faces: solidFaces(geometry, hexToRgb(FURNITURE_TONES[p.tone]), palette),
       details: [],
-      edges: technical ? boxEdges(geometry) : null,
+      edges: withEdges ? boxEdges(geometry) : null,
     };
   });
 }
@@ -643,8 +643,9 @@ function outline(solid) {
 /**
  * Compiles the room into draw-ordered 2D primitives for one camera and
  * viewport. Pure and deterministic: the same inputs give the same output.
+ * The wireframe view adds box and room edges without the technical annotations.
  */
-export function buildScene({ state, camera, viewport, conflicts, selectedUid, technical }) {
+export function buildScene({ state, camera, viewport, conflicts, selectedUid, technical, wireframe = false }) {
   const { room, items } = state;
   const palette = PALETTES[room.lighting] ?? PALETTES.night;
   const rig = createRig(room, camera, viewport);
@@ -652,8 +653,8 @@ export function buildScene({ state, camera, viewport, conflicts, selectedUid, te
 
   const solids = orderSolids(
     [
-      ...items.map((item) => moduleSolid(item, rig, palette, technical)),
-      ...furnitureSolids(furniture, rig, palette, technical),
+      ...items.map((item) => moduleSolid(item, rig, palette, technical || wireframe)),
+      ...furnitureSolids(furniture, rig, palette, technical || wireframe),
     ],
     rig.eye,
   );
@@ -670,6 +671,7 @@ export function buildScene({ state, camera, viewport, conflicts, selectedUid, te
     solids,
     selection: selected ? outline(selected) : null,
     conflicts: flagged.map((solid) => ({ uid: solid.uid, faces: outline(solid) })),
+    wire: wireframe && !technical ? { roomEdges: buildRoomEdges(room, rig) } : null,
     technical: technical
       ? {
           roomEdges: buildRoomEdges(room, rig),

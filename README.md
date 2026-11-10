@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v0.5.0-e8923a)
+![Release](https://img.shields.io/badge/release-v0.6.0-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![CSP](https://img.shields.io/badge/CSP-strict-44484b)
@@ -10,13 +10,19 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v0.5.0**. Product specification sheets on `/catalog/:id` with three
+Current release: **v0.6.0**. Motion and progressive disclosure. Overview and catalog
+sections slide up into place as they enter the viewport, grids cascade card by card;
+primary actions are tactile keys that lift off a hard plinth and pull toward the
+pointer; the planners open in a quiet default with glass side panels, folded dimension
+inputs, coordinates only for a selected module, a floating camera HUD with a camera
+settings popover (yaw, pitch, zoom, wireframe), and the rest of the UI stepping back
+while a module is dragged or the room is orbited.
+
+Previous: **v0.5.0**. Product specification sheets on `/catalog/:id` with three
 to-scale orthographic views, a polar intensity diagram (or the 24V bus voltage drop
 curve for hardware) and direct launchers into both planners; a project checkout on
 `/checkout` with automatic driver provisioning, USD / EUR / HUF, trade codes, a
-printable quote, JSON export and requisition.
-
-Previous: **v0.4.0**. Interactive 3D Room Planner on `/room-3d`, 2D wall bridge, brand
+printable quote, JSON export and requisition. **v0.4.0**. Interactive 3D Room Planner on `/room-3d`, 2D wall bridge, brand
 mark and flat Arch / Tech mode switch. **v0.3.0**. Interactive 2D Wall Studio on `/studio-2d`, one-click wall to bag
 sync, frame-rate independent pendant physics, GitHub Actions CI. **v0.2.0**. Canonical product dataset, filterable catalog with procedural scale
 elevations, persistent bag with a 24V load and driver calculator, and a surface and
@@ -49,20 +55,21 @@ src/
     studio/             WallStage, StudioPalette, StudioInspector, StudioToolbar,
                         StudioSummary, shared field, switch and finish controls
     room3d/             RoomViewport, RoomControls, RoomInspector, RoomToolbar,
-                        RoomSummary
+                        RoomSummary, CameraSettings
   data/                 products.js (parts, finishes, categories), wall-presets.js
   pages/                Home, Catalog, ProductDetail, Checkout, RoomPlanner,
                         WallStudio, NotFound
   hooks/                useAmbientLight, useBag, useDisplayMode, useDocumentTitle,
-                        useLaunchedModule, useRoom3d, useWallStudio
+                        useLaunchedModule, useMagneticField, useRoom3d,
+                        useScrollReveal, useWallStudio
   lib/                  bag store and PSU sizing, wall studio geometry and history,
                         room model and 2D bridge (room-3d), scene compiler
                         (room-scene), closed-form spring, display mode store,
                         photometry and intensity model, 24V bus electrical model,
                         quote engine, formatting, route manifest
   security/sanitize.js  safeJsonParse, safeStorage, input validators
-  styles/               tokens, base, shell, home, pages, product, product-detail,
-                        checkout, studio, room3d
+  styles/               tokens, base, animations, shell, home, pages, product,
+                        product-detail, checkout, studio, room3d
 server/                 reserved for the API and cloud persistence phase
 tests/                  Playwright specs, named by architectural domain
   support/              shared runtime, CSP and overflow guards
@@ -102,6 +109,24 @@ the same curve with the same velocity and damping; the 50 ms cap keeps a backgro
 from jumping on return. It writes `--light-x`, `--light-y` and `--light-energy` as CSS
 custom properties, so React never re-renders on pointer movement.
 
+## Motion
+
+- Scroll reveal: `useScrollReveal` returns a ref for any `.reveal-up` element. One shared
+  `IntersectionObserver` (bottom margin -10%) fires it once: 40px of travel and a fade over
+  800 ms on `cubic-bezier(0.2, 0.8, 0.2, 1)`. Elements that enter in the same frame are
+  ordered top to bottom, left to right, and each `.reveal-stagger` parent hands its
+  children one 100 ms step apiece, so a row of three cards lands at 0, 100 and 200 ms.
+  Content already scrolled past on a restored position appears without motion. The
+  hidden state is gated on `html[data-reveal='on']`, set only when the observer exists.
+- Tactile keys: every `.button` lifts 2px on hover off a 4px plinth drawn as a zero-blur
+  offset `box-shadow`. `useMagneticField` is one delegated pointer listener that pulls
+  the hovered key toward a fine pointer by at most 4 x 3 px; the plinth stays where the
+  key rests, so it trails the cap. Arrows slide 4px, the add glyph turns a quarter.
+  Nothing glows: the plinth has no blur, and the glow guard in the E2E suite holds.
+- `src/styles/animations.css` holds the reveal states and the shared keyframes (rise,
+  settle, unfold, transient status lines). Under `prefers-reduced-motion: reduce` every
+  section renders at rest, keys do not drift and status lines stay put.
+
 ## Catalog and bag
 
 - `src/data/products.js` is the single source for parts: SKU, price, dimensions, 24V load,
@@ -137,6 +162,15 @@ custom properties, so React never re-renders on pointer movement.
 - The inspector switches finish, toggles the 24V LED channel, edits `Left X` and
   `Bottom from Floor` in cm, duplicates, locks and removes. Every edit is one step in a
   30-step undo history (`Ctrl+Z`, `Ctrl+Y` or `Ctrl+Shift+Z`, and toolbar buttons).
+- Progressive disclosure: wall width and height fold into a **Dimensions** summary row
+  (`300 x 250 cm`) that unfolds on demand and is inert while closed. With nothing
+  selected the inspector is a plain module list, coordinates showing only under the
+  pointer (always in technical mode); selecting a module settles the detail in section
+  by section and unfolds the position block. Status lines fade after six seconds.
+- Side panels are glass (`backdrop-filter` blur over 46% basalt) and stick under the
+  navbar from 960px up, scrolling on their own. Readouts under the stage stay hidden
+  until the stage is hovered, focused or has a selection. While a module is dragged,
+  the panels, toolbar, summary and the other modules step back to 28-45% opacity.
 - The layout persists under `lumen_wall_studio_v1` through `safeStorage`. Reads and JSON
   imports pass `safeJsonParse` and a sanitizer that requires the `lumen.wall` envelope,
   drops unknown parts and finishes, rounds and clamps coordinates, reissues bad or
@@ -157,6 +191,14 @@ custom properties, so React never re-renders on pointer movement.
 - Presets (Perspective, Front Elevation, Corner Iso, Reset Camera) glide in on the
   closed-form spring, critically damped. Pointer drag orbits, wheel and pinch zoom, and
   the arrow keys, `+`, `-` and `Home` drive the camera from the keyboard.
+- The camera controls float over the scene as glass pills: presets and reset on the
+  left, zoom and a **Camera settings** fader button on the right. The popover holds the
+  live readout, Yaw, Pitch and Zoom faders (sanitized through `sanitizeCamera`) and a
+  **Wireframe** switch that turns faces to smoked glass and draws every box and room
+  edge, hidden edges dashed. It closes on Escape, a second press or any press outside.
+  Wireframe is view state for the session; the camera persists. Below 768px the HUD
+  docks above the scene. While the room is orbited the surrounding panels step back.
+- Room dimensions fold into a **Dimensions** summary row like the Wall Studio's.
 - Floor references: Low Platform Bed 160cm, Architect Desk 140cm, Modular Sofa 200cm.
   Modules are tested against them as true 3D boxes, so an art frame can hang behind a
   sofa back while a sideboard cannot.

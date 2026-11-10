@@ -1,4 +1,5 @@
 import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
+import { ArrowRight } from '../icons.jsx';
 
 export function StudioSummary({ summary, conflictCount, syncNote, syncRef, onSync }) {
   const { modules, loadW, activeW, lumens, priceUsd, psu } = summary;
@@ -51,6 +52,7 @@ export function StudioSummary({ summary, conflictCount, syncNote, syncRef, onSyn
           onClick={onSync}
         >
           Sync Wall to Bag
+          <ArrowRight />
         </button>
         <p className="studio-summary__status mono" role="status" aria-live="polite" data-testid="sync-status">
           {syncNote}

@@ -153,36 +153,59 @@ svg {
   text-transform: uppercase;
   color: var(--text-primary);
   background: rgba(11, 11, 10, 0.4);
+
+  /* Tactile key. --mx / --my come from useMagneticField (pointer pull);
+     --lift raises the cap on hover. The plinth is a zero-blur offset slab
+     anchored where the key rests, so it trails the cap as it drifts. */
+  --key-plinth-color: var(--key-plinth-neutral);
+  translate: var(--mx, 0px) calc(var(--my, 0px) - var(--lift, 0px));
+  box-shadow: calc(var(--mx, 0px) * -1) calc(var(--plinth, 0px) - var(--my, 0px)) 0 0 var(--key-plinth-color);
   transition:
     border-color var(--duration-fast) var(--ease-out),
     background-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
+    color var(--duration-fast) var(--ease-out),
+    translate var(--duration-slow) var(--ease-out),
+    box-shadow var(--duration-slow) var(--ease-out);
 }
 
-.button:hover {
+.button:hover:not(:disabled) {
+  --lift: var(--key-lift);
+  --plinth: var(--key-plinth);
   border-color: var(--text-secondary);
   background: var(--bg-elevated);
 }
 
+.button:active:not(:disabled) {
+  --lift: 0px;
+  --plinth: 0px;
+  transition-duration: var(--duration-fast);
+}
+
 .button--primary {
+  --key-plinth-color: var(--key-plinth-primary);
   border-color: var(--lumen-amber);
   background: var(--lumen-amber);
   color: var(--text-inverse);
 }
 
-.button--primary:hover {
+.button--primary:hover:not(:disabled) {
   border-color: var(--lumen-amber-soft);
   background: var(--lumen-amber-soft);
 }
 
 .button svg {
+  flex: none;
   width: 14px;
   height: 14px;
-  transition: transform var(--duration-base) var(--ease-out);
+  transition: transform var(--duration-slow) var(--ease-out);
 }
 
-.button:hover svg {
-  transform: translateX(3px);
+.button:hover:not(:disabled) svg {
+  transform: translateX(4px);
+}
+
+.button:hover:not(:disabled) svg.glyph-plus {
+  transform: rotate(90deg);
 }
 
 @media (prefers-reduced-motion: reduce) {

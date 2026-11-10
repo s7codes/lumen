@@ -269,7 +269,265 @@
   fill: var(--signal-fault-soft);
 }
 
-/* Toolbar */
+/* Wireframe view: faces turn to smoked glass, edges carry the form and
+   hidden edges stay legible as dashes. */
+
+[data-wireframe] :is(.room3d-module, .room3d-furniture) polygon:not(.room3d-detail) {
+  fill-opacity: 0.14;
+}
+
+.room3d-wire line {
+  stroke: var(--alu-300);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.room3d-wire__room line {
+  stroke-opacity: 0.4;
+}
+
+.room3d-wire .is-hidden {
+  stroke-dasharray: 3 3;
+  stroke-opacity: 0.4;
+}
+
+[data-lighting='daylight'] .room3d-wire line {
+  stroke: var(--alu-700);
+}
+
+/* Floating HUD over the viewport. The layer itself ignores the pointer so
+   orbit drags pass through everywhere except the pills. */
+
+.room3d-hud {
+  position: absolute;
+  inset: var(--space-5);
+  z-index: var(--z-hud);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.room3d-hud > * {
+  pointer-events: auto;
+}
+
+.room3d-hud__pill {
+  align-items: center;
+  padding: 3px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--glass-hud);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  backdrop-filter: blur(12px) saturate(1.1);
+}
+
+.room3d-hud__pill .tool-button {
+  border-color: transparent;
+}
+
+.room3d-hud__pill .tool-button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.room3d-hud__pill .tool-button[aria-pressed='true'] {
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+  color: var(--text-inverse);
+}
+
+.room3d-hud__presets {
+  margin-right: auto;
+}
+
+.room3d-hud__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  padding: 0;
+}
+
+.room3d-hud__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.room3d-hud__notice {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  max-width: min(100%, 520px);
+  text-align: left;
+  pointer-events: none;
+}
+
+.room3d-hud__notice > span:not(:empty) {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--glass-hud);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+/* Camera settings popover */
+
+.camera-settings {
+  position: relative;
+}
+
+.camera-settings__toggle {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--glass-hud);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  backdrop-filter: blur(12px) saturate(1.1);
+  color: var(--text-secondary);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out);
+}
+
+.camera-settings__toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+.camera-settings__toggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.camera-settings[data-open] .camera-settings__toggle {
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+  color: var(--text-inverse);
+}
+
+.camera-settings__panel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 256px;
+  padding: var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--glass-hud);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.1);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.1);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px) scale(0.98);
+  transform-origin: top right;
+  transition:
+    opacity var(--duration-base) var(--ease-out),
+    transform var(--duration-slow) var(--ease-out),
+    visibility 0s linear var(--duration-slow);
+}
+
+.camera-settings[data-open] .camera-settings__panel {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity var(--duration-base) var(--ease-out),
+    transform var(--duration-slow) var(--ease-reveal),
+    visibility 0s;
+}
+
+.camera-settings__readout {
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-hairline);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.camera-settings__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  row-gap: var(--space-1);
+}
+
+.camera-settings__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.camera-settings__value {
+  font-size: var(--text-2xs);
+  color: var(--text-primary);
+}
+
+.camera-settings__row .hud-slider {
+  grid-column: 1 / -1;
+}
+
+.camera-settings .studio-switch {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-hairline);
+}
+
+/* Hairline fader with a square cap */
+
+.hud-slider {
+  width: 100%;
+  height: 16px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.hud-slider::-webkit-slider-runnable-track {
+  height: 2px;
+  background: linear-gradient(90deg, var(--text-primary) var(--fill), var(--border-strong) var(--fill));
+}
+
+.hud-slider::-webkit-slider-thumb {
+  width: 6px;
+  height: 14px;
+  margin-top: -6px;
+  border: 0;
+  border-radius: 1px;
+  background: var(--text-primary);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.hud-slider::-moz-range-track {
+  height: 2px;
+  background: linear-gradient(90deg, var(--text-primary) var(--fill), var(--border-strong) var(--fill));
+}
+
+.hud-slider::-moz-range-thumb {
+  width: 6px;
+  height: 14px;
+  border: 0;
+  border-radius: 1px;
+  background: var(--text-primary);
+}
+
+.hud-slider:focus-visible {
+  outline-offset: 2px;
+}
+
+/* Zoom */
 
 .room3d-zoom {
   align-items: center;
@@ -358,6 +616,24 @@
 @media (max-width: 767px) {
   .room3d-stage__canvas {
     height: clamp(280px, 82vw, 420px);
+  }
+
+  /* On a phone the HUD would cover most of the scene: it docks above it. */
+  .room3d-stage__viewport {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .room3d-hud {
+    position: static;
+    order: -1;
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .room3d-hud__notice {
+    position: static;
+    flex: 1 1 100%;
   }
 
   .room3d-bridge__actions > * {

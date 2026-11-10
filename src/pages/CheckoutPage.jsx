@@ -481,6 +481,7 @@ export default function CheckoutPage() {
               </button>
               <button type="submit" className="button button--primary" data-testid="submit-requisition">
                 Submit Project Requisition
+                <ArrowRight />
               </button>
             </div>
 

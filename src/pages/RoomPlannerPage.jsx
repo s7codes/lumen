@@ -27,6 +27,7 @@ export default function RoomPlannerPage() {
   const { addMany } = useBag();
   const { openBag } = useBagDrawer();
   const [status, setStatus] = useState('');
+  const [wireframe, setWireframe] = useState(false);
   const syncRef = useRef(null);
   useLaunchedModule(state.items, actions);
 
@@ -73,9 +74,11 @@ export default function RoomPlannerPage() {
             conflicts={conflicts}
             selectedUid={selected?.uid ?? null}
             technical={mode === 'technical'}
+            wireframe={wireframe}
             toolbar={<RoomToolbar camera={state.camera} notice={notice} onCamera={actions.setCamera} />}
             onSelect={actions.select}
             onCameraCommit={actions.setCamera}
+            onWireframe={setWireframe}
           />
           <RoomSummary
             summary={summary}

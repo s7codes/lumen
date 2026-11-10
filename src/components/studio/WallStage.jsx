@@ -345,7 +345,7 @@ export function WallStage({
   };
 
   return (
-    <section className="workspace-frame studio-stage" aria-label="Wall elevation">
+    <section className="workspace-frame studio-stage" aria-label="Wall elevation" data-active={active ? true : undefined}>
       <div className="workspace-frame__bar mono">
         <span data-testid="wall-label">
           Elevation / Wall A / {wall.widthCm} x {wall.heightCm} cm

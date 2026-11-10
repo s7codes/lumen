@@ -115,7 +115,7 @@ export function StudioToolbar({ layout, canUndo, canRedo, notice, actions }) {
       </div>
 
       <p className="studio-toolbar__notice mono" role="status" aria-live="polite" data-tone={notice.tone}>
-        <span key={notice.serial} data-testid="studio-notice">
+        <span key={notice.serial} className="notice-transient" data-testid="studio-notice">
           {notice.text}
         </span>
       </p>

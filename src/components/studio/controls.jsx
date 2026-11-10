@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 import { getFinish } from '../../data/products.js';
+import { ChevronGlyph } from '../icons.jsx';
 
 /**
  * Numeric input that commits on Enter or blur, never per keystroke, so one
@@ -109,6 +110,34 @@ export function FinishPicker({ product, finishId, onChange }) {
         <span className="swatches__name">{finish.name}</span>
       </div>
     </fieldset>
+  );
+}
+
+/**
+ * Progressive disclosure: a one-line summary that expands to its controls.
+ * Collapsed content is inert, so it leaves the tab order and the
+ * accessibility tree until the summary is opened.
+ */
+export function Disclosure({ label, summary, children, testId }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="disclosure" data-open={open || undefined} data-testid={testId}>
+      <button
+        type="button"
+        className="disclosure__toggle"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="disclosure__label">{label}</span>
+        <span className="disclosure__summary mono">{summary}</span>
+        <ChevronGlyph className="disclosure__chevron" />
+      </button>
+      <div id={id} className="disclosure__panel" inert={!open}>
+        <div className="disclosure__inner">{children}</div>
+      </div>
+    </div>
   );
 }
 

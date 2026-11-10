@@ -11,6 +11,7 @@ import {
 } from '../../lib/room-3d.js';
 import { buildScene, labelWidth } from '../../lib/room-scene.js';
 import { frameDelta, stepSpring } from '../../lib/spring.js';
+import { CameraSettings } from './CameraSettings.jsx';
 
 const FALLBACK_SIZE = { w: 960, h: 600 };
 const DRAG_THRESHOLD_PX = 4;
@@ -138,6 +139,25 @@ function TechnicalOverlay({ technical, solids }) {
   );
 }
 
+function Wireframe({ wire, solids }) {
+  return (
+    <g className="room3d-wire" data-testid="room-wireframe">
+      <g className="room3d-wire__room">
+        {wire.roomEdges.map((edge) => (
+          <Line key={edge.key} line={edge} />
+        ))}
+      </g>
+      <g className="room3d-wire__edges">
+        {solids.map((solid) =>
+          solid.edges.map((edge, i) => (
+            <Line key={`${solid.key}-${i}`} line={edge} className={edge.hidden ? 'is-hidden' : undefined} />
+          )),
+        )}
+      </g>
+    </g>
+  );
+}
+
 function Scene({ scene, gradientPrefix }) {
   return (
     <>
@@ -237,18 +257,30 @@ function Scene({ scene, gradientPrefix }) {
         </g>
       )}
 
+      {scene.wire && <Wireframe wire={scene.wire} solids={scene.solids} />}
       {scene.technical && <TechnicalOverlay technical={scene.technical} solids={scene.solids} />}
     </>
   );
 }
 
-export function RoomViewport({ state, conflicts, selectedUid, technical, toolbar, onSelect, onCameraCommit }) {
+export function RoomViewport({
+  state,
+  conflicts,
+  selectedUid,
+  technical,
+  wireframe,
+  toolbar,
+  onSelect,
+  onCameraCommit,
+  onWireframe,
+}) {
   const { room, items, camera } = state;
   const hostRef = useRef(null);
   const size = useElementSize(hostRef);
   const gradientPrefix = `${useId().replace(/[^A-Za-z0-9_-]/g, '')}-light`;
 
   const [view, setView] = useState(camera);
+  const [orbiting, setOrbiting] = useState(false);
   const viewRef = useRef(camera);
   const animRef = useRef(0);
   const gliding = useRef(false);
@@ -336,8 +368,8 @@ export function RoomViewport({ state, conflicts, selectedUid, technical, toolbar
   }, []);
 
   const scene = useMemo(
-    () => buildScene({ state, camera: view, viewport: size, conflicts, selectedUid, technical }),
-    [state, view, size, conflicts, selectedUid, technical],
+    () => buildScene({ state, camera: view, viewport: size, conflicts, selectedUid, technical, wireframe }),
+    [state, view, size, conflicts, selectedUid, technical, wireframe],
   );
 
   const flushDrag = () => {
@@ -354,7 +386,10 @@ export function RoomViewport({ state, conflicts, selectedUid, technical, toolbar
     const dx = drag.lastX - drag.startX;
     const dy = drag.lastY - drag.startY;
     if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
-    drag.moved = true;
+    if (!drag.moved) {
+      drag.moved = true;
+      setOrbiting(true);
+    }
     showView({
       yaw: clamp(drag.origin.yaw - dx * YAW_PER_PX, CAMERA_YAW),
       pitch: clamp(drag.origin.pitch + dy * PITCH_PER_PX, CAMERA_PITCH),
@@ -385,6 +420,7 @@ export function RoomViewport({ state, conflicts, selectedUid, technical, toolbar
     } else if (pointers.size === 2 && dragRef.current) {
       const [a, b] = [...pointers.values()];
       dragRef.current.moved = true;
+      setOrbiting(true);
       dragRef.current.pinch = { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), zoom: viewRef.current.zoom };
     }
   };
@@ -412,6 +448,7 @@ export function RoomViewport({ state, conflicts, selectedUid, technical, toolbar
     if (!drag || pointers.size > 0) return;
     dragRef.current = null;
     cancelAnimationFrame(drag.frame);
+    setOrbiting(false);
     if (!drag.pinch) {
       drag.lastX = event.clientX;
       drag.lastY = event.clientY;
@@ -457,7 +494,12 @@ export function RoomViewport({ state, conflicts, selectedUid, technical, toolbar
     scene.solids.reduce((sum, solid) => sum + solid.faces.length + solid.details.length, 0);
 
   return (
-    <section className="workspace-frame room3d-stage" aria-label="Room viewport">
+    <section
+      className="workspace-frame room3d-stage"
+      aria-label="Room viewport"
+      data-active={selected ? true : undefined}
+      data-orbiting={orbiting || undefined}
+    >
       <div className="workspace-frame__bar mono">
         <span data-testid="room-label">
           Viewport / Room {room.widthCm} x {room.depthCm} x {room.heightCm} cm
@@ -470,8 +512,6 @@ export function RoomViewport({ state, conflicts, selectedUid, technical, toolbar
           {conflictCount} {conflictCount === 1 ? 'conflict' : 'conflicts'}
         </span>
       </div>
-
-      {toolbar}
 
       <div className="workspace-frame__viewport room3d-stage__viewport">
         <div
@@ -488,6 +528,7 @@ export function RoomViewport({ state, conflicts, selectedUid, technical, toolbar
           data-camera-zoom={camera.zoom}
           data-preset={preset ?? 'custom'}
           data-technical={technical || undefined}
+          data-wireframe={wireframe || undefined}
           role="application"
           aria-roledescription="3D viewport"
           aria-label="Room viewport. Drag or use the arrow keys to orbit, plus and minus to zoom, Home to reset."
@@ -517,6 +558,17 @@ export function RoomViewport({ state, conflicts, selectedUid, technical, toolbar
           )}
         </div>
 
+        <div className="room3d-hud">
+          {toolbar}
+          <CameraSettings
+            camera={camera}
+            view={view}
+            wireframe={wireframe}
+            onCamera={onCameraCommit}
+            onWireframe={onWireframe}
+          />
+        </div>
+
         <span className="workspace-frame__corner workspace-frame__corner--tl" aria-hidden="true" />
         <span className="workspace-frame__corner workspace-frame__corner--tr" aria-hidden="true" />
         <span className="workspace-frame__corner workspace-frame__corner--bl" aria-hidden="true" />
@@ -524,9 +576,6 @@ export function RoomViewport({ state, conflicts, selectedUid, technical, toolbar
       </div>
 
       <div className="workspace-frame__bar workspace-frame__bar--bottom studio-stage__readouts mono">
-        <span data-testid="camera-readout">
-          Yaw {view.yaw.toFixed(1)} / Pitch {view.pitch.toFixed(1)} / Zoom {view.zoom.toFixed(2)}x
-        </span>
         <span data-testid="room-item-readout">
           {selected
             ? `${getProduct(selected.productId).name} / X ${selected.xCm} / Y ${selected.yCm} cm`

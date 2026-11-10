@@ -1,15 +1,21 @@
 import { activePreset, CAMERA_PRESETS, CAMERA_ZOOM, DEFAULT_CAMERA, sameCamera } from '../../lib/room-3d.js';
+import { ResetGlyph } from '../icons.jsx';
 
 const ZOOM_STEP = 0.1;
 
+/**
+ * Floating camera HUD over the room viewport: view presets on the left, zoom
+ * on the right, and a transient status line along the bottom edge. Rendered
+ * as siblings inside .room3d-hud so the viewport can lay them out.
+ */
 export function RoomToolbar({ camera, notice, onCamera }) {
   const preset = activePreset(camera);
   const atDefault = sameCamera(camera, DEFAULT_CAMERA);
   const zoomBy = (delta) => onCamera({ ...camera, zoom: camera.zoom + delta });
 
   return (
-    <div className="studio-toolbar room3d-toolbar">
-      <div className="studio-toolbar__group" role="group" aria-label="Camera presets">
+    <>
+      <div className="studio-toolbar__group room3d-hud__pill room3d-hud__presets" role="group" aria-label="Camera presets">
         {CAMERA_PRESETS.map((entry) => (
           <button
             key={entry.id}
@@ -24,16 +30,18 @@ export function RoomToolbar({ camera, notice, onCamera }) {
         ))}
         <button
           type="button"
-          className="tool-button"
+          className="tool-button room3d-hud__icon"
           data-testid="camera-reset"
+          aria-label="Reset Camera"
+          title="Reset camera"
           disabled={atDefault}
           onClick={() => onCamera(DEFAULT_CAMERA)}
         >
-          Reset Camera
+          <ResetGlyph />
         </button>
       </div>
 
-      <div className="studio-toolbar__group room3d-zoom" role="group" aria-label="Zoom">
+      <div className="studio-toolbar__group room3d-hud__pill room3d-zoom" role="group" aria-label="Zoom">
         <button
           type="button"
           className="tool-button room3d-zoom__step"
@@ -57,11 +65,11 @@ export function RoomToolbar({ camera, notice, onCamera }) {
         </button>
       </div>
 
-      <p className="studio-toolbar__notice mono" role="status" aria-live="polite" data-tone={notice.tone}>
-        <span key={notice.serial} data-testid="room-notice">
+      <p className="studio-toolbar__notice room3d-hud__notice mono" role="status" aria-live="polite" data-tone={notice.tone}>
+        <span key={notice.serial} className="notice-transient" data-testid="room-notice">
           {notice.text}
         </span>
       </p>
-    </div>
+    </>
   );
 }
