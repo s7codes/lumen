@@ -1,18 +1,21 @@
-export function LumenMark({ size = 22, className }) {
+// Cantilever and light aperture: structural spine, base return and a
+// cantilevered shelf slab, with a tungsten slit held between slab and base.
+export function LumenMark({ size = 24, className }) {
   return (
     <svg
       className={className}
       width={size}
       height={size}
-      viewBox="0 0 32 32"
+      viewBox="0 0 24 24"
       fill="none"
       aria-hidden="true"
       focusable="false"
+      data-testid="lumen-mark"
     >
-      <rect x="0.5" y="0.5" width="31" height="31" rx="3.5" stroke="currentColor" strokeOpacity="0.22" />
-      <path d="M9 7v18h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square" />
-      <path d="M19 7v5.5" stroke="currentColor" strokeOpacity="0.55" strokeWidth="1" />
-      <path d="M15.5 16a3.5 3.5 0 0 1 7 0z" fill="var(--lumen-amber)" />
+      <rect data-part="spine" x="3" y="3" width="4" height="18" fill="currentColor" />
+      <rect data-part="base" x="3" y="17" width="18" height="4" fill="currentColor" />
+      <rect data-part="cantilever" x="10" y="3" width="11" height="3.5" fill="currentColor" />
+      <rect data-part="aperture" x="14.25" y="8.5" width="2" height="6.5" fill="var(--lumen-amber)" />
     </svg>
   );
 }

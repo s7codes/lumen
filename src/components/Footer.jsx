@@ -13,7 +13,10 @@ export function Footer() {
     <footer className="footer">
       <div className="footer__inner container">
         <div className="footer__brand">
-          <LumenMark size={28} />
+          <p className="footer__lockup">
+            <LumenMark size={28} />
+            <span className="footer__wordmark">Lumen</span>
+          </p>
           <p className="footer__tagline">
             Architectural lighting and modular furniture on a shared low-voltage spine.
           </p>

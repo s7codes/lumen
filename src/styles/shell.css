@@ -84,14 +84,21 @@
 .navbar__brand {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 10px;
   color: var(--text-primary);
 }
 
-.navbar__wordmark {
+.navbar__brand svg,
+.footer__lockup svg {
+  flex: none;
+}
+
+.navbar__wordmark,
+.footer__wordmark {
   font-size: var(--text-sm);
   font-weight: 600;
-  letter-spacing: 0.32em;
+  line-height: 1;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -161,83 +168,54 @@
 
 /* Mode switch */
 
+/* Mode switch: a two-position mechanical selector. The engaged segment
+   inverts to solid alabaster; nothing on it glows. */
+
 .mode-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  height: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  overflow: hidden;
+}
+
+.mode-switch__segment {
+  min-width: 46px;
+  padding-inline: 10px;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
+  font-weight: 500;
+  line-height: 1;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-}
-
-.mode-switch__label {
-  color: var(--text-muted);
-}
-
-.mode-switch__track {
-  display: inline-flex;
-  align-items: center;
-  height: 28px;
-  padding: 2px;
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-sm);
-  background: var(--bg-inset);
-}
-
-.mode-switch__cell {
-  display: inline-flex;
-  align-items: center;
-}
-
-.mode-switch__sep {
-  padding-inline: 2px;
-  color: var(--text-muted);
-}
-
-.mode-switch__option {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 22px;
-  padding-inline: var(--space-2);
-  border-radius: var(--radius-xs);
-  font-size: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   transition:
     color var(--duration-fast) var(--ease-out),
     background-color var(--duration-fast) var(--ease-out);
 }
 
-.mode-switch__option:hover {
-  color: var(--text-secondary);
+.mode-switch__segment + .mode-switch__segment {
+  border-left: 1px solid var(--border-strong);
 }
 
-.mode-switch__option[aria-pressed='true'] {
+.mode-switch__segment:hover:not([aria-pressed='true']) {
   color: var(--text-primary);
-  background: var(--bg-raised);
-  box-shadow: inset 0 1px 0 rgba(242, 238, 231, 0.06);
+  background: var(--bg-elevated);
 }
 
-.mode-switch__led {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--alu-700);
-  transition:
-    background-color var(--duration-base) var(--ease-out),
-    box-shadow var(--duration-base) var(--ease-out);
+.mode-switch__segment[aria-pressed='true'] {
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  cursor: default;
 }
 
-.mode-switch__option[aria-pressed='true'] .mode-switch__led {
-  background: var(--lumen-amber);
-  box-shadow: 0 0 6px var(--lumen-amber-glow);
-}
-
-.mode-switch__text-short {
-  display: none;
+.mode-switch__segment:focus-visible {
+  outline: 1px solid var(--lumen-amber);
+  outline-offset: -3px;
+  border-radius: 0;
 }
 
 /* Bag trigger */
@@ -309,16 +287,9 @@
 }
 
 @media (max-width: 559px) {
-  .mode-switch__label {
-    display: none;
-  }
-
-  .mode-switch__text-long {
-    display: none;
-  }
-
-  .mode-switch__text-short {
-    display: inline;
+  .mode-switch__segment {
+    min-width: 40px;
+    padding-inline: var(--space-2);
   }
 
   .navbar__wordmark {
@@ -581,7 +552,7 @@
 
 .load-meter__segment[data-on] {
   background: var(--lumen-amber);
-  box-shadow: 0 0 4px var(--lumen-amber-glow);
+  box-shadow: none;
 }
 
 .bag-summary__note {
@@ -699,6 +670,16 @@
   flex-direction: column;
   gap: var(--space-4);
   color: var(--text-primary);
+}
+
+.footer__lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.footer__wordmark {
+  font-size: var(--text-md);
 }
 
 .footer__tagline {
@@ -819,10 +800,9 @@
 
 .workspace-frame__status::before {
   content: '';
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--alu-500);
+  width: 6px;
+  height: 6px;
+  border: 1px solid currentColor;
 }
 
 .workspace-frame__viewport {

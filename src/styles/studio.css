@@ -921,7 +921,6 @@
 
 .studio-switch[aria-checked='true'] .studio-switch__thumb {
   background: var(--lumen-amber);
-  box-shadow: 0 0 6px var(--lumen-amber-glow);
   transform: translateX(12px);
 }
 

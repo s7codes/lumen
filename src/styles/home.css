@@ -773,14 +773,12 @@
 
 .segmented__value::before {
   content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
   background: rgb(var(--chip));
   opacity: 0.35;
-  transition:
-    opacity var(--duration-fast) var(--ease-out),
-    box-shadow var(--duration-fast) var(--ease-out);
+  transition: opacity var(--duration-fast) var(--ease-out);
 }
 
 .segmented__label {
@@ -806,7 +804,6 @@
 
 .segmented__input:checked + .segmented__face .segmented__value::before {
   opacity: 1;
-  box-shadow: 0 0 6px rgb(var(--chip));
 }
 
 .segmented__input:focus-visible + .segmented__face {

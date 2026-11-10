@@ -5,35 +5,26 @@ const OPTIONS = [
   { id: 'technical', label: 'Technical', short: 'Tech' },
 ];
 
+// The accessible name starts with the visible segment text, so speech input
+// ("click Tech") and screen readers ("Technical") both resolve the button.
 export function ModeSwitch() {
   const [mode, setMode] = useDisplayMode();
 
   return (
-    <div className="mode-switch" role="group" aria-label="Display mode">
-      <span className="mode-switch__label" aria-hidden="true">
-        Mode:
-      </span>
-      <div className="mode-switch__track">
-        {OPTIONS.map((option, i) => (
-          <span key={option.id} className="mode-switch__cell">
-            {i > 0 && (
-              <span className="mode-switch__sep" aria-hidden="true">
-                /
-              </span>
-            )}
-            <button
-              type="button"
-              className="mode-switch__option"
-              aria-pressed={mode === option.id}
-              onClick={() => setMode(option.id)}
-            >
-              <span className="mode-switch__led" aria-hidden="true" />
-              <span className="mode-switch__text-long">{option.label}</span>
-              <span className="mode-switch__text-short">{option.short}</span>
-            </button>
-          </span>
-        ))}
-      </div>
+    <div className="mode-switch" role="group" aria-label="Display mode" data-testid="mode-switch">
+      {OPTIONS.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          className="mode-switch__segment"
+          aria-label={option.label}
+          aria-pressed={mode === option.id}
+          data-mode-option={option.id}
+          onClick={() => setMode(option.id)}
+        >
+          {option.short}
+        </button>
+      ))}
     </div>
   );
 }

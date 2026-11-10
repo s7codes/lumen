@@ -47,17 +47,8 @@
   color: var(--text-muted);
 }
 
-.product-card__stock::before {
-  content: '';
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--alu-500);
-}
-
-.product-card__stock[data-stock='in-stock']::before {
-  background: var(--lumen-amber);
-  box-shadow: 0 0 6px var(--lumen-amber-glow);
+.product-card__stock[data-stock='in-stock'] {
+  color: var(--text-secondary);
 }
 
 .product-card__figure {
