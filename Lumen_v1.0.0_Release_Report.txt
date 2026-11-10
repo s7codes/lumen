@@ -1,0 +1,235 @@
+LUMEN v1.0.0 - FLAGSHIP RELEASE REPORT
+Asynchronous API Layer, Cloud States, Lazy Loading and Production Polish
+Branch: feat/v1-flagship-launch
+Date: 2026-11-11
+
+------------------------------------------------------------------------
+SUMMARY
+------------------------------------------------------------------------
+
+Lumen moves from a client-side prototype to a production application
+architecture. Persistence now runs through one asynchronous client with real
+network timing, the planners commit revisioned projects to Lumen Cloud,
+checkout submits requisitions through the same layer, and the account reads
+both back behind a loading state. Empty views carry hairline drawings and a
+clear next step. The two planner workspaces ship as their own chunks behind a
+centered loading frame.
+
+Result: 105 of 105 Playwright E2E specs pass against the production build.
+Zero console errors and zero CSP violations.
+
+------------------------------------------------------------------------
+1. ASYNCHRONOUS API LAYER
+------------------------------------------------------------------------
+
+Files: src/api/client.js (new)
+
+Exports
+- saveProject(kind, data)        -> { id, kind, name, revision, savedAt, data }
+- loadProjects()                 -> saved projects, newest first
+- submitQuote({ quote, project }) -> requisition record with its LMN-R- ref
+- loadQuotes()                   -> requisitions, newest first, at most 24
+- ApiError (code: 'invalid' | 'storage'), LATENCY_MS, storage keys
+
+Transport
+- Every call settles after a simulated round trip of 500 to 1200 ms,
+  drawn per call. Under the hood the client writes to safeStorage:
+  lumen_cloud_projects_v1 and lumen_cloud_quotes_v1.
+- Payloads are serialized and sanitized when the call is made, so edits
+  during the round trip never leak into the saved revision. The write
+  happens only after the delay; nothing is stored on failure.
+- One project slot per kind (wall, room). Each save bumps the revision.
+- Empty walls and rooms are rejected with ApiError('invalid'). A refused
+  storage write rejects with ApiError('storage').
+
+Read hardening
+- Every stored record is rebuilt on read. Dropped: unknown kinds (including
+  "__proto__"), revisions outside 1-9999, non-ISO timestamps, wall or room
+  payloads that fail sanitizeLayout or sanitizeRoomState, requisition refs
+  outside LMN-R-[0-9A-F]{8}, quote ids outside LMN-Q-YYYYMMDD-XXXXXX,
+  unknown currencies or statuses, and non-integer or out-of-range amounts.
+- Text fields pass sanitizeText. Storage reads still go through
+  safeJsonParse, which strips prototype keys at every depth.
+
+Working drafts
+- lumen_wall_studio_v1 and lumen_room_3d_v1 remain the planners' live
+  drafts, so the 2D / 3D bridge, spec sheet launchers and reloads behave
+  exactly as in v0.10.1. A cloud save is an explicit commit of the draft.
+
+------------------------------------------------------------------------
+2. CLOUD SYNC UI
+------------------------------------------------------------------------
+
+Files: src/hooks/useCloudSave.js (new), src/components/CloudSaveButton.jsx
+       (new), src/styles/cloud.css (new), src/pages/WallStudioPage.jsx,
+       src/pages/RoomPlannerPage.jsx, src/components/studio/StudioSummary.jsx,
+       src/components/room3d/RoomSummary.jsx, src/styles/studio.css,
+       src/styles/room3d.css
+
+Save to Cloud
+- New key beside Sync Wall to Cart and Sync Room to Cart. Disabled while the
+  wall or room is empty, like the sync key.
+- States: idle "Save to Cloud" -> saving "Saving to Lumen Cloud..." ->
+  saved "Project Saved" (held 2.4 s) -> idle. Failure reads "Retry Save"
+  with a fault edge.
+- Saving: the key settles flat (no lift, no plinth), dims to a neutral glass
+  fill, disables itself and shows a 1px SVG arc spinning at 900 ms per turn.
+  No border-radius dot, no box-shadow, no glow.
+- Saved: flat inversion to solid white with a check that draws itself in.
+- All labels share one grid cell, so the key never changes width between
+  states. Hidden labels are aria-hidden, so the accessible name always
+  matches the visible label.
+- Double-commit guard: the disabled attribute plus a ref lock in
+  useCloudSave. A burst of clicks during a save commits exactly one
+  revision (asserted in E2E).
+- Toasts: "Wall A saved to Lumen Cloud. Revision 01." / "Room saved to
+  Lumen Cloud. Revision 01." Failures raise a Fault toast with the
+  ApiError message. Toasts fire even if the planner unmounts mid-save.
+
+Checkout
+- Submit Project Requisition now calls submitQuote. While in flight it
+  reads "Submitting to Lumen Cloud..." with the same arc and is disabled;
+  the requisition confirmation appears when the call resolves.
+
+------------------------------------------------------------------------
+3. ACCOUNT ON LUMEN CLOUD
+------------------------------------------------------------------------
+
+Files: src/pages/AccountPage.jsx, src/styles/account.css,
+       src/data/order-history.js (removed)
+
+- Projects and quotes load in parallel through loadProjects and
+  loadQuotes. While loading, each panel shows shimmering placeholder rows
+  and "Syncing with Lumen Cloud..."; the grid is aria-busy.
+- Profile facts: Storage "Lumen Cloud", Sync "Syncing" / "Up to date" /
+  "Offline", project and quote counts ("--" while loading).
+- Project cards gain a revision badge (Rev 02) and the save time. Opening a
+  card checks the saved revision out into the planner draft, then opens
+  the planner.
+- Order History lists real submitted requisitions: quote id, status
+  (Pending review carries a hairline outline), project reference, date,
+  lines, load, gross in the quoted currency, requisition ref and client.
+- The static sample archive (src/data/order-history.js) is gone.
+
+------------------------------------------------------------------------
+4. PREMIUM EMPTY STATES
+------------------------------------------------------------------------
+
+Files: src/components/EmptyState.jsx (new), src/styles/empty-state.css
+       (new), src/pages/AccountPage.jsx, src/pages/CheckoutPage.jsx,
+       src/styles/checkout.css
+
+Drawings (inline SVG, 160 x 136 viewBox)
+- cube: isometric unit cube, 44 units on edge. Hidden back edges are
+  dashed; they all leave from (80, 66), where the hidden corner projects
+  onto the front top corner. Dotted floor plane, a dimension tick and a
+  tungsten aperture slit on the right face.
+- shelf: unfurnished wall elevation with two slabs, a pendant and a
+  dimension line.
+- sheet: unissued spec sheet with ruled lines and a blank total.
+
+Line weight
+- 0.8 stroke on a 160-unit viewBox drawn at 200px, so every line renders
+  at one device pixel. Edges 46% white, hidden lines 16%, floor 8%.
+- Edges draw in over 1600 ms on cubic-bezier(0.16, 1, 0.3, 1); the amber
+  aperture fades in last. Reduced motion shows the finished drawing.
+
+Placements
+- Account, no projects: cube, "No spatial projects yet.", primary
+  "Start 2D Wall Studio", secondary "Open Room Planner".
+- Account, no quotes: sheet, "No quotes submitted yet.", "Browse Catalog".
+- Checkout, empty cart: shelf inside a bento tile, "No parts specified
+  yet.", primary "Start 2D Wall Studio", secondary "Browse Catalog".
+- Titles are #a1a1aa as specified; supporting lines are mono, muted.
+
+------------------------------------------------------------------------
+5. CODE SPLITTING AND LAZY LOADING
+------------------------------------------------------------------------
+
+Files: src/router.jsx, src/components/RouteFallback.jsx (new),
+       src/styles/shell.css
+
+- RoomPlannerPage and WallStudioPage load through React.lazy, each inside
+  its own Suspense boundary with an errorElement.
+- three, @react-three/fiber and drei were already isolated in the lazy
+  RoomCanvas chunk, and this release keeps them there. The overview hero is
+  CSS only; there is no Hero3D component, so the home page never loads
+  WebGL. An E2E spec now asserts that the overview requests no planner or
+  WebGL chunk.
+- Fallback: absolutely centered in the main frame (asserted within 2px).
+  The Lumen mark under a sweeping mask highlight, a 160 x 1 px
+  indeterminate bar, and a mono label: "Loading spatial engine" or
+  "Loading wall studio". Enters with the 1.05 -> 1.0 scale, 8px blur ->
+  0 focus reveal. role="status" for assistive tech.
+- On client-side navigation React Router keeps the current page up until
+  the chunk arrives, so the fallback appears only on a cold load.
+- Chunk failure: a route error with "Workspace did not load." and a
+  Reload key, instead of React Router's default error page. The navbar
+  stays live.
+
+Build output, v0.10.1 -> v1.0.0 (vite build, gzip in brackets)
+- Entry script       518.0 kB (158.3) -> 468.2 kB (145.3)
+- Entry stylesheet   113.0 kB  (20.0) ->  83.7 kB  (15.6)
+- RoomPlannerPage    in entry         ->  31.7 kB  (10.7)
+- WallStudioPage     in entry         ->  27.9 kB   (8.9)
+- RoomCanvas (WebGL) 971.6 kB (258.6) -> unchanged, lazy
+
+------------------------------------------------------------------------
+6. TESTS
+------------------------------------------------------------------------
+
+New specs
+- tests/cloud-sync.spec.js
+  - wall save: saving state, disabled key, arc visible, nothing written
+    before the round trip, minimum latency honoured, saved state, toast,
+    stored revision, return to idle, burst of clicks commits one revision
+  - empty wall disables save; key width constant across states; arc has
+    no box-shadow; no overflow at 360 and 1280
+  - room save in its own slot; account lists both, newest first
+  - tampered cloud records dropped, no prototype pollution
+  - checkout submits through the client; requisition tracked in account
+  - empty cart empty state: SVG present, 0.8px stroke, #a1a1aa title,
+    primary action opens the Wall Studio
+- tests/code-splitting.spec.js
+  - overview requests no RoomPlannerPage, WallStudioPage or RoomCanvas
+    chunk; the planner chunk loads on navigation
+  - a held planner chunk shows the centered fallback, then the workspace
+  - an aborted chunk shows the reload prompt
+
+Updated specs
+- tests/auth-and-toast.spec.js: the account dashboard is seeded through
+  the cloud keys, waits through the loading state, checks the revision
+  badge, real requisition rows and that opening a card restores the saved
+  revision over an empty draft. The empty-state test proves a local draft
+  alone does not count as a saved project, checks both empty states and
+  follows "Start 2D Wall Studio".
+- Existing checkout and planner specs pass unchanged: their assertions
+  already auto-wait (expect(...).toBeVisible()), which absorbs the
+  simulated latency without fixed sleeps.
+
+Final run: 105 passed, 0 failed (12 spec files). The new and changed specs
+also passed three repeated runs (48 of 48) to rule out timing flake.
+
+------------------------------------------------------------------------
+7. RELEASE
+------------------------------------------------------------------------
+
+- package.json and package-lock.json: 0.10.1 -> 1.0.0 (footer shows
+  Rev 1.0.0).
+- README.md rewritten as the production README: release history table,
+  Lumen Cloud API reference, cloud sync UI, code splitting with build
+  numbers, empty states, updated layout, routes, account, checkout,
+  notification and security sections.
+- Lumen_v0.10_Report.txt removed; this file is the only report.
+- Branches: feat/v1-flagship-launch, fast-forwarded into develop and main
+  by pointer, tagged v1.0.0 and pushed.
+
+------------------------------------------------------------------------
+8. NEXT
+------------------------------------------------------------------------
+
+- Replace the safeStorage transport in src/api/client.js with fetch calls
+  to the server/ API. The function signatures and record shapes are the
+  contract, so the pages need no changes.
+- Multiple named projects per kind, once the API can list and delete them.
+- Prefetch the planner chunks on navbar hover or focus.

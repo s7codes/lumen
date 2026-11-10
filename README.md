@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v0.10.1-e8923a)
+![Release](https://img.shields.io/badge/release-v1.0.0-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![three.js](https://img.shields.io/badge/three.js-r187-2a2825)
@@ -11,36 +11,30 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v0.10.1**. Cart naming throughout: every visible label, button, toast
-and live announcement that said bag now says cart (**Add to Cart**, **Clear cart**,
-**Sync Wall to Cart**, **Sync Room to Cart**). Stored carts carry over unchanged.
+Current release: **v1.0.0**, the flagship release. The app talks to an asynchronous
+client (`src/api/client.js`) instead of writing straight to storage: walls and rooms
+save to Lumen Cloud as revisioned projects, requisitions submit through the same layer,
+and `/account` reads both back behind a loading state. Empty projects, quotes and carts
+show hairline isometric drawings with one clear next step. The two planners load as
+their own chunks behind a centered loading frame, which takes 50 kB off the entry script
+and 29 kB off the entry stylesheet.
 
-**v0.10.0**. Design polish and account revival. The hero headline is
-capped at 7rem (`--text-hero`) and sits on a 9vw inset (up to 220px), lower in the frame.
-The navbar controls are one row of 32px glass pills: the Arch / Tech track, Account and
-**Cart**. `/account` is rebuilt as a bento grid: a profile tile with **Sign Out** on its
-top-right corner, then Saved Spatial Projects beside Order History, under a faint
-oak-amber wash from the top right. Product cards bring their own entrance, growing from
-0.95 scale as they enter the viewport.
+## Release history
 
-Previous: **v0.9.0**. Spatial design, hero alignment and bento layouts: pure white type
-over silver body copy, frosted bento tiles below the hero and spring-driven card tilt
-with a CCT-tinted cursor glow. **v0.8.0**. Cinematic redesign and declutter: a 1% structural grid, 160-200px
-section spacing, a headline scale up to 9rem, blur-scale reveals and glass toast pills.
-**v0.7.0**. WebGL room on React Three Fiber with a shadow-mapped sun and
-per-module LED lights, a front-end account shell with a protected `/account`
-dashboard, and a React toast stack. **v0.6.0**. Motion and progressive disclosure: scroll reveals, tactile keys,
-glass planner panels, folded dimension inputs and a camera settings popover.
-**v0.5.0**. Product specification sheets on `/catalog/:id` with three
-to-scale orthographic views, a polar intensity diagram (or the 24V bus voltage drop
-curve for hardware) and direct launchers into both planners; a project checkout on
-`/checkout` with automatic driver provisioning, USD / EUR / HUF, trade codes, a
-printable quote, JSON export and requisition. **v0.4.0**. Interactive 3D Room Planner on `/room-3d`, 2D wall bridge, brand
-mark and flat Arch / Tech mode switch. **v0.3.0**. Interactive 2D Wall Studio on `/studio-2d`, one-click wall to bag
-sync, frame-rate independent pendant physics, GitHub Actions CI. **v0.2.0**. Canonical product dataset, filterable catalog with procedural scale
-elevations, persistent bag with a 24V load and driver calculator, and a surface and
-dimming lab on the overview. **v0.1.0**. Repository genesis, design tokens, routing
-shell, security foundation and E2E harness.
+| Version | Scope |
+| ------- | ----- |
+| v1.0.0  | Async Lumen Cloud client, revisioned project saves, cloud requisitions, empty states, planner code splitting |
+| v0.10.1 | Cart naming on every visible label, toast and announcement |
+| v0.10.0 | Hero inset and cap, glass pill navbar, bento account page, product card entrance |
+| v0.9.0  | White and silver contrast, bento tiles, spring-driven card tilt with a CCT glow |
+| v0.8.0  | Cinematic blur-scale reveals, 160-200px section rhythm, glass toast pills |
+| v0.7.0  | WebGL room on React Three Fiber, auth shell, protected `/account`, toasts |
+| v0.6.0  | Scroll reveals, tactile keys, glass planner panels, camera popover |
+| v0.5.0  | Spec sheets with orthographic views and photometry, project checkout and quote engine |
+| v0.4.0  | 3D Room Planner, 2D wall bridge, brand mark, Arch / Tech switch |
+| v0.3.0  | 2D Wall Studio, wall to cart sync, frame-rate independent pendant physics, CI |
+| v0.2.0  | Product dataset, filterable catalog, cart with driver sizing, surface lab |
+| v0.1.0  | Design tokens, routing shell, security foundation, E2E harness |
 
 ## Stack
 
@@ -49,9 +43,9 @@ shell, security foundation and E2E harness.
 - Inter Tight and IBM Plex Mono, self-hosted through Fontsource (no third-party requests);
   the build preloads the three Latin faces so text never reflows after first paint
 - Room engine: three.js r187 through React Three Fiber 9 and drei 10 (OrbitControls,
-  Edges, Html). The WebGL chunk is lazy-loaded with the room planner, so the entry
-  bundle stays under 500 kB
-- Planned: embedded Spatial Studio, API in `server/`
+  Edges, Html), shipped only in the lazy `RoomCanvas` chunk
+- Data layer: Promise-based Lumen Cloud client in `src/api/`, backed by `safeStorage`
+  until the HTTP API in `server/` replaces the transport
 
 ## Layout
 
@@ -61,22 +55,24 @@ vite.config.js          build config, dev-only CSP relaxation for HMR
 .github/workflows/      ci.yml: install, Chromium, build, Playwright on main and develop
 src/
   main.jsx              boot: fonts, tokens, persisted display mode, router
-  router.jsx            route table, per-entry history key seeding
+  router.jsx            route table, lazy planner routes, per-entry history key seeding
+  api/client.js         Lumen Cloud client: saveProject, loadProjects, submitQuote,
+                        loadQuotes, simulated 500-1200 ms latency
   components/           LayoutShell, Navbar, Footer, BagProvider, BagDrawer,
                         AuthModal, ModeSwitch, ProductCard, ProductElevation,
                         SurfaceLab, PageHeader, WorkspaceFrame, BlueprintViews,
-                        PhotometricCurve, icons
+                        PhotometricCurve, CloudSaveButton, EmptyState,
+                        RouteFallback (loading frame and chunk error), icons
     studio/             WallStage, StudioPalette, StudioInspector, StudioToolbar,
                         StudioSummary, shared field, switch and finish controls
     room3d/             RoomViewport, RoomCanvas (lazy WebGL), RoomControls,
                         RoomInspector, RoomToolbar, RoomSummary, CameraSettings
   contexts/             AuthContext (session, RequireAuth), ToastContext
-  data/                 products.js (parts, finishes, categories), wall-presets.js,
-                        order-history.js (sample quote archive)
+  data/                 products.js (parts, finishes, categories), wall-presets.js
   pages/                Home, Catalog, ProductDetail, Checkout, RoomPlanner,
                         WallStudio, Account, NotFound
-  hooks/                useAmbientLight, useBag, useCardTilt, useDisplayMode,
-                        useDocumentTitle, useLaunchedModule, useMagneticField,
+  hooks/                useAmbientLight, useBag, useCardTilt, useCloudSave,
+                        useDisplayMode, useDocumentTitle, useLaunchedModule, useMagneticField,
                         useModalDialog,
                         useRoom3d, useScrollReveal, useWallStudio
   lib/                  bag store and PSU sizing, wall studio geometry and history,
@@ -87,8 +83,9 @@ src/
                         formatting, route manifest
   security/sanitize.js  safeJsonParse, safeStorage, input validators
   styles/               tokens, base, animations, shell, toast, home, pages, product,
-                        product-detail, checkout, studio, room3d, account
-server/                 reserved for the API and cloud persistence phase
+                        product-detail, checkout, studio, room3d, account, cloud,
+                        empty-state
+server/                 reserved for the HTTP API behind src/api/client.js
 tests/                  Playwright specs, named by architectural domain
   support/              shared runtime, CSP and overflow guards
 ```
@@ -101,9 +98,86 @@ tests/                  Playwright specs, named by architectural domain
 | `/catalog`   | Catalog       | Category, search and sort over 8 parts, finish swatch     |
 | `/catalog/:id` | Spec sheet  | Orthographic set, photometry or bus curve, launchers      |
 | `/checkout`  | Project Quote | BOM, driver, currency, trade code, print, export, submit  |
-| `/room-3d`   | Room Planner  | WebGL room, furniture clearances, 2D wall bridge, cart sync |
-| `/studio-2d` | Wall Studio   | To-scale elevation planner, telemetry, sync to cart       |
-| `/account`   | Account       | Signed in only: saved spatial projects, order history     |
+| `/room-3d`   | Room Planner  | Lazy chunk. WebGL room, clearances, 2D bridge, cloud save, cart sync |
+| `/studio-2d` | Wall Studio   | Lazy chunk. To-scale elevation planner, cloud save, cart sync |
+| `/account`   | Account       | Signed in only: cloud projects and submitted requisitions |
+
+## Lumen Cloud API
+
+`src/api/client.js` is the only module that persists projects and requisitions. Every
+call returns a Promise that settles after a simulated round trip of 500-1200 ms
+(`LATENCY_MS`), so loading, disabled and confirmation states are built against real
+network timing. Until the HTTP API in `server/` lands, the transport is `safeStorage`.
+
+| Call | Resolves with | Storage key |
+| ---- | ------------- | ----------- |
+| `saveProject(kind, data)` | `{ id, kind, name, revision, savedAt, data }` | `lumen_cloud_projects_v1` |
+| `loadProjects()` | saved projects, newest first | `lumen_cloud_projects_v1` |
+| `submitQuote({ quote, project })` | `{ ref, quoteId, submittedAt, reference, preparedFor, currency, grossMinor, lines, loadW, status }` | `lumen_cloud_quotes_v1` |
+| `loadQuotes()` | requisitions, newest first, at most 24 | `lumen_cloud_quotes_v1` |
+
+- One project slot per kind (`wall`, `room`). Each save bumps the revision (`Rev 01`,
+  `Rev 02`). The payload is snapshotted and sanitized when the call is made, so edits
+  made during the round trip never leak into the saved revision. Empty walls and rooms
+  are rejected.
+- Every read is rebuilt record by record. Unknown kinds, revisions outside 1-9999,
+  non-ISO timestamps, payloads that fail the `lumen.wall` or `lumen.room3d` sanitizers,
+  malformed requisition or quote ids, unknown currencies and unknown statuses are dropped.
+- Failures reject with `ApiError` (`code` is `invalid` or `storage`) and surface as a
+  Fault toast. Nothing is written on failure.
+- The planners keep their working draft in `lumen_wall_studio_v1` and `lumen_room_3d_v1`,
+  so the 2D / 3D bridge, launchers and reloads behave as before. A cloud save is an
+  explicit, revisioned commit of that draft.
+
+### Cloud sync UI
+
+- **Save to Cloud** sits beside the cart sync key in both planners. On press it settles
+  flat, disables itself, shows a 1px spinning arc and reads **Saving to Lumen Cloud...**.
+  On success it inverts to white with a drawn check and reads **Project Saved** for 2.4 s,
+  and a toast confirms the revision. A ref lock backs up the disabled state, so a burst
+  of clicks commits one revision. All labels share one grid cell, so the key never
+  changes width.
+- **Submit Project Requisition** in checkout follows the same pattern
+  (**Submitting to Lumen Cloud...**) and shows the confirmation once the call resolves.
+- `/account` shows shimmering placeholder rows and **Syncing with Lumen Cloud...** while
+  both lists load in parallel. The profile tile reports the sync state.
+
+## Code splitting
+
+- `RoomPlannerPage` and `WallStudioPage` load through `React.lazy`, each behind its own
+  `<Suspense>` boundary. The overview, catalog, spec sheets, checkout and account never
+  download planner code. `three`, React Three Fiber and drei stay in the `RoomCanvas`
+  chunk, which the room viewport loads on demand. The overview hero is CSS and
+  canvas-free, so the home page never touches WebGL.
+- The fallback is a frame centered in the main area: the Lumen mark under a sweeping
+  mask highlight, a 160 x 1 px indeterminate bar and a mono label (**Loading spatial
+  engine**, **Loading wall studio**). It enters with the cinematic focus reveal. On
+  client-side navigation React Router keeps the current page up until the chunk is
+  ready, so the frame appears only on a cold load.
+- A failed chunk download (dropped connection, or a release that replaced the hashed
+  files under an open tab) renders a route error with a **Reload** key instead of a
+  blank frame. The navbar stays live.
+
+| Build output (v0.10.1 to v1.0.0) | Before | After |
+| -------------------------------- | ------ | ----- |
+| Entry script | 518.0 kB / 158.3 kB gzip | 468.2 kB / 145.3 kB gzip |
+| Entry stylesheet | 113.0 kB / 20.0 kB gzip | 83.7 kB / 15.6 kB gzip |
+| Room planner chunk | in entry | 31.7 kB / 10.7 kB gzip |
+| Wall studio chunk | in entry | 27.9 kB / 8.9 kB gzip |
+| WebGL chunk (RoomCanvas) | 971.6 kB / 258.6 kB gzip | unchanged, lazy |
+
+## Empty states
+
+`EmptyState` pairs a hairline SVG drawing with one line of silver (`#a1a1aa`) copy and
+the next action. Drawings use a 0.8 stroke on a 160-unit viewBox rendered at 200px, so
+every line lands on one device pixel. Edges draw themselves in over 1.6 s and a single
+tungsten aperture fades in last. Reduced motion shows the finished drawing.
+
+| Where | Drawing | Copy | Action |
+| ----- | ------- | ---- | ------ |
+| Account, no projects | isometric wireframe cube with hidden edges | No spatial projects yet. | **Start 2D Wall Studio**, Open Room Planner |
+| Account, no quotes | unissued spec sheet | No quotes submitted yet. | Browse Catalog |
+| Checkout, empty cart | unfurnished wall elevation | No parts specified yet. | **Start 2D Wall Studio**, Browse Catalog |
 
 ## Design system
 
@@ -333,7 +407,9 @@ custom properties, so React never re-renders on pointer movement.
   `sanitizeMultilineText`) and rendered as text only.
 - **Print Official Quote** prints only the quote sheet on A4 in black on white.
   **Download Spec JSON** exports the `lumen.quote` envelope with the BOM in minor units.
-  **Submit Project Requisition** validates the form and issues an `LMN-R-` reference.
+  **Submit Project Requisition** validates the form, submits through `submitQuote` and
+  shows the `LMN-R-` reference once Lumen Cloud confirms it.
+- An empty cart renders the wall elevation empty state inside a bento tile.
 
 ## Account
 
@@ -348,10 +424,13 @@ custom properties, so React never re-renders on pointer movement.
   fixed oak-amber wash (`--glow-oak`, a 5% `#e8923a` radial falling off by 40% from the
   top right). A full-width profile tile shows the name, email, storage, sync state and
   project and quote counts, with **Sign Out** on its top-right corner (below the identity
-  on phones). Beneath it, **Saved Spatial Projects** (the stored Wall Studio wall and 3D
-  room as inset cards with an elevation thumbnail, envelope, module count, 24V load,
-  driver and list price, marked Local until cloud sync) sits beside **Order History**
-  (hairline-ruled sample quote records until the order API is connected).
+  on phones). Beneath it, **Saved Spatial Projects** (the cloud-saved wall and room as
+  inset cards with an elevation thumbnail, envelope, module count, 24V load, driver,
+  list price, save time and revision badge) sits beside **Order History** (submitted
+  requisitions with status, lines, load and gross in the quoted currency).
+- **Open in Wall Studio** and **Open Room Planner** check the saved revision out into the
+  planner's working draft, then open the planner. A draft that was never saved does not
+  appear here: the account lists what was committed to the cloud.
 
 ## Notifications
 
@@ -363,8 +442,9 @@ custom properties, so React never re-renders on pointer movement.
   early. The stack ignores the pointer except for that key, so a toast never blocks a
   control.
 - `useToast().addToast(message, tone)` reports cart additions and removals, cleared carts,
-  checkout requisitions and quote exports, planner saves (Wall Studio JSON export and
-  import, room push to Wall Studio) and sign in or out. Messages pass `sanitizeText` and
+  checkout requisitions and quote exports, cloud saves with their revision, cloud
+  failures, planner saves (Wall Studio JSON export and import, room push to Wall
+  Studio) and sign in or out. Messages pass `sanitizeText` and
   render as text nodes.
 
 ## Security
@@ -379,6 +459,8 @@ custom properties, so React never re-renders on pointer movement.
   no-op when storage is blocked.
 - `isSafeInternalPath`, `isSafeId`, `sanitizeText` and `clampNumber` cover URL, ID,
   free-text and numeric input.
+- The cloud client sanitizes every record it reads, so a tampered `lumen_cloud_*` value
+  is dropped before it reaches React state.
 
 ## Development
 
