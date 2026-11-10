@@ -1,10 +1,13 @@
 :root {
   /* Surfaces: warm basalt, darkest at the canvas */
-  --bg-inset: #080807;
-  --bg-canvas: #0b0b0a;
-  --bg-surface: #121110;
-  --bg-elevated: #181715;
+  --bg-inset: #030303;
+  --bg-canvas: #050505;
+  --bg-surface: #0d0c0b;
+  --bg-elevated: #151412;
   --bg-raised: #1f1d1a;
+
+  /* Stage: the soft lit plinth product drawings sit on, no outline */
+  --bg-stage: radial-gradient(120% 90% at 50% 0%, rgba(242, 238, 231, 0.055) 0%, rgba(242, 238, 231, 0.015) 55%, rgba(242, 238, 231, 0.008) 100%);
 
   /* Hairlines */
   --border-hairline: rgba(242, 238, 231, 0.08);
@@ -13,8 +16,8 @@
 
   /* Typography */
   --text-primary: #f2eee7;
-  --text-secondary: #9e988e;
-  --text-muted: #666159;
+  --text-secondary: #a59f95;
+  --text-muted: #6b665e;
   --text-inverse: #0b0b0a;
 
   /* Tungsten amber */
@@ -40,8 +43,8 @@
   --signal-fault-soft: #e08a74;
   --signal-fault-dim: rgba(200, 85, 61, 0.1);
 
-  /* Structural grid */
-  --grid-line: rgba(242, 238, 231, 0.035);
+  /* Structural grid: a subliminal texture, never louder than the type */
+  --grid-line: rgba(242, 238, 231, 0.01);
   --grid-label: transparent;
   --grid-columns: 12;
   --grid-gutter: 24px;
@@ -60,12 +63,19 @@
   --text-md: 1.125rem;
   --text-lg: 1.375rem;
   --text-xl: clamp(1.75rem, 1.35rem + 1.4vw, 2.5rem);
-  --text-display: clamp(2.5rem, 1.5rem + 4vw, 5.25rem);
+  --text-headline: clamp(2.5rem, 1.25rem + 4.6vw, 5.75rem);
+  --text-display: clamp(3.25rem, 1.1rem + 7.4vw, 9rem);
 
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-strong: 640;
+
+  --leading-display: 0.94;
   --leading-tight: 1.02;
   --leading-snug: 1.25;
   --leading-body: 1.55;
-  --tracking-display: -0.035em;
+  --tracking-display: -0.052em;
+  --tracking-headline: -0.042em;
   --tracking-heading: -0.02em;
   --tracking-label: 0.08em;
 
@@ -80,6 +90,11 @@
   --space-8: 64px;
   --space-9: 96px;
   --space-10: 128px;
+  --space-11: 160px;
+  --space-12: 200px;
+
+  /* Air between major sections: 160px at 1280 wide, 200px from 1600 */
+  --section-space: clamp(112px, 12.5vw, var(--space-12));
 
   /* Micro radii */
   --radius-xs: 2px;
@@ -102,11 +117,18 @@
   --duration-fast: 120ms;
   --duration-base: 220ms;
   --duration-slow: 420ms;
-  --duration-reveal: 800ms;
+  --duration-reveal: 1100ms;
+  --ease-cinematic: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-cinematic: 1200ms;
+  --duration-hover: 900ms;
 
-  /* Scroll reveal: travel and per-item stagger step */
-  --reveal-distance: 40px;
+  /* Scroll reveal: copy rises, media resolves out of focus */
+  --reveal-distance: 28px;
+  --reveal-text-blur: 4px;
+  --reveal-scale: 1.05;
+  --reveal-blur: 8px;
   --reveal-stagger: 100ms;
+  --hover-zoom: 1.045;
 
   /* Tactile keys: a hovered key lifts off a hard-edged plinth (zero blur)
      and drifts toward the pointer by at most the magnet range. */
@@ -120,6 +142,8 @@
   /* Glass panels for floating studio chrome */
   --glass-surface: rgba(18, 17, 16, 0.46);
   --glass-hud: rgba(11, 11, 10, 0.62);
+  --glass-pill: rgba(30, 29, 27, 0.56);
+  --glass-edge: rgba(242, 238, 231, 0.1);
   --glass-blur: 18px;
   --z-hud: 5;
 
@@ -127,7 +151,7 @@
 }
 
 :root[data-mode='technical'] {
-  --grid-line: rgba(232, 146, 58, 0.11);
+  --grid-line: rgba(232, 146, 58, 0.07);
   --grid-label: rgba(232, 146, 58, 0.55);
   --border-hairline: rgba(242, 238, 231, 0.11);
 }

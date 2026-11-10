@@ -1,16 +1,13 @@
-/* Product grid: collapsed hairlines so the cells read as one ruled sheet */
+/* Product grid: no rules, no tiles. Air and type scale separate the parts. */
 
 .product-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
-  border-top: 1px solid var(--border-hairline);
-  border-left: 1px solid var(--border-hairline);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: var(--space-10) clamp(var(--space-6), 3vw, var(--space-8));
 }
 
 .product-grid__cell {
   min-width: 0;
-  border-right: 1px solid var(--border-hairline);
-  border-bottom: 1px solid var(--border-hairline);
 }
 
 /* Product card */
@@ -19,12 +16,6 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--bg-surface);
-  transition: background-color var(--duration-base) var(--ease-out);
-}
-
-.product-card:hover {
-  background: var(--bg-elevated);
 }
 
 .product-card__head {
@@ -32,8 +23,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border-hairline);
+  padding-bottom: var(--space-4);
 }
 
 .product-card__stock {
@@ -51,11 +41,21 @@
   color: var(--text-secondary);
 }
 
+/* The drawing sits on a softly lit stage. On hover it eases forward inside
+   the stage; overflow keeps the card's footprint fixed. */
 .product-card__figure {
-  padding: var(--space-3);
-  background-color: var(--bg-inset);
-  border-bottom: 1px solid var(--border-hairline);
-  transition: background-color var(--duration-slow) var(--ease-out);
+  padding: var(--space-6) var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--bg-stage);
+  overflow: hidden;
+}
+
+.product-card__figure .elev {
+  transition: transform var(--duration-hover) var(--ease-cinematic);
+}
+
+.product-card:hover .product-card__figure .elev {
+  transform: scale(var(--hover-zoom));
 }
 
 .product-card[data-mode='technical'] .product-card__figure {
@@ -69,15 +69,15 @@
 .product-card__body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-4) var(--space-3);
+  gap: var(--space-3);
+  padding: var(--space-6) 0 var(--space-4);
 }
 
 .product-card__name {
-  font-size: var(--text-md);
-  font-weight: 500;
-  line-height: var(--leading-snug);
-  letter-spacing: var(--tracking-heading);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-strong);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
 }
 
 .product-card__dims {
@@ -88,7 +88,9 @@
 }
 
 .product-card__summary {
+  max-width: 40ch;
   font-size: var(--text-sm);
+  font-weight: var(--weight-light);
   color: var(--text-secondary);
 }
 
@@ -98,15 +100,16 @@
   justify-content: space-between;
   gap: var(--space-3);
   margin-top: auto;
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--border-hairline);
+  padding-top: var(--space-5);
 }
 
 .product-card__price {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: var(--text-md);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-light);
+  letter-spacing: -0.02em;
 }
 
 .product-card__in-bag {
@@ -163,7 +166,7 @@
 .swatches {
   min-width: 0;
   margin: 0;
-  padding: 0 var(--space-4) var(--space-4);
+  padding: 0;
   border: 0;
 }
 

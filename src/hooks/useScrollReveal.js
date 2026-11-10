@@ -1,7 +1,9 @@
 import { useCallback } from 'react';
 
 const MAX_STAGGER_STEPS = 6;
-const ROOT_MARGIN = '0px 0px -10% 0px';
+const ROOT_MARGIN = '0px 0px -12% 0px';
+// Longest reveal (1200 ms) plus the deepest stagger step, with headroom.
+const SETTLE_FALLBACK_MS = 2400;
 
 const supported = typeof window !== 'undefined' && 'IntersectionObserver' in window;
 
@@ -11,11 +13,32 @@ if (supported) document.documentElement.dataset.reveal = 'on';
 
 let observer = null;
 
+/**
+ * Once the element has resolved, `data-reveal-settled` drops the compositor
+ * hints (will-change on transform, filter, opacity) so a page of revealed
+ * cards does not keep dozens of GPU layers alive.
+ */
+function settleAfterTransition(el) {
+  let timer = 0;
+  const settle = () => {
+    window.clearTimeout(timer);
+    el.removeEventListener('transitionend', onEnd);
+    el.setAttribute('data-reveal-settled', '');
+  };
+  function onEnd(event) {
+    if (event.target === el && event.propertyName === 'opacity') settle();
+  }
+  el.addEventListener('transitionend', onEnd);
+  timer = window.setTimeout(settle, SETTLE_FALLBACK_MS);
+}
+
 // The step is multiplied by --reveal-stagger in animations.css, so the timing
 // stays a design token.
 function markRevealed(el, value, step = 0) {
   if (step > 0) el.style.setProperty('--reveal-step', String(step));
   el.setAttribute('data-revealed', value);
+  if (value === 'instant') el.setAttribute('data-reveal-settled', '');
+  else settleAfterTransition(el);
 }
 
 function staggerGroup(el) {
@@ -65,8 +88,11 @@ function getObserver() {
 }
 
 /**
- * Returns a stable ref callback. Attach it to any `.reveal-up` element; the
- * element slides up and fades in once, the first time it enters the viewport.
+ * Returns a stable ref callback for any reveal target, once, the first time
+ * it enters the viewport:
+ * - `.reveal-up` (copy) rises a short distance out of a soft blur.
+ * - `.reveal-cinematic` (media) resolves from 1.05 scale and an 8px blur to
+ *   full focus over 1200 ms on cubic-bezier(0.16, 1, 0.3, 1).
  */
 export function useScrollReveal() {
   return useCallback((node) => {

@@ -2,23 +2,44 @@
    Every hidden state is gated on html[data-reveal='on'], which the reveal
    hook sets only when IntersectionObserver exists. */
 
-/* Scroll reveal */
+/* Scroll reveal. Copy rises out of a soft blur; media (.reveal-cinematic)
+   starts a touch oversized and out of focus, then settles into the frame
+   like a lens pulling focus. The revealed state is filter: none, not
+   blur(0), so a settled element never becomes a containing block. */
 
-:root[data-reveal='on'] .reveal-up {
+:root[data-reveal='on'] .reveal-up,
+:root[data-reveal='on'] .reveal-cinematic {
   opacity: 0;
-  transform: translateY(var(--reveal-distance));
   transition:
-    opacity var(--duration-reveal) var(--ease-reveal),
-    transform var(--duration-reveal) var(--ease-reveal);
+    opacity var(--duration-reveal) var(--ease-cinematic),
+    transform var(--duration-reveal) var(--ease-cinematic),
+    filter var(--duration-reveal) var(--ease-cinematic);
   transition-delay: calc(var(--reveal-step, 0) * var(--reveal-stagger));
 }
 
-:root[data-reveal='on'] .reveal-up[data-revealed] {
-  opacity: 1;
-  transform: none;
+:root[data-reveal='on'] .reveal-up {
+  transform: translateY(var(--reveal-distance));
+  filter: blur(var(--reveal-text-blur));
 }
 
-:root[data-reveal='on'] .reveal-up[data-revealed='instant'] {
+:root[data-reveal='on'] .reveal-cinematic {
+  transform: scale(var(--reveal-scale));
+  transform-origin: 50% 40%;
+  filter: blur(var(--reveal-blur));
+  transition-duration: var(--duration-cinematic);
+}
+
+:root[data-reveal='on'] :is(.reveal-up, .reveal-cinematic):not([data-reveal-settled]) {
+  will-change: opacity, transform, filter;
+}
+
+:root[data-reveal='on'] :is(.reveal-up, .reveal-cinematic)[data-revealed] {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+:root[data-reveal='on'] :is(.reveal-up, .reveal-cinematic)[data-revealed='instant'] {
   transition: none;
 }
 
@@ -28,6 +49,20 @@
   from {
     opacity: 0;
     transform: translateY(24px);
+  }
+}
+
+@keyframes lumen-focus {
+  from {
+    opacity: 0;
+    transform: scale(var(--reveal-scale));
+    filter: blur(var(--reveal-blur));
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
   }
 }
 
@@ -93,9 +128,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root[data-reveal='on'] .reveal-up {
+  :root[data-reveal='on'] .reveal-up,
+  :root[data-reveal='on'] .reveal-cinematic {
     opacity: 1;
     transform: none;
+    filter: none;
     transition: none;
   }
 

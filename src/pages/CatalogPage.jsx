@@ -161,7 +161,7 @@ export default function CatalogPage() {
           {results.length > 0 ? (
             <ul className="product-grid reveal-stagger">
               {results.map((product) => (
-                <li key={product.id} ref={reveal} className="product-grid__cell reveal-up">
+                <li key={product.id} ref={reveal} className="product-grid__cell reveal-cinematic">
                   <ProductCard
                     product={product}
                     index={product.order}

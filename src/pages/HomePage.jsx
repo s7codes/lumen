@@ -110,7 +110,6 @@ function SectionHead({ index, section, titleId, title, lede }) {
         {title}
       </h2>
       {lede && <p className="section-head__lede">{lede}</p>}
-      <span className="section-head__rule" aria-hidden="true" />
     </header>
   );
 }
@@ -145,7 +144,7 @@ export default function HomePage() {
           title="Read a finish under real light before it is specified."
           lede="One LED channel on the 24V bus, a dimmer, three colour temperatures and four production finishes. Load, output and reflected light are calculated from fixture data as you adjust them."
         />
-        <div ref={reveal} className="reveal-up">
+        <div ref={reveal} className="reveal-cinematic">
           <SurfaceLab />
         </div>
       </section>
@@ -160,7 +159,7 @@ export default function HomePage() {
         />
         <ul className="modules__grid reveal-stagger">
           {FLAGSHIPS.map(({ product, index }) => (
-            <li key={product.id} ref={reveal} className="modules__cell reveal-up">
+            <li key={product.id} ref={reveal} className="modules__cell reveal-cinematic">
               <ProductCard product={product} index={index} />
             </li>
           ))}
