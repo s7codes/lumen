@@ -60,7 +60,10 @@ export default defineConfig({
   preview: {
     port: 4173,
   },
+  // three.js and drei ship only in the lazy RoomCanvas chunk (about 260 kB
+  // gzip), loaded when the room planner opens. The entry stays under 500 kB.
   build: {
     sourcemap: false,
+    chunkSizeWarningLimit: 1024,
   },
 });

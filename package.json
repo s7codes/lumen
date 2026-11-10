@@ -1,6 +1,6 @@
 {
   "name": "lumen",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,9 +12,12 @@
   "dependencies": {
     "@fontsource-variable/inter-tight": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-router-dom": "^7.18.5"
+    "react-router-dom": "^7.18.5",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
