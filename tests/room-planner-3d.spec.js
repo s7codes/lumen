@@ -218,7 +218,7 @@ test.describe('brand mark and display mode switch', () => {
       const style = getComputedStyle(el);
       return { border: `${style.borderTopWidth} ${style.borderTopStyle}`, color: style.borderTopColor };
     });
-    expect(frame).toEqual({ border: '1px solid', color: 'rgba(242, 238, 231, 0.16)' });
+    expect(frame).toEqual({ border: '1px solid', color: 'rgba(255, 255, 255, 0.08)' });
 
     await expect(arch).toHaveAttribute('aria-pressed', 'true');
     expect(await paint(arch)).toEqual({ background: 'rgb(255, 255, 255)', color: 'rgb(11, 11, 10)', shadow: 'none' });
@@ -697,7 +697,7 @@ test.describe('2D and 3D bridge', () => {
     await expect(page.getByTestId('room-load')).toHaveText(`${loadW} W`);
 
     await page.getByTestId('sync-room-to-bag').click();
-    const drawer = page.getByRole('dialog', { name: 'Bag' });
+    const drawer = page.getByRole('dialog', { name: 'Cart' });
     await expect(drawer).toBeVisible();
     await expect(page.getByTestId('room-bridge-status')).toHaveText(
       `Synced 4 modules as ${lines.length} bag lines.`,

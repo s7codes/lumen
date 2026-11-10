@@ -87,7 +87,8 @@ test.describe('authentication shell', () => {
     await account.click();
     await expect(page).toHaveURL((url) => url.pathname === '/account');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Account');
-    await expect(page.getByTestId('account-user')).toHaveText('Signed in as Studio Guest / guest@lumen.com');
+    await expect(page.getByTestId('account-user')).toContainText('Studio Guest');
+    await expect(page.getByTestId('account-user')).toContainText('guest@lumen.com');
     await expect(account).toHaveAttribute('aria-current', 'page');
     // Polled: the inversion eases over 120 ms. Flat surface, no glow.
     await expect
@@ -178,6 +179,71 @@ test.describe('account dashboard', () => {
     await page.goto('/account');
     await expect(page.getByTestId('saved-projects-empty')).toBeVisible();
     await expect(page.getByTestId('saved-project')).toHaveCount(0);
+  });
+
+  test('profile, projects and quotes sit in bento tiles with Sign Out anchored top right of the profile', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    await seed(page, [[SESSION_KEY, JSON.stringify(GUEST)]]);
+    await page.goto('/account');
+
+    const profile = page.getByTestId('account-profile');
+    const tiles = [profile, page.getByTestId('account-projects'), page.getByTestId('account-orders')];
+    for (const tile of tiles) {
+      await expect.poll(() => tile.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+      const look = await tile.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return {
+          radius: style.borderTopLeftRadius,
+          edge: style.borderTopColor,
+          width: style.borderTopWidth,
+          blur: style.backdropFilter,
+        };
+      });
+      expect(look).toEqual({ radius: '16px', edge: 'rgba(255, 255, 255, 0.06)', width: '1px', blur: 'blur(16px)' });
+    }
+
+    // Profile spans the frame; projects and quotes share the row below it.
+    const [profileBox, projectsBox, ordersBox] = await Promise.all(tiles.map((tile) => tile.boundingBox()));
+    expect(Math.abs(profileBox.x - projectsBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(profileBox.x + profileBox.width - (ordersBox.x + ordersBox.width))).toBeLessThanOrEqual(1);
+    expect(Math.abs(projectsBox.y - ordersBox.y)).toBeLessThanOrEqual(1);
+    expect(projectsBox.y).toBeGreaterThan(profileBox.y + profileBox.height);
+
+    // Sign Out lives in the profile tile, on its top-right padding corner.
+    const signOut = profile.getByTestId('sign-out');
+    await expect(signOut).toBeVisible();
+    const corner = await profile.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const box = el.getBoundingClientRect();
+      return {
+        top: box.top + Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.paddingTop),
+        right: box.right - Number.parseFloat(style.borderRightWidth) - Number.parseFloat(style.paddingRight),
+      };
+    });
+    const signOutBox = await signOut.boundingBox();
+    expect(Math.abs(signOutBox.x + signOutBox.width - corner.right)).toBeLessThanOrEqual(1);
+    expect(Math.abs(signOutBox.y - corner.top)).toBeLessThanOrEqual(1);
+    await expect(profile.getByRole('heading', { level: 2 })).toHaveText(GUEST.name);
+    await expect(page.getByTestId('account-user')).toContainText(GUEST.email);
+
+    // A faint oak-amber wash falls in from the top right, fixed behind the content.
+    const atmosphere = await page.getByTestId('account-page').evaluate((el) => {
+      const glow = getComputedStyle(el, '::before');
+      return { position: glow.position, image: glow.backgroundImage, events: glow.pointerEvents };
+    });
+    expect(atmosphere.position).toBe('fixed');
+    expect(atmosphere.events).toBe('none');
+    expect(atmosphere.image).toBe('radial-gradient(circle at 100% 0%, rgba(232, 146, 58, 0.05), rgba(0, 0, 0, 0) 40%)');
+
+    // Phone width: the action drops under the identity and nothing overflows.
+    await page.setViewportSize({ width: 360, height: 800 });
+    const narrow = await signOut.boundingBox();
+    const identity = await page.getByTestId('account-user').boundingBox();
+    expect(narrow.y).toBeGreaterThanOrEqual(identity.y + identity.height);
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });
 });
 

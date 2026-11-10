@@ -140,7 +140,7 @@ test.describe('app shell', () => {
       .toBe(true);
   });
 
-  test('hero copy anchors to the left edge and leaves the right track open for the pendant', async ({ page }) => {
+  test('hero copy holds a measured left inset at a 7rem cap and leaves the right track open', async ({ page }) => {
     for (const viewport of [
       { width: 1280, height: 720 },
       { width: 2560, height: 1440 },
@@ -155,8 +155,17 @@ test.describe('app shell', () => {
       const heroBox = await hero.boundingBox();
       const copyBox = await copy.boundingBox();
       const label = `${viewport.width}x${viewport.height}`;
-      // Flush with the page inset, not centred in the 1440 frame.
-      expect(copyBox.x - heroBox.x, label).toBeLessThanOrEqual(Math.max(120, viewport.width * 0.055) + 1);
+      // Off the edge on a 9vw inset capped at 220px, not centred in the frame.
+      const inset = Math.min(220, viewport.width * 0.09);
+      expect(copyBox.x - heroBox.x, label).toBeGreaterThanOrEqual(inset - 1);
+      expect(copyBox.x - heroBox.x, label).toBeLessThanOrEqual(inset + 1);
+      // The headline tops out at 7rem of the current root size.
+      const type = await title.evaluate((el) => ({
+        size: Number.parseFloat(getComputedStyle(el).fontSize),
+        root: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+      }));
+      expect(type.size, label).toBeLessThanOrEqual(type.root * 7 + 0.5);
+      expect(type.size, label).toBeGreaterThan(type.root * 4.5);
       // The widest rendered line of copy stops well short of the lamp at rest (74%).
       const inkRight = await copy.evaluate((el) => {
         const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -171,7 +180,7 @@ test.describe('app shell', () => {
       expect(inkRight, label).toBeLessThan(heroBox.x + heroBox.width * 0.66);
       // Lowered into the frame: the copy sits in the lower part of the hero.
       expect(copyBox.y - heroBox.y, label).toBeGreaterThan(heroBox.height * 0.08);
-      expect(heroBox.y + heroBox.height - (copyBox.y + copyBox.height), label).toBeLessThan(heroBox.height * 0.2);
+      expect(heroBox.y + heroBox.height - (copyBox.y + copyBox.height), label).toBeLessThan(heroBox.height * 0.1);
     }
 
     await expect(page.locator('.hero__title')).toHaveCSS('color', 'rgb(255, 255, 255)');
@@ -216,12 +225,68 @@ test.describe('app shell', () => {
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(400);
   });
 
-  test('bag trigger opens a modal drawer that closes on Escape and returns focus', async ({ page }) => {
+  test('navbar controls are one row of matched glass pills, flush right', async ({ page }) => {
+    for (const width of [1280, 1600, 768]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/');
+      const navbar = page.locator('header.navbar');
+      const pills = [
+        navbar.getByTestId('mode-switch'),
+        navbar.getByTestId('sign-in'),
+        navbar.getByRole('button', { name: 'Cart (0)' }),
+      ];
+      const looks = [];
+      for (const pill of pills) {
+        looks.push(
+          await pill.evaluate((el) => {
+            const style = getComputedStyle(el);
+            const box = el.getBoundingClientRect();
+            return {
+              radius: style.borderTopLeftRadius,
+              edge: style.borderTopWidth,
+              surface: style.backgroundColor,
+              shadow: style.boxShadow,
+              height: box.height,
+              mid: box.top + box.height / 2,
+              left: box.left,
+              right: box.right,
+            };
+          }),
+        );
+      }
+      for (const look of looks) {
+        expect(look, `${width}px`).toMatchObject({
+          radius: '24px',
+          edge: '1px',
+          surface: 'rgba(255, 255, 255, 0.05)',
+          shadow: 'none',
+          height: 32,
+        });
+        expect(Math.abs(look.mid - looks[0].mid), `${width}px`).toBeLessThanOrEqual(0.5);
+      }
+      // Left to right in source order, the cart closing the row on the frame's right inset.
+      expect(looks[0].right).toBeLessThan(looks[1].left);
+      expect(looks[1].right).toBeLessThan(looks[2].left);
+      const frameRight = await navbar.locator('.navbar__inner').evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        return box.right - Number.parseFloat(getComputedStyle(el).paddingRight);
+      });
+      expect(Math.abs(looks[2].right - frameRight), `${width}px`).toBeLessThanOrEqual(1);
+      await expect(pills[2]).toHaveCSS('text-transform', 'uppercase');
+    }
+
+    const engaged = page.locator('.mode-switch__segment[aria-pressed="true"]');
+    await expect(engaged).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(engaged).toHaveCSS('box-shadow', 'none');
+    await expect(engaged).toHaveCSS('border-top-left-radius', '24px');
+  });
+
+  test('cart trigger opens a modal drawer that closes on Escape and returns focus', async ({ page }) => {
     await page.goto('/');
-    const trigger = page.getByRole('button', { name: 'Bag (0)' });
+    const trigger = page.getByRole('button', { name: 'Cart (0)' });
     await trigger.click();
 
-    const drawer = page.getByRole('dialog', { name: 'Bag' });
+    const drawer = page.getByRole('dialog', { name: 'Cart' });
     await expect(drawer).toBeVisible();
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
     await expect(drawer.getByRole('button', { name: 'Close' })).toBeFocused();

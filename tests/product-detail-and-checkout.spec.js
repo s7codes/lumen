@@ -119,7 +119,7 @@ test.describe('product specification view', () => {
     await page.getByRole('button', { name: 'Increase quantity' }).click();
     await expect(page.getByTestId('detail-qty')).toHaveText('3');
     await page.getByTestId('detail-add-to-bag').click();
-    await expect(page.getByRole('button', { name: 'Bag (3)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cart (3)' })).toBeVisible();
     await expect(page.getByTestId('detail-in-bag')).toHaveText('In bag 3 / Oak');
 
     await page.getByRole('radio', { name: 'Walnut' }).check();
@@ -234,8 +234,8 @@ test.describe('checkout and quote', () => {
     const errors = collectRuntimeErrors(page);
     await seedBag(page);
 
-    await page.getByRole('button', { name: 'Bag (4)' }).click();
-    const drawer = page.getByRole('dialog', { name: 'Bag' });
+    await page.getByRole('button', { name: 'Cart (4)' }).click();
+    const drawer = page.getByRole('dialog', { name: 'Cart' });
     await drawer.getByTestId('proceed-to-checkout').click();
     await expect(drawer).toHaveCount(0);
     await expect(page).toHaveURL(/\/checkout$/);

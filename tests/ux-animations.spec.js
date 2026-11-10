@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { collectRuntimeErrors, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
 const CINEMATIC_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
-const REVEAL_TARGETS = '.reveal-up, .reveal-cinematic';
+const REVEAL_TARGETS = '.reveal-up, .reveal-cinematic, .reveal-card';
 
 function revealState(locator) {
   return locator.evaluateAll((els) =>
@@ -13,11 +13,34 @@ function revealState(locator) {
         settled: el.hasAttribute('data-reveal-settled'),
         opacity: style.opacity,
         transform: style.transform,
+        scale: style.scale,
         filter: style.filter,
         delay: style.transitionDelay.split(',')[0].trim(),
+        animationDelay: style.animationDelay,
       };
     }),
   );
+}
+
+function cardEntrance(locator) {
+  return locator.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      name: style.animationName,
+      duration: style.animationDuration,
+      easing: style.animationTimingFunction,
+    };
+  });
+}
+
+// Waits for a product card's entrance to finish and its compositor hints to drop.
+async function waitForCardAtRest(card) {
+  await expect
+    .poll(async () => {
+      const [state] = await revealState(card);
+      return `${state.opacity} ${state.scale} ${state.filter} ${state.settled}`;
+    })
+    .toBe('1 none none true');
 }
 
 function revealTiming(locator) {
@@ -54,30 +77,35 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('scroll reveal', () => {
-  test('home media waits below the fold out of focus, then resolves from 1.05 scale and 8px blur', async ({ page }) => {
+  test('home media resolves from 1.05 scale and 8px blur; product cards grow in from 0.95', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/');
     await expect(page.locator('html')).toHaveAttribute('data-reveal', 'on');
 
     const grid = page.getByTestId('core-modules').locator('.modules__grid');
-    const cells = grid.locator(':scope > li');
+    const cells = grid.locator('.product-card');
     await expect(grid).toHaveClass(/\breveal-stagger\b/);
     await expect(cells).toHaveCount(3);
-    for (const cell of await cells.all()) await expect(cell).toHaveClass(/\breveal-cinematic\b/);
-    await expect(page.getByTestId('surface-lab').locator('.reveal-cinematic')).toHaveCount(1);
+    for (const cell of await cells.all()) await expect(cell).toHaveClass(/\breveal-card\b/);
+    const lab = page.getByTestId('surface-lab').locator('.reveal-cinematic');
+    await expect(lab).toHaveCount(1);
     await expect(page.locator('#lab-title').locator('xpath=..')).toHaveClass(/\breveal-up\b/);
 
-    // Below the fold nothing has been revealed: oversized, blurred, transparent.
-    const before = await revealState(cells);
-    for (const cell of before) {
-      expect(cell).toMatchObject({ revealed: null, settled: false, opacity: '0', filter: 'blur(8px)' });
-      expect(cell.transform).toBe('matrix(1.05, 0, 0, 1.05, 0, 0)');
-    }
-    expect(await revealTiming(cells.first())).toEqual({
+    // Below the fold the lab stage waits oversized, blurred and transparent.
+    const labBefore = (await revealState(lab)).at(0);
+    expect(labBefore).toMatchObject({ revealed: null, settled: false, opacity: '0', filter: 'blur(8px)' });
+    expect(labBefore.transform).toBe('matrix(1.05, 0, 0, 1.05, 0, 0)');
+    expect(await revealTiming(lab)).toEqual({
       property: 'opacity, transform, filter',
       duration: '1.2s',
       easing: `${CINEMATIC_EASE}, ${CINEMATIC_EASE}, ${CINEMATIC_EASE}`,
     });
+
+    // Cards wait transparent at 0.95 on the individual scale property, so the
+    // tilt transform stays free.
+    for (const cell of await revealState(cells)) {
+      expect(cell).toMatchObject({ revealed: null, settled: false, opacity: '0', scale: '0.95', transform: 'none' });
+    }
 
     // Copy rises out of a softer blur on the same curve.
     const head = page.locator('#modules-title').locator('xpath=..');
@@ -88,14 +116,21 @@ test.describe('scroll reveal', () => {
 
     await grid.scrollIntoViewIfNeeded();
     await expect.poll(async () => (await revealState(cells)).map((cell) => cell.revealed)).toEqual(['in', 'in', 'in']);
-    // One row, one batch: 0, 100 and 200 ms.
-    expect((await revealState(cells)).map((cell) => cell.delay)).toEqual(['0s', '0.1s', '0.2s']);
+    expect(await cardEntrance(cells.first())).toEqual({
+      name: 'lumen-card-in',
+      duration: '1s',
+      easing: CINEMATIC_EASE,
+    });
+    // One row, one batch: 0, 100 and 200 ms, staggered through the grid cells.
+    expect((await revealState(cells)).map((cell) => cell.animationDelay)).toEqual(['0s', '0.1s', '0.2s']);
     // At rest the filter is none, not blur(0), so no containing block lingers.
     await expect
       .poll(async () =>
-        (await revealState(cells)).map(({ opacity, transform, filter }) => `${opacity} ${transform} ${filter}`),
+        (await revealState(cells)).map(
+          ({ opacity, transform, scale, filter }) => `${opacity} ${transform} ${scale} ${filter}`,
+        ),
       )
-      .toEqual(['1 none none', '1 none none', '1 none none']);
+      .toEqual(['1 none none none', '1 none none none', '1 none none none']);
     await expect.poll(async () => (await revealState(cells)).every((cell) => cell.settled)).toBe(true);
     expect(await cells.first().evaluate((el) => getComputedStyle(el).willChange)).toBe('auto');
 
@@ -120,28 +155,33 @@ test.describe('scroll reveal', () => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/catalog');
 
-    const cells = page.locator('.product-grid > li');
+    const cells = page.locator('.product-grid .product-card');
     await expect(page.locator('.product-grid')).toHaveClass(/\breveal-stagger\b/);
     const count = await cells.count();
     expect(count).toBeGreaterThan(4);
-    for (const cell of await cells.all()) await expect(cell).toHaveClass(/\breveal-cinematic\b/);
+    for (const cell of await cells.all()) await expect(cell).toHaveClass(/\breveal-card\b/);
 
     // The first row is in view on load and staggers left to right.
     await expect.poll(async () => (await revealState(cells.first())).at(0).revealed).toBe('in');
-    const firstRowTop = await cells.first().evaluate((el) => el.offsetTop);
-    const rowSize = await cells.evaluateAll((els, top) => els.filter((el) => el.offsetTop === top).length, firstRowTop);
+    const firstRowTop = await cells.first().evaluate((el) => el.parentElement.offsetTop);
+    const rowSize = await cells.evaluateAll(
+      (els, top) => els.filter((el) => el.parentElement.offsetTop === top).length,
+      firstRowTop,
+    );
     expect(rowSize).toBeGreaterThan(1);
     const firstRow = (await revealState(cells)).slice(0, rowSize);
-    expect(firstRow.map((cell) => cell.delay)).toEqual(
+    expect(firstRow.map((cell) => cell.animationDelay)).toEqual(
       Array.from({ length: rowSize }, (_, i) => (i === 0 ? '0s' : `${(i / 10).toFixed(1)}s`)),
     );
 
     const last = cells.last();
-    expect((await revealState(last)).at(0)).toMatchObject({ revealed: null, opacity: '0', filter: 'blur(8px)' });
+    expect((await revealState(last)).at(0)).toMatchObject({ revealed: null, opacity: '0', scale: '0.95' });
     await last.scrollIntoViewIfNeeded();
     await expect.poll(async () => (await revealState(last)).at(0).revealed).toBe('in');
     await expect
-      .poll(async () => (await revealState(last)).map(({ opacity, transform, filter }) => `${opacity} ${transform} ${filter}`))
+      .poll(async () =>
+        (await revealState(last)).map(({ opacity, scale, filter }) => `${opacity} ${scale} ${filter}`),
+      )
       .toEqual(['1 none none']);
 
     // Filtering mounts fresh cards; they reveal as soon as they are on screen.
@@ -157,9 +197,10 @@ test.describe('scroll reveal', () => {
   test('reduced motion shows every section at rest with no travel', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
-    const cells = page.getByTestId('core-modules').locator('.modules__grid > li');
+    const cells = page.getByTestId('core-modules').locator('.modules__grid .product-card');
+    await expect(cells).toHaveCount(3);
     for (const cell of await revealState(cells)) {
-      expect(cell).toMatchObject({ opacity: '1', transform: 'none', filter: 'none' });
+      expect(cell).toMatchObject({ opacity: '1', transform: 'none', scale: 'none', filter: 'none' });
     }
     await expect(page.locator('.hero__title')).toHaveCSS('opacity', '1');
   });
@@ -193,7 +234,7 @@ async function settledCatalogCard(page, name) {
   await page.goto('/catalog');
   const card = page.getByRole('article', { name });
   await card.scrollIntoViewIfNeeded();
-  await expect.poll(async () => (await revealState(card.locator('xpath=..'))).at(0).transform).toBe('none');
+  await waitForCardAtRest(card);
   return card;
 }
 
@@ -297,10 +338,8 @@ test.describe('tactile keys', () => {
     const card = page.getByRole('article', { name: 'Floating Shelf 110' });
     const key = card.getByRole('button', { name: /add to bag/i });
     await key.scrollIntoViewIfNeeded();
-    // Wait for the cinematic reveal to finish scaling, or the pointer would aim at a moving key.
-    await expect
-      .poll(async () => (await revealState(card.locator('xpath=..'))).map(({ opacity, transform }) => `${opacity} ${transform}`))
-      .toEqual(['1 none']);
+    // Wait for the card entrance to finish scaling, or the pointer would aim at a moving key.
+    await waitForCardAtRest(card);
 
     const rest = await readKey(key);
     expect(rest).toMatchObject({ x: 0, y: 0, shadowY: 0, blur: 0, layers: 1 });

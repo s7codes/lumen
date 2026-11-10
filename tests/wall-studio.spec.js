@@ -327,10 +327,10 @@ test.describe('wall studio', () => {
 
     const sync = page.getByTestId('sync-wall-to-bag');
     await sync.click();
-    const drawer = page.getByRole('dialog', { name: 'Bag' });
+    const drawer = page.getByRole('dialog', { name: 'Cart' });
     await expect(drawer).toBeVisible();
     await expect(page.getByTestId('sync-status')).toHaveText('Synced 9 modules as 7 bag lines.');
-    await expect(page.getByRole('button', { name: 'Bag (9)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cart (9)' })).toBeVisible();
 
     const lines = drawer.getByTestId('bag-line');
     await expect(lines).toHaveCount(expected.length);
@@ -353,7 +353,7 @@ test.describe('wall studio', () => {
 
     // A second sync merges into the existing lines instead of replacing them.
     await sync.click();
-    await expect(page.getByRole('button', { name: 'Bag (18)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cart (18)' })).toBeVisible();
     await expect(drawer.getByTestId('bag-load')).toHaveText(`${loadW * 2} W`);
     await expect(drawer.getByTestId('bag-psu')).toHaveText('Multi-bus 24V Driver Array');
     await expect(

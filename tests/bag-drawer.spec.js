@@ -18,8 +18,8 @@ async function addFromCatalog(page, name, finish) {
 }
 
 async function openBag(page) {
-  await page.getByRole('button', { name: /^Bag \(\d+\)$/ }).click();
-  const drawer = page.getByRole('dialog', { name: 'Bag' });
+  await page.getByRole('button', { name: /^Cart \(\d+\)$/ }).click();
+  const drawer = page.getByRole('dialog', { name: 'Cart' });
   await expect(drawer).toBeVisible();
   await drawer.evaluate((el) => Promise.all(el.getAnimations().map((animation) => animation.finished)));
   return drawer;
@@ -43,7 +43,7 @@ test.describe('bag drawer', () => {
     await page.goto('/catalog');
     await addFromCatalog(page, 'Floating Shelf 110');
     await addFromCatalog(page, 'Corner Floor Column 140');
-    await expect(page.getByRole('button', { name: 'Bag (2)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cart (2)' })).toBeVisible();
 
     const drawer = await openBag(page);
     const lines = drawer.getByTestId('bag-line');
@@ -94,7 +94,7 @@ test.describe('bag drawer', () => {
     expect(await readStoredBag(page)).toBeNull();
 
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('button', { name: 'Bag (0)' })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Cart (0)' })).toBeFocused();
   });
 
   test('the bag persists across reloads and routes with the selected finishes', async ({ page }) => {
@@ -102,7 +102,7 @@ test.describe('bag drawer', () => {
     await addFromCatalog(page, 'Linear Lightbar 60', 'Chalk');
     await addFromCatalog(page, 'Linear Lightbar 60', 'Chalk');
     await addFromCatalog(page, 'Acoustic Art Frame 50x70', 'Walnut');
-    await expect(page.getByRole('button', { name: 'Bag (3)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cart (3)' })).toBeVisible();
 
     expect(JSON.parse(await readStoredBag(page))).toEqual([
       { id: 'linear-lightbar-60', finish: 'chalk', qty: 2 },
@@ -110,7 +110,7 @@ test.describe('bag drawer', () => {
     ]);
 
     await page.reload();
-    await expect(page.getByRole('button', { name: 'Bag (3)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cart (3)' })).toBeVisible();
 
     const drawer = await openBag(page);
     await expect(drawer.getByTestId('bag-line')).toHaveCount(2);
@@ -121,7 +121,7 @@ test.describe('bag drawer', () => {
 
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /overview/i }).click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(/light and storage/i);
-    await expect(page.getByRole('button', { name: 'Bag (3)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cart (3)' })).toBeVisible();
 
     await page.goto('/catalog');
     const lightbar = page.getByRole('article', { name: 'Linear Lightbar 60' });
@@ -144,7 +144,7 @@ test.describe('bag drawer', () => {
 
     for (const raw of payloads) {
       await seedStorage(page, raw);
-      await expect(page.getByRole('button', { name: 'Bag (0)' }), raw).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Cart (0)' }), raw).toBeVisible();
       expect(await readStoredBag(page), raw).toBeNull();
     }
 
@@ -181,7 +181,7 @@ test.describe('bag drawer', () => {
     );
 
     await seedStorage(page, raw);
-    await expect(page.getByRole('button', { name: 'Bag (4)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cart (4)' })).toBeVisible();
     expect(JSON.parse(await readStoredBag(page))).toEqual([
       { id: 'floating-shelf-110', finish: 'walnut', qty: 3 },
       { id: 'corner-floor-column-140', finish: 'chalk', qty: 1 },
@@ -202,14 +202,14 @@ test.describe('bag drawer', () => {
     await home.goto('/');
 
     await addFromCatalog(shop, 'Modular Cube 36');
-    await expect(home.getByRole('button', { name: 'Bag (1)' })).toBeVisible();
+    await expect(home.getByRole('button', { name: 'Cart (1)' })).toBeVisible();
 
     await shop.evaluate(
       (key) => localStorage.setItem(key, '[{"id":"modular-cube-36","finish":"oak","qty":-50}]'),
       STORAGE_KEY,
     );
-    await expect(home.getByRole('button', { name: 'Bag (0)' })).toBeVisible();
-    await expect(shop.getByRole('button', { name: 'Bag (0)' })).toBeVisible();
+    await expect(home.getByRole('button', { name: 'Cart (0)' })).toBeVisible();
+    await expect(shop.getByRole('button', { name: 'Cart (0)' })).toBeVisible();
   });
 
   test('a filled drawer fits a 360px viewport and traps focus', async ({ page }) => {

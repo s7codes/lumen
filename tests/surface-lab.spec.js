@@ -110,7 +110,7 @@ test.describe('core modules', () => {
     await frame.getByRole('radio', { name: 'Chalk' }).check();
     await frame.getByRole('button', { name: /add to bag/i }).click();
 
-    await expect(page.getByRole('button', { name: 'Bag (1)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cart (1)' })).toBeVisible();
     await expect(frame.getByTestId('in-bag')).toHaveText('In bag 1');
     await expect(page.getByRole('region', { name: 'Notifications' }).getByTestId('toast-message')).toHaveText(
       'Acoustic Art Frame 50x70, Chalk added to bag.',
@@ -119,7 +119,7 @@ test.describe('core modules', () => {
     await modules.getByRole('link', { name: 'Explore Full Catalog' }).click();
     await expect(page).toHaveURL((url) => url.pathname === '/catalog');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Catalog');
-    await expect(page.getByRole('button', { name: 'Bag (1)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cart (1)' })).toBeVisible();
   });
 });
 
