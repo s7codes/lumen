@@ -136,7 +136,7 @@ export function anchorPoints(item) {
 
 /* Placement */
 
-function preferredSpot(product, wall) {
+export function preferredSpot(product, wall) {
   const { w, h } = product.dimsCm;
   const x = (wall.widthCm - w) / 2;
   if (product.mount === 'floor') return { x, y: 0 };
@@ -154,18 +154,21 @@ function candidates(max, preferred) {
 /**
  * First free position for `product`, searched outward from a preferred spot on
  * a 5 cm lattice (plus the flush edges). Keeps a small clearance to other
- * modules and stays out of the slope. Returns null when nothing is free.
+ * modules and to any extra elevation `obstacles`, and stays out of the slope.
+ * Returns null when nothing is free.
  */
-export function findFreeSpot(layout, product, preferred = preferredSpot(product, layout.wall)) {
+export function findFreeSpot(layout, product, preferred = preferredSpot(product, layout.wall), obstacles = []) {
   const { wall } = layout;
   if (!productFits(product, wall)) return null;
 
   const { w, h } = product.dimsCm;
   const pad = PLACEMENT_CLEARANCE_CM;
-  const others = layout.items.map((item) => {
-    const r = itemRect(item);
-    return { x: r.x - pad, y: r.y - pad, w: r.w + 2 * pad, h: r.h + 2 * pad };
-  });
+  const others = [...layout.items.map(itemRect), ...obstacles].map((r) => ({
+    x: r.x - pad,
+    y: r.y - pad,
+    w: r.w + 2 * pad,
+    h: r.h + 2 * pad,
+  }));
   const xs = candidates(wall.widthCm - w, preferred.x);
   const ys = candidates(wall.heightCm - h, preferred.y);
 
@@ -292,21 +295,18 @@ export function layoutFromPreset(presetId, currentWall = DEFAULT_WALL) {
 /* Untrusted input: storage and imported files */
 
 /**
- * Rebuilds a layout from untrusted data. Returns null unless the envelope is a
- * Lumen wall layout. Inside it, a module survives only with a known product,
- * a finish that product ships in and finite coordinates; positions are
- * rounded and pulled inside the wall, flags must be real booleans, and
- * invalid or duplicate uids are reissued. At most 48 modules are kept.
+ * Rebuilds module entries from untrusted data against a wall. A module
+ * survives only with a known product, a finish that product ships in and
+ * finite coordinates; positions are rounded and pulled inside the wall, flags
+ * must be real booleans, and invalid or duplicate uids are reissued. At most
+ * 48 modules are kept.
  */
-export function sanitizeLayout(input) {
-  if (!isRecord(input) || input.format !== LAYOUT_FORMAT || input.version !== LAYOUT_VERSION) return null;
-  if (!Array.isArray(input.items)) return null;
-
-  const wall = sanitizeWall(input.wall);
+export function sanitizeItems(entries, wall) {
+  if (!Array.isArray(entries)) return [];
   const kept = [];
   const seen = new Set();
 
-  for (const entry of input.items.slice(0, MAX_SCANNED_ENTRIES)) {
+  for (const entry of entries.slice(0, MAX_SCANNED_ENTRIES)) {
     if (kept.length >= MAX_WALL_ITEMS) break;
     if (!isRecord(entry) || !isSafeId(entry.productId)) continue;
     const product = getProduct(entry.productId);
@@ -331,7 +331,16 @@ export function sanitizeLayout(input) {
   for (const item of kept) {
     items.push(item.uid ? item : { ...item, uid: nextUid([...kept.filter((k) => k.uid), ...items]) });
   }
-  return createLayout(wall, items);
+  return items;
+}
+
+/** Rebuilds a layout from untrusted data. Returns null unless the envelope is a Lumen wall layout. */
+export function sanitizeLayout(input) {
+  if (!isRecord(input) || input.format !== LAYOUT_FORMAT || input.version !== LAYOUT_VERSION) return null;
+  if (!Array.isArray(input.items)) return null;
+
+  const wall = sanitizeWall(input.wall);
+  return createLayout(wall, sanitizeItems(input.items, wall));
 }
 
 export function serializeLayout(layout) {

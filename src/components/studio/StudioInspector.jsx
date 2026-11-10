@@ -1,9 +1,8 @@
-import { useId } from 'react';
 import { getFinish, getProduct } from '../../data/products.js';
 import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
 import { anchorPoints, snapToWall } from '../../lib/wall-studio.js';
 import '../../styles/product.css';
-import { NumberField, PanelSection, Switch } from './controls.jsx';
+import { FinishPicker, NumberField, PanelSection, Switch } from './controls.jsx';
 
 function conflictText(conflict, items) {
   if (!conflict) return 'Clear';
@@ -51,40 +50,6 @@ function ModuleList({ items, conflicts, onSelect }) {
         </ul>
       )}
     </PanelSection>
-  );
-}
-
-function FinishPicker({ product, finishId, onChange }) {
-  const uid = useId();
-  const finish = getFinish(finishId);
-  return (
-    <fieldset className="swatches studio-swatches">
-      <legend className="swatches__legend">Finish</legend>
-      <div className="swatches__row">
-        {product.finishes.map((id) => {
-          const option = getFinish(id);
-          return (
-            <label
-              key={id}
-              className="swatch"
-              style={{ '--swatch': option.hex, '--swatch-hi': option.highlight, '--swatch-lo': option.shade }}
-            >
-              <input
-                className="swatch__input"
-                type="radio"
-                name={`${uid}-finish`}
-                value={id}
-                checked={id === finishId}
-                onChange={() => onChange(id)}
-              />
-              <span className="swatch__chip" aria-hidden="true" />
-              <span className="visually-hidden">{option.label}</span>
-            </label>
-          );
-        })}
-        <span className="swatches__name">{finish.name}</span>
-      </div>
-    </fieldset>
   );
 }
 

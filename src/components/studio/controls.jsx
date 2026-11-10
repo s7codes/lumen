@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { getFinish } from '../../data/products.js';
 
 /**
  * Numeric input that commits on Enter or blur, never per keystroke, so one
@@ -74,6 +75,40 @@ export function Switch({ label, checked, onChange, disabled, hint, testId }) {
       <span className="studio-switch__label">{label}</span>
       {hint && <span className="studio-switch__hint mono">{hint}</span>}
     </button>
+  );
+}
+
+export function FinishPicker({ product, finishId, onChange }) {
+  const uid = useId();
+  const finish = getFinish(finishId);
+  return (
+    <fieldset className="swatches studio-swatches">
+      <legend className="swatches__legend">Finish</legend>
+      <div className="swatches__row">
+        {product.finishes.map((id) => {
+          const option = getFinish(id);
+          return (
+            <label
+              key={id}
+              className="swatch"
+              style={{ '--swatch': option.hex, '--swatch-hi': option.highlight, '--swatch-lo': option.shade }}
+            >
+              <input
+                className="swatch__input"
+                type="radio"
+                name={`${uid}-finish`}
+                value={id}
+                checked={id === finishId}
+                onChange={() => onChange(id)}
+              />
+              <span className="swatch__chip" aria-hidden="true" />
+              <span className="visually-hidden">{option.label}</span>
+            </label>
+          );
+        })}
+        <span className="swatches__name">{finish.name}</span>
+      </div>
+    </fieldset>
   );
 }
 
