@@ -2,12 +2,14 @@ import { Link } from 'react-router-dom';
 import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
 import { BusTelemetryCell } from '../BusTelemetryCell.jsx';
 import { CloudSaveButton } from '../CloudSaveButton.jsx';
+import { EnvironmentalPhysicsCell } from '../EnvironmentalPhysicsCell.jsx';
 import { ProjectNameField } from '../ProjectNameField.jsx';
 import { ArrowRight } from '../icons.jsx';
 
 export function RoomSummary({
   summary,
   bus,
+  physics,
   shareUrl,
   onShare,
   conflictCount,
@@ -51,6 +53,7 @@ export function RoomSummary({
           <dd data-testid="room-psu">{psu.label}</dd>
         </div>
         <BusTelemetryCell topology={bus} />
+        <EnvironmentalPhysicsCell physics={physics} />
       </dl>
 
       <div className="room3d-bridge">

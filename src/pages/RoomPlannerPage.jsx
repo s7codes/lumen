@@ -15,6 +15,7 @@ import { useProjectName } from '../hooks/useProjectName.js';
 import { useRoom3d } from '../hooks/useRoom3d.js';
 import { useSharedSceneLoader, useShareLink } from '../hooks/useSceneShare.js';
 import { computeBusTopology } from '../lib/bus-topology.js';
+import { computeEnvironmentalPhysics } from '../lib/room-physics.js';
 import { downloadText } from '../lib/download.js';
 import { buildRoomObj, countObjObjects, OBJ_MIME, objFilename } from '../lib/obj-export.js';
 import { exportToWallStudio, findRoomConflicts, getFurniture } from '../lib/room-3d.js';
@@ -50,6 +51,7 @@ export default function RoomPlannerPage() {
   const conflicts = useMemo(() => findRoomConflicts(state), [state]);
   const summary = useMemo(() => summarizeWall(state), [state]);
   const bus = useMemo(() => computeBusTopology(state), [state]);
+  const physics = useMemo(() => computeEnvironmentalPhysics(state), [state]);
   const { room } = state;
 
   const pushToWall = () => {
@@ -110,6 +112,7 @@ export default function RoomPlannerPage() {
           <RoomSummary
             summary={summary}
             bus={bus}
+            physics={physics}
             shareUrl={shareLink.shareUrl}
             onShare={() => shareLink.share(state, project.commit())}
             conflictCount={conflicts.size}

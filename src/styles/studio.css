@@ -1742,6 +1742,46 @@
   }
 }
 
+/* Acoustics and illuminance */
+
+.studio-summary__cell--physics {
+  grid-column: span 2;
+}
+
+.studio-summary__cell--physics dd {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.physics__line {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.studio-summary__cell--physics dd[data-tone='task'] .physics__line:first-child {
+  color: var(--lumen-amber-soft);
+}
+
+.studio-summary__cell--physics [data-damped='true'] {
+  color: var(--text-secondary);
+}
+
+/* The derivation is technical detail: it surfaces with the Technical mode only. */
+.physics__detail {
+  display: none;
+  overflow-wrap: anywhere;
+}
+
+:root[data-mode='technical'] .physics__detail {
+  display: block;
+}
+
+@media (max-width: 599px) {
+  .studio-summary__cell--physics {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wall-bus {
     animation: none;

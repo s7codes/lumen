@@ -14,6 +14,7 @@ import { useProjectName } from '../hooks/useProjectName.js';
 import { useSharedSceneLoader, useShareLink } from '../hooks/useSceneShare.js';
 import { useWallStudio } from '../hooks/useWallStudio.js';
 import { computeBusTopology } from '../lib/bus-topology.js';
+import { computeEnvironmentalPhysics } from '../lib/room-physics.js';
 import {
   aggregateBagLines,
   findConflicts,
@@ -83,6 +84,7 @@ export default function WallStudioPage() {
   const conflicts = useMemo(() => findConflicts(live), [live]);
   const summary = useMemo(() => summarizeWall(layout), [layout]);
   const bus = useMemo(() => computeBusTopology(live), [live]);
+  const physics = useMemo(() => computeEnvironmentalPhysics(layout), [layout]);
   const showBus = mode === 'technical' || busOn;
   const liveSelected = selected ? (live.items.find((item) => item.uid === selected.uid) ?? null) : null;
 
@@ -156,6 +158,7 @@ export default function WallStudioPage() {
           <StudioSummary
             summary={summary}
             bus={bus}
+            physics={physics}
             conflictCount={conflicts.size}
             syncNote={syncNote}
             syncRef={syncRef}
