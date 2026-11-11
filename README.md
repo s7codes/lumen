@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v1.0.1-e8923a)
+![Release](https://img.shields.io/badge/release-v1.1.0-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![three.js](https://img.shields.io/badge/three.js-r187-2a2825)
@@ -11,19 +11,24 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v1.0.1**, a CI hotfix on the flagship release: the 3D room's camera
-settings popover now stays on the stage at every width. The flagship release, v1.0.0,
-moved the app onto an asynchronous client (`src/api/client.js`) instead of writing
-straight to storage: walls and rooms save to Lumen Cloud as revisioned projects,
-requisitions submit through the same layer, and `/account` reads both back behind a loading state. Empty projects, quotes and carts
-show hairline isometric drawings with one clear next step. The two planners load as
-their own chunks behind a centered loading frame, which takes 50 kB off the entry script
-and 29 kB off the entry stylesheet.
+Current release: **v1.1.0**. Lumen Cloud becomes a named project library: each planner
+saves under a project name, up to 12 walls and rooms live side by side with their own
+revisions, and `/account` deletes them. A glass command palette (`Ctrl+K` / `Cmd+K`, or
+the navbar search pill) reaches every workspace, all 8 modules and the mode, currency
+and cart commands from the keyboard. Navbar links warm the planner chunks on hover or
+focus, and the 3D Room Planner exports the room, its reference furniture and every
+mounted module as a Wavefront `.obj` in centimetres.
+
+The flagship release, v1.0.0, moved the app onto an asynchronous client
+(`src/api/client.js`): walls and rooms save to Lumen Cloud as revisioned projects,
+requisitions submit through the same layer, and `/account` reads both back behind a
+loading state. The two planners load as their own chunks behind a centered loading frame.
 
 ## Release history
 
 | Version | Scope |
 | ------- | ----- |
+| v1.1.0  | Named cloud project library with delete, Ctrl+K command palette, hover and focus chunk prefetch, Wavefront OBJ export |
 | v1.0.1  | Camera settings popover pinned inside the 3D stage, explicit room layout layers, occlusion-checked E2E |
 | v1.0.0  | Async Lumen Cloud client, revisioned project saves, cloud requisitions, empty states, planner code splitting |
 | v0.10.1 | Cart naming on every visible label, toast and announcement |
@@ -58,12 +63,13 @@ vite.config.js          build config, dev-only CSP relaxation for HMR
 src/
   main.jsx              boot: fonts, tokens, persisted display mode, router
   router.jsx            route table, lazy planner routes, per-entry history key seeding
-  api/client.js         Lumen Cloud client: saveProject, loadProjects, submitQuote,
-                        loadQuotes, simulated 500-1200 ms latency
+  api/client.js         Lumen Cloud client: saveProject, loadProjects, deleteProject,
+                        submitQuote, loadQuotes, simulated 500-1200 ms latency
   components/           LayoutShell, Navbar, Footer, BagProvider, BagDrawer,
-                        AuthModal, ModeSwitch, ProductCard, ProductElevation,
-                        SurfaceLab, PageHeader, WorkspaceFrame, BlueprintViews,
-                        PhotometricCurve, CloudSaveButton, EmptyState,
+                        AuthModal, CommandPalette, ModeSwitch, ProductCard,
+                        ProductElevation, SurfaceLab, PageHeader, WorkspaceFrame,
+                        BlueprintViews, PhotometricCurve, CloudSaveButton,
+                        ProjectNameField, EmptyState,
                         RouteFallback (loading frame and chunk error), icons
     studio/             WallStage, StudioPalette, StudioInspector, StudioToolbar,
                         StudioSummary, shared field, switch and finish controls
@@ -74,19 +80,23 @@ src/
   pages/                Home, Catalog, ProductDetail, Checkout, RoomPlanner,
                         WallStudio, Account, NotFound
   hooks/                useAmbientLight, useBag, useCardTilt, useCloudSave,
-                        useDisplayMode, useDocumentTitle, useLaunchedModule, useMagneticField,
-                        useModalDialog,
+                        useCommandPalette, useCurrency, useDisplayMode,
+                        useDocumentTitle, useLaunchedModule, useMagneticField,
+                        useModalDialog, useProjectName,
                         useRoom3d, useScrollReveal, useWallStudio
   lib/                  bag store and PSU sizing, wall studio geometry and history,
                         room model and 2D bridge (room-3d), WebGL scene description
-                        and orbit frame (room-scene), mock session (auth),
-                        closed-form spring, display mode store, photometry and
-                        intensity model, 24V bus electrical model, quote engine,
-                        formatting, route manifest
+                        and orbit frame (room-scene), Wavefront OBJ writer
+                        (obj-export), named project ids (project-library), palette
+                        index and ranking (command-index), mock session (auth),
+                        closed-form spring, display mode and currency stores,
+                        photometry and intensity model, 24V bus electrical model,
+                        quote engine, formatting, nav routes, lazy chunk loaders
+                        and prefetch (route-manifest)
   security/sanitize.js  safeJsonParse, safeStorage, input validators
   styles/               tokens, base, animations, shell, toast, home, pages, product,
                         product-detail, checkout, studio, room3d, account, cloud,
-                        empty-state
+                        command-palette, empty-state
 server/                 reserved for the HTTP API behind src/api/client.js
 tests/                  Playwright specs, named by architectural domain
   support/              shared runtime, CSP and overflow guards
@@ -113,16 +123,25 @@ network timing. Until the HTTP API in `server/` lands, the transport is `safeSto
 
 | Call | Resolves with | Storage key |
 | ---- | ------------- | ----------- |
-| `saveProject(kind, data)` | `{ id, kind, name, revision, savedAt, data }` | `lumen_cloud_projects_v1` |
-| `loadProjects()` | saved projects, newest first | `lumen_cloud_projects_v1` |
+| `saveProject(kind, data, { name })` | `{ id, kind, name, revision, savedAt, data }` | `lumen_cloud_projects_v1` |
+| `loadProjects()` | saved projects, newest first, at most 12 | `lumen_cloud_projects_v1` |
+| `deleteProject(id)` | the remaining projects, newest first | `lumen_cloud_projects_v1` |
 | `submitQuote({ quote, project })` | `{ ref, quoteId, submittedAt, reference, preparedFor, currency, grossMinor, lines, loadW, status }` | `lumen_cloud_quotes_v1` |
 | `loadQuotes()` | requisitions, newest first, at most 24 | `lumen_cloud_quotes_v1` |
 
-- One project slot per kind (`wall`, `room`). Each save bumps the revision (`Rev 01`,
-  `Rev 02`). The payload is snapshotted and sanitized when the call is made, so edits
-  made during the round trip never leak into the saved revision. Empty walls and rooms
-  are rejected.
-- Every read is rebuilt record by record. Unknown kinds, revisions outside 1-9999,
+- A named library of up to 12 projects (`MAX_STORED_PROJECTS`). The name (one line, at
+  most 48 characters) maps to a deterministic id: the default names **Wall A** and
+  **Room** keep the original `wall` and `room` ids, any other name becomes
+  `<kind>-<slug>` (`wall-north-elevation`). Saving an existing id bumps its revision
+  (`Rev 01`, `Rev 02`) and updates its name, time and payload. A new name on a full
+  library is refused with a `quota` fault instead of evicting an older project.
+- The payload is snapshotted and sanitized when the call is made, so edits made during
+  the round trip never leak into the saved revision. Empty walls and rooms are rejected.
+- `deleteProject(id)` validates the id, removes the record after the round trip and is
+  idempotent: an id that is already gone resolves too.
+- Every read is rebuilt record by record. Records written before v1.1.0 carry no id or
+  name and read as the default project of their kind. An id that does not belong to the
+  record's kind, unknown kinds, revisions outside 1-9999,
   non-ISO timestamps, payloads that fail the `lumen.wall` or `lumen.room3d` sanitizers,
   malformed requisition or quote ids, unknown currencies and unknown statuses are dropped.
 - Failures reject with `ApiError` (`code` is `invalid` or `storage`) and surface as a
@@ -133,6 +152,10 @@ network timing. Until the HTTP API in `server/` lands, the transport is `safeSto
 
 ### Cloud sync UI
 
+- A **Project name** well sits above the save keys in both planners (default **Wall A**
+  or **Room**). The name is kept beside the local draft (`lumen_project_names_v1`), so a
+  reload or a trip through another view keeps it, and the save toast names the project.
+  Opening a project from `/account` checks out its name with its revision.
 - **Save to Cloud** sits beside the cart sync key in both planners. On press it settles
   flat, disables itself, shows a 1px spinning arc and reads **Saving to Lumen Cloud...**.
   On success it inverts to white with a drawn check and reads **Project Saved** for 2.4 s,
@@ -151,6 +174,13 @@ network timing. Until the HTTP API in `server/` lands, the transport is `safeSto
   download planner code. `three`, React Three Fiber and drei stay in the `RoomCanvas`
   chunk, which the room viewport loads on demand. The overview hero is CSS and
   canvas-free, so the home page never touches WebGL.
+- Intent prefetch. `src/lib/route-manifest.js` holds the lazy loaders and exports
+  `prefetchRoute(path)` (re-exported from `router.jsx`). The **3D Room** and **Wall
+  Studio** navbar links call it on pointer enter and on focus, and the command palette
+  calls it when a workspace is highlighted, so the chunk is cached before the click. The
+  room planner also warms its WebGL chunk behind the page. Each path is fetched once per
+  session, and nothing is prefetched when the browser reports Save-Data or a 2G link.
+  A cold load of `/` still requests zero planner or WebGL chunks.
 - The fallback is a frame centered in the main area: the Lumen mark under a sweeping
   mask highlight, a 160 x 1 px indeterminate bar and a mono label (**Loading spatial
   engine**, **Loading wall studio**). It enters with the cinematic focus reveal. On
@@ -167,6 +197,12 @@ network timing. Until the HTTP API in `server/` lands, the transport is `safeSto
 | Room planner chunk | in entry | 31.7 kB / 10.7 kB gzip |
 | Wall studio chunk | in entry | 27.9 kB / 8.9 kB gzip |
 | WebGL chunk (RoomCanvas) | 971.6 kB / 258.6 kB gzip | unchanged, lazy |
+
+| Build output (v1.0.1 to v1.1.0) | Before | After |
+| ------------------------------- | ------ | ----- |
+| Entry script | 471.0 kB / 146.4 kB gzip | 481.8 kB / 149.5 kB gzip (palette, library) |
+| Entry stylesheet | 85.5 kB / 15.9 kB gzip | 92.3 kB / 16.8 kB gzip |
+| Room planner chunk | 34.9 kB / 12.0 kB gzip | 27.7 kB + 7.2 kB shared scene chunk |
 
 ## Empty states
 
@@ -375,6 +411,16 @@ custom properties, so React never re-renders on pointer movement.
 - **Load from 2D Wall Studio** reads `lumen_wall_studio_v1`, or the Nordic Reading Wall
   when it is empty. **Push to 2D Wall Studio** writes the main wall back, capped at the
   400 cm studio width. **Sync Room to Cart** merges the modules and opens the drawer.
+- **Export 3D .OBJ** writes `lumen-room-<name>.obj` through `buildRoomObj(state, name)` in
+  `src/lib/obj-export.js`: a `# Lumen 3D Export` header, six shared `vn` axis normals,
+  then one `o` object per surface group. `room_envelope` is the floor and three walls
+  facing into the room; each reference furniture part is a box
+  (`furniture_sofa-200_back`); each module is its catalog box (`dimsCm.w x h x d`) at its
+  `xCm`, `yCm` wall position (`module_01_LMN-SH-110_floating-shelf-110`). Units are cm in
+  the room frame (x along the main wall, y up, z into the room), which Y-up CAD and DCC
+  tools import as is. Faces are quads wound counter-clockwise around their normals.
+  Object names are single tokens of `[A-Za-z0-9_-]`; free text only reaches comment
+  lines, reduced to printable ASCII.
 - State persists under `lumen_room_3d_v1` and is rebuilt on every read with the wall
   layout's per-module rules plus a clamped envelope, furniture, lighting and camera.
 
@@ -429,13 +475,40 @@ custom properties, so React never re-renders on pointer movement.
   fixed oak-amber wash (`--glow-oak`, a 5% `#e8923a` radial falling off by 40% from the
   top right). A full-width profile tile shows the name, email, storage, sync state and
   project and quote counts, with **Sign Out** on its top-right corner (below the identity
-  on phones). Beneath it, **Saved Spatial Projects** (the cloud-saved wall and room as
-  inset cards with an elevation thumbnail, envelope, module count, 24V load, driver,
-  list price, save time and revision badge) sits beside **Order History** (submitted
-  requisitions with status, lines, load and gross in the quoted currency).
-- **Open in Wall Studio** and **Open Room Planner** check the saved revision out into the
-  planner's working draft, then open the planner. A draft that was never saved does not
-  appear here: the account lists what was committed to the cloud.
+  on phones). Beneath it, **Saved Spatial Projects** (every named wall and room in the
+  library as inset cards with an elevation thumbnail, envelope, module count, 24V load,
+  driver, list price, save time and revision badge) sits beside **Order History**
+  (submitted requisitions with status, lines, load and gross in the quoted currency).
+- **Open in Wall Studio** and **Open Room Planner** check the saved revision and its name
+  out into the planner's working draft, then open the planner. A draft that was never
+  saved does not appear here: the account lists what was committed to the cloud.
+- **Delete** on a card calls `deleteProject(id)`. While the call is in flight the card
+  dims, reports `aria-busy`, and both of its keys lock (the key reads **Deleting...**
+  at a fixed width). On success the card leaves, the profile's project count drops, a
+  toast confirms it and focus lands on the panel title. On a narrow card the key takes
+  its own full-width row under **Open**.
+
+## Command palette
+
+- `Ctrl+K` (or `Cmd+K`) anywhere opens a glass dialog (`role="dialog"`, 24px backdrop
+  blur, 16px radius) that resolves in from scale 1.04 and an 8px blur. The same keys
+  close it again; it never opens on top of the cart drawer or the sign-in dialog. The
+  first navbar pill (`Search`, with the shortcut on a hairline key cap) opens it too and
+  folds to its glyph below 560px.
+- One search field ranks matches within three fixed groups: **Workspaces** (Overview,
+  Catalog, 3D Room Planner, 2D Wall Studio, Project Quote, Account), **Modules** (all 8
+  parts with SKU, 24V load and USD price; Enter opens the spec sheet) and **Commands**
+  (Switch to Technical or Architectural Mode, Set Currency: USD, EUR or HUF, Open Cart
+  Drawer). A label prefix outranks a word start, which outranks any other match, and
+  every term has to land.
+- Keyboard: `ArrowDown` / `ArrowUp` move and wrap, `Enter` runs, `Escape` closes, `Tab`
+  stays inside. The field is an ARIA combobox over a grouped listbox with
+  `aria-activedescendant`, so screen readers follow the highlight. Focus returns to
+  whatever held it before the palette opened.
+- The highlight is a flat lifted surface with a hairline edge; the current currency
+  carries a razor-thin **Current** tag. Nothing glows.
+- Currency is a shared store (`src/lib/currency-store.js`, `useCurrency`), so a command
+  re-prices an open checkout immediately and persists under `lumen_currency_v1`.
 
 ## Notifications
 
@@ -447,9 +520,10 @@ custom properties, so React never re-renders on pointer movement.
   early. The stack ignores the pointer except for that key, so a toast never blocks a
   control.
 - `useToast().addToast(message, tone)` reports cart additions and removals, cleared carts,
-  checkout requisitions and quote exports, cloud saves with their revision, cloud
-  failures, planner saves (Wall Studio JSON export and import, room push to Wall
-  Studio) and sign in or out. Messages pass `sanitizeText` and
+  checkout requisitions and quote exports, cloud saves with their project name and
+  revision, cloud deletes, cloud failures, planner saves (Wall Studio JSON export and
+  import, room push to Wall Studio, room OBJ export), palette mode and currency
+  commands, and sign in or out. Messages pass `sanitizeText` and
   render as text nodes.
 
 ## Security
