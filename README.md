@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v1.1.0-e8923a)
+![Release](https://img.shields.io/badge/release-v1.2.0-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![three.js](https://img.shields.io/badge/three.js-r187-2a2825)
@@ -11,7 +11,15 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v1.1.0**. Lumen Cloud becomes a named project library: each planner
+Current release: **v1.2.0**. Both planners now route the 24V DC bus: a daisy-chain from
+the driver feed through every lit module, drawn on the 2D elevation with node order and
+run lengths, and summarised in both planners as run length, bus current and worst-case
+voltage drop against the 3% SELV limit. A **Share Link** key packs a wall or room and its
+project name into a compact `?scene=` URL that opens the same scene anywhere, and the
+checkout sheet gains an installation schedule: wall anchors, linear span, 24V trunk
+cable and SELV circuits.
+
+v1.1.0 made Lumen Cloud a named project library: each planner
 saves under a project name, up to 12 walls and rooms live side by side with their own
 revisions, and `/account` deletes them. A glass command palette (`Ctrl+K` / `Cmd+K`, or
 the navbar search pill) reaches every workspace, all 8 modules and the mode, currency
@@ -28,6 +36,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v1.2.0  | 24V DC bus topology overlay and telemetry, shareable `?scene=` links, checkout installation and anchor schedule |
 | v1.1.0  | Named cloud project library with delete, Ctrl+K command palette, hover and focus chunk prefetch, Wavefront OBJ export |
 | v1.0.1  | Camera settings popover pinned inside the 3D stage, explicit room layout layers, occlusion-checked E2E |
 | v1.0.0  | Async Lumen Cloud client, revisioned project saves, cloud requisitions, empty states, planner code splitting |
@@ -69,7 +78,7 @@ src/
                         AuthModal, CommandPalette, ModeSwitch, ProductCard,
                         ProductElevation, SurfaceLab, PageHeader, WorkspaceFrame,
                         BlueprintViews, PhotometricCurve, CloudSaveButton,
-                        ProjectNameField, EmptyState,
+                        ProjectNameField, EmptyState, BusTelemetryCell,
                         RouteFallback (loading frame and chunk error), icons
     studio/             WallStage, StudioPalette, StudioInspector, StudioToolbar,
                         StudioSummary, shared field, switch and finish controls
@@ -82,7 +91,7 @@ src/
   hooks/                useAmbientLight, useBag, useCardTilt, useCloudSave,
                         useCommandPalette, useCurrency, useDisplayMode,
                         useDocumentTitle, useLaunchedModule, useMagneticField,
-                        useModalDialog, useProjectName,
+                        useModalDialog, useProjectName, useSceneShare,
                         useRoom3d, useScrollReveal, useWallStudio
   lib/                  bag store and PSU sizing, wall studio geometry and history,
                         room model and 2D bridge (room-3d), WebGL scene description
@@ -91,6 +100,8 @@ src/
                         index and ranking (command-index), mock session (auth),
                         closed-form spring, display mode and currency stores,
                         photometry and intensity model, 24V bus electrical model,
+                        daisy-chain routing and drop (bus-topology), share link
+                        codec (scene-codec), clipboard with fallback,
                         quote engine, formatting, nav routes, lazy chunk loaders
                         and prefetch (route-manifest)
   security/sanitize.js  safeJsonParse, safeStorage, input validators
@@ -352,7 +363,17 @@ custom properties, so React never re-renders on pointer movement.
   imports pass `safeJsonParse` and a sanitizer that requires the `lumen.wall` envelope,
   drops unknown parts and finishes, rounds and clamps coordinates, reissues bad or
   duplicate ids and caps the wall at 48 modules. Export writes the same envelope.
-- The summary reports modules, connected 24V load, live flux, price and driver. **Sync
+- **24V Bus** in the toolbar (always on in technical mode) draws the bus routing on the
+  elevation: the `PSU 24V FEED` origin, orthogonal cable legs, node order `N01`, `N02`...
+  and the run length of each hop. `computeBusTopology` in `src/lib/bus-topology.js`
+  feeds from the utility datum (X 20 / Y 30 cm), or from the left end of the first
+  mounted Track Bus 200. Lit modules and any further track join the chain by nearest
+  neighbour (ties left to right, then bottom to top) at their feed point: the bottom
+  centre, the canopy for ceiling spots, the left end cap for track. Each hop carries the
+  current of every node after it on a 2 x 2.5 mm2 copper loop; the drop at the last node
+  is checked against 3%. The overlay follows a drag live.
+- The summary reports modules, connected 24V load, live flux, price, driver and the bus
+  run (`Run 9.4 m / 4.50 A / 0.26 V drop (1.1%)`). **Sync
   Wall to Cart** groups modules by part and finish, merges them into the shared cart and
   opens the drawer, where the PSU is sized on the full connected load.
 
@@ -421,6 +442,7 @@ custom properties, so React never re-renders on pointer movement.
   tools import as is. Faces are quads wound counter-clockwise around their normals.
   Object names are single tokens of `[A-Za-z0-9_-]`; free text only reaches comment
   lines, reduced to printable ASCII.
+- The summary carries the same 24V bus run readout for the main wall.
 - State persists under `lumen_room_3d_v1` and is rebuilt on every read with the wall
   layout's per-module rules plus a clamped envelope, furniture, lighting and camera.
 
@@ -460,7 +482,28 @@ custom properties, so React never re-renders on pointer movement.
   **Download Spec JSON** exports the `lumen.quote` envelope with the BOM in minor units.
   **Submit Project Requisition** validates the form, submits through `submitQuote` and
   shows the `LMN-R-` reference once Lumen Cloud confirms it.
+- The sheet's **Installation & Hardware Schedule** totals wall anchors (catalog mounting
+  points x qty), linear wall span (wall-hung and recessed parts), the 24V trunk cable
+  allowance and SELV circuits (one per 150 W started; none for a passive cart). The cable
+  allowance is a 3 m lead-in per circuit, plus the span, plus 0.5 m per powered part,
+  rounded up to 0.5 m. It prints with the quote and ships in the JSON export.
 - An empty cart renders the wall elevation empty state inside a bento tile.
+
+## Share links
+
+- **Share Link** in either planner encodes the workspace and project name into
+  `<origin>/<planner>?scene=<Base64URL>`, copies it (Clipboard API, then an
+  `execCommand` fallback; a blocked clipboard leaves the link on the key's
+  `data-share-url`) and confirms with a toast. Payloads are positional arrays of part id,
+  finish, X, Y and channel flags, at most 4096 characters.
+- Opening a link loads the scene as one undoable step, adopts its project name, toasts
+  `Loaded shared scene: <name>.` and strips `scene` from the address bar with a history
+  replace, so a reload keeps later edits. Other query parameters survive.
+- `decodeSceneParam` (`src/lib/scene-codec.js`) never throws. It refuses anything over
+  4096 characters, outside the Base64URL alphabet, not UTF-8, not JSON, of the other
+  planner's kind, carrying a `__proto__`, `constructor` or `prototype` key (escaped or
+  not), or with any module that does not survive `sanitizeLayout` / `sanitizeRoomState`.
+  A refused link keeps the local draft and shows `Shared scene link is invalid.`
 
 ## Account
 
@@ -538,6 +581,8 @@ custom properties, so React never re-renders on pointer movement.
   no-op when storage is blocked.
 - `isSafeInternalPath`, `isSafeId`, `sanitizeText` and `clampNumber` cover URL, ID,
   free-text and numeric input.
+- Shared `?scene=` links are length, alphabet, key and schema checked before any state
+  changes; see Share links.
 - The cloud client sanitizes every record it reads, so a tampered `lumen_cloud_*` value
   is dropped before it reaches React state.
 
