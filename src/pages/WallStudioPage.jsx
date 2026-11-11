@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PageHeader } from '../components/PageHeader.jsx';
+import { BlueprintSheetModal } from '../components/studio/BlueprintSheetModal.jsx';
 import { StudioInspector } from '../components/studio/StudioInspector.jsx';
 import { StudioPalette } from '../components/studio/StudioPalette.jsx';
 import { StudioSummary } from '../components/studio/StudioSummary.jsx';
@@ -73,6 +74,8 @@ export default function WallStudioPage() {
   const [busOn, setBusOn] = useState(false);
   const [luxOn, setLuxOn] = useState(false);
   const shareLink = useShareLink('wall');
+  const [blueprint, setBlueprint] = useState(null);
+  const closeBlueprint = useCallback(() => setBlueprint(null), []);
 
   useHistoryShortcuts(actions);
   useLaunchedModule(layout.items, actions);
@@ -186,6 +189,8 @@ export default function WallStudioPage() {
                 onToggleLux={() => setLuxOn((on) => !on)}
                 shareUrl={shareLink.shareUrl}
                 onShare={() => shareLink.share(layout, project.commit())}
+                blueprintOpen={blueprint !== null}
+                onOpenBlueprint={(trigger) => setBlueprint({ trigger, name: project.commit() })}
               />
             }
             onSelect={actions.select}
@@ -226,6 +231,14 @@ export default function WallStudioPage() {
           />
         </div>
       </div>
+
+      <BlueprintSheetModal
+        open={blueprint !== null}
+        onClose={closeBlueprint}
+        layout={layout}
+        projectName={blueprint?.name ?? ''}
+        returnFocus={blueprint?.trigger ?? null}
+      />
     </>
   );
 }

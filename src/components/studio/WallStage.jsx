@@ -699,6 +699,7 @@ export function WallStage({
               data-snap={wall.snap || undefined}
               data-width-cm={wall.widthCm}
               data-height-cm={wall.heightCm}
+              data-slope={wall.slope}
               data-ppcm={ppcm}
               data-lux-map={luxMap ? true : undefined}
               data-selection={selectedUids.length || undefined}

@@ -27,6 +27,8 @@ export function StudioToolbar({
   onToggleLux,
   shareUrl,
   onShare,
+  blueprintOpen,
+  onOpenBlueprint,
 }) {
   const fileRef = useRef(null);
   const [armed, setArmed] = useState(false);
@@ -162,6 +164,20 @@ export function StudioToolbar({
           onClick={onShare}
         >
           Share Link
+        </button>
+      </div>
+
+      <div className="studio-toolbar__group" role="group" aria-label="Drawings">
+        <button
+          type="button"
+          className="tool-button"
+          aria-haspopup="dialog"
+          aria-expanded={blueprintOpen}
+          data-testid="open-blueprint-sheet"
+          title="1:20 A3 elevation with drilling schedule, SVG and AutoCAD DXF export"
+          onClick={(event) => onOpenBlueprint(event.currentTarget)}
+        >
+          Blueprint
         </button>
       </div>
 

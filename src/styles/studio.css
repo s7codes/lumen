@@ -2173,3 +2173,313 @@
   stroke-width: 1.25;
   stroke-linecap: square;
 }
+
+/* Blueprint sheet dialog */
+
+.blueprint-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(1240px, 100%);
+  max-height: calc(100dvh - 2 * var(--space-4));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%),
+    rgba(13, 12, 11, 0.92);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.55);
+  animation: blueprint-focus 900ms var(--ease-cinematic) both;
+}
+
+.blueprint-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.blueprint-modal__title {
+  margin-top: var(--space-2);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: #ffffff;
+  overflow-wrap: anywhere;
+}
+
+.blueprint-modal__meta {
+  margin-top: var(--space-2);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.blueprint-modal__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6) var(--space-6);
+}
+
+.blueprint-card {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+.blueprint-card--sheet {
+  padding: var(--space-3);
+}
+
+.blueprint-card--schedule {
+  grid-column: 1 / -1;
+  padding: var(--space-5);
+}
+
+.blueprint-card__canvas svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+
+.blueprint-card__canvas [data-anchor] circle,
+.blueprint-card__canvas [data-anchor] text {
+  transition:
+    stroke var(--duration-fast) var(--ease-out),
+    fill var(--duration-fast) var(--ease-out),
+    stroke-width var(--duration-fast) var(--ease-out);
+}
+
+.blueprint-card__canvas [data-anchor][data-active] circle {
+  stroke: #ffffff;
+  stroke-width: 0.4;
+}
+
+.blueprint-card__canvas [data-anchor][data-active] line {
+  stroke: #ffffff;
+}
+
+.blueprint-card__canvas [data-anchor][data-active] text {
+  fill: #ffffff;
+}
+
+.blueprint-card--spec {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: var(--space-5);
+}
+
+.blueprint-spec {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4) var(--space-3);
+}
+
+.blueprint-spec__row {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.blueprint-spec__row--wide {
+  grid-column: 1 / -1;
+}
+
+.blueprint-spec dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.blueprint-spec dd {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: #ffffff;
+  overflow-wrap: anywhere;
+}
+
+.blueprint-spec__sub {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-secondary);
+}
+
+.blueprint-actions {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.blueprint-actions__button {
+  justify-content: center;
+  width: 100%;
+  transition:
+    translate var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.blueprint-actions__button:hover:not(:disabled) {
+  translate: 0 -2px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45);
+}
+
+.blueprint-actions__button:active:not(:disabled) {
+  translate: 0 0;
+  box-shadow: none;
+}
+
+.blueprint-actions__note {
+  margin-top: var(--space-1);
+  font-size: 10px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+.blueprint-schedule__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.blueprint-schedule__title {
+  font-size: var(--text-lg);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+.blueprint-schedule__datum {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.blueprint-schedule__scroll {
+  max-height: 320px;
+  overflow: auto;
+  border-top: 1px solid var(--border-hairline);
+}
+
+.blueprint-schedule {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.blueprint-schedule thead th {
+  position: sticky;
+  top: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface);
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.blueprint-schedule tbody th,
+.blueprint-schedule td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-hairline);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.blueprint-schedule tbody th {
+  font-weight: 600;
+  color: var(--lumen-amber-soft);
+}
+
+.blueprint-schedule .num {
+  text-align: right;
+}
+
+.blueprint-schedule tbody tr {
+  outline: none;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.blueprint-schedule tbody tr:hover,
+.blueprint-schedule tbody tr:focus-visible {
+  background: rgba(255, 255, 255, 0.04);
+  color: #ffffff;
+}
+
+.blueprint-schedule tbody tr:focus-visible th {
+  box-shadow: inset 1px 0 0 var(--lumen-amber);
+}
+
+.blueprint-schedule__tag {
+  margin-left: var(--space-2);
+  padding: 1px var(--space-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.blueprint-schedule__empty {
+  padding: var(--space-5) var(--space-3);
+  white-space: normal;
+  color: var(--text-muted);
+}
+
+@keyframes blueprint-focus {
+  from {
+    opacity: 0;
+    scale: 1.05;
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+    filter: blur(0);
+  }
+}
+
+@media (max-width: 959px) {
+  .blueprint-modal__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .blueprint-modal__header,
+  .blueprint-modal__body {
+    padding-inline: var(--space-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blueprint-modal {
+    animation: none;
+  }
+}
