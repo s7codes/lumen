@@ -96,7 +96,7 @@ test.describe('lumen cloud http api', () => {
     const response = await request.get('/api/health');
     expect(response.status()).toBe(200);
     expect(await response.json()).toEqual({ ok: true, version: pkg.version, storage: 'server' });
-    expect(pkg.version).toBe('3.0.0');
+    expect(pkg.version).toBe('3.1.0');
     expect(SERVER.file.replaceAll('\\', '/').endsWith(TEST_DATA_FILE)).toBe(true);
     const headers = response.headers();
     expect(headers['x-content-type-options']).toBe('nosniff');
