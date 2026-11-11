@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v1.2.0-e8923a)
+![Release](https://img.shields.io/badge/release-v2.0.0-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![three.js](https://img.shields.io/badge/three.js-r187-2a2825)
@@ -11,7 +11,17 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v1.2.0**. Both planners now route the 24V DC bus: a daisy-chain from
+Current release: **v2.0.0**. Lumen Cloud is now a real HTTP API. A zero-dependency Node
+server in `server/` validates every project and requisition with the same modules the
+browser uses, prices quotes again from the catalog, issues the `LMN-R-` reference and
+persists each browser profile's library atomically to `server/.data/lumen-cloud.json`.
+Vite mounts it on `/api` in dev and preview, so the strict `connect-src 'self'` policy
+holds unchanged, and `npm run server` runs it standalone. Sign-in opens an HMAC-signed
+session that Sign Out revokes. The client keeps its signatures and error codes, mirrors
+the server into `localStorage` for offline use, pushes offline saves on the next
+contact, and `/account` reports the live transport.
+
+v1.2.0 taught both planners to route the 24V DC bus: a daisy-chain from
 the driver feed through every lit module, drawn on the 2D elevation with node order and
 run lengths, and summarised in both planners as run length, bus current and worst-case
 voltage drop against the 3% SELV limit. A **Share Link** key packs a wall or room and its
@@ -36,6 +46,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v2.0.0  | Lumen Cloud HTTP API in `server/`, atomic JSON persistence, signed sessions, dual-transport client with offline sync |
 | v1.2.0  | 24V DC bus topology overlay and telemetry, shareable `?scene=` links, checkout installation and anchor schedule |
 | v1.1.0  | Named cloud project library with delete, Ctrl+K command palette, hover and focus chunk prefetch, Wavefront OBJ export |
 | v1.0.1  | Camera settings popover pinned inside the 3D stage, explicit room layout layers, occlusion-checked E2E |
@@ -60,8 +71,9 @@ loading state. The two planners load as their own chunks behind a centered loadi
   the build preloads the three Latin faces so text never reflows after first paint
 - Room engine: three.js r187 through React Three Fiber 9 and drei 10 (OrbitControls,
   Edges, Html), shipped only in the lazy `RoomCanvas` chunk
-- Data layer: Promise-based Lumen Cloud client in `src/api/`, backed by `safeStorage`
-  until the HTTP API in `server/` replaces the transport
+- Data layer: Promise-based Lumen Cloud client in `src/api/` over `fetch`, served by the
+  zero-dependency Node API in `server/` (`node:http`, `node:fs`, `node:path`,
+  `node:crypto`), with a `safeStorage` mirror for offline use
 
 ## Layout
 
@@ -73,7 +85,8 @@ src/
   main.jsx              boot: fonts, tokens, persisted display mode, router
   router.jsx            route table, lazy planner routes, per-entry history key seeding
   api/client.js         Lumen Cloud client: saveProject, loadProjects, deleteProject,
-                        submitQuote, loadQuotes, simulated 500-1200 ms latency
+                        submitQuote, loadQuotes, openSession, closeSession over
+                        /api/*, device mirror, sync marker, transport telemetry
   components/           LayoutShell, Navbar, Footer, BagProvider, BagDrawer,
                         AuthModal, CommandPalette, ModeSwitch, ProductCard,
                         ProductElevation, SurfaceLab, PageHeader, WorkspaceFrame,
@@ -97,7 +110,9 @@ src/
                         room model and 2D bridge (room-3d), WebGL scene description
                         and orbit frame (room-scene), Wavefront OBJ writer
                         (obj-export), named project ids (project-library), palette
-                        index and ranking (command-index), mock session (auth),
+                        index and ranking (command-index), credentials and session
+                        token rules (auth), cloud record rules shared with the
+                        server (cloud-records),
                         closed-form spring, display mode and currency stores,
                         photometry and intensity model, 24V bus electrical model,
                         daisy-chain routing and drop (bus-topology), share link
@@ -108,7 +123,12 @@ src/
   styles/               tokens, base, animations, shell, toast, home, pages, product,
                         product-detail, checkout, studio, room3d, account, cloud,
                         command-palette, empty-state
-server/                 reserved for the HTTP API behind src/api/client.js
+server/                 Lumen Cloud HTTP API, shared with Vite dev and preview
+  app.js                request handler: routes, 64 KB JSON bodies, sessions, headers
+  store.js              per-namespace state, serialized transactions, atomic writes
+  config.js             environment, data file path, one store per process
+  index.js              standalone server (npm run server)
+  .data/                runtime store, git-ignored
 tests/                  Playwright specs, named by architectural domain
   support/              shared runtime, CSP and overflow guards
 ```
@@ -128,11 +148,57 @@ tests/                  Playwright specs, named by architectural domain
 ## Lumen Cloud API
 
 `src/api/client.js` is the only module that persists projects and requisitions. Every
-call returns a Promise that settles after a simulated round trip of 500-1200 ms
-(`LATENCY_MS`), so loading, disabled and confirmation states are built against real
-network timing. Until the HTTP API in `server/` lands, the transport is `safeStorage`.
+call goes over `fetch` to the same-origin `/api/*` server and settles no sooner than
+`LATENCY_MS.min` (500 ms) after it started, so saving and syncing states never flash on
+a fast link. Requests time out after 8 s.
 
-| Call | Resolves with | Storage key |
+### Endpoints
+
+| Method and path | Body | Answer |
+| --------------- | ---- | ------ |
+| `GET /api/health` | | `{ ok: true, version: '2.0.0', storage: 'server' }` |
+| `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email } }` |
+| `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
+| `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
+| `GET /api/projects` | | `{ projects }`, newest first, at most 12 |
+| `POST` or `PUT /api/projects` | `{ kind, name, data }` | `201` new or `200` revised: `{ project, projects }` |
+| `DELETE /api/projects/:id` | | `{ projects }`, idempotent |
+| `GET /api/quotes` | | `{ quotes }`, newest first, at most 24 |
+| `POST /api/quotes` | `{ quote: { items, currency, promo, includeDriver, grossMinor }, project }` | `201 { quote, quotes }` |
+| `POST /api/sync` | `{ mode, projects?, quotes? }` | `{ projects, quotes }` |
+| `POST /api/test/reset` | | only with `LUMEN_TEST_RESET=1`: clears the caller's namespace |
+
+- Every data endpoint is scoped by the `X-Lumen-Client` header: a 128-bit hex id the
+  client generates once per browser profile and keeps under `lumen_cloud_client_v1`.
+  Two profiles never see each other's library, so parallel E2E workers and browser
+  contexts are isolated without a reset.
+- The server validates with the browser's own modules: `src/lib/cloud-records.js`
+  (record rules, library and quote caps), `wall-studio.js` and `room-3d.js` (layout
+  envelopes), `quote.js` and `bag.js` (pricing, promo codes, orderable parts),
+  `project-library.js` (names and ids) and `auth.js` (credentials). Where the browser
+  sanitizer drops a bad module silently, the API refuses the whole layout instead.
+- Quotes are priced again on the server from the submitted parts, currency, promo and
+  driver choice. `grossMinor` from the client is a cross-check only: a mismatch answers
+  `409 stale`. The server issues the `LMN-R-XXXXXXXX` reference from `node:crypto`.
+- Errors are JSON `{ error: { code, message } }`: `400 invalid`, `401 unauthorized`,
+  `404 not_found`, `405 method_not_allowed` (with `Allow`), `409 quota` or `stale`,
+  `413 payload_too_large`, `415 unsupported_media_type`, `503 storage`.
+
+### Persistence
+
+- State lives in `server/.data/lumen-cloud.json` (git-ignored; `LUMEN_DATA_FILE`
+  overrides it, `LUMEN_STORAGE=memory` skips disk). Mutations run one at a time against
+  a draft; the snapshot is written to a temp file, flushed and renamed over the live
+  file, and only then committed to memory and answered. A failed write leaves the file
+  and the served state untouched and answers `503 storage`. Renames retry briefly when
+  Windows, OneDrive or a scanner holds the file.
+- Every record read from disk passes the same validators as a request body. An
+  unreadable store is moved aside, never overwritten. At most 512 namespaces are kept,
+  least recently written first out.
+
+### Client contract
+
+| Call | Resolves with | Mirror key |
 | ---- | ------------- | ----------- |
 | `saveProject(kind, data, { name })` | `{ id, kind, name, revision, savedAt, data }` | `lumen_cloud_projects_v1` |
 | `loadProjects()` | saved projects, newest first, at most 12 | `lumen_cloud_projects_v1` |
@@ -155,8 +221,18 @@ network timing. Until the HTTP API in `server/` lands, the transport is `safeSto
   record's kind, unknown kinds, revisions outside 1-9999,
   non-ISO timestamps, payloads that fail the `lumen.wall` or `lumen.room3d` sanitizers,
   malformed requisition or quote ids, unknown currencies and unknown statuses are dropped.
-- Failures reject with `ApiError` (`code` is `invalid` or `storage`) and surface as a
-  Fault toast. Nothing is written on failure.
+- Failures reject with `ApiError` (`code` is `invalid`, `quota` or `storage`) and
+  surface as a Fault toast. Nothing is written on failure.
+- After every answer the `localStorage` mirror is reconciled to the server list, and a
+  fingerprint under `lumen_cloud_sync_v1` records the mirror state that matched. A
+  mirror changed on this device since then (an offline save, a v1 library) is pushed to
+  `/api/sync` before the next call: projects replace the server library (batched under
+  the 64 KB body cap), quotes only merge, and a requisition the API issued is never
+  rewritten by a device.
+- When `/api/*` is unreachable or answers with anything but JSON (a static host),
+  projects save, delete and load on the device mirror and the toast says so; a
+  requisition is refused with a `storage` fault rather than issued offline. Nothing
+  rejects unhandled.
 - The planners keep their working draft in `lumen_wall_studio_v1` and `lumen_room_3d_v1`,
   so the 2D / 3D bridge, launchers and reloads behave as before. A cloud save is an
   explicit, revisioned commit of that draft.
@@ -176,7 +252,9 @@ network timing. Until the HTTP API in `server/` lands, the transport is `safeSto
 - **Submit Project Requisition** in checkout follows the same pattern
   (**Submitting to Lumen Cloud...**) and shows the confirmation once the call resolves.
 - `/account` shows shimmering placeholder rows and **Syncing with Lumen Cloud...** while
-  both lists load in parallel. The profile tile reports the sync state.
+  both lists load in parallel. The profile tile reports the transport
+  (**Lumen Cloud API (HTTP)** or **Device storage (offline)**, with the measured round
+  trip on `data-round-trip-ms`) and the sync state (**Up to date** or **Device copy**).
 
 ## Code splitting
 
@@ -508,15 +586,17 @@ custom properties, so React never re-renders on pointer movement.
 ## Account
 
 - **Sign In** in the navbar opens a modal dialog (focus trap, Escape, focus returned) with
-  Email and Password. Validation is local: a plausible address and at least 8
-  characters. This is a front-end session shell until the API in `server/` lands: no
-  request leaves the browser, the password is discarded on submit, and the session
-  stores only `{ name: "Studio Guest", email }` under `lumen_session_v1`. A tampered
-  session payload reads as signed out.
+  Email and Password. The form validates locally (a plausible address and at least 8
+  characters), then `POST /api/auth/session` opens an HMAC-SHA256 signed session valid
+  for 12 hours. The server length-checks the password and discards it; the browser
+  stores `{ name: "Studio Guest", email }` under `lumen_session_v1` and the token under
+  `lumen_session_token_v1`. **Sign Out** revokes the token server-side. When the API is
+  unreachable the visitor gets a device-only guest session and a toast says so. A
+  tampered session payload reads as signed out and drops its token.
 - Once signed in the trigger becomes an **Account** link. `/account` sits behind
   `RequireAuth` and redirects to `/` when signed out. The page is one bento grid under a
   fixed oak-amber wash (`--glow-oak`, a 5% `#e8923a` radial falling off by 40% from the
-  top right). A full-width profile tile shows the name, email, storage, sync state and
+  top right). A full-width profile tile shows the name, email, transport, sync state and
   project and quote counts, with **Sign Out** on its top-right corner (below the identity
   on phones). Beneath it, **Saved Spatial Projects** (every named wall and room in the
   library as inset cards with an elevation thumbnail, envelope, module count, 24V load,
@@ -585,6 +665,16 @@ custom properties, so React never re-renders on pointer movement.
   changes; see Share links.
 - The cloud client sanitizes every record it reads, so a tampered `lumen_cloud_*` value
   is dropped before it reaches React state.
+- The API accepts at most 64 KB per body (`413`, drained without buffering, cut at
+  1 MB more), only `application/json` (`415`), parses through `safeJsonParse`, so
+  `__proto__`, `constructor` and `prototype` keys are stripped before validation, and
+  answers every response with `X-Content-Type-Options: nosniff`, `Cache-Control:
+  no-store`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and a
+  `default-src 'none'` CSP. No CORS headers are sent; the JSON content type and the
+  `X-Lumen-Client` header force a preflight, so other origins cannot call it.
+- Session tokens are compared in constant time; set `LUMEN_SESSION_SECRET` (32+
+  characters) to keep sessions valid across restarts, otherwise each process signs with
+  its own random key.
 
 ## Development
 
@@ -596,8 +686,13 @@ npx playwright install chromium   # first run only
 npm run dev                       # http://127.0.0.1:5173 (also http://localhost:5173)
 npm run build
 npm run preview                   # http://localhost:4173
+npm run server                    # API only, http://127.0.0.1:8787/api
 npx playwright test               # builds, serves preview, runs the E2E suite
 ```
+
+`npm run dev` and `npm run preview` serve the API on `/api` in the same process. The
+standalone server reads `HOST`, `PORT`, `LUMEN_DATA_FILE`, `LUMEN_STORAGE`,
+`LUMEN_SESSION_SECRET` and `LUMEN_TEST_RESET`. Run one process per data file.
 
 ## Continuous integration
 
