@@ -29,5 +29,6 @@ export default defineConfig({
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    env: { LUMEN_TEST_RESET: '1' },
   },
 });
