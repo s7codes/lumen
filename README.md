@@ -1,14 +1,39 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v4.0.0-e8923a)
+![Release](https://img.shields.io/badge/release-v4.1.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v4.0.0**. The 3D Room Planner becomes a four-wall, 360-degree room.
+Current release: **v4.1.0**. Two versions of a design now sit side by side.
+`src/lib/project-diff.js` exports `compareProjectStates(base, target)`, a pure comparison
+of two walls or rooms, cloud records or live states, rebuilt through the planner
+sanitizers. It returns eight deltas, each `{ base, target, delta }`: `modules`, `loadW`,
+`activeW`, `fluxLm`, `priceUsd`, `luxAvg`, `rt60Sec` (negative is added damping) and
+`stiScore`, read from the same summary and Sabine engines as the planners. Modules pair
+by `uid` while it still names the same part, then by part and wall, nearest first. Each
+pair is unchanged or modified (`Moved +25 cm X / Finish Walnut to Oak / Dimmed 100% to
+60%`, `Rehung North Wall to East Wall`); the rest are added or removed. **Compare
+Changes** beside the project name in both planners opens the **Project comparison**
+dialog: the live draft (B) against the cloud revision of the open project (A), or a clean
+default envelope when it was never saved. On `/account`, **Compare** on any card, or
+**Compare Projects** once two are saved, opens the same dialog with Baseline (A) and
+Target (B) selects over every saved project and both live drafts, a swap key, two
+elevations with added, modified and removed modules outlined, six delta tiles and an
+itemized change log.
+
+v4.1.0 also settles three planner details. Number wells drop the native spin keys app
+wide (`appearance: none`, `textfield` in Firefox), and the Dimensions forms in both
+planners become label-left rows with an 88px right-aligned tabular well, so `300`, `280`
+and `250` keep 12px of padding clear. **Save to Cloud** centres its glyph and label as one
+unit 8px apart and shares a 38px height and an equal half of the row with **Sync Wall to
+Cart** / **Sync Room to Cart**. Switch labels such as `Attic slope` hold one line, and
+palette size and power each hold together, so a unit never breaks from its figure.
+
+v4.0.0 made the 3D Room Planner a four-wall, 360-degree room.
 Each module carries a `wall` (`north`, `east`, `south` or `west`) and keeps its
 own elevation frame: `Left X` along that wall, `Bottom Y` up from the floor. North and
 south span the room width, east and west its depth. A **Wall Selector** above the stage
@@ -24,7 +49,7 @@ emitters, spot and point light targets, the floor lux field and the `.OBJ` expor
 north is never written, so every stored room, cloud project, preset and `?scene=` link
 from before loads and encodes exactly as it did.
 
-v4.0.0 also makes the planners easier on the eye and on newcomers. The navbar reads in
+v4.0.0 also made the planners easier on the eye and on newcomers. The navbar reads in
 the sans face at 13.5px in Title Case, without numeric prefixes; the search pill shows
 only its glyph and `Search` (`Ctrl+K` / `Cmd+K` still opens the palette); the mode
 switch reads **Visual** and **Specs** instead of Arch and Tech. The 3D stage sits on a
@@ -141,6 +166,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v4.1.0  | Project and revision A/B diff engine and comparison dialog; spin-free number wells, centred cloud save key, one-line sidebar labels |
 | v4.0.0  | Four-wall 360-degree room with wall selector and per-wall mounting, collisions, bridge, lux and OBJ; human-friendly planner UI; Visual / Specs switch |
 | v3.5.0  | Per-module DALI-2 dimming across physics, lux, bus and WebGL, four scene presets, 3D undo |
 | v3.4.0  | 1:20 ISO A3 blueprint sheet, drilling and anchor schedule, SVG and AutoCAD R12 DXF export |
@@ -195,7 +221,8 @@ src/
                         BlueprintViews, ExplodedAssembly (lazy) and
                         ExplosionSpreadControl, PhotometricCurve, CloudSaveButton,
                         ProjectNameField, EmptyState, BusTelemetryCell,
-                        EnvironmentalPhysicsCell,
+                        EnvironmentalPhysicsCell, ElevationThumb,
+                        ProjectDiffModal (lazy on /account),
                         RouteFallback (loading frame and chunk error), icons
     studio/             WallStage, StudioPalette, StudioInspector, StudioToolbar,
                         BlueprintSheetModal,
@@ -208,7 +235,7 @@ src/
                         WallStudio, Account, NotFound
   hooks/                useAmbientLight, useBag, useCardTilt, useCloudSave,
                         useCommandPalette, useCurrency, useDisplayMode,
-                        useDocumentTitle, useLaunchedModule, useMagneticField,
+                        useDocumentTitle, useDraftDiff, useLaunchedModule, useMagneticField,
                         useModalDialog, useProjectName, useSceneShare,
                         useRoom3d, useScrollReveal, useWallStudio
   lib/                  bag store and PSU sizing, wall studio geometry and history,
@@ -216,7 +243,9 @@ src/
                         and orbit frame (room-scene), Wavefront OBJ writer
                         (obj-export), 1:20 blueprint sheet compiler and SVG
                         (blueprint-sheet), AutoCAD R12 DXF writer (dxf-export),
-                        named project ids (project-library), palette
+                        named project ids (project-library), A/B project
+                        comparison (project-diff) and its dialog sources
+                        (diff-sources), palette
                         index and ranking (command-index), credentials and session
                         token rules (auth), cloud record rules shared with the
                         server (cloud-records),
@@ -231,7 +260,7 @@ src/
   security/sanitize.js  safeJsonParse, safeStorage, input validators
   styles/               tokens, base, animations, shell, toast, home, pages, product,
                         product-detail, checkout, studio, room3d, account, cloud,
-                        command-palette, empty-state
+                        command-palette, empty-state, project-diff, elevation-thumb
 server/                 Lumen Cloud HTTP API, shared with Vite dev and preview
   app.js                request handler: routes, 64 KB JSON bodies, sessions, headers
   store.js              per-namespace state, account namespaces, atomic claims,
@@ -267,7 +296,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '4.0.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '4.1.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -388,8 +417,13 @@ a fast link. Requests time out after 8 s.
   flat, disables itself, shows a 1px spinning arc and reads **Saving to Lumen Cloud...**.
   On success it inverts to white with a drawn check and reads **Project Saved** for 2.4 s,
   and a toast confirms the revision. A ref lock backs up the disabled state, so a burst
-  of clicks commits one revision. All labels share one grid cell, so the key never
-  changes width.
+  of clicks commits one revision. The glyph and the active label travel as one centred
+  unit 8px apart; the key takes its width from its row, an equal half beside the cart
+  key at the same 38px height, so it never changes width between states.
+- **Compare Changes** shares the project row with the name well. It opens the
+  **Project comparison** dialog on the live draft against the cloud revision saved under
+  the current name (else the last revision this session saved, else a clean default
+  envelope), with the cloud library fetched behind a hairline sweep.
 - **Submit Project Requisition** in checkout follows the same pattern
   (**Submitting to Lumen Cloud...**) and shows the confirmation once the call resolves.
 - `/account` shows shimmering placeholder rows and **Syncing with Lumen Cloud...** while
@@ -920,6 +954,12 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
   at a fixed width). On success the card leaves, the profile's project count drops, a
   toast confirms it and focus lands on the panel title. On a narrow card the key takes
   its own full-width row under **Open**.
+- **Compare** on a card opens the **Project comparison** dialog with that project as
+  Baseline (A) and, as Target (B), the newest other project of the same kind, then any
+  other project, then that kind's live draft. With two or more projects saved, **Compare
+  Projects** in the panel head compares the two newest, older as A. Both selects list
+  every saved revision and the live Wall Studio and Room Planner drafts; **Swap**
+  exchanges them. The dialog code loads in its own chunk on first open.
 
 ## Command palette
 
