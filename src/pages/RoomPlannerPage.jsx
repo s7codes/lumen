@@ -15,6 +15,7 @@ import { useProjectName } from '../hooks/useProjectName.js';
 import { useRoom3d } from '../hooks/useRoom3d.js';
 import { useSharedSceneLoader, useShareLink } from '../hooks/useSceneShare.js';
 import { computeBusTopology } from '../lib/bus-topology.js';
+import { computeFloorLuxField } from '../lib/illuminance-field.js';
 import { computeEnvironmentalPhysics } from '../lib/room-physics.js';
 import { downloadText } from '../lib/download.js';
 import { buildRoomObj, countObjObjects, OBJ_MIME, objFilename } from '../lib/obj-export.js';
@@ -37,6 +38,7 @@ export default function RoomPlannerPage() {
   const { addToast } = useToast();
   const [status, setStatus] = useState('');
   const [wireframe, setWireframe] = useState(false);
+  const [floorLuxOn, setFloorLuxOn] = useState(false);
   const syncRef = useRef(null);
   const cloud = useCloudSave('room');
   const project = useProjectName('room');
@@ -52,6 +54,7 @@ export default function RoomPlannerPage() {
   const summary = useMemo(() => summarizeWall(state), [state]);
   const bus = useMemo(() => computeBusTopology(state), [state]);
   const physics = useMemo(() => computeEnvironmentalPhysics(state), [state]);
+  const floorLux = useMemo(() => (floorLuxOn ? computeFloorLuxField(state) : null), [floorLuxOn, state]);
   const { room } = state;
 
   const pushToWall = () => {
@@ -104,15 +107,18 @@ export default function RoomPlannerPage() {
             selectedUid={selected?.uid ?? null}
             technical={mode === 'technical'}
             wireframe={wireframe}
+            floorLux={floorLux}
             toolbar={<RoomToolbar camera={state.camera} notice={notice} onCamera={actions.setCamera} />}
             onSelect={actions.select}
             onCameraCommit={actions.setCamera}
             onWireframe={setWireframe}
+            onFloorLux={setFloorLuxOn}
           />
           <RoomSummary
             summary={summary}
             bus={bus}
             physics={physics}
+            floorLux={floorLux}
             shareUrl={shareLink.shareUrl}
             onShare={() => shareLink.share(state, project.commit())}
             conflictCount={conflicts.size}

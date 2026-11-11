@@ -10,6 +10,7 @@ export function RoomSummary({
   summary,
   bus,
   physics,
+  floorLux,
   shareUrl,
   onShare,
   conflictCount,
@@ -54,6 +55,26 @@ export function RoomSummary({
         </div>
         <BusTelemetryCell topology={bus} />
         <EnvironmentalPhysicsCell physics={physics} />
+        {floorLux && (
+          <div
+            className="studio-summary__cell studio-summary__cell--floor-lux"
+            data-testid="floor-lux-summary"
+            data-peak-lux={floorLux.peakLux}
+            data-avg-lux={floorLux.avgLux}
+            data-uniformity={floorLux.uniformityRatio.toFixed(2)}
+          >
+            <dt>Floor Lux Grid</dt>
+            <dd>
+              <span className="physics__line" data-testid="floor-lux-line">
+                Peak {formatInt(floorLux.peakLux)} lx / Avg {formatInt(floorLux.avgLux)} lx
+              </span>
+              <span className="studio-summary__sub" data-testid="floor-lux-detail">
+                U0 {floorLux.uniformityRatio.toFixed(2)} / {floorLux.cols} x {floorLux.rows} grid
+                {floorLux.hotspot ? ` / hotspot X ${floorLux.hotspot.xCm} Y ${floorLux.hotspot.yCm} cm` : ' / no lit modules'}
+              </span>
+            </dd>
+          </div>
+        )}
       </dl>
 
       <div className="room3d-bridge">

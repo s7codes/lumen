@@ -567,3 +567,25 @@
     justify-content: center;
   }
 }
+
+/* Floor lux grid */
+
+.room3d-label--lux {
+  border-color: rgba(246, 239, 228, 0.5);
+  color: #f6efe4;
+}
+
+.studio-summary__cell--floor-lux {
+  grid-column: span 2;
+}
+
+.studio-summary__cell--floor-lux dd {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+@media (max-width: 599px) {
+  .studio-summary__cell--floor-lux {
+    grid-column: 1 / -1;
+  }
+}

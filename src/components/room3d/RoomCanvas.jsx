@@ -1,7 +1,18 @@
 import { Edges, Html, OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { BufferGeometry, Float32BufferAttribute, Object3D, Vector3 } from 'three';
+import {
+  BufferGeometry,
+  DataTexture,
+  Float32BufferAttribute,
+  LinearFilter,
+  Object3D,
+  RGBAFormat,
+  SRGBColorSpace,
+  Vector3,
+} from 'three';
+import { formatInt } from '../../lib/format.js';
+import { fieldImage, isoLuxContours } from '../../lib/illuminance-field.js';
 import { CAMERA_PITCH, CAMERA_YAW, sameCamera, sanitizeCamera } from '../../lib/room-3d.js';
 import { cameraFrame, cameraFromPosition, cameraPosition, orbitLimits } from '../../lib/room-scene.js';
 import { MAX_FRAME_DT, stepSpring } from '../../lib/spring.js';
@@ -22,6 +33,8 @@ const AXIS_COLORS = { x: '#e8923a', y: '#f2eee7', z: '#aeb2b5' };
 const SELECT_COLOR = '#e8923a';
 const FAULT_COLOR = '#c8553d';
 const CALLOUT_COLORS = { ok: '#f0b273', tight: '#e08a74' };
+const ISO_COLORS = { 100: '#d6a06e', 250: '#f0b273', 500: '#f6efe4' };
+const FLOOR_LUX_LIFT = 0.004;
 const noRaycast = () => null;
 
 function prefersReducedMotion() {
@@ -415,6 +428,54 @@ function TechnicalLayer({ scene }) {
   );
 }
 
+/** False-colour floor illuminance laid on the slab, with iso-lux contours and the hotspot. */
+function FloorLuxLayer({ field }) {
+  const texture = useMemo(() => {
+    const image = fieldImage(field);
+    const map = new DataTexture(new Uint8Array(image.data.buffer), image.width, image.height, RGBAFormat);
+    map.colorSpace = SRGBColorSpace;
+    map.magFilter = LinearFilter;
+    map.minFilter = LinearFilter;
+    map.needsUpdate = true;
+    return map;
+  }, [field]);
+  useEffect(() => () => texture.dispose(), [texture]);
+
+  const contours = useMemo(
+    () =>
+      isoLuxContours(field)
+        .filter((contour) => contour.segments.length > 0)
+        .map((contour) => ({
+          lux: contour.lux,
+          points: contour.segments.flatMap(([x1, y1, x2, y2]) => [
+            [x1 * 0.01, FLOOR_LUX_LIFT + 0.002, y1 * 0.01],
+            [x2 * 0.01, FLOOR_LUX_LIFT + 0.002, y2 * 0.01],
+          ]),
+        })),
+    [field],
+  );
+
+  const W = field.widthCm * 0.01;
+  const D = field.depthCm * 0.01;
+  const { hotspot } = field;
+  return (
+    <group name="floor-lux-grid">
+      <mesh position={[W / 2, FLOOR_LUX_LIFT, D / 2]} rotation={[-Math.PI / 2, 0, 0]} raycast={noRaycast} renderOrder={1}>
+        <planeGeometry args={[W, D]} />
+        <meshBasicMaterial map={texture} transparent opacity={0.88} depthWrite={false} toneMapped={false} />
+      </mesh>
+      {contours.map((contour) => (
+        <Segments key={contour.lux} points={contour.points} color={ISO_COLORS[contour.lux]} opacity={0.9} />
+      ))}
+      {hotspot && (
+        <Label position={[hotspot.xCm * 0.01, 0.03, hotspot.yCm * 0.01]} className="room3d-label room3d-label--lux">
+          Peak {formatInt(hotspot.lux)} lx
+        </Label>
+      )}
+    </group>
+  );
+}
+
 /**
  * Writes where each module centre lands on screen into the hidden scene
  * graph, so pointer picking can be exercised against real pixels.
@@ -437,7 +498,7 @@ function ScreenProbe({ modules, manifestRef }) {
   return null;
 }
 
-const SceneGraph = memo(function SceneGraph({ scene, onSelect, onHover }) {
+const SceneGraph = memo(function SceneGraph({ scene, floorLux, onSelect, onHover }) {
   const ink = INK[scene.lighting] ?? INK.night;
   const wire = scene.wireframe;
   const onBackground = (event) => {
@@ -456,6 +517,7 @@ const SceneGraph = memo(function SceneGraph({ scene, onSelect, onHover }) {
 
       <Shell shell={scene.shell} onBackground={onBackground} />
       <Segments points={scene.grid} color={scene.rig.grid.color} opacity={scene.technical ? 0.16 : scene.rig.grid.opacity} />
+      {floorLux && <FloorLuxLayer field={floorLux} />}
 
       {scene.furniture.map((part) => (
         <FurnitureMesh key={part.part} part={part} wire={wire} edges={scene.edges} ink={ink} />
@@ -482,7 +544,7 @@ const SceneGraph = memo(function SceneGraph({ scene, onSelect, onHover }) {
  * React Three Fiber viewport. Renders on demand: a frame is drawn only when
  * the scene, the camera or the canvas size changes.
  */
-export default function RoomCanvas({ scene, room, camera, api, manifestRef, onSelect, onHover, onReady }) {
+export default function RoomCanvas({ scene, floorLux, room, camera, api, manifestRef, onSelect, onHover, onReady }) {
   return (
     <Canvas
       className="room3d-canvas"
@@ -498,7 +560,7 @@ export default function RoomCanvas({ scene, room, camera, api, manifestRef, onSe
       }}
     >
       <CameraRig room={room} camera={camera} api={api} />
-      <SceneGraph scene={scene} onSelect={onSelect} onHover={onHover} />
+      <SceneGraph scene={scene} floorLux={floorLux} onSelect={onSelect} onHover={onHover} />
       <ScreenProbe modules={scene.modules} manifestRef={manifestRef} />
     </Canvas>
   );

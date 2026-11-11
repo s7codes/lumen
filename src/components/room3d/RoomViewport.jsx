@@ -65,7 +65,7 @@ const UNAVAILABLE = (
  * scene inspectable without reading pixels, and it is the whole viewport
  * when WebGL is unavailable.
  */
-function SceneManifest({ scene, renderer, manifestRef }) {
+function SceneManifest({ scene, floorLux, renderer, manifestRef }) {
   const selected = scene.modules.find((module) => module.selected);
   return (
     <div
@@ -105,6 +105,23 @@ function SceneManifest({ scene, renderer, manifestRef }) {
       {scene.furniture.map((part) => (
         <span key={part.part} data-testid="room-furniture" data-part={part.part} data-color={part.color} />
       ))}
+      {floorLux && (
+        <span
+          data-testid="room-floor-lux"
+          data-peak-lux={floorLux.peakLux}
+          data-avg-lux={floorLux.avgLux}
+          data-min-lux={floorLux.minLux}
+          data-uniformity={floorLux.uniformityRatio.toFixed(2)}
+          data-ambient-lux={floorLux.ambientLux}
+          data-direct-peak-lux={floorLux.directPeakLux}
+          data-cols={floorLux.cols}
+          data-rows={floorLux.rows}
+          data-sources={floorLux.sources}
+          data-hotspot-x={floorLux.hotspot?.xCm}
+          data-hotspot-y={floorLux.hotspot?.yCm}
+          data-iso={floorLux.isoLux.map((level) => `${level.lux}:${level.areaPct}`).join(' ')}
+        />
+      )}
       {selected && <span data-testid="room-selection" data-uid={selected.uid} />}
       {scene.modules
         .filter((module) => module.conflict)
@@ -147,10 +164,12 @@ export function RoomViewport({
   selectedUid,
   technical,
   wireframe,
+  floorLux,
   toolbar,
   onSelect,
   onCameraCommit,
   onWireframe,
+  onFloorLux,
 }) {
   const { room, items, camera } = state;
   const hostRef = useRef(null);
@@ -275,6 +294,7 @@ export function RoomViewport({
           data-preset={preset ?? 'custom'}
           data-technical={technical || undefined}
           data-wireframe={wireframe || undefined}
+          data-floor-lux={floorLux ? true : undefined}
           role="application"
           aria-roledescription="3D viewport"
           aria-label="Room viewport. Drag or use the arrow keys to orbit, scroll, plus and minus to zoom, Home to reset."
@@ -295,6 +315,7 @@ export function RoomViewport({
               <Suspense fallback={<RendererNotice testId="room-webgl-loading">Loading WebGL engine</RendererNotice>}>
                 <RoomCanvas
                   scene={scene}
+                  floorLux={floorLux}
                   room={room}
                   camera={camera}
                   api={api}
@@ -309,7 +330,7 @@ export function RoomViewport({
             UNAVAILABLE
           )}
 
-          <SceneManifest scene={scene} renderer={renderer} manifestRef={manifestRef} />
+          <SceneManifest scene={scene} floorLux={floorLux} renderer={renderer} manifestRef={manifestRef} />
 
           {items.length === 0 && (
             <p className="room3d-stage__empty mono">
@@ -324,8 +345,10 @@ export function RoomViewport({
             camera={camera}
             view={view}
             wireframe={wireframe}
+            floorLux={Boolean(floorLux)}
             onCamera={onCameraCommit}
             onWireframe={onWireframe}
+            onFloorLux={onFloorLux}
           />
         </div>
 

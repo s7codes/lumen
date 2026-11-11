@@ -15,10 +15,11 @@ function fillPercent(value, range) {
 
 /**
  * Fine camera control kept out of sight. Orbiting by drag covers most use;
- * the fader button opens exact yaw, pitch and zoom plus the wireframe view.
+ * the fader button opens exact yaw, pitch and zoom, the wireframe view and
+ * the floor illuminance grid.
  * Closes on Escape, on a second press and on any pointer down outside it.
  */
-export function CameraSettings({ camera, view, wireframe, onCamera, onWireframe }) {
+export function CameraSettings({ camera, view, wireframe, floorLux, onCamera, onWireframe, onFloorLux }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const toggleRef = useRef(null);
@@ -106,6 +107,13 @@ export function CameraSettings({ camera, view, wireframe, onCamera, onWireframe 
           checked={wireframe}
           onChange={onWireframe}
           testId="camera-wireframe"
+        />
+        <Switch
+          label="Floor Lux Grid"
+          hint={floorLux ? 'Point field' : 'Off'}
+          checked={floorLux}
+          onChange={onFloorLux}
+          testId="toggle-floor-lux-grid"
         />
       </div>
     </div>
