@@ -400,6 +400,46 @@
   }
 }
 
+/* Installation and hardware schedule */
+
+.install-schedule__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.install-schedule__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+.quote-sheet .install-schedule__cell dd {
+  font-size: var(--text-sm);
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.install-schedule__note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+@media (max-width: 899px) {
+  .install-schedule__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Print: only the quote sheet, black on white, A4 margins. Scoped with :has()
    so printing any other view is unaffected. */
 @media print {
@@ -470,5 +510,29 @@
 
   .quote-totals {
     break-inside: avoid;
+  }
+
+  .install-schedule {
+    break-inside: avoid;
+  }
+
+  .install-schedule__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .install-schedule__cell {
+    padding: 2mm 3mm;
+    border: 1px solid #bbb;
+    background: #fff;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .quote-sheet .install-schedule__cell dd {
+    color: #000;
+  }
+
+  .install-schedule__note {
+    color: #555 !important;
   }
 }

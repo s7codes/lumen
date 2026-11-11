@@ -15,7 +15,7 @@ function downloadJson(filename, value) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function StudioToolbar({ layout, canUndo, canRedo, notice, actions }) {
+export function StudioToolbar({ layout, canUndo, canRedo, notice, actions, busOn, onToggleBus, shareUrl, onShare }) {
   const fileRef = useRef(null);
   const [armed, setArmed] = useState(false);
   const { addToast } = useToast();
@@ -117,6 +117,29 @@ export function StudioToolbar({ layout, canUndo, canRedo, notice, actions }) {
           }}
         >
           {armed ? `Confirm: clear ${count}` : 'Clear wall'}
+        </button>
+      </div>
+
+      <div className="studio-toolbar__group" role="group" aria-label="Overlay and sharing">
+        <button
+          type="button"
+          className="tool-button"
+          aria-pressed={busOn}
+          data-testid="toggle-bus-topology"
+          title="Show the 24V DC daisy-chain routing"
+          onClick={onToggleBus}
+        >
+          24V Bus
+        </button>
+        <button
+          type="button"
+          className="tool-button"
+          data-testid="copy-share-link"
+          data-share-url={shareUrl || undefined}
+          title="Copy a link that reopens this wall"
+          onClick={onShare}
+        >
+          Share Link
         </button>
       </div>
 

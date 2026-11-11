@@ -1,9 +1,10 @@
 import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
+import { BusTelemetryCell } from '../BusTelemetryCell.jsx';
 import { CloudSaveButton } from '../CloudSaveButton.jsx';
 import { ProjectNameField } from '../ProjectNameField.jsx';
 import { ArrowRight } from '../icons.jsx';
 
-export function StudioSummary({ summary, conflictCount, syncNote, syncRef, cloudStatus, project, onSave, onSync }) {
+export function StudioSummary({ summary, bus, conflictCount, syncNote, syncRef, cloudStatus, project, onSave, onSync }) {
   const { modules, loadW, activeW, lumens, priceUsd, psu } = summary;
   const empty = modules === 0;
 
@@ -37,6 +38,7 @@ export function StudioSummary({ summary, conflictCount, syncNote, syncRef, cloud
           <dt>Driver</dt>
           <dd data-testid="wall-psu">{psu.label}</dd>
         </div>
+        <BusTelemetryCell topology={bus} />
       </dl>
 
       <div className="studio-summary__action">

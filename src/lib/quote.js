@@ -1,6 +1,35 @@
 import { isOneOf, safeStorage, sanitizeMultilineText, sanitizeText } from '../security/sanitize.js';
 import { recommendPsu, resolveBagLines } from './bag.js';
-import { BUS_VOLTAGE } from './electrical.js';
+import { BUS_RATED_W, BUS_VOLTAGE } from './electrical.js';
+
+export const WALL_SPAN_MOUNTS = Object.freeze(['wall', 'recessed']);
+export const CABLE_LEAD_IN_M = 3;
+export const CABLE_TAIL_M = 0.5;
+const CABLE_STEP_M = 0.5;
+
+/**
+ * Site hardware from the cart. Anchors follow the catalog mounting points;
+ * wall span counts wall-hung and recessed parts. Each SELV circuit carries at
+ * most 150 W and gets its own 3 m lead-in from the driver void; the trunk
+ * then runs the wall span with a 0.5 m tail per powered part, rounded up to
+ * the next 0.5 m.
+ */
+export function buildInstallation(bagLines) {
+  let totalAnchors = 0;
+  let totalLinearWidthCm = 0;
+  let poweredUnits = 0;
+  let loadW = 0;
+  for (const { product, qty } of bagLines) {
+    totalAnchors += product.mountingPoints * qty;
+    if (WALL_SPAN_MOUNTS.includes(product.mount)) totalLinearWidthCm += product.dimsCm.w * qty;
+    if (product.watts > 0) poweredUnits += qty;
+    loadW += product.watts * qty;
+  }
+  const circuits = loadW <= 0 ? 0 : loadW <= BUS_RATED_W ? 1 : Math.ceil(loadW / BUS_RATED_W);
+  const rawCableM = circuits * CABLE_LEAD_IN_M + totalLinearWidthCm / 100 + poweredUnits * CABLE_TAIL_M;
+  const recommendedCableM = circuits === 0 ? 0 : Math.ceil(rawCableM / CABLE_STEP_M - 1e-9) * CABLE_STEP_M;
+  return { totalAnchors, totalLinearWidthCm, recommendedCableM, circuits, poweredUnits, circuitRatedW: BUS_RATED_W };
+}
 
 export const CURRENCY_STORAGE_KEY = 'lumen_currency_v1';
 export const VAT_RATE_PCT = 27;
@@ -163,6 +192,7 @@ export function buildQuote({ items, currencyCode, promo = null, includeDriver = 
       psu,
       driverIncluded: Boolean(driver),
     },
+    installation: buildInstallation(bagLines),
     totals: { net, discount, netAfterDiscount, vat, gross, vatPct: VAT_RATE_PCT, discountPct: pct },
   };
 }
@@ -207,6 +237,7 @@ export function serializeQuote(quote, project) {
       capacityW: quote.electrical.psu.capacityW,
       driverIncluded: quote.electrical.driverIncluded,
     },
+    installation: { ...quote.installation },
     bom: quote.lines.map((line) => ({
       sku: line.sku,
       name: line.name,

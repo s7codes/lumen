@@ -1,11 +1,15 @@
 import { Link } from 'react-router-dom';
 import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
+import { BusTelemetryCell } from '../BusTelemetryCell.jsx';
 import { CloudSaveButton } from '../CloudSaveButton.jsx';
 import { ProjectNameField } from '../ProjectNameField.jsx';
 import { ArrowRight } from '../icons.jsx';
 
 export function RoomSummary({
   summary,
+  bus,
+  shareUrl,
+  onShare,
   conflictCount,
   status,
   syncRef,
@@ -46,6 +50,7 @@ export function RoomSummary({
           <dt>Driver</dt>
           <dd data-testid="room-psu">{psu.label}</dd>
         </div>
+        <BusTelemetryCell topology={bus} />
       </dl>
 
       <div className="room3d-bridge">
@@ -73,6 +78,16 @@ export function RoomSummary({
             </Link>
             <button type="button" className="tool-button" data-testid="export-room-obj" onClick={onExportObj}>
               Export 3D .OBJ
+            </button>
+            <button
+              type="button"
+              className="tool-button"
+              data-testid="copy-share-link"
+              data-share-url={shareUrl || undefined}
+              title="Copy a link that reopens this room"
+              onClick={onShare}
+            >
+              Share Link
             </button>
           </div>
           <div className="room3d-bridge__commit">

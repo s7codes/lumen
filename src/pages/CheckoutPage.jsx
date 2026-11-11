@@ -68,6 +68,51 @@ function Money({ value, currency, testId, deduct = false }) {
   );
 }
 
+function InstallationSchedule({ installation }) {
+  const { totalAnchors, totalLinearWidthCm, recommendedCableM, circuits, circuitRatedW } = installation;
+  return (
+    <section
+      className="quote-sheet__section install-schedule"
+      aria-label="Installation and hardware schedule"
+      data-testid="installation-schedule"
+    >
+      <p className="index-label">
+        <span className="index-label__num">02</span> / Installation &amp; Hardware Schedule
+      </p>
+      <dl className="install-schedule__grid">
+        <div className="install-schedule__cell">
+          <dt>Wall anchors</dt>
+          <dd data-testid="install-anchors" data-value={totalAnchors}>
+            {totalAnchors} pcs
+          </dd>
+          <p className="install-schedule__note">Per catalog mounting points</p>
+        </div>
+        <div className="install-schedule__cell">
+          <dt>Linear wall span</dt>
+          <dd data-testid="install-span" data-value={totalLinearWidthCm}>
+            {totalLinearWidthCm} cm / {(totalLinearWidthCm / 100).toFixed(2)} m
+          </dd>
+          <p className="install-schedule__note">Wall-hung and recessed parts</p>
+        </div>
+        <div className="install-schedule__cell">
+          <dt>24V trunk cable</dt>
+          <dd data-testid="install-cable" data-value={recommendedCableM}>
+            {recommendedCableM.toFixed(1)} m
+          </dd>
+          <p className="install-schedule__note">2 x 2.5 mm2 Cu, incl. lead-in</p>
+        </div>
+        <div className="install-schedule__cell">
+          <dt>SELV circuits</dt>
+          <dd data-testid="install-circuits" data-value={circuits}>
+            {circuits === 0 ? 'None' : `${circuits} x ${circuitRatedW} W`}
+          </dd>
+          <p className="install-schedule__note">{circuits === 0 ? 'Passive parts only' : 'Class 2, under 3% drop'}</p>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 function QuoteSheet({ quote, project }) {
   const { currency, totals, electrical } = quote;
   const { psu } = electrical;
@@ -154,9 +199,11 @@ function QuoteSheet({ quote, project }) {
         )}
       </section>
 
+      <InstallationSchedule installation={quote.installation} />
+
       <section className="quote-sheet__section" aria-label="Bill of materials">
         <p className="index-label">
-          <span className="index-label__num">02</span> / Bill of materials
+          <span className="index-label__num">03</span> / Bill of materials
         </p>
         <div className="bom-wrap">
           <table className="bom" data-testid="quote-bom">

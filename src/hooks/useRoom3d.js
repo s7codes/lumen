@@ -79,6 +79,9 @@ function roomReducer(store, action) {
       return withNotice({ ...withState(store, result.state), selectedUid: null }, text);
     }
 
+    case 'replace':
+      return withNotice({ ...withState(store, action.state), selectedUid: null }, action.text);
+
     case 'notice':
       return withNotice(store, action.text, action.tone);
 
@@ -105,6 +108,7 @@ export function useRoom3d() {
       update: (uid, patch) => dispatch({ type: 'update', uid, patch }),
       remove: (uid) => dispatch({ type: 'remove', uid }),
       importWall: () => dispatch({ type: 'import' }),
+      replace: (state, text) => dispatch({ type: 'replace', state, text }),
       announce: (text, tone) => dispatch({ type: 'notice', text, tone }),
     }),
     [],

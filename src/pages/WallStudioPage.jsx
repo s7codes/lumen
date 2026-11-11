@@ -11,7 +11,9 @@ import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { useLaunchedModule } from '../hooks/useLaunchedModule.js';
 import { useProjectName } from '../hooks/useProjectName.js';
+import { useSharedSceneLoader, useShareLink } from '../hooks/useSceneShare.js';
 import { useWallStudio } from '../hooks/useWallStudio.js';
+import { computeBusTopology } from '../lib/bus-topology.js';
 import {
   aggregateBagLines,
   findConflicts,
@@ -57,9 +59,16 @@ export default function WallStudioPage() {
   const syncRef = useRef(null);
   const cloud = useCloudSave('wall');
   const project = useProjectName('wall');
+  const [busOn, setBusOn] = useState(false);
+  const shareLink = useShareLink('wall');
 
   useHistoryShortcuts(actions);
   useLaunchedModule(layout.items, actions);
+  useSharedSceneLoader('wall', ({ state, name }) => {
+    project.change(name);
+    const count = state.items.length;
+    actions.importLayout(state, `Loaded shared scene ${name}: ${count} ${count === 1 ? 'module' : 'modules'}.`);
+  });
 
   // While dragging, geometry, conflicts and readouts follow the preview
   // position; the history only receives the final drop.
@@ -73,6 +82,8 @@ export default function WallStudioPage() {
 
   const conflicts = useMemo(() => findConflicts(live), [live]);
   const summary = useMemo(() => summarizeWall(layout), [layout]);
+  const bus = useMemo(() => computeBusTopology(live), [live]);
+  const showBus = mode === 'technical' || busOn;
   const liveSelected = selected ? (live.items.find((item) => item.uid === selected.uid) ?? null) : null;
 
   const preview = (next) => {
@@ -122,6 +133,7 @@ export default function WallStudioPage() {
             selectedUid={selected?.uid ?? null}
             dragUid={drag?.uid ?? null}
             technical={mode === 'technical'}
+            busTopology={showBus ? bus : null}
             toolbar={
               <StudioToolbar
                 layout={layout}
@@ -129,6 +141,10 @@ export default function WallStudioPage() {
                 canRedo={canRedo}
                 notice={notice}
                 actions={actions}
+                busOn={busOn}
+                onToggleBus={() => setBusOn((on) => !on)}
+                shareUrl={shareLink.shareUrl}
+                onShare={() => shareLink.share(layout, project.commit())}
               />
             }
             onSelect={actions.select}
@@ -139,6 +155,7 @@ export default function WallStudioPage() {
           />
           <StudioSummary
             summary={summary}
+            bus={bus}
             conflictCount={conflicts.size}
             syncNote={syncNote}
             syncRef={syncRef}

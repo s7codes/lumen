@@ -189,6 +189,105 @@ function ActiveGuides({ item, wall, ppcm }) {
   );
 }
 
+function longestLeg(segments, order) {
+  let best = null;
+  let bestLen = 0;
+  for (const s of segments) {
+    if (s.order !== order) continue;
+    const len = Math.abs(s.x2 - s.x1) + Math.abs(s.y2 - s.y1);
+    if (len > bestLen) {
+      best = s;
+      bestLen = len;
+    }
+  }
+  return best;
+}
+
+function BusOverlay({ topology, wall, ppcm }) {
+  const { origin, nodes, segments } = topology;
+  const H = wall.heightCm;
+  return (
+    <div
+      className="wall-bus"
+      data-testid="bus-topology-overlay"
+      data-tone={topology.withinSpec ? 'ok' : 'fault'}
+      data-nodes={nodes.length}
+      data-run-m={topology.totalRunM}
+      data-current-a={topology.currentA}
+      data-drop-v={topology.voltageDropV}
+      data-drop-pct={topology.voltageDropPct}
+      data-within-spec={String(topology.withinSpec)}
+      aria-hidden="true"
+    >
+      <svg
+        className="wall-bus__paths"
+        viewBox={`0 0 ${wall.widthCm} ${H}`}
+        preserveAspectRatio="none"
+        focusable="false"
+      >
+        {segments.map((s, i) => (
+          <line
+            key={`${s.toUid}-${i}`}
+            className="wall-bus__segment"
+            data-testid="bus-segment"
+            data-order={s.order}
+            data-to-uid={s.toUid}
+            x1={s.x1}
+            y1={H - s.y1}
+            x2={s.x2}
+            y2={H - s.y2}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+      </svg>
+
+      <span
+        className="wall-bus__origin"
+        data-testid="bus-psu-origin"
+        data-kind={origin.kind}
+        style={{ left: origin.xCm * ppcm, bottom: origin.yCm * ppcm }}
+      >
+        <span className="wall-bus__origin-label mono">PSU 24V FEED</span>
+      </span>
+
+      {nodes.map((node) => {
+        const leg = longestLeg(segments, node.order);
+        return (
+          <div key={node.uid} className="wall-bus__hop">
+            <span
+              className="wall-bus__node"
+              data-testid="bus-node"
+              data-uid={node.uid}
+              data-order={node.order}
+              style={{ left: node.xCm * ppcm, bottom: node.yCm * ppcm }}
+            >
+              <span className="wall-bus__node-label mono">{node.label}</span>
+            </span>
+            {leg && (
+              <span
+                className="wall-bus__callout mono"
+                data-testid="bus-run-callout"
+                data-order={node.order}
+                data-axis={leg.y1 === leg.y2 ? 'h' : 'v'}
+                style={{ left: ((leg.x1 + leg.x2) / 2) * ppcm, bottom: ((leg.y1 + leg.y2) / 2) * ppcm }}
+              >
+                {node.hopM.toFixed(2)} m
+              </span>
+            )}
+          </div>
+        );
+      })}
+
+      <p className="wall-bus__legend mono" data-testid="bus-overlay-legend">
+        <span>24V DC / {topology.conductor} Cu</span>
+        <span>
+          {topology.totalRunM.toFixed(2)} m / {topology.voltageDropPct.toFixed(1)}% drop
+        </span>
+      </p>
+    </div>
+  );
+}
+
 function Slope({ ppcm }) {
   const hatchId = `${useId().replace(/[^A-Za-z0-9_-]/g, '')}-hatch`;
   const size = SLOPE_CM * ppcm;
@@ -232,6 +331,7 @@ export function WallStage({
   selectedUid,
   dragUid,
   technical,
+  busTopology,
   toolbar,
   onSelect,
   onDragPreview,
@@ -437,6 +537,8 @@ export function WallStage({
                   </button>
                 );
               })}
+
+              {busTopology && <BusOverlay topology={busTopology} wall={wall} ppcm={ppcm} />}
 
               {technical && (
                 <Guides items={items} active={active} wall={wall} ppcm={ppcm} showTags={ppcm >= MIN_TAG_PPCM} />
