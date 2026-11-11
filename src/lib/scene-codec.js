@@ -3,6 +3,7 @@ import { hasForbiddenKey, isOneOf, safeJsonParse } from '../security/sanitize.js
 import { sanitizeProjectName } from './project-library.js';
 import { DIM_RANGE, sanitizeDimPct } from './dimming.js';
 import { ROOM_FORMAT, ROOM_VERSION, sanitizeRoomState } from './room-3d.js';
+import { DEFAULT_ROOM_WALL, wallOf } from './room-walls.js';
 import { LAYOUT_FORMAT, LAYOUT_VERSION, MAX_WALL_ITEMS, sanitizeLayout } from './wall-studio.js';
 
 export const SCENE_PARAM = 'scene';
@@ -11,6 +12,10 @@ export const SCENE_VERSION = 1;
 export const SCENE_KINDS = Object.freeze(['wall', 'room']);
 
 const KIND_TAG = Object.freeze({ wall: 'w', room: 'r' });
+// One letter per room wall. North is never written: a room tuple carries
+// the code only for a module on another wall.
+const WALL_CODE = Object.freeze({ north: 'n', east: 'e', south: 's', west: 'w' });
+const WALL_BY_CODE = new Map(Object.entries(WALL_CODE).map(([wall, code]) => [code, wall]));
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
 const STRING_LITERAL = /"(?:[^"\\]|\\.)*"/g;
 const MAX_DEPTH = 4;
@@ -70,21 +75,44 @@ function packWall(layout) {
   };
 }
 
+// A module off the north wall appends its wall code as the 8th element,
+// padding the lock slot with 0 and the level with 100 when undimmed.
+function withWallCode(tuple, item) {
+  const wall = wallOf(item);
+  if (wall === DEFAULT_ROOM_WALL) return tuple;
+  const padded = [...tuple, ...Array(Math.max(0, 6 - tuple.length)).fill(0)];
+  if (padded.length < 7) padded.push(DIM_RANGE.initial);
+  return [...padded, WALL_CODE[wall]];
+}
+
 function packRoom(state) {
   const { room, camera, items } = state;
   return {
     w: [room.widthCm, room.depthCm, room.heightCm, room.furniture, room.lighting],
     c: [camera.yaw, camera.pitch, camera.zoom],
-    i: items.map((item) => withDim([item.productId, item.finish, item.xCm, item.yCm, bit(item.led !== false)], item, 5)),
+    i: items.map((item) =>
+      withWallCode(withDim([item.productId, item.finish, item.xCm, item.yCm, bit(item.led !== false)], item, 5), item),
+    ),
   };
 }
 
-function unpackItem(entry) {
-  if (!Array.isArray(entry) || entry.length < 4 || entry.length > 7) return null;
-  const [productId, finish, xCm, yCm, led = 1, locked = 0, dimPct = DIM_RANGE.initial] = entry;
+function unpackItem(entry, maxLength) {
+  if (!Array.isArray(entry) || entry.length < 4 || entry.length > maxLength) return null;
+  const [productId, finish, xCm, yCm, led = 1, locked = 0, dimPct = DIM_RANGE.initial, code = WALL_CODE.north] = entry;
   if (!isOneOf(finish, FINISH_IDS)) return null;
   if (typeof dimPct !== 'number' || !Number.isFinite(dimPct)) return null;
-  return { productId, finish, xCm, yCm, led: led !== 0, locked: locked === 1, dimPct: sanitizeDimPct(dimPct) };
+  const wall = typeof code === 'string' ? WALL_BY_CODE.get(code) : undefined;
+  if (!wall) return null;
+  return {
+    productId,
+    finish,
+    xCm,
+    yCm,
+    led: led !== 0,
+    locked: locked === 1,
+    dimPct: sanitizeDimPct(dimPct),
+    ...(wall === DEFAULT_ROOM_WALL ? {} : { wall }),
+  };
 }
 
 function unpackWall(payload) {
@@ -93,7 +121,7 @@ function unpackWall(payload) {
     format: LAYOUT_FORMAT,
     version: LAYOUT_VERSION,
     wall: { widthCm, heightCm, slope: slope === 1, snap: snap === 1, surface },
-    items: payload.i.map(unpackItem),
+    items: payload.i.map((entry) => unpackItem(entry, 7)),
   };
 }
 
@@ -105,7 +133,7 @@ function unpackRoom(payload) {
     version: ROOM_VERSION,
     room: { widthCm, depthCm, heightCm, furniture, lighting },
     camera: { yaw, pitch, zoom },
-    items: payload.i.map(unpackItem),
+    items: payload.i.map((entry) => unpackItem(entry, 8)),
   };
 }
 

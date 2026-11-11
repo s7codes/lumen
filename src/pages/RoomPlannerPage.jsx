@@ -21,7 +21,14 @@ import { matchLightingScene, roomSurface } from '../lib/lighting-scenes.js';
 import { computeEnvironmentalPhysics } from '../lib/room-physics.js';
 import { downloadText } from '../lib/download.js';
 import { buildRoomObj, countObjObjects, OBJ_MIME, objFilename } from '../lib/obj-export.js';
-import { exportToWallStudio, findRoomConflicts, getFurniture } from '../lib/room-3d.js';
+import {
+  DEFAULT_ROOM_WALL,
+  exportToWallStudio,
+  findRoomConflicts,
+  getFurniture,
+  unrolledRoom,
+  WALL_LABELS,
+} from '../lib/room-3d.js';
 import { aggregateBagLines, summarizeWall } from '../lib/wall-studio.js';
 import '../styles/pages.css';
 import '../styles/studio.css';
@@ -34,7 +41,7 @@ function plural(count, word) {
 export default function RoomPlannerPage() {
   useDocumentTitle('Room Planner');
   const [mode] = useDisplayMode();
-  const { state, selected, notice, canUndo, canRedo, actions } = useRoom3d();
+  const { state, selected, activeWall, counts, notice, canUndo, canRedo, actions } = useRoom3d();
   const { addMany } = useBag();
   const { openBag } = useBagDrawer();
   const { addToast } = useToast();
@@ -55,16 +62,18 @@ export default function RoomPlannerPage() {
 
   const conflicts = useMemo(() => findRoomConflicts(state), [state]);
   const summary = useMemo(() => summarizeWall(state), [state]);
-  const bus = useMemo(() => computeBusTopology(state), [state]);
+  // The daisy-chain runs around the room: the four walls are unrolled into one elevation.
+  const bus = useMemo(() => computeBusTopology(unrolledRoom(state)), [state]);
   const physics = useMemo(() => computeEnvironmentalPhysics(state), [state]);
   const floorLux = useMemo(() => (floorLuxOn ? computeFloorLuxField(state) : null), [floorLuxOn, state]);
   const activeScene = useMemo(() => matchLightingScene(state.items, roomSurface(state.room)), [state.items, state.room]);
   const { room } = state;
 
   const pushToWall = () => {
-    const { layout, moved, capped } = exportToWallStudio(state);
+    const { layout, moved, capped } = exportToWallStudio(state, activeWall);
     const { widthCm, heightCm } = layout.wall;
-    let text = `Pushed ${plural(layout.items.length, 'module')} to Wall Studio, wall ${widthCm} x ${heightCm} cm.`;
+    const which = activeWall === DEFAULT_ROOM_WALL ? '' : `${WALL_LABELS[activeWall]} `;
+    let text = `Pushed ${layout.items.length} ${which}${layout.items.length === 1 ? 'module' : 'modules'} to Wall Studio, wall ${widthCm} x ${heightCm} cm.`;
     if (capped) text += ` Wall capped at ${widthCm} cm; ${plural(moved, 'module')} pulled inside.`;
     setStatus(text);
     actions.announce(text, capped && moved > 0 ? 'warn' : 'info');
@@ -94,11 +103,12 @@ export default function RoomPlannerPage() {
         index="03"
         section="3D Room"
         title="Room Planner"
-        lede="A dimensioned room with the main wall at Z 0. Mount parts in three dimensions, check clearances against a floor reference, and move the wall between the 2D studio, the room and the cart."
+        lede="A dimensioned four-wall room. Pick a wall, mount parts on it, orbit the space in 360 degrees, check clearances against a floor reference, and move any wall between the 2D studio, the room and the cart."
         meta={[
           ['Engine', 'WebGL 2 / React Three Fiber'],
           ['Units', 'cm'],
           ['Room', `${room.widthCm} x ${room.depthCm} x ${room.heightCm} cm`],
+          ['Walls', 'North / East / South / West'],
           ['Reference', getFurniture(room.furniture).label],
         ]}
       />
@@ -107,6 +117,9 @@ export default function RoomPlannerPage() {
         <div className="room3d-layout__main">
           <RoomViewport
             state={state}
+            activeWall={activeWall}
+            counts={counts}
+            onWall={actions.setWall}
             conflicts={conflicts}
             selectedUid={selected?.uid ?? null}
             technical={mode === 'technical'}
@@ -121,9 +134,12 @@ export default function RoomPlannerPage() {
                 sceneDisabled={state.items.length === 0}
                 canUndo={canUndo}
                 canRedo={canRedo}
+                wallLabel={WALL_LABELS[activeWall]}
+                wallCount={counts[activeWall]}
                 onApplyScene={actions.applyScene}
                 onUndo={actions.undo}
                 onRedo={actions.redo}
+                onClearWall={actions.clearWall}
               />
             }
             onSelect={actions.select}
@@ -139,6 +155,8 @@ export default function RoomPlannerPage() {
             shareUrl={shareLink.shareUrl}
             onShare={() => shareLink.share(state, project.commit())}
             conflictCount={conflicts.size}
+            wallLabel={WALL_LABELS[activeWall]}
+            wallCount={counts[activeWall]}
             status={status}
             syncRef={syncRef}
             cloudStatus={cloud.status}
@@ -155,11 +173,11 @@ export default function RoomPlannerPage() {
         </div>
 
         <div className="room3d-layout__controls">
-          <RoomControls state={state} actions={actions} />
+          <RoomControls state={state} activeWall={activeWall} actions={actions} />
         </div>
 
         <div className="room3d-layout__inspector">
-          <RoomInspector state={state} item={selected} conflicts={conflicts} actions={actions} />
+          <RoomInspector state={state} item={selected} activeWall={activeWall} conflicts={conflicts} actions={actions} />
         </div>
       </div>
     </>

@@ -2,6 +2,21 @@ import { getProduct, productHasFinish } from '../data/products.js';
 import { isOneOf, safeStorage } from '../security/sanitize.js';
 import { dimPatch, recordChanged, sanitizeDimPct, withDimPct } from './dimming.js';
 import {
+  boxToRoom,
+  boxToWall,
+  DEFAULT_ROOM_WALL,
+  isRoomWall,
+  perimeterCm,
+  perimeterOffset,
+  ROOM_WALLS,
+  sanitizeWallId,
+  wallOf,
+  wallPatch,
+  wallSpanCm,
+  wallToRoom,
+  withWall,
+} from './room-walls.js';
+import {
   clampToWall,
   createLayout,
   findConflicts,
@@ -15,6 +30,18 @@ import {
   sanitizeItems,
   sanitizeWall,
 } from './wall-studio.js';
+
+export {
+  DEFAULT_ROOM_WALL,
+  isRoomWall,
+  ROOM_WALLS,
+  sanitizeWallId,
+  WALL_HEADING,
+  WALL_LABELS,
+  wallCounts,
+  wallOf,
+  wallSpanCm,
+} from './room-walls.js';
 
 export const ROOM_STORAGE_KEY = 'lumen_room_3d_v1';
 export const ROOM_FORMAT = 'lumen.room3d';
@@ -34,6 +61,8 @@ export const LIGHTING_MODES = Object.freeze([
 ]);
 const LIGHTING_IDS = LIGHTING_MODES.map((mode) => mode.id);
 
+// Yaw is measured from the active wall's heading, so every preset and limit
+// applies to whichever wall the planner is facing.
 export const DEFAULT_CAMERA = Object.freeze({ yaw: -24, pitch: 24, zoom: 1 });
 
 export const CAMERA_PRESETS = Object.freeze([
@@ -49,6 +78,7 @@ export const DEFAULT_ROOM = Object.freeze({
   furniture: 'none',
   lighting: 'night',
 });
+
 
 // Furniture stands this far off the main wall, so a module shallower than the
 // gap (an art frame) can hang behind a sofa back without touching it.
@@ -136,6 +166,7 @@ function roundTo(value, step) {
   return Math.round(value / step) * step;
 }
 
+
 /* Envelope, camera and wall adapter */
 
 export function sanitizeRoom(input) {
@@ -167,10 +198,13 @@ export function activePreset(camera) {
   return CAMERA_PRESETS.find((preset) => sameCamera(sanitizeCamera(preset.camera), camera))?.id ?? null;
 }
 
-/** The main wall (z = 0) seen as a Wall Studio wall. The room has a flat ceiling. */
-export function roomWall(room) {
+/**
+ * One wall of the room seen as a Wall Studio wall: north and south span the
+ * room width, east and west its depth. The room has a flat ceiling.
+ */
+export function roomWall(room, wall = DEFAULT_ROOM_WALL) {
   return {
-    widthCm: room.widthCm,
+    widthCm: wallSpanCm(room, wall),
     heightCm: room.heightCm,
     slope: false,
     snap: false,
@@ -188,18 +222,26 @@ export function createRoomState(room = DEFAULT_ROOM, items = [], camera = DEFAUL
   };
 }
 
-/* Geometry. cm, x along the main wall, y up from the floor, z into the room. */
+/*
+ * Geometry, in cm. A module box is in its wall frame: x along the wall, y up
+ * from the floor, z out into the room. Room boxes are in the room frame: X
+ * along the north wall, Y up, Z toward the south wall.
+ */
 
 export function moduleBox(item) {
   const { w, h, d } = getProduct(item.productId).dimsCm;
   return { x0: item.xCm, x1: item.xCm + w, y0: item.yCm, y1: item.yCm + h, z0: 0, z1: d };
 }
 
+export function moduleRoomBox(item, room) {
+  return boxToRoom(room, wallOf(item), moduleBox(item));
+}
+
 export function boxesIntersect(a, b) {
   return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1 && a.z0 < b.z1 && b.z0 < a.z1;
 }
 
-/** Furniture placed centred on the main wall, pulled forward only as far as the room allows. */
+/** Furniture placed centred on the north wall, pulled forward only as far as the room allows. */
 export function furnitureLayout(room) {
   const spec = getFurniture(room.furniture);
   if (!spec || !spec.parts) return null;
@@ -232,30 +274,65 @@ export function furnitureLayout(room) {
   return { id: spec.id, label: spec.label, minHeadroomCm: spec.minHeadroomCm, parts, bounds };
 }
 
-/** Elevation rects of the furniture parts that a product of depth `d` would actually reach. */
-function furnitureObstacles(furniture, depthCm) {
-  if (!furniture) return [];
-  return furniture.parts
-    .filter(({ box }) => depthCm > box.z0)
-    .map(({ box }) => ({ x: box.x0, y: box.y0, w: box.x1 - box.x0, h: box.y1 - box.y0 }));
+function itemsOn(items, wall) {
+  return items.filter((item) => wallOf(item) === wall);
 }
 
 /**
- * Wall Studio conflicts (overlap, bounds) for the main wall, plus a true 3D
- * AABB test of every module against the furniture volumes.
+ * Elevation rects, in `wall`'s frame, of every volume a part `depthCm` deep
+ * would actually reach there: furniture parts, and modules on the other walls
+ * that meet this one at a corner.
+ */
+function wallObstacles(state, wall, depthCm) {
+  const { room } = state;
+  const volumes = [];
+  const furniture = furnitureLayout(room);
+  if (furniture) for (const p of furniture.parts) volumes.push(p.box);
+  for (const item of state.items) {
+    if (wallOf(item) !== wall) volumes.push(moduleRoomBox(item, room));
+  }
+  return volumes
+    .map((box) => boxToWall(room, wall, box))
+    .filter((box) => depthCm > box.z0 && box.z1 > 0)
+    .map((box) => ({ x: box.x0, y: box.y0, w: box.x1 - box.x0, h: box.y1 - box.y0 }));
+}
+
+function conflictEntry(conflicts, uid) {
+  if (!conflicts.has(uid)) conflicts.set(uid, { overlaps: [], slope: false, bounds: false, furniture: false });
+  return conflicts.get(uid);
+}
+
+/**
+ * Wall Studio conflicts (overlap, bounds) wall by wall, a true 3D AABB test
+ * between modules on different walls that meet in a corner, and a 3D AABB
+ * test of every module against the furniture volumes.
  */
 export function findRoomConflicts(state) {
-  const base = findConflicts(createLayout(roomWall(state.room), state.items));
+  const { room, items } = state;
   const conflicts = new Map();
-  for (const [uid, entry] of base) conflicts.set(uid, { ...entry, furniture: false });
+  for (const wall of ROOM_WALLS) {
+    const onWall = itemsOn(items, wall);
+    if (onWall.length === 0) continue;
+    for (const [uid, entry] of findConflicts(createLayout(roomWall(room, wall), onWall))) {
+      conflicts.set(uid, { ...entry, furniture: false });
+    }
+  }
 
-  const furniture = furnitureLayout(state.room);
+  const volumes = items.map((item) => ({ item, wall: wallOf(item), box: moduleRoomBox(item, room) }));
+  for (let i = 0; i < volumes.length; i += 1) {
+    for (let j = i + 1; j < volumes.length; j += 1) {
+      const a = volumes[i];
+      const b = volumes[j];
+      if (a.wall === b.wall || !boxesIntersect(a.box, b.box)) continue;
+      conflictEntry(conflicts, a.item.uid).overlaps.push(b.item.uid);
+      conflictEntry(conflicts, b.item.uid).overlaps.push(a.item.uid);
+    }
+  }
+
+  const furniture = furnitureLayout(room);
   if (furniture) {
-    for (const item of state.items) {
-      const box = moduleBox(item);
-      if (!furniture.parts.some((p) => boxesIntersect(box, p.box))) continue;
-      const entry = conflicts.get(item.uid) ?? { overlaps: [], slope: false, bounds: false, furniture: false };
-      conflicts.set(item.uid, { ...entry, furniture: true });
+    for (const { item, box } of volumes) {
+      if (furniture.parts.some((p) => boxesIntersect(box, p.box))) conflictEntry(conflicts, item.uid).furniture = true;
     }
   }
   return conflicts;
@@ -271,7 +348,8 @@ function overlapSpan(a0, a1, b0, b1) {
 
 /**
  * Dimensioned clearances for the technical overlay. Each callout is a 3D
- * segment in cm with a label and a tone ('ok' or 'tight').
+ * segment in room cm with a label and a tone ('ok' or 'tight'). Headroom is
+ * read on the north wall, the one the reference furniture backs onto.
  */
 export function clearanceCallouts(state, selectedUid = null) {
   const { room, items } = state;
@@ -293,6 +371,7 @@ export function clearanceCallouts(state, selectedUid = null) {
 
     let lowest = null;
     for (const item of items) {
+      if (wallOf(item) !== DEFAULT_ROOM_WALL) continue;
       const box = moduleBox(item);
       const span = overlapSpan(box.x0, box.x1, bounds.x0, bounds.x1);
       if (!span || box.y0 < bounds.y1) continue;
@@ -315,6 +394,7 @@ export function clearanceCallouts(state, selectedUid = null) {
   const selected = items.find((item) => item.uid === selectedUid);
   if (selected) {
     const box = moduleBox(selected);
+    const at = (point) => wallToRoom(room, wallOf(selected), point);
     const x = (box.x0 + box.x1) / 2;
     const z = box.z1 + 2;
     const ceiling = room.heightCm - box.y1;
@@ -324,8 +404,8 @@ export function clearanceCallouts(state, selectedUid = null) {
       valueCm: selected.yCm,
       tone: 'ok',
       uid: selected.uid,
-      from: [x, 0, z],
-      to: [x, box.y0, z],
+      from: at([x, 0, z]),
+      to: at([x, box.y0, z]),
     });
     callouts.push({
       id: 'ceiling',
@@ -333,8 +413,8 @@ export function clearanceCallouts(state, selectedUid = null) {
       valueCm: ceiling,
       tone: 'ok',
       uid: selected.uid,
-      from: [x, box.y1, z],
-      to: [x, room.heightCm, z],
+      from: at([x, box.y1, z]),
+      to: at([x, room.heightCm, z]),
     });
   }
 
@@ -343,10 +423,10 @@ export function clearanceCallouts(state, selectedUid = null) {
 
 /* Edits. Each returns the same state object when nothing changes. */
 
-function pullInside(items, wall) {
+function pullInside(items, room) {
   let changed = false;
   const next = items.map((item) => {
-    const spot = clampToWall(getProduct(item.productId), wall, item.xCm, item.yCm);
+    const spot = clampToWall(getProduct(item.productId), roomWall(room, wallOf(item)), item.xCm, item.yCm);
     if (spot.xCm === item.xCm && spot.yCm === item.yCm) return item;
     changed = true;
     return { ...item, ...spot };
@@ -357,7 +437,7 @@ function pullInside(items, wall) {
 export function updateRoom(state, patch) {
   const room = sanitizeRoom({ ...state.room, ...(isRecord(patch) ? patch : {}) });
   if (Object.keys(room).every((key) => room[key] === state.room[key])) return state;
-  return { ...state, room, items: pullInside(state.items, roomWall(room)) };
+  return { ...state, room, items: pullInside(state.items, room) };
 }
 
 export function updateCamera(state, camera) {
@@ -366,19 +446,21 @@ export function updateCamera(state, camera) {
 }
 
 /**
- * Mounts a part on the main wall at the first clear spot near its natural
- * height, keeping clear of other modules and of the furniture it would reach.
+ * Mounts a part on `wall` (north by default) at the first clear spot near
+ * its natural height, keeping clear of the other modules on that wall, of
+ * modules meeting it at the corners and of the furniture it would reach.
  */
-export function mountInRoom(state, productId) {
+export function mountInRoom(state, productId, wall = DEFAULT_ROOM_WALL) {
   const product = getProduct(productId);
   if (!product || state.items.length >= MAX_WALL_ITEMS) return null;
 
-  const wall = roomWall(state.room);
-  const layout = createLayout(wall, state.items);
-  const obstacles = furnitureObstacles(furnitureLayout(state.room), product.dimsCm.d);
-  const free = findFreeSpot(layout, product, preferredSpot(product, wall), obstacles);
-  const fallback = preferredSpot(product, wall);
-  const spot = free ?? clampToWall(product, wall, Math.round(fallback.x), Math.round(fallback.y));
+  const wallId = sanitizeWallId(wall);
+  const surface = roomWall(state.room, wallId);
+  const layout = createLayout(surface, itemsOn(state.items, wallId));
+  const obstacles = wallObstacles(state, wallId, product.dimsCm.d);
+  const free = findFreeSpot(layout, product, preferredSpot(product, surface), obstacles);
+  const fallback = preferredSpot(product, surface);
+  const spot = free ?? clampToWall(product, surface, Math.round(fallback.x), Math.round(fallback.y));
   const item = {
     uid: nextUid(state.items),
     productId: product.id,
@@ -386,8 +468,19 @@ export function mountInRoom(state, productId) {
     xCm: spot.xCm,
     yCm: spot.yCm,
     led: product.watts > 0,
+    ...wallPatch(wallId),
   };
-  return { state: { ...state, items: [...state.items, item] }, item, clear: free !== null };
+  return { state: { ...state, items: [...state.items, item] }, item, clear: free !== null, wall: wallId };
+}
+
+/** Rehangs a module on another wall at the clear spot nearest to (x, y) there. */
+function moveToWall(state, item, product, wall, x, y) {
+  const rest = { ...state, items: state.items.filter((entry) => entry.uid !== item.uid) };
+  const surface = roomWall(state.room, wall);
+  const near = clampToWall(product, surface, Math.round(x), Math.round(y));
+  const layout = createLayout(surface, itemsOn(rest.items, wall));
+  const free = findFreeSpot(layout, product, { x: near.xCm, y: near.yCm }, wallObstacles(rest, wall, product.dimsCm.d));
+  return withWall({ ...item, ...(free ?? near) }, wall);
 }
 
 export function updateRoomItem(state, uid, patch) {
@@ -400,10 +493,12 @@ export function updateRoomItem(state, uid, patch) {
   if (productHasFinish(product, patch.finish)) next.finish = patch.finish;
   if (typeof patch.led === 'boolean' && product.watts > 0) next.led = patch.led;
   if (isFiniteNumber(patch.dimPct) && product.watts > 0) next = withDimPct(next, sanitizeDimPct(patch.dimPct));
-  if (isFiniteNumber(patch.xCm) || isFiniteNumber(patch.yCm)) {
-    const x = isFiniteNumber(patch.xCm) ? patch.xCm : current.xCm;
-    const y = isFiniteNumber(patch.yCm) ? patch.yCm : current.yCm;
-    Object.assign(next, clampToWall(product, roomWall(state.room), Math.round(x), Math.round(y)));
+  const x = isFiniteNumber(patch.xCm) ? patch.xCm : current.xCm;
+  const y = isFiniteNumber(patch.yCm) ? patch.yCm : current.yCm;
+  if (isRoomWall(patch.wall) && patch.wall !== wallOf(current)) {
+    next = moveToWall(state, next, product, patch.wall, x, y);
+  } else if (isFiniteNumber(patch.xCm) || isFiniteNumber(patch.yCm)) {
+    Object.assign(next, clampToWall(product, roomWall(state.room, wallOf(current)), Math.round(x), Math.round(y)));
   }
 
   if (!recordChanged(next, current)) return state;
@@ -415,23 +510,52 @@ export function removeRoomItem(state, uid) {
   return items.length === state.items.length ? state : { ...state, items };
 }
 
+/** Takes every module off one wall; the other walls stay as they are. */
+export function clearRoomWall(state, wall) {
+  const id = sanitizeWallId(wall);
+  const items = state.items.filter((item) => wallOf(item) !== id);
+  return items.length === state.items.length ? state : { ...state, items };
+}
+
+/**
+ * The four walls unrolled into one elevation, north first and clockwise,
+ * for wall-based engines such as the 24V daisy-chain: a run crossing a
+ * corner keeps its true length. A north-only room is returned as it is.
+ */
+export function unrolledRoom(state) {
+  const { room, items } = state;
+  if (items.every((item) => wallOf(item) === DEFAULT_ROOM_WALL)) return state;
+  return {
+    ...state,
+    room: { ...room, widthCm: perimeterCm(room) },
+    items: items.map((item) => {
+      const offset = perimeterOffset(room, wallOf(item));
+      return offset === 0 ? item : { ...item, xCm: item.xCm + offset };
+    }),
+  };
+}
+
 /* Untrusted input */
 
-function stripLock({ uid, productId, finish, xCm, yCm, led, dimPct }) {
-  return { uid, productId, finish, xCm, yCm, led, ...dimPatch(getProduct(productId), dimPct) };
+function stripLock({ uid, productId, finish, xCm, yCm, led, dimPct, wall }) {
+  return { uid, productId, finish, xCm, yCm, led, ...dimPatch(getProduct(productId), dimPct), ...wallPatch(wall) };
 }
 
 /**
  * Rebuilds a room from untrusted data. Returns null unless the envelope is a
  * Lumen 3D room. Dimensions, furniture, lighting and camera are clamped or
- * reset; modules pass the same per-entry rules as Wall Studio layouts.
+ * reset; modules pass the same per-entry rules as Wall Studio layouts, each
+ * clamped to its own wall. A missing or unknown wall reads as north.
  */
 export function sanitizeRoomState(input) {
   if (!isRecord(input) || input.format !== ROOM_FORMAT || input.version !== ROOM_VERSION) return null;
   if (!Array.isArray(input.items)) return null;
 
   const room = sanitizeRoom(input.room);
-  const items = sanitizeItems(input.items.slice(0, MAX_SCANNED_ENTRIES), roomWall(room)).map(stripLock);
+  const items = sanitizeItems(input.items.slice(0, MAX_SCANNED_ENTRIES), roomWall(room), {
+    wallFor: (entry) => roomWall(room, entry.wall),
+    extend: (entry) => wallPatch(entry.wall),
+  }).map(stripLock);
   return createRoomState(room, items, input.camera);
 }
 
@@ -456,68 +580,100 @@ export function persistRoomState(state) {
 
 /* Bridge to the 2D Wall Studio (lumen_wall_studio_v1) */
 
+// Incoming modules keep their uid unless a module on another wall holds it.
+function withFreeUids(incoming, kept) {
+  if (kept.length === 0) return incoming;
+  const taken = new Set(kept.map((item) => item.uid));
+  let max = [...kept, ...incoming].reduce((acc, item) => Math.max(acc, Number(item.uid.slice(1))), 0);
+  return incoming.map((item) => {
+    if (!taken.has(item.uid)) {
+      taken.add(item.uid);
+      return item;
+    }
+    max += 1;
+    taken.add(`m${max}`);
+    return { ...item, uid: `m${max}` };
+  });
+}
+
 /**
- * Adapts a wall layout into the room: wall width and height become room
- * width and ceiling height (clamped to the room ranges), modules keep their
- * uid, finish, channel and floor-referenced position. Depth, furniture and
- * camera stay as they are.
+ * Adapts a wall layout onto one wall of the room (north by default): the
+ * wall width becomes that wall's span (room width for north and south, depth
+ * for east and west) and the wall height the ceiling, both clamped to the
+ * room ranges. Its modules replace the ones on that wall and keep their uid,
+ * finish, channel and floor-referenced position; the other walls stay and are
+ * pulled inside the new envelope.
  */
-export function roomFromWallLayout(state, layout) {
+export function roomFromWallLayout(state, layout, wall = DEFAULT_ROOM_WALL) {
+  const wallId = sanitizeWallId(wall);
+  const span = wallId === 'east' || wallId === 'west' ? 'depthCm' : 'widthCm';
   const room = sanitizeRoom({
     ...state.room,
-    widthCm: layout.wall.widthCm,
+    [span]: layout.wall.widthCm,
     heightCm: layout.wall.heightCm,
     lighting: layout.wall.surface === 'daylight' ? 'daylight' : 'night',
   });
-  const items = sanitizeItems(layout.items, roomWall(room)).map(stripLock);
-  return { ...state, room, items };
+  const kept = pullInside(
+    state.items.filter((item) => wallOf(item) !== wallId),
+    room,
+  );
+  const incoming = sanitizeItems(layout.items, roomWall(room, wallId))
+    .slice(0, Math.max(0, MAX_WALL_ITEMS - kept.length))
+    .map((item) => stripLock({ ...item, wall: wallId }));
+  return { ...state, room, items: [...kept, ...withFreeUids(incoming, kept)] };
 }
 
-/** Reads the saved 2D wall, or the default composition when the wall is empty. */
-export function importFromWallStudio(state) {
+/** Reads the saved 2D wall, or the default composition when the wall is empty, onto `wall`. */
+export function importFromWallStudio(state, wall = DEFAULT_ROOM_WALL) {
+  const wallId = sanitizeWallId(wall);
   const saved = loadLayout();
   const fromPreset = saved.items.length === 0;
   const layout = fromPreset ? layoutFromPreset(IMPORT_FALLBACK_PRESET, saved.wall) : saved;
+  const next = roomFromWallLayout(state, layout, wallId);
   return {
-    state: roomFromWallLayout(state, layout),
+    state: next,
     fromPreset,
     slope: layout.wall.slope,
-    count: layout.items.length,
+    count: itemsOn(next.items, wallId).length,
+    wall: wallId,
   };
 }
 
 /**
- * Builds the 2D layout for the room's main wall. The 2D wall keeps its snap
- * preference; lock flags survive for modules that kept their uid and part.
- * The wall caps at 400 cm, so modules beyond it are pulled inside.
+ * Builds the 2D layout for one wall of the room (north by default). The 2D
+ * wall keeps its snap preference; lock flags survive for modules that kept
+ * their uid and part. The wall caps at 400 cm, so modules beyond it are
+ * pulled inside.
  */
-export function wallLayoutFromRoom(state, current = loadLayout()) {
+export function wallLayoutFromRoom(state, current = loadLayout(), wall = DEFAULT_ROOM_WALL) {
+  const wallId = sanitizeWallId(wall);
+  const span = wallSpanCm(state.room, wallId);
   const locks = new Map(current.items.map((item) => [item.uid, item]));
-  const wall = sanitizeWall({
+  const surface = sanitizeWall({
     ...current.wall,
-    widthCm: state.room.widthCm,
+    widthCm: span,
     heightCm: state.room.heightCm,
     slope: false,
     surface: roomWall(state.room).surface,
   });
-  const entries = state.items.map((item) => {
+  const entries = itemsOn(state.items, wallId).map(({ wall: _wall, ...item }) => {
     const previous = locks.get(item.uid);
     return { ...item, locked: previous?.productId === item.productId && previous.locked === true };
   });
-  const items = sanitizeItems(entries, wall);
+  const items = sanitizeItems(entries, surface);
   const moved = items.filter((item, i) => item.xCm !== entries[i].xCm || item.yCm !== entries[i].yCm).length;
-  return { layout: createLayout(wall, items), moved, capped: wall.widthCm < state.room.widthCm };
+  return { layout: createLayout(surface, items), moved, capped: surface.widthCm < span, wall: wallId };
 }
 
-export function exportToWallStudio(state) {
-  const result = wallLayoutFromRoom(state);
+export function exportToWallStudio(state, wall = DEFAULT_ROOM_WALL) {
+  const result = wallLayoutFromRoom(state, loadLayout(), wall);
   persistLayout(result.layout);
   return result;
 }
 
 /* Launcher from a product page */
 
-/** Same contract as appendToWallStudio, for the stored 3D room. */
+/** Same contract as appendToWallStudio, for the stored 3D room. Mounts on the north wall. */
 export function appendToRoom(productId, finish) {
   const product = getProduct(productId);
   if (!productHasFinish(product, finish)) return null;

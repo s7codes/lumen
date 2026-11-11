@@ -1,8 +1,9 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getProduct } from '../../data/products.js';
-import { activePreset, DEFAULT_CAMERA, sanitizeCamera } from '../../lib/room-3d.js';
+import { activePreset, DEFAULT_CAMERA, sanitizeCamera, WALL_HEADING, WALL_LABELS } from '../../lib/room-3d.js';
 import { buildScene } from '../../lib/room-scene.js';
 import { CameraSettings } from './CameraSettings.jsx';
+import { WallSwitcher } from './WallSwitcher.jsx';
 
 const RoomCanvas = lazy(() => import('./RoomCanvas.jsx'));
 
@@ -65,7 +66,7 @@ const UNAVAILABLE = (
  * scene inspectable without reading pixels, and it is the whole viewport
  * when WebGL is unavailable.
  */
-function SceneManifest({ scene, floorLux, renderer, manifestRef }) {
+function SceneManifest({ scene, floorLux, renderer, heading, manifestRef }) {
   const selected = scene.modules.find((module) => module.selected);
   return (
     <div
@@ -75,6 +76,8 @@ function SceneManifest({ scene, floorLux, renderer, manifestRef }) {
       data-renderer={renderer}
       data-meshes={scene.stats.meshes}
       data-lights={scene.stats.lights}
+      data-heading={heading}
+      data-walls={scene.shell.surfaces.filter((surface) => surface.wall).length}
     >
       {scene.modules.map((module) => (
         <span
@@ -87,6 +90,9 @@ function SceneManifest({ scene, floorLux, renderer, manifestRef }) {
           data-geometry={module.geometry}
           data-x-cm={module.xCm}
           data-y-cm={module.yCm}
+          data-wall={module.wall}
+          data-world={module.position.join(' ')}
+          data-rot-y={module.rotation[1].toFixed(4)}
           data-dims={module.dims}
           data-led={module.led}
           data-lit={module.lit || undefined}
@@ -162,6 +168,9 @@ function SceneManifest({ scene, floorLux, renderer, manifestRef }) {
 
 export function RoomViewport({
   state,
+  activeWall,
+  counts,
+  onWall,
   conflicts,
   selectedUid,
   technical,
@@ -279,6 +288,8 @@ export function RoomViewport({
         </span>
       </div>
 
+      <WallSwitcher active={activeWall} counts={counts} onChange={onWall} />
+
       <div className="workspace-frame__viewport room3d-stage__viewport">
         <div
           ref={hostRef}
@@ -293,6 +304,8 @@ export function RoomViewport({
           data-camera-yaw={camera.yaw}
           data-camera-pitch={camera.pitch}
           data-camera-zoom={camera.zoom}
+          data-camera-heading={WALL_HEADING[activeWall]}
+          data-active-wall={activeWall}
           data-preset={preset ?? 'custom'}
           data-technical={technical || undefined}
           data-wireframe={wireframe || undefined}
@@ -319,6 +332,7 @@ export function RoomViewport({
                   scene={scene}
                   floorLux={floorLux}
                   room={room}
+                  wall={activeWall}
                   camera={camera}
                   api={api}
                   manifestRef={manifestRef}
@@ -332,11 +346,19 @@ export function RoomViewport({
             UNAVAILABLE
           )}
 
-          <SceneManifest scene={scene} floorLux={floorLux} renderer={renderer} manifestRef={manifestRef} />
+          <SceneManifest
+            scene={scene}
+            floorLux={floorLux}
+            renderer={renderer}
+            heading={WALL_HEADING[activeWall]}
+            manifestRef={manifestRef}
+          />
 
-          {items.length === 0 && (
-            <p className="room3d-stage__empty mono">
-              Empty wall. Mount a component, or load the composition from the 2D Wall Studio.
+          {(counts[activeWall] ?? 0) === 0 && (
+            <p className="room3d-stage__empty">
+              {items.length === 0
+                ? `Empty room. Mount a component on the ${WALL_LABELS[activeWall]}, or load the 2D Wall Studio composition.`
+                : `The ${WALL_LABELS[activeWall]} is empty. Mount a component to hang it here.`}
             </p>
           )}
         </div>
@@ -364,7 +386,7 @@ export function RoomViewport({
         <span data-testid="room-item-readout">
           {selected
             ? `${getProduct(selected.productId).name} / X ${selected.xCm} / Y ${selected.yCm} cm`
-            : 'No module selected'}
+            : `Facing the ${WALL_LABELS[activeWall]}`}
         </span>
         <span className="tech-only" data-testid="room-polygons">
           {scene.stats.meshes} meshes / {scene.stats.lights} lights

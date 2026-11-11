@@ -144,3 +144,20 @@ export function CommandGlyph() {
     </svg>
   );
 }
+
+// Room plan seen from above, north at the top; the active wall is drawn solid.
+const PLAN_SIDES = Object.freeze({
+  north: 'M3 3h10',
+  east: 'M13 3v10',
+  south: 'M3 13h10',
+  west: 'M3 3v10',
+});
+
+export function PlanWallGlyph({ wall }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <rect x="3" y="3" width="10" height="10" stroke="currentColor" strokeOpacity="0.4" />
+      <path d={PLAN_SIDES[wall] ?? PLAN_SIDES.north} stroke="currentColor" strokeWidth="2.5" strokeLinecap="square" />
+    </svg>
+  );
+}

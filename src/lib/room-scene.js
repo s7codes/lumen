@@ -2,13 +2,15 @@ import { getFinish, getProduct } from '../data/products.js';
 import { dimFactor } from './dimming.js';
 import { kelvinToRgb } from './photometry.js';
 import { CAMERA_ZOOM, clearanceCallouts, furnitureLayout, moduleBox } from './room-3d.js';
+import { DEFAULT_ROOM_WALL, sanitizeWallId, WALL_HEADING, WALL_ROT_Y, wallOf, wallToRoom } from './room-walls.js';
 
 /*
  * Scene description for the WebGL room viewport. Converts the room state
- * (cm, x along the main wall, y up from the floor, z into the room) into
- * plain mesh, material and light records in metres. Pure and deterministic,
- * so it is testable without a WebGL context. RoomCanvas only maps these
- * records onto React Three Fiber primitives.
+ * (cm; each module in its own wall frame, the room with X along the north
+ * wall, Y up and Z toward the south wall) into plain mesh, material and
+ * light records in metres. Pure and deterministic, so it is testable without
+ * a WebGL context. RoomCanvas only maps these records onto React Three Fiber
+ * primitives.
  */
 
 export const CM = 0.01;
@@ -21,6 +23,9 @@ const SLAB_T_CM = 10;
 const GRID_CM = 50;
 const AXIS_OVERRUN_CM = 26;
 const TICK_CM = 5;
+const TRIM_LIFT_M = 0.003;
+// The orbit centre leans 6% of the room toward the wall in view.
+const TARGET_LEAN = 0.06;
 
 const m = (cm) => Number((cm * CM).toFixed(4));
 const v3 = (p) => p.map(m);
@@ -29,34 +34,48 @@ function hex(rgb) {
   return `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
 }
 
-/* Lighting rigs. Same room surfaces in both modes: only the light changes. */
-
+/*
+ * Lighting rigs. The canvas is transparent: the stage behind it carries a
+ * warm horizon gradient. At night every surface keeps an emissive floor
+ * tone, so walls, floor and furniture stay legible even with no channel lit,
+ * while the albedo stays light enough for the LED washes to read. With
+ * nothing lit the fill lifts further (idle).
+ */
 export const LIGHTING_RIGS = Object.freeze({
   night: {
-    background: '#0b0b0a',
-    ambient: { color: '#ffd8ae', intensity: 0.06 },
-    hemisphere: { sky: '#46506a', ground: '#16120d', intensity: 0.1 },
-    sun: { color: '#a9bad6', intensity: 0.22, from: [-0.35, 1.1, 1.2] },
+    ambient: { color: '#ffd8ae', intensity: 0.2 },
+    hemisphere: { sky: '#6a7286', ground: '#2a2219', intensity: 0.5 },
+    sun: { color: '#b4c2da', intensity: 0.32, from: [-0.35, 1.1, 1.2] },
+    idle: 1.55,
     led: 1,
     emissive: 2.6,
-    grid: { color: '#f2eee7', opacity: 0.06 },
+    surfaces: {
+      wall: '#d2ccc2',
+      side: '#c9c2b7',
+      floor: '#8c8479',
+      poche: '#34312d',
+      glow: { wall: '#262320', side: '#24211e', floor: '#1c1a17' },
+    },
+    grid: { color: '#f2eee7', opacity: 0.1 },
+    trim: { color: '#7d756a', opacity: 0.95 },
   },
   daylight: {
-    background: '#0b0b0a',
     ambient: { color: '#fff6ea', intensity: 0.85 },
     hemisphere: { sky: '#f3efe8', ground: '#8d8578', intensity: 0.55 },
     sun: { color: '#fff1dc', intensity: 2.4, from: [-0.45, 1.25, 1] },
+    idle: 1,
     led: 0.45,
     emissive: 1.1,
-    grid: { color: '#0b0b0a', opacity: 0.08 },
+    surfaces: {
+      wall: '#dcd7ce',
+      side: '#d3cdc3',
+      floor: '#b8b0a4',
+      poche: '#2c2a27',
+      glow: null,
+    },
+    grid: { color: '#0b0b0a', opacity: 0.09 },
+    trim: { color: '#6f685e', opacity: 0.9 },
   },
-});
-
-const SURFACES = Object.freeze({
-  wall: '#e4dfd6',
-  side: '#d8d2c7',
-  floor: '#9a9389',
-  poche: '#2c2a27',
 });
 
 const FURNITURE_TONES = Object.freeze({
@@ -79,24 +98,39 @@ const FINISH_SURFACE = Object.freeze({
 
 /* Camera */
 
+/** Shortest signed turn from one heading to another, in degrees, within [-180, 180). */
+export function headingDelta(from, to) {
+  return ((((to - from + 180) % 360) + 360) % 360) - 180;
+}
+
 /**
- * Orbit frame for a room and a viewport aspect. Distance at zoom 1 fits the
- * room's bounding sphere to the shorter viewport side; a wide viewport lets
- * it overfill the height by up to 26 percent. Three.js fov is vertical, so a
- * portrait viewport widens it to keep 38 deg across its width.
+ * Orbit frame for a room, a viewport aspect and the wall in view (north by
+ * default). Distance at zoom 1 fits the room's bounding sphere to the shorter
+ * viewport side; a wide viewport lets it overfill the height by up to 26
+ * percent. Three.js fov is vertical, so a portrait viewport widens it to keep
+ * 38 deg across its width. `heading` is the azimuth that faces the wall; the
+ * camera yaw is measured from it.
  */
-export function cameraFrame(room, aspect) {
+export function cameraFrame(room, aspect, wall = DEFAULT_ROOM_WALL) {
   const W = room.widthCm * CM;
   const H = room.heightCm * CM;
   const D = room.depthCm * CM;
+  const id = sanitizeWallId(wall);
   const half = (FOV_DEG / 2) * DEG;
   const radius = 0.5 * Math.hypot(W, H, D);
   const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 1.6;
   const fill = 1 + (FRAME_FILL_WIDE - 1) * Math.min(1, Math.max(0, (safeAspect - 1) / (WIDE_ASPECT - 1)));
   const base = radius / (Math.tan(half) * fill);
   const fov = safeAspect >= 1 ? FOV_DEG : (2 * Math.atan(Math.tan(half) / safeAspect)) / DEG;
+  const lean = {
+    north: [0, -D * TARGET_LEAN],
+    east: [W * TARGET_LEAN, 0],
+    south: [0, D * TARGET_LEAN],
+    west: [-W * TARGET_LEAN, 0],
+  }[id];
   return {
-    target: [W / 2, H * 0.42, D * 0.44],
+    target: [W / 2 + lean[0], H * 0.42, D / 2 + lean[1]],
+    heading: WALL_HEADING[id],
     base,
     fov,
     minDistance: base / CAMERA_ZOOM.max,
@@ -104,10 +138,10 @@ export function cameraFrame(room, aspect) {
   };
 }
 
-/** Eye position for a yaw / pitch / zoom camera. Yaw 0 looks straight at the main wall. */
+/** Eye position for a yaw / pitch / zoom camera. Yaw 0 looks straight at the wall the frame faces. */
 export function cameraPosition(frame, camera) {
   const distance = frame.base / camera.zoom;
-  const yaw = camera.yaw * DEG;
+  const yaw = ((frame.heading ?? 0) + camera.yaw) * DEG;
   const pitch = camera.pitch * DEG;
   const [tx, ty, tz] = frame.target;
   return [
@@ -117,27 +151,37 @@ export function cameraPosition(frame, camera) {
   ];
 }
 
-/** Inverse of cameraPosition. The result is unclamped; sanitizeCamera rounds it. */
+/** Inverse of cameraPosition, yaw relative to the frame heading. Unclamped; sanitizeCamera rounds it. */
 export function cameraFromPosition(frame, position) {
   const dx = position[0] - frame.target[0];
   const dy = position[1] - frame.target[1];
   const dz = position[2] - frame.target[2];
   const distance = Math.hypot(dx, dy, dz) || frame.base;
   return {
-    yaw: Math.atan2(dx, dz) / DEG,
+    yaw: headingDelta(frame.heading ?? 0, Math.atan2(dx, dz) / DEG),
     pitch: Math.asin(Math.max(-1, Math.min(1, dy / distance))) / DEG,
     zoom: frame.base / distance,
   };
 }
 
-/** OrbitControls limits matching CAMERA_YAW and CAMERA_PITCH (polar angle runs from +Y). */
-export function orbitLimits(yawRange, pitchRange) {
+/**
+ * OrbitControls limits matching CAMERA_YAW and CAMERA_PITCH around a heading
+ * (polar angle runs from +Y). Past +-180 deg OrbitControls wraps the range.
+ */
+export function orbitLimits(yawRange, pitchRange, heading = 0) {
   return {
-    minAzimuthAngle: yawRange.min * DEG,
-    maxAzimuthAngle: yawRange.max * DEG,
+    minAzimuthAngle: (heading + yawRange.min) * DEG,
+    maxAzimuthAngle: (heading + yawRange.max) * DEG,
     minPolarAngle: (90 - pitchRange.max) * DEG,
     maxPolarAngle: (90 - pitchRange.min) * DEG,
   };
+}
+
+/** Key light direction turned with the heading, so it always falls over the viewer's shoulder. */
+export function sunDirection(rig, heading = 0) {
+  const [x, y, z] = rig.sun.from;
+  const a = heading * DEG;
+  return [x * Math.cos(a) + z * Math.sin(a), y, -x * Math.sin(a) + z * Math.cos(a)];
 }
 
 /* Room shell */
@@ -152,25 +196,48 @@ function slab(id, color, box) {
 }
 
 /**
- * Interior faces are single-sided planes facing into the room, so a wall the
- * camera has orbited past culls itself. Side walls also carry a `cull` axis:
- * the poche slab behind them hides once the eye crosses that plane.
+ * Section cut per wall, in metres: a wall, its poche and the modules on it
+ * hide once the eye crosses its plane, so the wall between the camera and the
+ * room never blocks the view. `below` keeps it while the eye coordinate is
+ * above the value, `above` while it is below.
  */
-function buildShell(room) {
+export function wallCull(room, wall) {
+  switch (sanitizeWallId(wall)) {
+    case 'east':
+      return { axis: 0, above: m(room.widthCm) };
+    case 'south':
+      return { axis: 2, above: m(room.depthCm) };
+    case 'west':
+      return { axis: 0, below: 0 };
+    default:
+      return { axis: 2, below: 0 };
+  }
+}
+
+/**
+ * Interior faces are single-sided planes facing into the room, so a wall the
+ * camera has orbited past culls itself. Each wall also carries its section
+ * `cull`, which hides the poche slab behind it and the modules on it.
+ */
+function buildShell(room, rig) {
   const { widthCm: W, depthCm: D, heightCm: H } = room;
   const T = WALL_T_CM;
+  const { surfaces: tone } = rig;
+  const glow = (key) => (tone.glow ? tone.glow[key] : null);
   return {
     surfaces: [
-      { id: 'floor', color: SURFACES.floor, size: [m(W), m(D)], position: [m(W / 2), 0, m(D / 2)], rotation: [-Math.PI / 2, 0, 0] },
-      { id: 'back', color: SURFACES.wall, size: [m(W), m(H)], position: [m(W / 2), m(H / 2), 0], rotation: [0, 0, 0] },
-      { id: 'left', color: SURFACES.side, size: [m(D), m(H)], position: [0, m(H / 2), m(D / 2)], rotation: [0, Math.PI / 2, 0], cull: { axis: 0, below: 0 } },
-      { id: 'right', color: SURFACES.side, size: [m(D), m(H)], position: [m(W), m(H / 2), m(D / 2)], rotation: [0, -Math.PI / 2, 0], cull: { axis: 0, above: m(W) } },
+      { id: 'floor', color: tone.floor, glow: glow('floor'), size: [m(W), m(D)], position: [m(W / 2), 0, m(D / 2)], rotation: [-Math.PI / 2, 0, 0] },
+      { id: 'back', wall: 'north', color: tone.wall, glow: glow('wall'), size: [m(W), m(H)], position: [m(W / 2), m(H / 2), 0], rotation: [0, 0, 0], cull: wallCull(room, 'north') },
+      { id: 'right', wall: 'east', color: tone.side, glow: glow('side'), size: [m(D), m(H)], position: [m(W), m(H / 2), m(D / 2)], rotation: [0, -Math.PI / 2, 0], cull: wallCull(room, 'east') },
+      { id: 'front', wall: 'south', color: tone.wall, glow: glow('wall'), size: [m(W), m(H)], position: [m(W / 2), m(H / 2), m(D)], rotation: [0, Math.PI, 0], cull: wallCull(room, 'south') },
+      { id: 'left', wall: 'west', color: tone.side, glow: glow('side'), size: [m(D), m(H)], position: [0, m(H / 2), m(D / 2)], rotation: [0, Math.PI / 2, 0], cull: wallCull(room, 'west') },
     ],
     poche: [
-      slab('floor', SURFACES.poche, { x0: -T, x1: W + T, y0: -SLAB_T_CM, y1: -0.2, z0: -T, z1: D }),
-      slab('back', SURFACES.poche, { x0: -T, x1: W + T, y0: 0, y1: H, z0: -T, z1: -0.2 }),
-      { ...slab('left', SURFACES.poche, { x0: -T, x1: -0.2, y0: 0, y1: H, z0: 0, z1: D }), cull: { axis: 0, below: 0 } },
-      { ...slab('right', SURFACES.poche, { x0: W + 0.2, x1: W + T, y0: 0, y1: H, z0: 0, z1: D }), cull: { axis: 0, above: m(W) } },
+      slab('floor', tone.poche, { x0: -T, x1: W + T, y0: -SLAB_T_CM, y1: -0.2, z0: -T, z1: D + T }),
+      { ...slab('back', tone.poche, { x0: -T, x1: W + T, y0: 0, y1: H, z0: -T, z1: -0.2 }), cull: wallCull(room, 'north') },
+      { ...slab('right', tone.poche, { x0: W + 0.2, x1: W + T, y0: 0, y1: H, z0: 0, z1: D }), cull: wallCull(room, 'east') },
+      { ...slab('front', tone.poche, { x0: -T, x1: W + T, y0: 0, y1: H, z0: D + 0.2, z1: D + T }), cull: wallCull(room, 'south') },
+      { ...slab('left', tone.poche, { x0: -T, x1: -0.2, y0: 0, y1: H, z0: 0, z1: D }), cull: wallCull(room, 'west') },
     ],
   };
 }
@@ -181,6 +248,20 @@ function buildGrid(room) {
   for (let x = GRID_CM; x < W; x += GRID_CM) points.push([m(x), 0.002, 0], [m(x), 0.002, m(D)]);
   for (let z = GRID_CM; z < D; z += GRID_CM) points.push([0, 0.002, m(z)], [m(W), 0.002, m(z)]);
   return points;
+}
+
+/** Floor perimeter trim: a crisp line where every wall meets the floor. */
+function buildTrim(room) {
+  const W = m(room.widthCm);
+  const D = m(room.depthCm);
+  const y = TRIM_LIFT_M;
+  const corners = [
+    [0, y, 0],
+    [W, y, 0],
+    [W, y, D],
+    [0, y, D],
+  ];
+  return corners.flatMap((corner, i) => [corner, corners[(i + 1) % corners.length]]);
 }
 
 function roomEdges(room) {
@@ -195,14 +276,20 @@ function roomEdges(room) {
   return pairs.flatMap(([a, b]) => [corners[a], corners[b]]);
 }
 
-/* Modules */
+/* Modules. Boxes are built in the wall frame, then placed in the room. */
 
-function boxRecord(box) {
+/** Mesh record for a wall-frame box: size in the wall frame, centre carried into the room. */
+function placedRecord(box, place) {
   return {
     size: [m(box.x1 - box.x0), m(box.y1 - box.y0), m(box.z1 - box.z0)],
-    position: [m((box.x0 + box.x1) / 2), m((box.y0 + box.y1) / 2), m((box.z0 + box.z1) / 2)],
+    position: v3(place([(box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2, (box.z0 + box.z1) / 2])),
   };
 }
+
+function boxRecord(box) {
+  return placedRecord(box, (point) => point);
+}
+
 
 /** Thin emissive strips where the LED channel actually sits on each part. */
 function emitterBoxes(shape, b) {
@@ -233,9 +320,10 @@ function emitterBoxes(shape, b) {
  * The real light each lit module throws, in metres. Spot lights wash the
  * wall and floor below shelves and bars; the column and the backlit frame
  * are omnidirectional. Intensity scales with the part's rated lumens and its
- * DALI-2 dim level.
+ * DALI-2 dim level. Positions and targets are worked out in the wall frame
+ * and carried into the room by `place`.
  */
-function moduleLights(item, product, b, room, rig) {
+function moduleLights(item, product, b, room, rig, place) {
   if (!item.led || product.watts === 0) return [];
   const color = hex(kelvinToRgb(product.kelvin ?? 2700));
   const strength = (product.lumens / 1000) * rig.led * dimFactor(item);
@@ -245,8 +333,8 @@ function moduleLights(item, product, b, room, rig) {
     id,
     type: 'spot',
     color,
-    position: v3(from),
-    target: v3(to),
+    position: v3(place(from)),
+    target: v3(place(to)),
     angle: angleDeg * DEG,
     penumbra: 0.85,
     intensity: Number((intensity * strength).toFixed(3)),
@@ -257,7 +345,7 @@ function moduleLights(item, product, b, room, rig) {
     id,
     type: 'point',
     color,
-    position: v3(at),
+    position: v3(place(at)),
     intensity: Number((intensity * strength).toFixed(3)),
     distance: m(distanceCm),
     decay: 2,
@@ -305,19 +393,24 @@ function feltRecord(shape, box) {
   if (t === undefined) return null;
   return {
     color: '#3a3834',
-    ...boxRecord({ x0: box.x0 + t, x1: box.x1 - t, y0: box.y0 + t, y1: box.y1 - t, z0: box.z1 - 1, z1: box.z1 + 0.15 }),
+    box: { x0: box.x0 + t, x1: box.x1 - t, y0: box.y0 + t, y1: box.y1 - t, z0: box.z1 - 1, z1: box.z1 + 0.15 },
   };
 }
+
 
 function moduleRecord(item, room, rig, conflicts, selectedUid) {
   const product = getProduct(item.productId);
   const finish = getFinish(item.finish);
+  const wall = wallOf(item);
+  const place = wall === DEFAULT_ROOM_WALL ? (point) => point : (point) => wallToRoom(room, wall, point);
+  const rotation = [0, WALL_ROT_Y[wall], 0];
   const box = moduleBox(item);
   const lit = item.led && product.watts > 0;
   const level = product.watts > 0 ? dimFactor(item) : 1;
   const light = hex(kelvinToRgb(product.kelvin ?? 2700));
   const cylinder = product.shape === 'column' || product.shape === 'spot';
   const { w, h, d } = product.dimsCm;
+  const felt = feltRecord(product.shape, box);
 
   return {
     uid: item.uid,
@@ -330,7 +423,10 @@ function moduleRecord(item, room, rig, conflicts, selectedUid) {
     ...(FINISH_SURFACE[finish.id] ?? FINISH_SURFACE.chalk),
     geometry: cylinder ? 'cylinder' : 'box',
     radius: cylinder ? m(Math.min(w, d) / 2) : null,
-    ...boxRecord(box),
+    wall,
+    rotation,
+    cull: wallCull(room, wall),
+    ...placedRecord(box, place),
     box,
     xCm: item.xCm,
     yCm: item.yCm,
@@ -342,10 +438,10 @@ function moduleRecord(item, room, rig, conflicts, selectedUid) {
       key: `${item.uid}-e${i}`,
       color: light,
       intensity: lit ? Number((rig.emissive * level).toFixed(3)) : 0,
-      ...boxRecord(e),
+      ...placedRecord(e, place),
     })),
-    felt: feltRecord(product.shape, box),
-    lights: moduleLights(item, product, box, room, rig),
+    felt: felt ? { color: felt.color, ...placedRecord(felt.box, place) } : null,
+    lights: moduleLights(item, product, box, room, rig, place),
     selected: item.uid === selectedUid,
     conflict: conflicts.has(item.uid),
   };
@@ -397,6 +493,16 @@ function buildCallouts(state, selectedUid) {
   }));
 }
 
+/** With no channel lit, the ambient and sky fill lift so the empty room still reads. */
+function fillRig(rig, idle) {
+  if (!idle || rig.idle === 1) return rig;
+  return {
+    ...rig,
+    ambient: { ...rig.ambient, intensity: Number((rig.ambient.intensity * rig.idle).toFixed(3)) },
+    hemisphere: { ...rig.hemisphere, intensity: Number((rig.hemisphere.intensity * rig.idle).toFixed(3)) },
+  };
+}
+
 /**
  * Compiles the room into mesh, light and annotation records. The wireframe
  * view turns faces to smoked glass and adds box and room edges; the
@@ -404,13 +510,14 @@ function buildCallouts(state, selectedUid) {
  */
 export function buildScene({ state, conflicts = new Map(), selectedUid = null, technical = false, wireframe = false }) {
   const { room, items } = state;
-  const rig = LIGHTING_RIGS[room.lighting] ?? LIGHTING_RIGS.night;
-  const modules = items.map((item) => moduleRecord(item, room, rig, conflicts, selectedUid));
+  const base = LIGHTING_RIGS[room.lighting] ?? LIGHTING_RIGS.night;
+  const modules = items.map((item) => moduleRecord(item, room, base, conflicts, selectedUid));
+  const lights = modules.flatMap((module) => module.lights.map((light) => ({ ...light, uid: module.uid })));
+  const rig = fillRig(base, lights.length === 0);
   const furniture = furnitureRecords(room);
-  const shell = buildShell(room);
+  const shell = buildShell(room, rig);
   const edges = technical || wireframe;
 
-  const lights = modules.flatMap((module) => module.lights.map((light) => ({ ...light, uid: module.uid })));
   const meshes =
     shell.surfaces.length +
     shell.poche.length +
@@ -423,6 +530,7 @@ export function buildScene({ state, conflicts = new Map(), selectedUid = null, t
     size: v3([room.widthCm, room.heightCm, room.depthCm]),
     shell,
     grid: buildGrid(room),
+    trim: buildTrim(room),
     modules,
     furniture,
     lights,
@@ -433,7 +541,12 @@ export function buildScene({ state, conflicts = new Map(), selectedUid = null, t
     axes: technical ? buildAxes(room) : null,
     callouts: technical ? buildCallouts(state, selectedUid) : null,
     tags: technical
-      ? modules.map((module) => ({ uid: module.uid, sku: module.sku, at: v3([module.box.x0, module.box.y1 + 6, module.box.z1]) }))
+      ? modules.map((module) => ({
+          uid: module.uid,
+          sku: module.sku,
+          at: v3(wallToRoom(room, module.wall, [module.box.x0, module.box.y1 + 6, module.box.z1])),
+          cull: module.cull,
+        }))
       : null,
     stats: { meshes, lights: lights.length + 3 },
   };

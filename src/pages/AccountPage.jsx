@@ -20,7 +20,7 @@ import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { formatUsd, padIndex } from '../lib/format.js';
 import { persistProjectName } from '../lib/project-library.js';
 import { formatMoney, getCurrency } from '../lib/quote.js';
-import { getFurniture, LIGHTING_MODES, persistRoomState } from '../lib/room-3d.js';
+import { DEFAULT_ROOM_WALL, getFurniture, LIGHTING_MODES, persistRoomState, wallCounts, wallOf } from '../lib/room-3d.js';
 import { persistLayout, summarizeWall } from '../lib/wall-studio.js';
 import '../styles/pages.css';
 import '../styles/account.css';
@@ -78,13 +78,15 @@ function describeProject(record) {
     };
   }
   const { widthCm, depthCm, heightCm, furniture, lighting } = data.room;
+  const walls = Object.values(wallCounts(data.items)).filter((count) => count > 0).length;
   return {
     kindLabel: '3D Room Planner',
     href: '/room-3d',
     action: 'Open Room Planner',
-    envelope: `${widthCm} x ${depthCm} x ${heightCm} cm`,
+    envelope: `${widthCm} x ${depthCm} x ${heightCm} cm${walls > 1 ? `, ${walls} walls` : ''}`,
     context: `${LIGHTING_MODES.find((mode) => mode.id === lighting).label} / ${getFurniture(furniture).label}`,
-    thumb: { widthCm, heightCm, items: data.items },
+    // The thumbnail draws the north elevation.
+    thumb: { widthCm, heightCm, items: data.items.filter((item) => wallOf(item) === DEFAULT_ROOM_WALL) },
     restore: () => {
       persistRoomState(data);
       persistProjectName('room', record.name);

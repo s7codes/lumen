@@ -547,9 +547,10 @@ export function layoutFromPreset(presetId, currentWall = DEFAULT_WALL) {
  * survives only with a known product, a finish that product ships in and
  * finite coordinates; positions are rounded and pulled inside the wall, flags
  * must be real booleans, and invalid or duplicate uids are reissued. At most
- * 48 modules are kept.
+ * 48 modules are kept. A multi-wall room passes `wallFor` to clamp each entry
+ * against its own wall and `extend` to carry its sanitized extra fields.
  */
-export function sanitizeItems(entries, wall) {
+export function sanitizeItems(entries, wall, { wallFor = null, extend = null } = {}) {
   if (!Array.isArray(entries)) return [];
   const kept = [];
   const seen = new Set();
@@ -563,7 +564,8 @@ export function sanitizeItems(entries, wall) {
 
     const uid = typeof entry.uid === 'string' && UID_PATTERN.test(entry.uid) && !seen.has(entry.uid) ? entry.uid : null;
     if (uid) seen.add(uid);
-    const spot = clampToWall(product, wall, Math.round(entry.xCm), Math.round(entry.yCm));
+    const target = wallFor ? wallFor(entry) : wall;
+    const spot = clampToWall(product, target, Math.round(entry.xCm), Math.round(entry.yCm));
     kept.push({
       uid,
       productId: product.id,
@@ -573,6 +575,7 @@ export function sanitizeItems(entries, wall) {
       led: product.watts > 0 && entry.led !== false,
       ...dimPatch(product, entry.dimPct),
       locked: entry.locked === true,
+      ...(extend ? extend(entry) : {}),
     });
   }
 

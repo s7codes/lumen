@@ -211,13 +211,47 @@ export function Disclosure({ label, summary, children, testId }) {
   );
 }
 
-export function PanelSection({ index, title, children, className = '' }) {
+/** A sidebar card with a plain Title Case heading. `hint` adds one quiet line under it. */
+export function PanelSection({ title, hint, children, className = '' }) {
   return (
     <section className={`studio-panel__section ${className}`.trim()} aria-label={title}>
-      <h2 className="index-label studio-panel__heading">
-        <span className="index-label__num">{index}</span> / {title}
-      </h2>
+      <h2 className="studio-panel__heading">{title}</h2>
+      {hint && <p className="studio-panel__hint">{hint}</p>}
       {children}
     </section>
+  );
+}
+
+/**
+ * One part in a components palette: finish swatch, name, a plain size and
+ * power line, and the price (or why it cannot be mounted).
+ */
+export function PaletteItem({ product, note, disabled, withDepth = false, onMount }) {
+  const finish = getFinish(product.defaultFinish);
+  const { w, h, d } = product.dimsCm;
+  const size = withDepth ? `${w} x ${h} x ${d} cm` : `${w} x ${h} cm`;
+  const power = product.watts > 0 ? `${product.watts} W` : 'passive';
+  return (
+    <button
+      type="button"
+      className="palette-item"
+      disabled={disabled}
+      data-product={product.id}
+      aria-label={`Mount ${product.name}`}
+      onClick={() => onMount(product.id)}
+    >
+      <span
+        className="palette-item__swatch"
+        style={{ '--swatch': finish.hex, '--swatch-hi': finish.highlight, '--swatch-lo': finish.shade }}
+        aria-hidden="true"
+      />
+      <span className="palette-item__body">
+        <span className="palette-item__name">{product.name}</span>
+        <span className="palette-item__meta">
+          {size}, {power}
+        </span>
+      </span>
+      <span className="palette-item__price">{note}</span>
+    </button>
   );
 }

@@ -1,9 +1,9 @@
-import { getFinish, PRODUCTS } from '../../data/products.js';
-import { formatUsd, padIndex } from '../../lib/format.js';
-import { FURNITURE, LIGHTING_MODES, ROOM_DEPTH, ROOM_HEIGHT, ROOM_WIDTH } from '../../lib/room-3d.js';
+import { PRODUCTS } from '../../data/products.js';
+import { formatUsd } from '../../lib/format.js';
+import { FURNITURE, LIGHTING_MODES, ROOM_DEPTH, ROOM_HEIGHT, ROOM_WIDTH, WALL_LABELS } from '../../lib/room-3d.js';
 import { MAX_WALL_ITEMS } from '../../lib/wall-studio.js';
 import { clampNumber } from '../../security/sanitize.js';
-import { Disclosure, NumberField, PanelSection } from '../studio/controls.jsx';
+import { Disclosure, NumberField, PaletteItem, PanelSection } from '../studio/controls.jsx';
 
 function dimension(range) {
   return (value) => clampNumber(Math.round(value), range.min, range.max, range.initial);
@@ -33,7 +33,7 @@ function Segment({ legend, name, options, value, onChange, columns = 2 }) {
 
 function RoomSettings({ room, onRoom }) {
   return (
-    <PanelSection index="01" title="Room">
+    <PanelSection title="Room Setup">
       <Disclosure
         label="Dimensions"
         summary={`${room.widthCm} x ${room.depthCm} x ${room.heightCm} cm`}
@@ -68,8 +68,8 @@ function RoomSettings({ room, onRoom }) {
             testId="room-height"
           />
         </div>
-        <p className="studio-panel__note mono">
-          W {ROOM_WIDTH.min}-{ROOM_WIDTH.max} / D {ROOM_DEPTH.min}-{ROOM_DEPTH.max} / H {ROOM_HEIGHT.min}-
+        <p className="studio-panel__note">
+          Width {ROOM_WIDTH.min}-{ROOM_WIDTH.max}, depth {ROOM_DEPTH.min}-{ROOM_DEPTH.max}, ceiling {ROOM_HEIGHT.min}-
           {ROOM_HEIGHT.max} cm
         </p>
       </Disclosure>
@@ -92,49 +92,35 @@ function RoomSettings({ room, onRoom }) {
   );
 }
 
-function ComponentList({ full, onMount }) {
+function ComponentList({ full, wallLabel, onMount }) {
   return (
-    <PanelSection index="02" title="Components">
-      <ul className="palette-list">
-        {PRODUCTS.map((product, i) => {
-          const finish = getFinish(product.defaultFinish);
-          const { w, h, d } = product.dimsCm;
-          return (
-            <li key={product.id}>
-              <button
-                type="button"
-                className="palette-item"
-                disabled={full}
-                data-product={product.id}
-                aria-label={`Mount ${product.name}`}
-                onClick={() => onMount(product.id)}
-              >
-                <span
-                  className="palette-item__swatch"
-                  style={{ '--swatch': finish.hex, '--swatch-hi': finish.highlight, '--swatch-lo': finish.shade }}
-                  aria-hidden="true"
-                />
-                <span className="palette-item__body">
-                  <span className="palette-item__name">{product.name}</span>
-                  <span className="palette-item__meta mono">
-                    {padIndex(i + 1)} / {w} x {h} x {d} cm / {product.watts} W
-                  </span>
-                </span>
-                <span className="palette-item__price mono">{full ? 'Wall full' : formatUsd(product.priceUsd)}</span>
-              </button>
-            </li>
-          );
-        })}
+    <PanelSection title="Components" hint={`Click a part to mount it on the ${wallLabel}.`}>
+      <ul className="palette-list" data-testid="room-palette" data-target-wall={wallLabel}>
+        {PRODUCTS.map((product) => (
+          <li key={product.id}>
+            <PaletteItem
+              product={product}
+              note={full ? 'Room full' : formatUsd(product.priceUsd)}
+              disabled={full}
+              withDepth
+              onMount={onMount}
+            />
+          </li>
+        ))}
       </ul>
     </PanelSection>
   );
 }
 
-export function RoomControls({ state, actions }) {
+export function RoomControls({ state, activeWall, actions }) {
   return (
     <aside className="studio-panel room3d-controls" aria-label="Room controls">
       <RoomSettings room={state.room} onRoom={actions.setRoom} />
-      <ComponentList full={state.items.length >= MAX_WALL_ITEMS} onMount={actions.mount} />
+      <ComponentList
+        full={state.items.length >= MAX_WALL_ITEMS}
+        wallLabel={WALL_LABELS[activeWall]}
+        onMount={actions.mount}
+      />
     </aside>
   );
 }

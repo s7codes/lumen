@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useReducer } from 'react';
 import { getFinish, getProduct } from '../data/products.js';
 import {
+  clearRoomWall,
+  DEFAULT_ROOM_WALL,
   importFromWallStudio,
+  isRoomWall,
   loadRoomState,
   mountInRoom,
   persistRoomState,
@@ -9,12 +12,20 @@ import {
   updateCamera,
   updateRoom,
   updateRoomItem,
+  WALL_LABELS,
+  wallCounts,
+  wallOf,
 } from '../lib/room-3d.js';
 import { applyLightingSceneToRoom, getLightingScene } from '../lib/lighting-scenes.js';
 import { commitHistory, createHistory, MAX_WALL_ITEMS, redoHistory, undoHistory } from '../lib/wall-studio.js';
 
 function init() {
-  return { history: createHistory(loadRoomState()), selectedUid: null, notice: { text: '', tone: 'info', serial: 0 } };
+  return {
+    history: createHistory(loadRoomState()),
+    selectedUid: null,
+    activeWall: DEFAULT_ROOM_WALL,
+    notice: { text: '', tone: 'info', serial: 0 },
+  };
 }
 
 function withNotice(store, text, tone = 'info') {
@@ -27,7 +38,7 @@ function withState(store, state) {
 }
 
 // The camera is a view, not an edit: it never enters the history, and an
-// undo or redo keeps the current view.
+// undo or redo keeps the current view. The active wall is view state too.
 function withCamera(store, state) {
   if (state === store.history.present) return store;
   return { ...store, history: { ...store.history, present: state } };
@@ -43,6 +54,11 @@ function plural(count, word) {
   return `${count} ${count === 1 ? word : `${word}s`}`;
 }
 
+// North keeps the original wording; the other walls name themselves.
+function onWallText(wall) {
+  return wall === DEFAULT_ROOM_WALL ? '' : ` on the ${WALL_LABELS[wall]}`;
+}
+
 function roomReducer(store, action) {
   const state = store.history.present;
 
@@ -51,6 +67,9 @@ function roomReducer(store, action) {
       const uid = state.items.some((item) => item.uid === action.uid) ? action.uid : null;
       return store.selectedUid === uid ? store : { ...store, selectedUid: uid };
     }
+
+    case 'wall':
+      return isRoomWall(action.wall) && action.wall !== store.activeWall ? { ...store, activeWall: action.wall } : store;
 
     case 'room':
       return withState(store, updateRoom(state, action.patch));
@@ -75,17 +94,28 @@ function roomReducer(store, action) {
     case 'mount': {
       const product = getProduct(action.productId);
       if (!product) return store;
-      const result = mountInRoom(state, action.productId);
+      const result = mountInRoom(state, action.productId, store.activeWall);
       if (!result) return withNotice(store, `Room wall holds ${MAX_WALL_ITEMS} modules at most.`, 'warn');
-      const { item, clear } = result;
+      const { item, clear, wall } = result;
       const next = { ...withState(store, result.state), selectedUid: item.uid };
       return clear
-        ? withNotice(next, `Mounted ${product.name} at X ${item.xCm} / Y ${item.yCm} cm.`)
-        : withNotice(next, `No clear position for ${product.name}. Placed with a conflict.`, 'warn');
+        ? withNotice(next, `Mounted ${product.name}${onWallText(wall)} at X ${item.xCm} / Y ${item.yCm} cm.`)
+        : withNotice(next, `No clear position for ${product.name}${onWallText(wall)}. Placed with a conflict.`, 'warn');
     }
 
-    case 'update':
-      return withState(store, updateRoomItem(state, action.uid, action.patch));
+    case 'update': {
+      const before = state.items.find((item) => item.uid === action.uid);
+      const next = updateRoomItem(state, action.uid, action.patch);
+      const after = next.items.find((item) => item.uid === action.uid);
+      const moved = before && after && wallOf(before) !== wallOf(after);
+      if (!moved) return withState(store, next);
+      // The view follows a module onto its new wall.
+      const wall = wallOf(after);
+      return withNotice(
+        { ...withState(store, next), activeWall: wall },
+        `Moved ${getProduct(after.productId).name} to the ${WALL_LABELS[wall]} at X ${after.xCm} / Y ${after.yCm} cm.`,
+      );
+    }
 
     case 'remove': {
       const item = state.items.find((entry) => entry.uid === action.uid);
@@ -98,12 +128,30 @@ function roomReducer(store, action) {
       );
     }
 
+    case 'clear-wall': {
+      const wall = store.activeWall;
+      const count = wallCounts(state.items)[wall];
+      const next = clearRoomWall(state, wall);
+      if (next === state) return store;
+      const selectedUid = next.items.some((item) => item.uid === store.selectedUid) ? store.selectedUid : null;
+      return withNotice({ ...withState(store, next), selectedUid }, `Cleared ${plural(count, 'module')} from the ${WALL_LABELS[wall]}.`);
+    }
+
     case 'import': {
-      const result = importFromWallStudio(state);
-      const { widthCm, heightCm } = result.state.room;
-      let text = result.fromPreset
-        ? `Wall Studio is empty. Loaded the default composition: ${plural(result.count, 'module')}.`
-        : `Loaded ${plural(result.count, 'module')} from Wall Studio. Main wall ${widthCm} x ${heightCm} cm.`;
+      const wall = store.activeWall;
+      const result = importFromWallStudio(state, wall);
+      const { widthCm, depthCm, heightCm } = result.state.room;
+      const span = wall === 'east' || wall === 'west' ? depthCm : widthCm;
+      let text;
+      if (wall === DEFAULT_ROOM_WALL) {
+        text = result.fromPreset
+          ? `Wall Studio is empty. Loaded the default composition: ${plural(result.count, 'module')}.`
+          : `Loaded ${plural(result.count, 'module')} from Wall Studio. Main wall ${widthCm} x ${heightCm} cm.`;
+      } else {
+        text = result.fromPreset
+          ? `Wall Studio is empty. Loaded the default composition onto the ${WALL_LABELS[wall]}: ${plural(result.count, 'module')}.`
+          : `Loaded ${plural(result.count, 'module')} from Wall Studio onto the ${WALL_LABELS[wall]}, ${span} x ${heightCm} cm.`;
+      }
       if (result.slope) text += ' Attic slope is not modelled in 3D.';
       return withNotice({ ...withState(store, result.state), selectedUid: null }, text);
     }
@@ -121,7 +169,7 @@ function roomReducer(store, action) {
 
 export function useRoom3d() {
   const [store, dispatch] = useReducer(roomReducer, undefined, init);
-  const { history, selectedUid, notice } = store;
+  const { history, selectedUid, activeWall, notice } = store;
   const state = history.present;
 
   // Writing on mount also replaces a tampered payload with the sanitized room.
@@ -132,11 +180,13 @@ export function useRoom3d() {
   const actions = useMemo(
     () => ({
       select: (uid) => dispatch({ type: 'select', uid }),
+      setWall: (wall) => dispatch({ type: 'wall', wall }),
       setRoom: (patch) => dispatch({ type: 'room', patch }),
       setCamera: (camera) => dispatch({ type: 'camera', camera }),
       mount: (productId) => dispatch({ type: 'mount', productId }),
       update: (uid, patch) => dispatch({ type: 'update', uid, patch }),
       remove: (uid) => dispatch({ type: 'remove', uid }),
+      clearWall: () => dispatch({ type: 'clear-wall' }),
       importWall: () => dispatch({ type: 'import' }),
       replace: (state, text) => dispatch({ type: 'replace', state, text }),
       announce: (text, tone) => dispatch({ type: 'notice', text, tone }),
@@ -151,10 +201,13 @@ export function useRoom3d() {
     () => state.items.find((item) => item.uid === selectedUid) ?? null,
     [state.items, selectedUid],
   );
+  const counts = useMemo(() => wallCounts(state.items), [state.items]);
 
   return {
     state,
     selected,
+    activeWall,
+    counts,
     notice,
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,

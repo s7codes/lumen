@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { activePreset, CAMERA_PRESETS, CAMERA_ZOOM, DEFAULT_CAMERA, sameCamera } from '../../lib/room-3d.js';
 import { ResetGlyph } from '../icons.jsx';
 import { LightingSceneBar } from '../LightingSceneBar.jsx';
@@ -5,10 +6,10 @@ import { LightingSceneBar } from '../LightingSceneBar.jsx';
 const ZOOM_STEP = 0.1;
 
 /**
- * Floating camera HUD over the room viewport: view presets on the left, zoom
- * on the right, history and DALI-2 scene recall on a second row, and a
- * transient status line along the bottom edge. Rendered as siblings inside
- * .room3d-hud so the viewport can lay them out.
+ * Floating HUD over the room viewport in clean clusters: view presets and
+ * zoom on the first row; edit (undo, redo, clear the active wall) and DALI-2
+ * scene recall on the second; a transient status line along the bottom edge.
+ * Rendered as siblings inside .room3d-hud so the viewport can lay them out.
  */
 export function RoomToolbar({
   camera,
@@ -18,10 +19,14 @@ export function RoomToolbar({
   sceneDisabled = false,
   canUndo = false,
   canRedo = false,
+  wallLabel = 'North Wall',
+  wallCount = 0,
   onApplyScene,
   onUndo,
   onRedo,
+  onClearWall,
 }) {
+  const [armed, setArmed] = useState(false);
   const preset = activePreset(camera);
   const atDefault = sameCamera(camera, DEFAULT_CAMERA);
   const zoomBy = (delta) => onCamera({ ...camera, zoom: camera.zoom + delta });
@@ -29,6 +34,9 @@ export function RoomToolbar({
   return (
     <>
       <div className="studio-toolbar__group room3d-hud__pill room3d-hud__presets" role="group" aria-label="Camera presets">
+        <span className="studio-toolbar__caption" aria-hidden="true">
+          View
+        </span>
         {CAMERA_PRESETS.map((entry) => (
           <button
             key={entry.id}
@@ -79,7 +87,10 @@ export function RoomToolbar({
       </div>
 
       <div className="room3d-hud__row">
-        <div className="studio-toolbar__group room3d-hud__pill" role="group" aria-label="History">
+        <div className="studio-toolbar__group room3d-hud__pill" role="group" aria-label="History and edit">
+          <span className="studio-toolbar__caption" aria-hidden="true">
+            Edit
+          </span>
           <button
             type="button"
             className="tool-button"
@@ -100,6 +111,25 @@ export function RoomToolbar({
           >
             Redo
           </button>
+          <button
+            type="button"
+            className="tool-button tool-button--danger"
+            data-testid="room-clear-wall"
+            data-armed={armed || undefined}
+            disabled={wallCount === 0}
+            title={`Take every module off the ${wallLabel}`}
+            onBlur={() => setArmed(false)}
+            onClick={() => {
+              if (!armed) {
+                setArmed(true);
+                return;
+              }
+              setArmed(false);
+              onClearWall();
+            }}
+          >
+            {armed ? `Confirm: clear ${wallCount}` : 'Clear Wall'}
+          </button>
         </div>
         <LightingSceneBar
           className="room3d-hud__pill"
@@ -109,7 +139,7 @@ export function RoomToolbar({
         />
       </div>
 
-      <p className="studio-toolbar__notice room3d-hud__notice mono" role="status" aria-live="polite" data-tone={notice.tone}>
+      <p className="studio-toolbar__notice room3d-hud__notice" role="status" aria-live="polite" data-tone={notice.tone}>
         <span key={notice.serial} className="notice-transient" data-testid="room-notice">
           {notice.text}
         </span>

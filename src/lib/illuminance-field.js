@@ -2,6 +2,7 @@ import { getProduct } from '../data/products.js';
 import { dimFactor } from './dimming.js';
 import { beamProfile } from './photometry.js';
 import { computeEnvironmentalPhysics, MAINTENANCE_FACTOR, REFERENCE_DEPTH_CM } from './room-physics.js';
+import { DEFAULT_ROOM_WALL, wallDirToRoom, wallOf, wallToRoom } from './room-walls.js';
 import { SLOPE_CM } from './wall-studio.js';
 
 /**
@@ -18,7 +19,9 @@ import { SLOPE_CM } from './wall-studio.js';
  * component of computeEnvironmentalPhysics, so unlit corners still read the
  * cavity bounce. Frame: cm, x along the main wall, y up from the floor, z out
  * into the room. Floor fields report plan coordinates, y measured out from
- * the main wall.
+ * the main wall. In a four-wall room every source is carried from its own
+ * wall frame into the room frame first, so the floor and the north wall see
+ * light from all four walls.
  */
 
 export const ISO_LUX_LEVELS = Object.freeze([100, 250, 500]);
@@ -99,9 +102,10 @@ function apertures(shape, b) {
 /**
  * Point sources for every active luminous module (watts > 0, led !== false).
  * Each entry is { x, y, z, cd, ax, ay, az, m } with cd already scaled by the
- * maintenance factor and the module's DALI-2 dim level.
+ * maintenance factor and the module's DALI-2 dim level. With a `room`, a
+ * module on the east, south or west wall is placed in room coordinates.
  */
-export function luminousSources(items) {
+export function luminousSources(items, room = null) {
   const sources = [];
   if (!Array.isArray(items)) return sources;
   for (const item of items) {
@@ -118,25 +122,23 @@ export function luminousSources(items) {
     if (lobes === 0) continue;
     const lobeCd =
       ((product.lumens * dimFactor(item)) / lobes) * ((profile.m + 1) / (2 * Math.PI)) * MAINTENANCE_FACTOR;
+    const wall = isRecord(room) ? wallOf(item) : DEFAULT_ROOM_WALL;
+    const place = wall === DEFAULT_ROOM_WALL ? (point) => point : (point) => wallToRoom(room, wall, point);
+    const turn = wall === DEFAULT_ROOM_WALL ? (axis) => axis : (axis) => wallDirToRoom(wall, axis);
 
     for (const aperture of list) {
       const { from, to } = aperture;
       const length = to ? Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2]) : 0;
       const n = to ? Math.min(MAX_SEGMENTS, Math.max(1, Math.ceil(length / SEGMENT_CM))) : 1;
-      for (const axis of aperture.axes) {
+      for (const lobe of aperture.axes) {
         const cd = lobeCd / n;
+        const axis = turn(lobe);
         for (let i = 0; i < n; i += 1) {
           const t = to ? (i + 0.5) / n : 0;
-          sources.push({
-            x: to ? from[0] + (to[0] - from[0]) * t : from[0],
-            y: to ? from[1] + (to[1] - from[1]) * t : from[1],
-            z: to ? from[2] + (to[2] - from[2]) * t : from[2],
-            cd,
-            ax: axis[0],
-            ay: axis[1],
-            az: axis[2],
-            m: profile.m,
-          });
+          const [x, y, z] = place(
+            to ? [0, 1, 2].map((k) => from[k] + (to[k] - from[k]) * t) : from,
+          );
+          sources.push({ x, y, z, cd, ax: axis[0], ay: axis[1], az: axis[2], m: profile.m });
         }
       }
     }
@@ -301,7 +303,7 @@ export function computeWallLuxField(layout, options = {}) {
   const subject = isRecord(layout) ? layout : {};
   const opts = isRecord(options) ? options : {};
   const wall = wallEnvelope(subject);
-  const sources = luminousSources(subject.items);
+  const sources = luminousSources(subject.items, subject.room);
   const ambientLux = opts.ambient === false ? 0 : computeEnvironmentalPhysics(subject).reflectedLux;
   const field = sampleField({
     surface: 'wall',
@@ -324,7 +326,7 @@ export function computeFloorLuxField(roomState, options = {}) {
   const subject = isRecord(roomState) ? roomState : {};
   const opts = isRecord(options) ? options : {};
   const floor = floorEnvelope(subject);
-  const sources = luminousSources(subject.items);
+  const sources = luminousSources(subject.items, subject.room);
   const ambientLux = opts.ambient === false ? 0 : computeEnvironmentalPhysics(subject).reflectedLux;
   const field = sampleField({
     surface: 'floor',
@@ -343,7 +345,7 @@ export function computeFloorLuxField(roomState, options = {}) {
 export function createWallLuxProbe(layout) {
   const subject = isRecord(layout) ? layout : {};
   const wall = wallEnvelope(subject);
-  const sources = luminousSources(subject.items);
+  const sources = luminousSources(subject.items, subject.room);
   const ambientLux = computeEnvironmentalPhysics(subject).reflectedLux;
   return (xCm, yCm) => {
     if (!Number.isFinite(xCm) || !Number.isFinite(yCm)) return null;

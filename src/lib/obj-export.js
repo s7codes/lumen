@@ -1,11 +1,13 @@
 import { getProduct } from '../data/products.js';
 import { sanitizeText } from '../security/sanitize.js';
-import { furnitureLayout, moduleBox } from './room-3d.js';
+import { furnitureLayout, moduleRoomBox } from './room-3d.js';
+import { DEFAULT_ROOM_WALL, WALL_LABELS, wallOf } from './room-walls.js';
 
 /*
  * Wavefront OBJ export of the 3D room. Units are centimetres in the room
- * frame: x along the main wall, y up from the floor, z into the room, which
- * is the right-handed Y-up frame most CAD and DCC tools import by default.
+ * frame: x along the north wall, y up from the floor, z into the room toward
+ * the south wall, which is the right-handed Y-up frame most CAD and DCC tools
+ * import by default. Modules on every wall are written in that one frame.
  * Every face winds counter-clockwise seen from the side its normal points to.
  */
 
@@ -84,7 +86,7 @@ function writeBox(writer, { x0, x1, y0, y1, z0, z1 }) {
   writer.face(base, [4, 8, 7, 3], NORMALS.py);
 }
 
-/** Floor and three walls as single-sided quads facing into the room. The fourth side stays open to the viewer. */
+/** Floor and the four walls as single-sided quads facing into the room. */
 function writeEnvelope(writer, { widthCm: w, depthCm: d, heightCm: h }) {
   const quad = (points, normal) => writer.face(writer.vertices(points), [1, 2, 3, 4], normal);
   quad(
@@ -123,12 +125,21 @@ function writeEnvelope(writer, { widthCm: w, depthCm: d, heightCm: h }) {
     ],
     NORMALS.nx,
   );
+  quad(
+    [
+      [0, 0, d],
+      [0, h, d],
+      [w, h, d],
+      [w, 0, d],
+    ],
+    NORMALS.nz,
+  );
 }
 
 /**
  * Serializes a room state into an ASCII Wavefront OBJ string: the envelope,
  * each part of the reference furniture, then every mounted module as its
- * product box at its wall position. Object names are single sanitized tokens;
+ * product box at its position on its wall, carried into the room frame. Object names are single sanitized tokens;
  * free text only reaches comment lines, reduced to one line of printable ASCII.
  */
 export function buildRoomObj(state, projectName) {
@@ -141,13 +152,13 @@ export function buildRoomObj(state, projectName) {
     '# Lumen 3D Export',
     `# Project: ${title}`,
     `# Room: ${room.widthCm} x ${room.depthCm} x ${room.heightCm} cm (W x D x H)`,
-    '# Units: cm. Frame: x along the main wall, y up, z into the room.',
+    '# Units: cm. Frame: x along the north wall, y up, z into the room toward the south wall.',
     `# Modules: ${items.length}`,
     '',
     ...NORMAL_VECTORS.map((vector) => `vn ${vector}`),
   );
 
-  writer.object('room_envelope', 'Floor and three walls, open to the viewer');
+  writer.object('room_envelope', 'Floor and four walls: north, east, south, west');
   writeEnvelope(writer, room);
 
   const furniture = furnitureLayout(room);
@@ -163,11 +174,13 @@ export function buildRoomObj(state, projectName) {
     const product = getProduct(item.productId);
     const { w, h, d } = product.dimsCm;
     const order = String(index + 1).padStart(2, '0');
+    const wall = wallOf(item);
+    const onWall = wall === DEFAULT_ROOM_WALL ? '' : ` on the ${WALL_LABELS[wall]}`;
     writer.object(
-      `module_${order}_${objToken(product.sku, 'module')}_${objToken(product.id, 'part')}`,
-      `${product.name}, ${item.finish}, ${w} x ${h} x ${d} cm at x ${item.xCm}, y ${item.yCm}`,
+      `module_${order}_${objToken(product.sku, 'module')}_${objToken(product.id, 'part')}${onWall ? `_${wall}` : ''}`,
+      `${product.name}, ${item.finish}, ${w} x ${h} x ${d} cm${onWall} at x ${item.xCm}, y ${item.yCm}`,
     );
-    writeBox(writer, moduleBox(item));
+    writeBox(writer, moduleRoomBox(item, room));
   });
 
   return `${lines.join('\n')}\n`;
