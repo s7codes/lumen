@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v3.0.0-e8923a)
+![Release](https://img.shields.io/badge/release-v3.1.0-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![three.js](https://img.shields.io/badge/three.js-r187-2a2825)
@@ -11,7 +11,15 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v3.0.0**. Signing in now binds the cloud library to the account, not
+Current release: **v3.1.0**. The lighting engine resolves illuminance point by point.
+`src/lib/illuminance-field.js` reduces every lit module to its emission aperture and
+sums `E = I(theta) * cos(phi) / r^2` over a 24 x 16 grid on the wall and on the floor,
+on top of the inter-reflected cavity bounce. The 2D Wall Studio gains an **Iso-Lux Map**:
+a basalt to alabaster false-colour field with 100 / 250 / 500 lx contours, Peak, Avg and
+Uniformity callouts and a live cursor probe. The 3D Room Planner gains a **Floor Lux
+Grid** laid on the slab, mirrored in the scene graph and the summary bar.
+
+v3.0.0 bound the cloud library to the account, not
 the browser: the client sends its session as a Bearer token, the server resolves a
 deterministic `acct-` namespace from the signed address, and sign-in moves the guest
 library built before it into the account, so a project saved in one browser opens in any
@@ -58,6 +66,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v3.1.0  | Point-by-point photometric field, Iso-Lux Map with contours and cursor probe, 3D Floor Lux Grid |
 | v3.0.0  | Session-bound account libraries with guest claim, isolated E2E store, Sabine RT60 and lux engine, exploded assembly drawing |
 | v2.0.0  | Lumen Cloud HTTP API in `server/`, atomic JSON persistence, signed sessions, dual-transport client with offline sync |
 | v1.2.0  | 24V DC bus topology overlay and telemetry, shareable `?scene=` links, checkout installation and anchor schedule |
@@ -131,7 +140,8 @@ src/
                         closed-form spring, display mode and currency stores,
                         photometry and intensity model, 24V bus electrical model,
                         daisy-chain routing and drop (bus-topology), illuminance
-                        and Sabine RT60 (room-physics), share link
+                        and Sabine RT60 (room-physics), point-by-point lux
+                        field and iso-lux contours (illuminance-field), share link
                         codec (scene-codec), clipboard with fallback,
                         quote engine, formatting, nav routes, lazy chunk loaders
                         and prefetch (route-manifest)
@@ -174,7 +184,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '3.0.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '3.1.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -504,6 +514,13 @@ custom properties, so React never re-renders on pointer movement.
   centre, the canopy for ceiling spots, the left end cap for track. Each hop carries the
   current of every node after it on a 2 x 2.5 mm2 copper loop; the drop at the last node
   is checked against 3%. The overlay follows a drag live.
+- **Iso-Lux Map** beside it lays the point-by-point wall illuminance over the elevation:
+  a log-scaled ramp from basalt through deep bronze and tungsten amber to warm alabaster
+  (5 to 2,000 lx), dashed 100 lx and solid 250 / 500 lx contours, the hotspot reticle and
+  `Peak`, `Avg` and `Uniformity` callouts. The attic slope is clipped out of the field
+  and its statistics. Hovering reads the exact point law under the cursor
+  (`Probe 693 lx @ X 93 / Y 142`), written to the DOM outside React. The field follows a
+  drag and a nudge cm for cm.
 - The summary reports modules, connected 24V load, live flux, price, driver, the bus
   run (`Run 9.4 m / 4.50 A / 0.26 V drop (1.1%)`) and **Acoustics & Illuminance**
   (`Illuminance: 459 lx (Studio Task)`, `RT60: 1.52 s`); see Acoustics and illuminance. **Sync
@@ -578,6 +595,10 @@ custom properties, so React never re-renders on pointer movement.
 - The summary carries the same 24V bus run readout for the main wall, and the
   Acoustics & Illuminance readout for the whole room volume, its lighting mode and its
   floor reference.
+- **Floor Lux Grid** in the camera settings popover lays the floor illuminance field on
+  the slab as a false-colour texture with iso-lux contours and a `Peak` label at the
+  hotspot. The hidden scene graph mirrors it as `room-floor-lux` (peak, average, minimum,
+  uniformity, hotspot, iso-lux coverage) and the summary bar adds a Floor Lux Grid cell.
 - State persists under `lumen_room_3d_v1` and is rebuilt on every read with the wall
   layout's per-module rules plus a clamped envelope, furniture, lighting and camera.
 
@@ -606,6 +627,30 @@ read as the front of a reference zone 260 cm deep, minus the attic slope prism.
   readout always adds up.
 - The derivation (`V`, `A` in m2 sabins, `rho`, wall lux, task coverage) appears under
   the readout in Technical mode only.
+
+### Point-by-point field
+
+`computeWallLuxField(layoutOrRoom, options)` and `computeFloorLuxField(roomOrLayout,
+options)` in `src/lib/illuminance-field.js` sample a deterministic grid (24 x 16 by
+default, 4 to 96 per axis) at cell centres. A 2D wall is read over its 260 cm reference
+zone; floor fields report plan coordinates, `y` measured out from the main wall.
+
+- Every module with `watts > 0` and `led !== false` becomes its emission aperture, matching
+  the emitter strips of the 3D scene: the shelf's front lip 23 cm out, the cube's top
+  panel, the sideboard's underside, the lightbar's opal face, the column's bilateral slot,
+  the spot's canopy and the frame's rear halo channels. Lines split into 2.5 cm segments.
+- Each segment carries an equal share of its lobe, `I(theta) = I0 * cos^m(theta)` with
+  `I0 = phi * (m + 1) / (2 * pi)` from `src/lib/photometry.js`, scaled by the 0.8
+  maintenance factor. A point on a surface with normal `n` receives
+  `E = I(theta) * cos(phi) / r^2`, `r` in metres and clamped at 2 cm.
+- The uniform term is `reflectedLux` from `computeEnvironmentalPhysics`, so an unlit
+  corner still reads the cavity bounce, and a room with every channel off reads 0 lx.
+- Statistics: `peakLux`, `minLux`, `avgLux`, `uniformityRatio` (EN 12464-1 U0, minimum
+  over average), `diversityRatio` (average over peak) and the share of the surface at or
+  above 100, 250 and 500 lx. The hotspot is refined on a 1 cm lattice around the
+  brightest cell, so it moves exactly with the module that casts it.
+- `isoLuxContours` traces the three levels by marching squares; `fieldImage` upsamples
+  the grid bilinearly into the ramp for the 2D canvas and the 3D floor texture alike.
 
 ## Spec sheets
 
