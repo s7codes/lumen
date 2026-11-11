@@ -7,6 +7,19 @@ import { ArrowRight } from './icons.jsx';
 
 const EMPTY = { email: '', password: '' };
 
+function countOf(n, word) {
+  return `${n} ${n === 1 ? word : `${word}s`}`;
+}
+
+/** Sentence for what sign-in moved from this browser profile into the account library. */
+function claimNote(claimed) {
+  if (!claimed) return '';
+  const parts = [];
+  if (claimed.projects > 0) parts.push(countOf(claimed.projects, 'project'));
+  if (claimed.quotes > 0) parts.push(countOf(claimed.quotes, 'requisition'));
+  return parts.length > 0 ? ` ${parts.join(' and ')} from this browser moved into your account library.` : '';
+}
+
 /**
  * Sign-in dialog. The form validates locally, then opens a signed session on
  * the Lumen Cloud API; the password lives only in component state and in the
@@ -55,7 +68,7 @@ export function AuthModal({ open, onClose, onSignedIn, returnFocus }) {
     addToast(
       result.offline
         ? `Signed in as ${result.user.email} on this device. Lumen Cloud is unreachable.`
-        : `Signed in as ${result.user.email}.`,
+        : `Signed in as ${result.user.email}.${claimNote(result.claimed)}`,
       'success',
     );
     onSignedIn(result.user);

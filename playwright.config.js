@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_SERVER_ENV } from './server/config.js';
 
 const PORT = 4173;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -29,6 +30,7 @@ export default defineConfig({
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: { LUMEN_TEST_RESET: '1' },
+    // server/.data/lumen-cloud.test.json: a dev server on the default store can run alongside.
+    env: { ...E2E_SERVER_ENV },
   },
 });

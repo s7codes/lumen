@@ -57,7 +57,7 @@
 .account-profile__facts {
   grid-area: facts;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--space-4) var(--space-5);
   padding-top: var(--space-5);
   border-top: 1px solid var(--bento-edge);
@@ -88,6 +88,12 @@
 
   .account-profile__facts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 560px) and (max-width: 1023px) {
+  .account-profile__facts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

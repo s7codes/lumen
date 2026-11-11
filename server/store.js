@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, renameSync, statSync } from 'node:fs';
 import { mkdir, open, rename, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -9,6 +9,8 @@ export const STORE_FORMAT = 'lumen.cloud';
 export const STORE_VERSION = 1;
 export const NAMESPACE_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 export const QUOTE_ORIGINS = Object.freeze(['api', 'device']);
+// Account libraries live under this prefix and are reachable only through a verified session.
+export const ACCOUNT_PREFIX = 'acct-';
 
 const MAX_NAMESPACES = 512;
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
@@ -21,6 +23,20 @@ function isRecord(value) {
 
 export function isNamespace(value) {
   return typeof value === 'string' && NAMESPACE_PATTERN.test(value);
+}
+
+/** A browser-profile namespace a client may name in X-Lumen-Client. The account prefix is reserved. */
+export function isClientNamespace(value) {
+  return isNamespace(value) && !value.startsWith(ACCOUNT_PREFIX);
+}
+
+/**
+ * Deterministic library namespace for a signed-in address: 160 bits of a
+ * domain-separated SHA-256, stable across processes and session keys.
+ */
+export function accountNamespace(email) {
+  const digest = createHash('sha256').update(`lumen.account.v1:${email}`).digest('hex');
+  return `${ACCOUNT_PREFIX}${digest.slice(0, 40)}`;
 }
 
 function emptyNamespace() {
@@ -164,6 +180,31 @@ export function createStore({ file = null } = {}) {
         const next = new Map(namespaces);
         next.set(id, draft);
         evictOldest(next, id);
+        await commit(next);
+        return result;
+      });
+    },
+
+    /**
+     * Moves records from one namespace into another in a single atomic write.
+     * `merge(target, source)` mutates both drafts and returns a result; nothing
+     * is written unless it reports `changed`. An emptied source is deleted.
+     */
+    claim(fromId, toId, merge) {
+      return serialized(async () => {
+        const source = namespaces.get(fromId);
+        if (!source || fromId === toId) return null;
+        const target = namespaces.get(toId) ?? emptyNamespace();
+        const now = Date.now();
+        const into = { touchedAt: now, projects: [...target.projects], quotes: [...target.quotes] };
+        const from = { touchedAt: now, projects: [...source.projects], quotes: [...source.quotes] };
+        const result = merge(into, from);
+        if (!result?.changed) return result ?? null;
+        const next = new Map(namespaces);
+        next.set(toId, into);
+        if (from.projects.length === 0 && from.quotes.length === 0) next.delete(fromId);
+        else next.set(fromId, from);
+        evictOldest(next, toId);
         await commit(next);
         return result;
       });

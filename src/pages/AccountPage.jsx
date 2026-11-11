@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import {
   deleteProject,
   getCloudTransport,
+  getLibraryScope,
+  LIBRARY_LABELS,
   loadProjects,
   loadQuotes,
   subscribeCloudTransport,
@@ -289,10 +291,18 @@ export default function AccountPage() {
     }
   };
   const count = (list) => (loading ? '--' : padIndex(list.length));
+  // Read on every render: a refused session drops to the profile library during the load.
+  const scope = getLibraryScope();
 
   const leave = () => {
+    const bound = getLibraryScope() === 'account';
     signOut();
-    addToast('Signed out. Saved projects stay with this browser profile.', 'info');
+    addToast(
+      bound
+        ? 'Signed out. Your projects stay in your Lumen Cloud account.'
+        : 'Signed out. Saved projects stay with this browser profile.',
+      'info',
+    );
   };
 
   const facts = [
@@ -301,6 +311,7 @@ export default function AccountPage() {
       value: loading && transport.mode === 'idle' ? '--' : transport.label,
       attrs: { 'data-mode': transport.mode, 'data-round-trip-ms': transport.roundTripMs ?? undefined },
     },
+    { term: 'Library', value: LIBRARY_LABELS[scope], attrs: { 'data-scope': scope } },
     { term: 'Sync', value: SYNC_LABELS[cloud.status] },
     { term: 'Projects', value: count(cloud.projects) },
     { term: 'Quotes', value: count(cloud.quotes) },

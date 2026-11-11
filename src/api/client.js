@@ -1,4 +1,4 @@
-import { sanitizeSessionToken, sanitizeUser } from '../lib/auth.js';
+import { loadSession, loadSessionToken, persistSessionToken, sanitizeSessionToken, sanitizeUser } from '../lib/auth.js';
 import {
   MAX_REVISION,
   MAX_STORED_PROJECTS,
@@ -23,14 +23,21 @@ import { sanitizeProject, validateProject } from '../lib/quote.js';
 import { isOneOf, safeJsonParse, safeStorage, sanitizeText } from '../security/sanitize.js';
 
 /**
- * Lumen Cloud client. Calls go over HTTP to the same-origin /api/* server,
- * scoped to this browser profile by the X-Lumen-Client namespace. The
- * localStorage mirror stays the offline copy: after every server response it
- * is reconciled to the server list, and a fingerprint marker records the
- * mirror state that matched. A mirror that no longer matches its marker was
- * changed on this device (offline saves, a v1 library) and is pushed to
- * /api/sync before the next call. When the API is unreachable, projects fall
- * back to the mirror; requisitions are refused rather than issued offline.
+ * Lumen Cloud client. Calls go over HTTP to the same-origin /api/* server.
+ * Signed out, they are scoped to this browser profile by the X-Lumen-Client
+ * namespace; with a server session they also carry the Bearer token and the
+ * server resolves the account library, so a project saved in one browser
+ * opens in any other signed in with the same address.
+ *
+ * The localStorage mirror stays the offline copy: after every server response
+ * it is reconciled to the server list, and a marker records the fingerprint
+ * that matched and which library it belongs to. A mirror that no longer
+ * matches its marker was changed on this device (offline saves, a v1 library)
+ * and is pushed to /api/sync before the next call. A browser-profile mirror
+ * replaces its namespace; an account library is shared between devices, so a
+ * device only ever merges into it, and a mirror left by another account is
+ * never pushed at all. When the API is unreachable, projects fall back to the
+ * mirror; requisitions are refused rather than issued offline.
  */
 
 export const PROJECTS_STORAGE_KEY = 'lumen_cloud_projects_v1';
@@ -47,6 +54,10 @@ export const TRANSPORT_LABELS = Object.freeze({
   http: 'Lumen Cloud API (HTTP)',
   local: 'Device storage (offline)',
 });
+export const LIBRARY_LABELS = Object.freeze({
+  account: 'Account (session-bound)',
+  device: 'This browser profile',
+});
 export { MAX_STORED_PROJECTS, MAX_STORED_QUOTES, PROJECT_KINDS, PROJECT_NAME_MAX, PROJECT_NAMES, QUOTE_STATUSES };
 
 const SYNC_BATCH_CHARS = 48 * 1024;
@@ -62,6 +73,9 @@ export class ApiError extends Error {
 }
 
 class OfflineError extends Error {}
+
+// The server refused the stored session (expired, revoked, or a rotated key).
+class SessionLostError extends Error {}
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -122,13 +136,38 @@ function clientId() {
   return id;
 }
 
+/* Library scope */
+
+/** `account` while a server session token is held, otherwise `device` (this browser profile). */
+export function getLibraryScope() {
+  return loadSessionToken() && loadSession() ? 'account' : 'device';
+}
+
+// Which library a mirror marker was reconciled against. Account owners are a
+// fingerprint of the address, so markers never store it a second time.
+function libraryOwner() {
+  const user = loadSessionToken() ? loadSession() : null;
+  return user ? `acct.${fingerprint(user.email)}` : 'device';
+}
+
 /* HTTP */
 
-async function request(trip, method, path, body, headers = {}) {
+/**
+ * One JSON call. With `session` (the default) a stored server session rides
+ * along as a Bearer token; a 401 for it drops the token and throws
+ * SessionLostError so the round trip reruns on the browser-profile library.
+ */
+async function request(trip, method, path, body, { headers = {}, session = true } = {}) {
   if (typeof fetch !== 'function') throw new OfflineError();
+  const bearer = session ? sanitizeSessionToken(loadSessionToken()) : null;
   const init = {
     method,
-    headers: { Accept: 'application/json', [CLIENT_HEADER]: clientId(), ...headers },
+    headers: {
+      Accept: 'application/json',
+      [CLIENT_HEADER]: clientId(),
+      ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+      ...headers,
+    },
     credentials: 'same-origin',
     cache: 'no-store',
     redirect: 'error',
@@ -153,6 +192,12 @@ async function request(trip, method, path, body, headers = {}) {
   }
   trip.networkMs += now() - started;
 
+  if (response.status === 401 && bearer) {
+    // A sign-in from another tab may have replaced the token meanwhile; keep that one.
+    if (loadSessionToken() === bearer) persistSessionToken(null);
+    throw new SessionLostError();
+  }
+
   // A static host answers /api/* with its HTML fallback: the API is not deployed there.
   const type = response.headers.get('content-type') ?? '';
   if (!type.startsWith('application/json') && !(response.ok && text === '')) throw new OfflineError();
@@ -174,13 +219,24 @@ async function request(trip, method, path, body, headers = {}) {
  * when the call settles, never sooner than LATENCY_MS.min after it started,
  * so the mirror changes exactly when the UI leaves its pending state.
  */
+async function runWork(work, trip) {
+  try {
+    return await work(trip);
+  } catch (error) {
+    if (!(error instanceof SessionLostError)) throw error;
+    // The token is gone now, so the rerun resolves the browser-profile library from scratch.
+    trip.commits.clear();
+    return work(trip);
+  }
+}
+
 async function roundTrip(work) {
   const started = now();
   const trip = { mode: 'http', networkMs: 0, commits: new Map() };
   let value;
   let failure = null;
   try {
-    value = await work(trip);
+    value = await runWork(work, trip);
   } catch (error) {
     failure = error;
   }
@@ -228,14 +284,25 @@ function fingerprint(raw) {
   return `${text.length.toString(36)}.${hash.toString(36)}`;
 }
 
-function readMarkers() {
-  const stored = safeStorage.read(SYNC_STORAGE_KEY, { fallback: {}, validate: isRecord });
-  const pick = (value) => (typeof value === 'string' && value.length <= 32 ? value : null);
-  return { projects: pick(stored.projects), quotes: pick(stored.quotes) };
+const OWNER_PATTERN = /^(?:device|acct\.[a-z0-9]{1,8}\.[a-z0-9]{1,8})$/;
+
+function readMarker(value) {
+  // v2 markers were bare fingerprints of a browser-profile mirror.
+  if (typeof value === 'string') return { fp: value.length <= 32 ? value : null, owner: 'device' };
+  if (!isRecord(value)) return { fp: null, owner: 'device' };
+  return {
+    fp: typeof value.fp === 'string' && value.fp.length <= 32 ? value.fp : null,
+    owner: typeof value.owner === 'string' && OWNER_PATTERN.test(value.owner) ? value.owner : 'device',
+  };
 }
 
-function writeMarker(name, value) {
-  safeStorage.write(SYNC_STORAGE_KEY, { ...readMarkers(), [name]: value });
+function readMarkers() {
+  const stored = safeStorage.read(SYNC_STORAGE_KEY, { fallback: {}, validate: isRecord });
+  return { projects: readMarker(stored.projects), quotes: readMarker(stored.quotes) };
+}
+
+function writeMarker(name, fp) {
+  safeStorage.write(SYNC_STORAGE_KEY, { ...readMarkers(), [name]: { fp, owner: libraryOwner() } });
 }
 
 /** Mirror := server list. A semantically equal mirror is left as written and only re-marked. */
@@ -278,19 +345,27 @@ function batchBySize(records) {
   return batches;
 }
 
-/** Pushes a diverged mirror and resolves with the server list, or null when the mirror is in sync. */
+/**
+ * Pushes a diverged mirror and resolves with the server list, or null when
+ * there is nothing to push: the mirror is in sync, or it was reconciled
+ * against another account and must not leak into this library.
+ */
 async function syncIfDiverged(trip, name) {
   const { raw, list } = readMirror(name);
-  if (fingerprint(raw) === readMarkers()[name]) return null;
+  const marker = readMarkers()[name];
+  const owner = libraryOwner();
+  if (fingerprint(raw) === marker.fp) return null;
+  if (marker.owner !== 'device' && marker.owner !== owner) return null;
 
   let payload;
   if (name === 'quotes') {
     payload = await request(trip, 'POST', '/sync', { quotes: list });
   } else {
     // A full 12-project library can exceed one 64 KB body; later batches merge.
+    const first = owner === 'device' ? 'replace' : 'merge';
     const batches = batchBySize(list.map(serializeProjectRecord));
     for (const [i, projects] of batches.entries()) {
-      payload = await request(trip, 'POST', '/sync', { mode: i === 0 ? 'replace' : 'merge', projects });
+      payload = await request(trip, 'POST', '/sync', { mode: i === 0 ? first : 'merge', projects });
     }
   }
   const synced = COLLECTIONS[name].normalize(payload[name]);
@@ -459,20 +534,32 @@ export function loadQuotes() {
 
 /* Sessions */
 
+function claimedCount(library, key) {
+  const value = isRecord(library) && isRecord(library.claimed) ? library.claimed[key] : 0;
+  return Number.isInteger(value) && value >= 0 && value <= 999 ? value : 0;
+}
+
 /**
- * Opens a server session. Resolves with `{ user, token, expiresAt }`, or
- * with null when the API is unreachable so the caller can fall back to a
- * device-only guest session. Rejects with ApiError when the server refuses.
+ * Opens a server session. The server also moves this browser profile's
+ * library into the account; `claimed` counts what moved. Resolves with
+ * `{ user, token, expiresAt, claimed }`, or with null when the API is
+ * unreachable so the caller can fall back to a device-only guest session.
+ * Rejects with ApiError when the server refuses.
  */
 export async function openSession({ email, password }) {
   const trip = { mode: 'http', networkMs: 0 };
   try {
-    const payload = await request(trip, 'POST', '/auth/session', { email, password });
+    const payload = await request(trip, 'POST', '/auth/session', { email, password }, { session: false });
     const user = sanitizeUser(payload.user);
     const token = sanitizeSessionToken(payload.token);
     if (!user || !token) throw new ApiError('storage', 'Lumen Cloud sent an unreadable session.');
     setTransport('http', Math.round(trip.networkMs));
-    return { user, token, expiresAt: typeof payload.expiresAt === 'string' ? payload.expiresAt : null };
+    return {
+      user,
+      token,
+      expiresAt: typeof payload.expiresAt === 'string' ? payload.expiresAt : null,
+      claimed: { projects: claimedCount(payload.library, 'projects'), quotes: claimedCount(payload.library, 'quotes') },
+    };
   } catch (error) {
     if (!(error instanceof OfflineError)) throw error;
     setTransport('local', null);
@@ -485,7 +572,10 @@ export async function closeSession(token) {
   const bearer = sanitizeSessionToken(token);
   if (!bearer) return false;
   try {
-    await request({ networkMs: 0 }, 'DELETE', '/auth/session', undefined, { Authorization: `Bearer ${bearer}` });
+    await request({ networkMs: 0 }, 'DELETE', '/auth/session', undefined, {
+      headers: { Authorization: `Bearer ${bearer}` },
+      session: false,
+    });
     return true;
   } catch {
     return false;

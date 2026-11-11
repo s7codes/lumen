@@ -14,7 +14,7 @@ import {
 import { isProjectId, PROJECT_KINDS, projectIdFor, sanitizeProjectName } from '../src/lib/project-library.js';
 import { buildQuote, CURRENCY_CODES, resolvePromo, sanitizeProject, validateProject } from '../src/lib/quote.js';
 import { isOneOf, safeJsonParse } from '../src/security/sanitize.js';
-import { isNamespace } from './store.js';
+import { ACCOUNT_PREFIX, accountNamespace, isClientNamespace } from './store.js';
 
 export const MAX_BODY_BYTES = 64 * 1024;
 export const CLIENT_HEADER = 'x-lumen-client';
@@ -29,6 +29,8 @@ const MALFORMED = Symbol('malformed');
 const JSON_CONTENT_TYPE = /^application\/json\s*(?:;\s*charset\s*=\s*"?utf-8"?\s*)?$/i;
 const TOKEN_PATTERN = /^lmn1\.([A-Za-z0-9_-]{16,512})\.([A-Za-z0-9_-]{43})$/;
 const BEARER_PATTERN = /^Bearer ([^\s]{1,700})$/;
+const BEARER_SCHEME = /^Bearer\s/i;
+const NOTHING_CLAIMED = Object.freeze({ projects: 0, quotes: 0 });
 
 const SECURITY_HEADERS = Object.freeze({
   'X-Content-Type-Options': 'nosniff',
@@ -144,7 +146,10 @@ function readJsonBody(req) {
 
 function requireNamespace(req) {
   const id = req.headers[CLIENT_HEADER];
-  if (!isNamespace(id)) {
+  if (typeof id === 'string' && id.startsWith(ACCOUNT_PREFIX)) {
+    throw invalid(`X-Lumen-Client ids starting with "${ACCOUNT_PREFIX}" are reserved for signed-in libraries.`);
+  }
+  if (!isClientNamespace(id)) {
     throw invalid('Send an X-Lumen-Client header: 16 to 64 characters of A-Z, a-z, 0-9, - or _.');
   }
   return id;
@@ -200,6 +205,12 @@ function bearerToken(req) {
   return match ? match[1] : null;
 }
 
+// Only the Bearer scheme selects a session; other schemes (a staging proxy's Basic auth) stay anonymous.
+function presentsBearer(req) {
+  const header = req.headers.authorization;
+  return typeof header === 'string' && BEARER_SCHEME.test(header);
+}
+
 function sessionView(claims) {
   return { user: { name: GUEST_NAME, email: claims.sub }, expiresAt: new Date(claims.exp).toISOString() };
 }
@@ -231,9 +242,74 @@ function quoteItems(quote) {
   return items;
 }
 
+/**
+ * Moves a browser-profile library into an account library. Projects match by
+ * id and quotes by requisition ref; on a project clash the newer save wins
+ * and the revision never goes backwards. Records past the library caps stay
+ * in the guest namespace rather than being dropped.
+ */
+function mergeLibraries(account, guest) {
+  const projects = new Map(account.projects.map((project) => [project.id, project]));
+  const keptProjects = [];
+  let movedProjects = 0;
+  for (const record of guest.projects) {
+    const current = projects.get(record.id);
+    if (current) {
+      const newer = record.savedAt > current.savedAt ? record : current;
+      projects.set(record.id, { ...newer, revision: Math.max(record.revision, current.revision) });
+      movedProjects += 1;
+    } else if (projects.size < MAX_STORED_PROJECTS) {
+      projects.set(record.id, record);
+      movedProjects += 1;
+    } else {
+      keptProjects.push(record);
+    }
+  }
+
+  const quotes = new Map(account.quotes.map((quote) => [quote.ref, quote]));
+  const keptQuotes = [];
+  let movedQuotes = 0;
+  for (const quote of guest.quotes) {
+    if (quotes.has(quote.ref) || quotes.size < MAX_STORED_QUOTES) {
+      if (!quotes.has(quote.ref)) quotes.set(quote.ref, quote);
+      movedQuotes += 1;
+    } else {
+      keptQuotes.push(quote);
+    }
+  }
+
+  account.projects = [...projects.values()].sort(byNewest('savedAt'));
+  account.quotes = [...quotes.values()].sort(byNewest('submittedAt'));
+  guest.projects = keptProjects;
+  guest.quotes = keptQuotes;
+  return { changed: movedProjects + movedQuotes > 0, projects: movedProjects, quotes: movedQuotes };
+}
+
 function createHandlers({ store, version, sessions }) {
   const projectsOf = (id) => store.read(id).projects;
   const quotesOf = (id) => store.read(id).quotes.map(publicQuote);
+
+  async function claimGuest(guest, account) {
+    const pending = store.read(guest);
+    if (pending.projects.length === 0 && pending.quotes.length === 0) return NOTHING_CLAIMED;
+    const result = await store.claim(guest, account, mergeLibraries);
+    return result ? { projects: result.projects, quotes: result.quotes } : NOTHING_CLAIMED;
+  }
+
+  /**
+   * Library namespace for one request. A Bearer session resolves the account
+   * library and first claims any records left in this browser profile's
+   * namespace; without one, X-Lumen-Client is used exactly as in v2. A
+   * presented but unverifiable session is refused, never silently downgraded.
+   */
+  async function libraryOf(req) {
+    if (!presentsBearer(req)) return requireNamespace(req);
+    const claims = sessions.verify(bearerToken(req));
+    if (!claims) throw new HttpError(401, 'unauthorized', 'Session token is missing, expired or revoked.');
+    const account = accountNamespace(claims.sub);
+    if (req.headers[CLIENT_HEADER] !== undefined) await claimGuest(requireNamespace(req), account);
+    return account;
+  }
 
   return {
     health: () => [200, { ok: true, version, storage: 'server' }],
@@ -244,7 +320,16 @@ function createHandlers({ store, version, sessions }) {
       const fields = validateCredentials({ email: body.email, password: body.password });
       if (Object.keys(fields).length > 0) throw invalid(fields.email ?? fields.password, { fields });
       const { token, claims } = sessions.issue(sanitizeEmail(body.email));
-      return [201, { token, ...sessionView(claims) }];
+      const guest = req.headers[CLIENT_HEADER];
+      let claimed = NOTHING_CLAIMED;
+      if (isClientNamespace(guest)) {
+        // A failed claim never blocks sign-in: the next authenticated call retries it.
+        claimed = await claimGuest(guest, accountNamespace(claims.sub)).catch((error) => {
+          if (error?.code !== 'LUMEN_STORAGE') throw error;
+          return NOTHING_CLAIMED;
+        });
+      }
+      return [201, { token, ...sessionView(claims), library: { scope: 'account', claimed } }];
     },
 
     readSession(req) {
@@ -259,12 +344,12 @@ function createHandlers({ store, version, sessions }) {
       return [204];
     },
 
-    listProjects(req) {
-      return [200, { projects: projectsOf(requireNamespace(req)) }];
+    async listProjects(req) {
+      return [200, { projects: projectsOf(await libraryOf(req)) }];
     },
 
     async saveProject(req) {
-      const id = requireNamespace(req);
+      const id = await libraryOf(req);
       const body = await readJsonBody(req);
       const { kind } = body;
       if (!isOneOf(kind, PROJECT_KINDS)) throw invalid('Unknown project type. Send kind "wall" or "room".');
@@ -303,7 +388,7 @@ function createHandlers({ store, version, sessions }) {
     },
 
     async deleteProject(req, projectId) {
-      const id = requireNamespace(req);
+      const id = await libraryOf(req);
       if (!isProjectId(projectId)) throw invalid('Unknown project.');
       if (projectsOf(id).some((project) => project.id === projectId)) {
         await store.transact(id, (draft) => {
@@ -313,12 +398,12 @@ function createHandlers({ store, version, sessions }) {
       return [200, { projects: projectsOf(id) }];
     },
 
-    listQuotes(req) {
-      return [200, { quotes: quotesOf(requireNamespace(req)) }];
+    async listQuotes(req) {
+      return [200, { quotes: quotesOf(await libraryOf(req)) }];
     },
 
     async submitQuote(req) {
-      const id = requireNamespace(req);
+      const id = await libraryOf(req);
       const body = await readJsonBody(req);
       const { quote, project } = body;
       if (!isRecord(quote) || !isRecord(project)) throw invalid('Send { quote, project } objects.');
@@ -372,7 +457,7 @@ function createHandlers({ store, version, sessions }) {
      * device, and device-only records are kept with origin "device".
      */
     async sync(req) {
-      const id = requireNamespace(req);
+      const id = await libraryOf(req);
       const body = await readJsonBody(req);
       const hasProjects = body.projects !== undefined;
       const hasQuotes = body.quotes !== undefined;
@@ -403,7 +488,7 @@ function createHandlers({ store, version, sessions }) {
     },
 
     async reset(req) {
-      const removed = await store.remove(requireNamespace(req));
+      const removed = await store.remove(await libraryOf(req));
       return [200, { ok: true, reset: removed }];
     },
   };

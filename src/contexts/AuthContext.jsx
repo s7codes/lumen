@@ -48,7 +48,7 @@ export function AuthProvider({ children }) {
     const next = session?.user ?? createSession(email);
     persistSessionToken(session?.token ?? null);
     setUser(next);
-    return { ok: true, user: next, errors: {}, offline: !session };
+    return { ok: true, user: next, errors: {}, offline: !session, claimed: session?.claimed ?? null };
   }, []);
 
   const signOut = useCallback(() => {
