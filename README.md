@@ -1,14 +1,30 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v3.4.0-e8923a)
+![Release](https://img.shields.io/badge/release-v3.5.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v3.4.0**. The 2D Wall Studio issues installation drawings.
+Current release: **v3.5.0**. Every powered module carries a DALI-2 arc level, `dimPct`
+from 10 to 100%. Selecting a lit module in either planner, or several in the 2D
+Multi-Selection inspector, reveals a **Dimming (10-100%)** slider that commits one undo
+step on release. The level scales delivered flux and active 24V draw everywhere it is
+read: the summary bars, the lumen-method physics, the point-by-point wall and floor lux
+fields, the bus current and cumulative drop, the 3D emitters and lights, and the
+blueprint sheet. Driver sizing stays on the rated connected load. A **DALI-2** scene strip
+in both planners recalls four scenes in one undo step: **Full Output (100%)**,
+**Morning Focus** (task 100%, accent 65%, daylight), **Evening Lounge** (task 45%,
+accent 85%) and **Night Gallery** (task 20%, accent 40%), with task parts (shelf, lightbar,
+pendant, spot, cube) and accent parts (frame, sconce, column, sideboard) defined in
+`src/lib/lighting-scenes.js`. The 3D Room Planner gains undo and redo (`Ctrl+Z`,
+`Ctrl+Y`); camera moves stay out of the history. The level is held only below 100, so
+stored layouts, cloud projects and `?scene=` links without it read as 100% and encode
+byte for byte as before; a dimmed module appends a 7th element to its link tuple.
+
+v3.4.0 made the 2D Wall Studio issue installation drawings.
 **Blueprint** in the toolbar opens a 1:20 ISO A3 elevation compiled by
 `src/lib/blueprint-sheet.js`: the wall envelope with its attic slope cut, overall and
 running dimension chains, every module as `M01`, `M02`... with SKU, finish and wattage,
@@ -95,6 +111,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v3.5.0  | Per-module DALI-2 dimming across physics, lux, bus and WebGL, four scene presets, 3D undo |
 | v3.4.0  | 1:20 ISO A3 blueprint sheet, drilling and anchor schedule, SVG and AutoCAD R12 DXF export |
 | v3.3.0  | CAD multi-select and marquee, group move, align and distribute, smart alignment guides, hardened CI |
 | v3.2.0  | Six-band octave RT60 and STI, 12-part catalog (pendant, baffle, sconce, DALI-2 hub), MIT license |
@@ -219,7 +236,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '3.4.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '3.5.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
