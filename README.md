@@ -1,14 +1,24 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v3.3.0-e8923a)
+![Release](https://img.shields.io/badge/release-v3.4.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v3.3.0**. The 2D Wall Studio becomes a CAD selection surface.
+Current release: **v3.4.0**. The 2D Wall Studio issues installation drawings.
+**Blueprint** in the toolbar opens a 1:20 ISO A3 elevation compiled by
+`src/lib/blueprint-sheet.js`: the wall envelope with its attic slope cut, overall and
+running dimension chains, every module as `M01`, `M02`... with SKU, finish and wattage,
+the routed 24V bus from `PSU 24V FEED`, and an absolute **Drilling & Anchor Schedule**
+(`A01`, `A02`... in cm from the bottom-left datum at FFL, with fixing hardware) under an
+ISO 7200 title block issued by Lumen Spatial Studio Kft., 1052 Budapest. The sheet
+downloads as a self-contained SVG or as an AutoCAD R12 ASCII DXF (`src/lib/dxf-export.js`)
+on six `LUMEN_*` layers, drawn in true centimetres.
+
+v3.3.0 turned the 2D Wall Studio into a CAD selection surface.
 `Shift + Click` toggles modules into a selection, a rubber-band marquee on bare wall picks
 every module it touches, `Ctrl+A` / `Cmd+A` takes all unlocked modules and `Escape`
 clears. A selection moves as a rigid group by pointer or arrow keys, clamped so no member
@@ -85,6 +95,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v3.4.0  | 1:20 ISO A3 blueprint sheet, drilling and anchor schedule, SVG and AutoCAD R12 DXF export |
 | v3.3.0  | CAD multi-select and marquee, group move, align and distribute, smart alignment guides, hardened CI |
 | v3.2.0  | Six-band octave RT60 and STI, 12-part catalog (pendant, baffle, sconce, DALI-2 hub), MIT license |
 | v3.1.0  | Point-by-point photometric field, Iso-Lux Map with contours and cursor probe, 3D Floor Lux Grid |
@@ -139,6 +150,7 @@ src/
                         EnvironmentalPhysicsCell,
                         RouteFallback (loading frame and chunk error), icons
     studio/             WallStage, StudioPalette, StudioInspector, StudioToolbar,
+                        BlueprintSheetModal,
                         StudioSummary, shared field, switch and finish controls
     room3d/             RoomViewport, RoomCanvas (lazy WebGL), RoomControls,
                         RoomInspector, RoomToolbar, RoomSummary, CameraSettings
@@ -154,7 +166,9 @@ src/
   lib/                  bag store and PSU sizing, wall studio geometry and history,
                         room model and 2D bridge (room-3d), WebGL scene description
                         and orbit frame (room-scene), Wavefront OBJ writer
-                        (obj-export), named project ids (project-library), palette
+                        (obj-export), 1:20 blueprint sheet compiler and SVG
+                        (blueprint-sheet), AutoCAD R12 DXF writer (dxf-export),
+                        named project ids (project-library), palette
                         index and ranking (command-index), credentials and session
                         token rules (auth), cloud record rules shared with the
                         server (cloud-records),
@@ -205,7 +219,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '3.3.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '3.4.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -551,6 +565,22 @@ custom properties, so React never re-renders on pointer movement.
   centre, the canopy for ceiling spots, the left end cap for track. Each hop carries the
   current of every node after it on a 2 x 2.5 mm2 copper loop; the drop at the last node
   is checked against 3%. The overlay follows a drag live.
+- **Blueprint** opens the issued drawing as a dialog. `compileBlueprintSheet(layout,
+  { projectName, revision, dateIso })` returns a deterministic model: wall outline and
+  slope cut, overall and running dimension chains, modules numbered in reading order
+  (left to right, then bottom to top), anchors from the catalog mounting points sorted by
+  module then left to right, the bus topology, and the title block (drawing `LMN-BP-01`,
+  scale `1:20`, module and anchor counts, connected 24V load, recommended driver).
+  `buildBlueprintSvg` lays it out on an ISO 5457 A3 frame at true 1:20 with
+  architectural ticks, crosshair anchors, a dashed amber bus trunk, the schedule and the
+  title block; every text node is XML-escaped. The dialog shows the sheet, the title block
+  and a schedule table whose rows mark their crosshair on hover or focus.
+  **Download .SVG Blueprint** saves `<project-slug>-blueprint.svg`; **Download AutoCAD
+  .DXF** saves `<project-slug>-blueprint.dxf`: R12 (`AC1009`) with `HEADER`, `TABLES`
+  (`LTYPE`, `LAYER`, `STYLE`), `ENTITIES` and `EOF`, one unit per centimetre, layers
+  `LUMEN_WALL`, `LUMEN_MODULES`, `LUMEN_ANCHORS` (`CIRCLE` plus crosshair at each drilling
+  point), `LUMEN_24V_BUS` (dashed), `LUMEN_DIMS` and `LUMEN_TITLEBLOCK`. Every DXF string
+  is reduced to one printable ASCII line, so a project name cannot inject group codes.
 - **Iso-Lux Map** beside it lays the point-by-point wall illuminance over the elevation:
   a log-scaled ramp from basalt through deep bronze and tungsten amber to warm alabaster
   (5 to 2,000 lx), dashed 100 lx and solid 250 / 500 lx contours, the hotspot reticle and
