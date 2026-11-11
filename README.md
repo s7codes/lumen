@@ -1,7 +1,7 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v2.0.0-e8923a)
+![Release](https://img.shields.io/badge/release-v3.0.0-e8923a)
 ![React](https://img.shields.io/badge/React-19-2a2825)
 ![Vite](https://img.shields.io/badge/Vite-8-2a2825)
 ![three.js](https://img.shields.io/badge/three.js-r187-2a2825)
@@ -11,7 +11,19 @@ Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is th
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v2.0.0**. Lumen Cloud is now a real HTTP API. A zero-dependency Node
+Current release: **v3.0.0**. Signing in now binds the cloud library to the account, not
+the browser: the client sends its session as a Bearer token, the server resolves a
+deterministic `acct-` namespace from the signed address, and sign-in moves the guest
+library built before it into the account, so a project saved in one browser opens in any
+other signed in with the same address. E2E runs write their own store file, so
+`npm run dev` and `npx playwright test` can run side by side. Both planners gain an
+**Acoustics & Illuminance** readout: average floor illuminance by the lumen method with
+an inter-reflection term, graded Ambient Lounge, Residential Balanced or Studio Task, and
+Sabine RT60 with the damping each acoustic frame adds. Spec sheets gain a fourth drawing,
+**Exploded Assembly**: anchor, 24V bus core, body and optic pulled apart along the Z
+axis by an **Explosion Spread** fader that animates outside React at any refresh rate.
+
+v2.0.0 made Lumen Cloud a real HTTP API. A zero-dependency Node
 server in `server/` validates every project and requisition with the same modules the
 browser uses, prices quotes again from the catalog, issues the `LMN-R-` reference and
 persists each browser profile's library atomically to `server/.data/lumen-cloud.json`.
@@ -46,6 +58,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v3.0.0  | Session-bound account libraries with guest claim, isolated E2E store, Sabine RT60 and lux engine, exploded assembly drawing |
 | v2.0.0  | Lumen Cloud HTTP API in `server/`, atomic JSON persistence, signed sessions, dual-transport client with offline sync |
 | v1.2.0  | 24V DC bus topology overlay and telemetry, shareable `?scene=` links, checkout installation and anchor schedule |
 | v1.1.0  | Named cloud project library with delete, Ctrl+K command palette, hover and focus chunk prefetch, Wavefront OBJ export |
@@ -90,8 +103,10 @@ src/
   components/           LayoutShell, Navbar, Footer, BagProvider, BagDrawer,
                         AuthModal, CommandPalette, ModeSwitch, ProductCard,
                         ProductElevation, SurfaceLab, PageHeader, WorkspaceFrame,
-                        BlueprintViews, PhotometricCurve, CloudSaveButton,
+                        BlueprintViews, ExplodedAssembly (lazy) and
+                        ExplosionSpreadControl, PhotometricCurve, CloudSaveButton,
                         ProjectNameField, EmptyState, BusTelemetryCell,
+                        EnvironmentalPhysicsCell,
                         RouteFallback (loading frame and chunk error), icons
     studio/             WallStage, StudioPalette, StudioInspector, StudioToolbar,
                         StudioSummary, shared field, switch and finish controls
@@ -115,7 +130,8 @@ src/
                         server (cloud-records),
                         closed-form spring, display mode and currency stores,
                         photometry and intensity model, 24V bus electrical model,
-                        daisy-chain routing and drop (bus-topology), share link
+                        daisy-chain routing and drop (bus-topology), illuminance
+                        and Sabine RT60 (room-physics), share link
                         codec (scene-codec), clipboard with fallback,
                         quote engine, formatting, nav routes, lazy chunk loaders
                         and prefetch (route-manifest)
@@ -125,10 +141,12 @@ src/
                         command-palette, empty-state
 server/                 Lumen Cloud HTTP API, shared with Vite dev and preview
   app.js                request handler: routes, 64 KB JSON bodies, sessions, headers
-  store.js              per-namespace state, serialized transactions, atomic writes
-  config.js             environment, data file path, one store per process
+  store.js              per-namespace state, account namespaces, atomic claims,
+                        serialized transactions, atomic writes
+  config.js             environment, data file path (dev or test), one store per process
   index.js              standalone server (npm run server)
-  .data/                runtime store, git-ignored
+  .data/                runtime stores, git-ignored: lumen-cloud.json (dev),
+                        lumen-cloud.test.json (preview under Playwright)
 tests/                  Playwright specs, named by architectural domain
   support/              shared runtime, CSP and overflow guards
 ```
@@ -139,7 +157,7 @@ tests/                  Playwright specs, named by architectural domain
 | ------------ | ------------- | --------------------------------------------------------- |
 | `/`          | Overview      | Pendant hero, surface and dimming lab, core modules       |
 | `/catalog`   | Catalog       | Category, search and sort over 8 parts, finish swatch     |
-| `/catalog/:id` | Spec sheet  | Orthographic set, photometry or bus curve, launchers      |
+| `/catalog/:id` | Spec sheet  | Orthographic set, exploded assembly, photometry or bus curve, launchers |
 | `/checkout`  | Project Quote | BOM, driver, currency, trade code, print, export, submit  |
 | `/room-3d`   | Room Planner  | Lazy chunk. WebGL room, clearances, 2D bridge, cloud save, cart sync |
 | `/studio-2d` | Wall Studio   | Lazy chunk. To-scale elevation planner, cloud save, cart sync |
@@ -156,8 +174,8 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '2.0.0', storage: 'server' }` |
-| `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email } }` |
+| `GET /api/health` | | `{ ok: true, version: '3.0.0', storage: 'server' }` |
+| `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
 | `GET /api/projects` | | `{ projects }`, newest first, at most 12 |
@@ -168,10 +186,11 @@ a fast link. Requests time out after 8 s.
 | `POST /api/sync` | `{ mode, projects?, quotes? }` | `{ projects, quotes }` |
 | `POST /api/test/reset` | | only with `LUMEN_TEST_RESET=1`: clears the caller's namespace |
 
-- Every data endpoint is scoped by the `X-Lumen-Client` header: a 128-bit hex id the
-  client generates once per browser profile and keeps under `lumen_cloud_client_v1`.
-  Two profiles never see each other's library, so parallel E2E workers and browser
-  contexts are isolated without a reset.
+- Signed out, every data endpoint is scoped by the `X-Lumen-Client` header: a 128-bit
+  hex id the client generates once per browser profile and keeps under
+  `lumen_cloud_client_v1`. Two profiles never see each other's library, so parallel E2E
+  workers and browser contexts are isolated without a reset. Signed in, the same
+  endpoints serve the account library; see Session-bound libraries.
 - The server validates with the browser's own modules: `src/lib/cloud-records.js`
   (record rules, library and quote caps), `wall-studio.js` and `room-3d.js` (layout
   envelopes), `quote.js` and `bag.js` (pricing, promo codes, orderable parts),
@@ -184,10 +203,39 @@ a fast link. Requests time out after 8 s.
   `404 not_found`, `405 method_not_allowed` (with `Allow`), `409 quota` or `stale`,
   `413 payload_too_large`, `415 unsupported_media_type`, `503 storage`.
 
+### Session-bound libraries
+
+- With a server session the client adds `Authorization: Bearer <token>` (from
+  `lumen_session_token_v1`) beside `X-Lumen-Client` on every `/api/*` call. The server
+  verifies the HMAC signature, expiry and revocation, then resolves the library from
+  the signed address: `acct-` plus the first 160 bits of
+  `SHA-256("lumen.account.v1:" + email)`. The id is stable across restarts and session
+  keys, so any browser signed in with the address reaches the same library.
+- Claim. `POST /api/auth/session` moves the caller's browser-profile library into the
+  account in one atomic write and reports `library.claimed`; the sign-in toast says
+  what moved. Every later authenticated call repeats the claim, so a sketch saved as a
+  guest after signing out joins the account on the next signed-in call. Projects match
+  by id (the newer save wins, the revision never goes backwards), quotes by
+  requisition ref. Records past the 12-project or 24-quote cap stay in the guest
+  namespace instead of being dropped.
+- Shared library, careful sync. A browser-profile mirror still replaces its namespace
+  on `/api/sync`; a diverged mirror pushed to an account only ever merges, so one
+  device cannot erase what another saved. The sync marker records which library the
+  mirror was reconciled against, and a mirror left by another account is never pushed
+  anywhere: the server list replaces it.
+- A Bearer token the server no longer honours (expired, revoked, or signed by another
+  process key) answers `401 unauthorized`, never a silent downgrade. The client drops
+  that token, reruns the call on the browser-profile library and keeps the visitor
+  signed in on this device; `/account` then reports **Library: This browser profile**.
+- Requests without a Bearer token, including every v2 client, behave exactly as before.
+
 ### Persistence
 
 - State lives in `server/.data/lumen-cloud.json` (git-ignored; `LUMEN_DATA_FILE`
-  overrides it, `LUMEN_STORAGE=memory` skips disk). Mutations run one at a time against
+  overrides it, `LUMEN_STORAGE=memory` skips disk). With `LUMEN_TEST_RESET=1`, which the
+  Playwright web server sets together with an explicit `LUMEN_DATA_FILE`, the default is
+  `server/.data/lumen-cloud.test.json`, so a dev server and an E2E run never race on
+  one file. Mutations run one at a time against
   a draft; the snapshot is written to a temp file, flushed and renamed over the live
   file, and only then committed to memory and answered. A failed write leaves the file
   and the served state untouched and answers `503 storage`. Renames retry briefly when
@@ -226,9 +274,9 @@ a fast link. Requests time out after 8 s.
 - After every answer the `localStorage` mirror is reconciled to the server list, and a
   fingerprint under `lumen_cloud_sync_v1` records the mirror state that matched. A
   mirror changed on this device since then (an offline save, a v1 library) is pushed to
-  `/api/sync` before the next call: projects replace the server library (batched under
-  the 64 KB body cap), quotes only merge, and a requisition the API issued is never
-  rewritten by a device.
+  `/api/sync` before the next call: projects replace a browser-profile library and merge
+  into an account library (batched under the 64 KB body cap), quotes only merge, and a
+  requisition the API issued is never rewritten by a device.
 - When `/api/*` is unreachable or answers with anything but JSON (a static host),
   projects save, delete and load on the device mirror and the toast says so; a
   requisition is refused with a `storage` fault rather than issued offline. Nothing
@@ -254,7 +302,8 @@ a fast link. Requests time out after 8 s.
 - `/account` shows shimmering placeholder rows and **Syncing with Lumen Cloud...** while
   both lists load in parallel. The profile tile reports the transport
   (**Lumen Cloud API (HTTP)** or **Device storage (offline)**, with the measured round
-  trip on `data-round-trip-ms`) and the sync state (**Up to date** or **Device copy**).
+  trip on `data-round-trip-ms`), the library (**Account (session-bound)** or **This
+  browser profile**) and the sync state (**Up to date** or **Device copy**).
 
 ## Code splitting
 
@@ -292,6 +341,11 @@ a fast link. Requests time out after 8 s.
 | Entry script | 471.0 kB / 146.4 kB gzip | 481.8 kB / 149.5 kB gzip (palette, library) |
 | Entry stylesheet | 85.5 kB / 15.9 kB gzip | 92.3 kB / 16.8 kB gzip |
 | Room planner chunk | 34.9 kB / 12.0 kB gzip | 27.7 kB + 7.2 kB shared scene chunk |
+
+| Build output (v2.0.0 to v3.0.0) | Before | After |
+| ------------------------------- | ------ | ----- |
+| Entry script | 490.3 kB / 151.9 kB gzip | 492.7 kB / 152.9 kB gzip (session binding, fourth tab) |
+| Exploded assembly chunk | none | 9.3 kB / 3.9 kB gzip, lazy |
 
 ## Empty states
 
@@ -450,8 +504,9 @@ custom properties, so React never re-renders on pointer movement.
   centre, the canopy for ceiling spots, the left end cap for track. Each hop carries the
   current of every node after it on a 2 x 2.5 mm2 copper loop; the drop at the last node
   is checked against 3%. The overlay follows a drag live.
-- The summary reports modules, connected 24V load, live flux, price, driver and the bus
-  run (`Run 9.4 m / 4.50 A / 0.26 V drop (1.1%)`). **Sync
+- The summary reports modules, connected 24V load, live flux, price, driver, the bus
+  run (`Run 9.4 m / 4.50 A / 0.26 V drop (1.1%)`) and **Acoustics & Illuminance**
+  (`Illuminance: 459 lx (Studio Task)`, `RT60: 1.52 s`); see Acoustics and illuminance. **Sync
   Wall to Cart** groups modules by part and finish, merges them into the shared cart and
   opens the drawer, where the PSU is sized on the full connected load.
 
@@ -520,9 +575,37 @@ custom properties, so React never re-renders on pointer movement.
   tools import as is. Faces are quads wound counter-clockwise around their normals.
   Object names are single tokens of `[A-Za-z0-9_-]`; free text only reaches comment
   lines, reduced to printable ASCII.
-- The summary carries the same 24V bus run readout for the main wall.
+- The summary carries the same 24V bus run readout for the main wall, and the
+  Acoustics & Illuminance readout for the whole room volume, its lighting mode and its
+  floor reference.
 - State persists under `lumen_room_3d_v1` and is rebuilt on every read with the wall
   layout's per-module rules plus a clamped envelope, furniture, lighting and camera.
+
+## Acoustics and illuminance
+
+`computeEnvironmentalPhysics(layoutOrRoom)` in `src/lib/room-physics.js` is pure and
+deterministic: only which parts are mounted, their finish and their 24V channel enter
+it, never their position. A 3D room is its own width x depth x height; a 2D wall is
+read as the front of a reference zone 260 cm deep, minus the attic slope prism.
+
+- Illuminance, lumen method. Each lit module sends a share of its flux straight to the
+  floor (0.6 for a shelf under-lip, 0.1 for the frame's rear halo), and all flux then
+  inter-reflects as an integrating sphere: `E_r = MF * phi * rho / (S * (1 - rho))`,
+  maintenance factor 0.8. `rho` is area-weighted over floor (LRV 0.20), ceiling (0.80)
+  and walls (0.35 in Ambient or Night, 0.70 in Daylight), with each wall module's face
+  carrying its finish LRV. `avgFloorLux` grades **Ambient Lounge** (<100 lx),
+  **Residential Balanced** (100-250 lx) or **Studio Task** (>250 lx);
+  `avgWallLux` and coverage of the 300 lx `taskTarget` (EN 12464-1 reading) ride along.
+- Reverberation, Sabine at 500 Hz: `RT60 = 0.161 * V / A`. The baseline `A` is the bare
+  envelope (timber floor 0.10, plasterboard ceiling 0.05, painted walls 0.03) plus the
+  reference furniture (sofa 1.4, bed 1.6, desk 0.15 m2 sabins). A mounted module adds
+  its face at its own coefficient in place of the wall it covers: the Acoustic Art
+  Frame 50x70 puts its 40 x 60 cm PET felt core in at NRC 0.70, timber finishes 0.10,
+  aluminium 0.04. One frame on the default wall reads `RT60: 1.44 s` and
+  `-0.12 s damping`; `acousticDeltaSec` is computed from the rounded figures so the
+  readout always adds up.
+- The derivation (`V`, `A` in m2 sabins, `rho`, wall lux, task coverage) appears under
+  the readout in Technical mode only.
 
 ## Spec sheets
 
@@ -533,6 +616,24 @@ custom properties, so React never re-renders on pointer movement.
   Front Elevation, Side Section (Z depth, cut hatch, 12 x 8 mm 24V bus channel, wall or
   plaster datum) and Mounting & Anchor Detail (rear view, chained anchor centres in cm,
   fixing schedule). Anchors come from the same function the Wall Studio draws with.
+- A fourth tab, **Exploded Assembly**, draws the part in cabinet oblique (depth recedes
+  at 30 deg, half scale) as four sub-assemblies: **01** the fixing (Wall Anchor &
+  Concealed Steel Cleat with its anchor centres; floor plate, ceiling canopy or
+  plaster-in clip for the other mounts), **02** the 24V DC copper bus and connector
+  core, **03** the primary structural body in the selected finish ramp with its
+  dimensions, and **04** the optical diffuser and LED array in the part's CCT, or an
+  anodized cover plate on passive hardware. Each layer carries a balloon; a parts list
+  under the drawing names them with their spec. Layers leave the wall toward the viewer
+  along the Z axis, so dash-dot alignment axes through the anchor centres stretch with
+  them and every layer stays on its axis at any spread.
+- The **Explosion Spread** fader runs 0% (assembled) to 100% (fully exploded), default
+  65%, with **Assemble (0%)** and **Explode (100%)** keys. Input never goes through
+  React state: a native listener aims a `requestAnimationFrame` glide that writes one
+  `--spread` property on the drawing, weighted by `dt` so it settles in the same 0.9 s
+  at 60, 120 or 240 Hz, and every translation, axis length and balloon fade is CSS
+  derived from it. Balloons fade in from 18% so they never stack when assembled. The
+  spread survives a trip through the other views. The drawing and fader ship as their
+  own 9 kB chunk, fetched when the tab is hovered or focused.
 - Photometry: each lobe is `I(t) = I0 cos^m(t)` with `I0 = flux (m + 1) / 2pi`, so the
   polar curve integrates back to the catalog lumens. The spot uses `m` solved from its
   36 deg beam. A probe slider reads intensity at any angle; on-axis lux at 0.5, 1.0 and
@@ -593,11 +694,14 @@ custom properties, so React never re-renders on pointer movement.
   `lumen_session_token_v1`. **Sign Out** revokes the token server-side. When the API is
   unreachable the visitor gets a device-only guest session and a toast says so. A
   tampered session payload reads as signed out and drops its token.
+- Signing in binds the library to the account and moves the guest library into it
+  (`Signed in as a@b.com. 1 project from this browser moved into your account
+  library.`). Signing out of an account library says the projects stay in Lumen Cloud.
 - Once signed in the trigger becomes an **Account** link. `/account` sits behind
   `RequireAuth` and redirects to `/` when signed out. The page is one bento grid under a
   fixed oak-amber wash (`--glow-oak`, a 5% `#e8923a` radial falling off by 40% from the
-  top right). A full-width profile tile shows the name, email, transport, sync state and
-  project and quote counts, with **Sign Out** on its top-right corner (below the identity
+  top right). A full-width profile tile shows the name, email, transport, library, sync
+  state and project and quote counts, with **Sign Out** on its top-right corner (below the identity
   on phones). Beneath it, **Saved Spatial Projects** (every named wall and room in the
   library as inset cards with an elevation thumbnail, envelope, module count, 24V load,
   driver, list price, save time and revision badge) sits beside **Order History**
@@ -675,6 +779,11 @@ custom properties, so React never re-renders on pointer movement.
 - Session tokens are compared in constant time; set `LUMEN_SESSION_SECRET` (32+
   characters) to keep sessions valid across restarts, otherwise each process signs with
   its own random key.
+- Account libraries are reachable only through a verified session. The `acct-` prefix
+  is reserved: an `X-Lumen-Client` header that names it is refused with `400`, so an
+  address-derived namespace id cannot be used to read someone else's library. A
+  presented Bearer token that fails verification answers `401`; only the `Bearer`
+  scheme selects a session, so a staging proxy's Basic auth stays anonymous.
 
 ## Development
 
@@ -692,7 +801,9 @@ npx playwright test               # builds, serves preview, runs the E2E suite
 
 `npm run dev` and `npm run preview` serve the API on `/api` in the same process. The
 standalone server reads `HOST`, `PORT`, `LUMEN_DATA_FILE`, `LUMEN_STORAGE`,
-`LUMEN_SESSION_SECRET` and `LUMEN_TEST_RESET`. Run one process per data file.
+`LUMEN_SESSION_SECRET` and `LUMEN_TEST_RESET`. Run one process per data file. The E2E
+web server writes `server/.data/lumen-cloud.test.json`, so a dev server on the default
+store can stay up during a test run.
 
 ## Continuous integration
 
