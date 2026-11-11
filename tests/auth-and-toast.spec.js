@@ -178,7 +178,7 @@ test.describe('account dashboard', () => {
     await expect(wall.getByTestId('saved-project-modules')).toHaveText(padIndex(layout.items.length));
     await expect(wall.getByTestId('saved-project-price')).toHaveText(formatUsd(summary.priceUsd));
     await expect(wall.getByRole('img')).toHaveAttribute('aria-label', `Wall A elevation, ${layout.items.length} modules`);
-    await expect(wall.locator('.project-card__module')).toHaveCount(layout.items.length);
+    await expect(wall.locator('.elevation-thumb__module')).toHaveCount(layout.items.length);
     await expect(wall.getByTestId('saved-project-revision')).toHaveText('Rev 02');
 
     const orders = page.getByTestId('order-row');
