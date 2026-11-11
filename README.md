@@ -1,14 +1,44 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v3.5.0-e8923a)
+![Release](https://img.shields.io/badge/release-v4.0.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v3.5.0**. Every powered module carries a DALI-2 arc level, `dimPct`
+Current release: **v4.0.0**. The 3D Room Planner becomes a four-wall, 360-degree room.
+Each module carries a `wall` (`north`, `east`, `south` or `west`) and keeps its
+own elevation frame: `Left X` along that wall, `Bottom Y` up from the floor. North and
+south span the room width, east and west its depth. A **Wall Selector** above the stage
+(`North Wall`, `East Wall`, `South Wall`, `West Wall`, each with a module count)
+picks the active wall: new parts mount on it, the camera glides round to face it, and
+the 2D bridge loads and pushes that wall alone. The inspector shows the wall a module
+hangs on and rehangs it on another through **Mounted on**, at the clear spot nearest its
+position, with the view following. Collisions run wall by wall plus a true 3D test for
+modules meeting in a corner and against the floor reference. `src/lib/room-walls.js`
+holds the frames: `rotY` 0, -90, 180 and +90 deg, carried through the WebGL meshes,
+emitters, spot and point light targets, the floor lux field and the `.OBJ` export. The
+24V run unrolls the four walls into one elevation. A missing `wall` reads as north, and
+north is never written, so every stored room, cloud project, preset and `?scene=` link
+from before loads and encodes exactly as it did.
+
+v4.0.0 also makes the planners easier on the eye and on newcomers. The navbar reads in
+the sans face at 13.5px in Title Case, without numeric prefixes; the search pill shows
+only its glyph and `Search` (`Ctrl+K` / `Cmd+K` still opens the palette); the mode
+switch reads **Visual** and **Specs** instead of Arch and Tech. The 3D stage sits on a
+warm horizon gradient behind a transparent canvas; the night rig lifts its fill and gives
+walls and floor an emissive floor tone (`#262320`, `#1c1a17`) with a perimeter trim, so
+the room is legible with no channel lit. The 2D wall (`#1e1c19`, a 1.5px `#38342e` edge
+ring, a hatched floor datum) stands off its `#11100f` surround, and modules gain an
+inner bezel and a hover name tag. Sidebars become soft cards with plain headings and
+palette rows that read `110 x 8 cm, 18 W`; toolbars group into Edit, Scenes and
+Engineering clusters; the summary leads with Modules, 24V Load, Luminous Flux and Total
+Price above an Engineering Telemetry (and, in 3D, CAD Bridge) sub-grid. The code is MIT
+licensed to s7codes.
+
+v3.5.0 gave every powered module a DALI-2 arc level, `dimPct`
 from 10 to 100%. Selecting a lit module in either planner, or several in the 2D
 Multi-Selection inspector, reveals a **Dimming (10-100%)** slider that commits one undo
 step on release. The level scales delivered flux and active 24V draw everywhere it is
@@ -111,6 +141,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v4.0.0  | Four-wall 360-degree room with wall selector and per-wall mounting, collisions, bridge, lux and OBJ; human-friendly planner UI; Visual / Specs switch |
 | v3.5.0  | Per-module DALI-2 dimming across physics, lux, bus and WebGL, four scene presets, 3D undo |
 | v3.4.0  | 1:20 ISO A3 blueprint sheet, drilling and anchor schedule, SVG and AutoCAD R12 DXF export |
 | v3.3.0  | CAD multi-select and marquee, group move, align and distribute, smart alignment guides, hardened CI |
@@ -236,7 +267,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '3.5.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '4.0.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -427,8 +458,10 @@ tungsten aperture fades in last. Reduced motion shows the finished drawing.
 All values live in `src/styles/tokens.css`. Near-black basalt canvas (`#050505`), pure
 white type (`--text-primary: #ffffff`) over silver body and data copy
 (`--text-secondary: #b8b8b8`), tungsten amber (`#e8923a`) as the single accent,
-anodized aluminum neutrals. Controls keep 2-4px radii; tabular-nums index labels
-(`01 / OVERVIEW`). `--section-space` is 160px at 1280 wide and 200px from 1600, and
+anodized aluminum neutrals. The navbar, planner sidebars and toolbars read in the sans
+face in Title Case (13-13.5px); monospace is kept for dimensions, coordinates and
+engineering readouts. Planner sidebars stack soft cards (`--card-surface`,
+`--card-edge`, 12px radius) and toolbars group keys into pill clusters (`--cluster-*`). `--section-space` is 160px at 1280 wide and 200px from 1600, and
 headlines run 640 weight against 350 weight ledes. From 1920px `--grid-max` widens to
 1600px and the root type steps to 17px (18px and 1760px from 2400px), so copy holds on
 2K displays. The 12-column structural grid sits behind the shell at 1% and fades out
@@ -454,8 +487,9 @@ fits a 360px phone.
 The mark is a 24 x 24 monogram: structural spine, base return and a cantilevered shelf
 slab in white, with a 2 x 6.5 tungsten aperture held between slab and base. It pairs
 with `LUMEN` tracked at 0.14em; `public/favicon.svg` carries the same geometry on basalt.
-The display mode switch is two pill segments inside a glass track, and the engaged one
-inverts to solid white. Buttons, switches and badges never glow: light belongs only to
+The display mode switch is two pill segments inside a glass track, **Visual** and
+**Specs** (stored as `architectural` / `technical`), and the engaged one inverts to
+solid white. Buttons, switches and badges never glow: light belongs only to
 the simulated fixtures.
 
 The hero light is a damped spring (`k = 90`, `c = 12`, slightly under-damped). Each rAF
@@ -614,8 +648,19 @@ custom properties, so React never re-renders on pointer movement.
 ## Room Planner
 
 - Rooms run 240-500 cm wide, 200-450 cm deep and 220-320 cm to the ceiling (default
-  320 x 280 x 250 cm). The main wall sits at Z 0 and shares Wall Studio coordinates:
-  `Left X` and `Bottom Y` in cm, modules extruded to their catalog depth.
+  320 x 280 x 250 cm). Four walls: north at Z 0, east at X = width, south at Z = depth
+  and west at X 0. Each wall shares Wall Studio coordinates in its own frame: `Left X`
+  from its left corner seen from inside the room and `Bottom Y` in cm, modules extruded
+  to their catalog depth into the room. North and south span the width, east and west
+  the depth.
+- The **Wall Selector** (`active-wall-switcher`, tabs `wall-tab-north` ... `west`, each
+  with a module count badge) sets the active wall. Mounting places a part on it at the
+  first clear spot, keeping clear of modules on the adjoining walls at the corners and of
+  the floor reference. The inspector's **Mounted on** select (`module-wall-select`)
+  rehangs a module on another wall; **Clear Wall** in the HUD empties the active wall
+  after a confirming second press. Both are undoable; the active wall is view state.
+- Conflicts are checked wall by wall (overlap and bounds) and, between walls, as true 3D
+  boxes, so two shelves meeting in a corner collide even though each wall is clear.
 - WebGL engine. `src/lib/room-scene.js` is a pure scene description: it turns the room
   state (cm) into mesh, material and light records in metres, deterministic and
   testable without a GPU. `RoomCanvas.jsx` maps those records onto React Three Fiber:
@@ -623,13 +668,24 @@ custom properties, so React never re-renders on pointer movement.
   finish colour (Walnut, Oak, Obsidian, Chalk; timber matte, obsidian with a soft
   sheen), single-sided interior wall planes that cull themselves once the camera orbits
   past, and section-cut poche slabs that hide the same way.
+- Each module record carries its wall-frame size, its room-frame centre and `rotY`
+  (0 north, -90 deg east, 180 deg south, +90 deg west); emitters, felt panels and every
+  light position and target go through the same transform. A wall between the camera and
+  the room centre hides with its poche, its modules and their SKU tags as a section cut,
+  while its lights keep lighting the room.
+- The canvas is transparent over a warm horizon gradient (`--room-horizon`). Night
+  walls and floor carry an emissive floor tone (`#262320`, `#1c1a17`) and a perimeter
+  trim; with no channel lit the ambient and sky fill lift further. Daylight walls are
+  `#dcd7ce` over a `#b8b0a4` floor.
 - Lighting: ambient and hemisphere fill plus a directional sun with a 1024 px PCF shadow
-  map. Every lit module adds its own light in its CCT: a `SpotLight` washing the wall
+  map, turned with the active wall so it falls over the viewer's shoulder. Every lit module adds its own light in its CCT: a `SpotLight` washing the wall
   below shelves, cubes, sideboards, lightbars (up and down) and the monopoint spot, a
   `PointLight` for the floor column and the backlit art frame halo. Intensity scales with
   rated lumens. Switching the 24V channel off removes the light and darkens the emitter.
-- Camera: drei `OrbitControls` (no pan, no damping) clamped to yaw -65 to 65 deg, pitch
-  8 to 50 deg and zoom 0.6-1.8x through azimuth, polar and distance limits. A drag
+- Camera: drei `OrbitControls` (no pan, no damping) clamped to yaw -65 to 65 deg around
+  the active wall's heading, pitch 8 to 50 deg and zoom 0.6-1.8x through azimuth, polar
+  and distance limits. A wall tab glides the heading and orbit centre on the same spring,
+  the short way round, while the relative yaw, pitch and zoom stay put. A drag
   commits on release, wheel zoom after a 180 ms pause; the committed yaw / pitch / zoom
   persists and drives the lens back, so presets, keys and reloads land exactly.
 - Presets (Perspective, Front Elevation, Corner Iso, Reset Camera) glide in on the
@@ -657,28 +713,32 @@ custom properties, so React never re-renders on pointer movement.
 - Floor references: Low Platform Bed 160cm, Architect Desk 140cm, Modular Sofa 200cm.
   Modules are tested against them as true 3D boxes, so an art frame can hang behind a
   sofa back while a sideboard cannot.
-- Night Ambient (2700K) or Daylight Studio. The room surfaces stay the same; night drops
-  the fill to a dim moonlit sun so the LED washes carry the room, daylight raises the
-  sun and fill until the fixtures read as accents.
+- Night Ambient (2700K) or Daylight Studio. Night keeps a moonlit sun and a legible
+  fill so the LED washes carry the room, daylight raises the sun and fill until the
+  fixtures read as accents.
 - Technical mode adds edge outlines (hidden edges drawn faint through the solids), X / Y
   / Z axes in cm, SKU tags and clearance callouts: walkway, headroom over the furniture,
   floor and ceiling. Labels are DOM elements projected over the canvas.
 - **Load from 2D Wall Studio** reads `lumen_wall_studio_v1`, or the Nordic Reading Wall
-  when it is empty. **Push to 2D Wall Studio** writes the main wall back, capped at the
+  when it is empty, onto the active wall: its width becomes that wall's span, the other
+  walls stay. **Push to 2D Wall Studio** writes the active wall back, capped at the
   400 cm studio width. **Sync Room to Cart** merges the modules and opens the drawer.
 - **Export 3D .OBJ** writes `lumen-room-<name>.obj` through `buildRoomObj(state, name)` in
   `src/lib/obj-export.js`: a `# Lumen 3D Export` header, six shared `vn` axis normals,
-  then one `o` object per surface group. `room_envelope` is the floor and three walls
+  then one `o` object per surface group. `room_envelope` is the floor and four walls
   facing into the room; each reference furniture part is a box
   (`furniture_sofa-200_back`); each module is its catalog box (`dimsCm.w x h x d`) at its
-  `xCm`, `yCm` wall position (`module_01_LMN-SH-110_floating-shelf-110`). Units are cm in
-  the room frame (x along the main wall, y up, z into the room), which Y-up CAD and DCC
-  tools import as is. Faces are quads wound counter-clockwise around their normals.
+  wall position carried into the room frame (`module_01_LMN-SH-110_floating-shelf-110`,
+  with a `_east`, `_south` or `_west` suffix off the north wall). Units are cm in the
+  room frame (x along the north wall, y up, z toward the south wall), which Y-up CAD and
+  DCC tools import as is. Faces are quads wound counter-clockwise around their normals.
   Object names are single tokens of `[A-Za-z0-9_-]`; free text only reaches comment
   lines, reduced to printable ASCII.
-- The summary carries the same 24V bus run readout for the main wall, and the
-  Acoustics & Illuminance readout for the whole room volume, its lighting mode and its
-  floor reference.
+- The summary leads with Modules, 24V Load, Luminous Flux and Total Price beside the
+  project name, cloud save and cart sync. Below it, **Engineering Telemetry & CAD
+  Bridge** holds the driver, the 24V bus run around the unrolled walls, the Acoustics &
+  Illuminance readout for the whole room, the Floor Lux Grid cell, the 2D bridge, the
+  `.OBJ` export and the share link.
 - **Floor Lux Grid** in the camera settings popover lays the floor illuminance field on
   the slab as a false-colour texture with iso-lux contours and a `Peak` label at the
   hotspot. The hidden scene graph mirrors it as `room-floor-lux` (peak, average, minimum,
@@ -818,7 +878,9 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
   `<origin>/<planner>?scene=<Base64URL>`, copies it (Clipboard API, then an
   `execCommand` fallback; a blocked clipboard leaves the link on the key's
   `data-share-url`) and confirms with a toast. Payloads are positional arrays of part id,
-  finish, X, Y and channel flags, at most 4096 characters.
+  finish, X, Y and channel flags, at most 4096 characters. A room module off the north
+  wall appends its wall code (`e`, `s`, `w`) as the 8th element; north tuples stay as
+  they were, and an unknown code refuses the link.
 - Opening a link loads the scene as one undoable step, adopts its project name, toasts
   `Loaded shared scene: <name>.` and strips `scene` from the address bar with a history
   replace, so a reload keeps later edits. Other query parameters survive.
@@ -864,13 +926,12 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
 - `Ctrl+K` (or `Cmd+K`) anywhere opens a glass dialog (`role="dialog"`, 24px backdrop
   blur, 16px radius) that resolves in from scale 1.04 and an 8px blur. The same keys
   close it again; it never opens on top of the cart drawer or the sign-in dialog. The
-  first navbar pill (`Search`, with the shortcut on a hairline key cap) opens it too and
-  folds to its glyph below 560px.
+  first navbar pill (glyph and `Search` only; the shortcut lives in its tooltip) opens it
+  too and folds to its glyph below 700px.
 - One search field ranks matches within three fixed groups: **Workspaces** (Overview,
   Catalog, 3D Room Planner, 2D Wall Studio, Project Quote, Account), **Modules** (all 12
   parts with SKU, 24V load and USD price; Enter opens the spec sheet) and **Commands**
-  (Switch to Technical or Architectural Mode, Set Currency: USD, EUR or HUF, Open Cart
-  Drawer). A label prefix outranks a word start, which outranks any other match, and
+  (Switch to Specs or Visual Mode, Set Currency: USD, EUR or HUF, Open Cart Drawer). A label prefix outranks a word start, which outranks any other match, and
   every term has to land.
 - Keyboard: `ArrowDown` / `ArrowUp` move and wrap, `Enter` runs, `Escape` closes, `Tab`
   stays inside. The field is an ARIA combobox over a grouped listbox with
@@ -965,8 +1026,8 @@ push is followed by a check of the run on the GitHub Actions API until it comple
 - `main` holds releases, `develop` integrates, each milestone lands on a short-lived
   `feat/*` branch. Once `develop` and `main` are pushed, the feature branch is deleted
   locally and on `origin`, so only `main` and `develop` stay published.
-- Only major releases are tagged: `v1.0.0`, `v2.0.0`, `v3.0.0`. Minor and patch releases
-  ship untagged and are recorded in the release history above.
+- Only major releases are tagged: `v1.0.0`, `v2.0.0`, `v3.0.0`, `v4.0.0`. Minor and patch
+  releases ship untagged and are recorded in the release history above.
 - Releases advance `develop` and `main` by pointer (`git branch -f`) from the finished
   feature branch, never by switching back first, so no working-tree directories are
   deleted on synced (OneDrive) folders.
@@ -975,4 +1036,4 @@ push is followed by a check of the run on the GitHub Actions API until it comple
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Copyright (c) 2026 Lumen Spatial Studio Kft.
+MIT License, Copyright (c) 2026 s7codes. See [LICENSE](LICENSE).
