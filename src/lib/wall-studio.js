@@ -126,7 +126,10 @@ export function anchorPoints(item) {
   const point = (x, y) => ({ xCm: round(x), yCm: round(y) });
 
   if (product.mount === 'floor') return [point(item.xCm + w / 2, top - 5)];
-  if (product.mount === 'ceiling') return [point(item.xCm + w / 2, top)];
+  if (product.mount === 'ceiling') {
+    if (n < 2) return [point(item.xCm + w / 2, top)];
+    return Array.from({ length: n }, (_, i) => point(item.xCm + (w * (i + 1)) / (n + 1), top));
+  }
   if (product.shape === 'track' && n > 1) {
     return Array.from({ length: n }, (_, i) => point(item.xCm + 3 + ((w - 6) * i) / (n - 1), item.yCm + h / 2));
   }

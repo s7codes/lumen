@@ -42,6 +42,8 @@ const BEAM_PROFILES = {
   lightbar: { m: 1, lobes: [0], optic: 'Opal diffuser, Lambertian' },
   column: { m: 1, lobes: [-90, 90], optic: 'Full-height opal slot, bilateral' },
   frame: { m: 1, lobes: [-90, 90], optic: 'Rear halo, wall plane' },
+  pendant: { m: 2, lobes: [0], optic: 'Microprismatic downlight, UGR<19' },
+  sconce: { m: 3, lobes: [0, 180], optic: 'Opal blade, up and down wash' },
 };
 const SPOT_HALF_ANGLE_DEG = 18;
 

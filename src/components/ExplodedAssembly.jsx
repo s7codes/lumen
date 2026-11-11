@@ -55,6 +55,10 @@ function optics(product) {
       return [{ x: -1.5, y: -1.5, w: W + 3, h: H + 3, z0: D - 0.6, zd: 0.6, ring: true }];
     case 'spot':
       return [{ x: 0.25 * W, y: 0, w: 0.5 * W, h: 0.8, z0: 0.2 * D, zd: 0.6 * D }];
+    case 'pendant':
+      return [{ x: 0.02 * W, y: 0, w: 0.96 * W, h: 0.3 * H, z0: 0.15 * D, zd: 0.7 * D }];
+    case 'sconce':
+      return [{ x: 0.3 * W, y: 1.5, w: 0.4 * W, h: H - 3, z0: 0, zd: 1 }];
     default:
       return [{ x: 0.04 * W, y: 0, w: 0.92 * W, h: clamp(H * 0.15, 0.6, 1.2), z0: 0, zd: Math.min(3, D) }];
   }
@@ -72,6 +76,23 @@ export function explodedLayers(product, finish) {
   const busY = product.dimsCm.h > 16 ? H - 5 : H / 2;
   let anchor;
   let bus;
+  let cover = {
+    index: '04',
+    label: 'Anodized Cover Plate',
+    spec: `6063-T5 aluminium, ${finish.label}`,
+    tone: 'plate',
+    parts: [{ x: 0, y: 0, w: W, h: H, z0: 0, zd: Math.min(0.3, D) }],
+  };
+  if (product.shape === 'baffle') {
+    cover = {
+      ...cover,
+      label: 'PET Felt Acoustic Core',
+      spec: '50 mm PET felt, NRC 0.85, 12 mm timber edge',
+      parts: [{ x: 1.2, y: 1.2, w: W - 2.4, h: H - 2.4, z0: 0, zd: Math.min(3, D) }],
+    };
+  } else if (product.shape === 'hub') {
+    cover = { ...cover, label: 'DALI-2 Terminal Block & Cover Plate', spec: `24V DC + DA pair, ${finish.label} cover` };
+  }
 
   switch (product.mount) {
     case 'floor':
@@ -136,13 +157,7 @@ export function explodedLayers(product, finish) {
           tone: 'optic',
           parts: optics(product),
         }
-      : {
-          index: '04',
-          label: 'Anodized Cover Plate',
-          spec: `6063-T5 aluminium, ${finish.label}`,
-          tone: 'plate',
-          parts: [{ x: 0, y: 0, w: W, h: H, z0: 0, zd: Math.min(0.3, D) }],
-        },
+      : cover,
   ];
 }
 
@@ -249,6 +264,10 @@ function bodyDetail(product, face, u) {
       return <Line x1={x + w / 2} y1={y + 1} x2={x + w / 2} y2={y + h - 1} className="bp__thin" />;
     case 'frame': {
       const t = FRAME_INSET_CM * u;
+      return <Rect box={{ x: x + t, y: y + t, w: w - 2 * t, h: h - 2 * t }} className="bp__inner bp__inner--felt" />;
+    }
+    case 'baffle': {
+      const t = 1.2 * u;
       return <Rect box={{ x: x + t, y: y + t, w: w - 2 * t, h: h - 2 * t }} className="bp__inner bp__inner--felt" />;
     }
     default:

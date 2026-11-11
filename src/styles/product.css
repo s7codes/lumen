@@ -360,6 +360,12 @@
   fill: #2a2825;
 }
 
+.elev__cable {
+  stroke: var(--alu-500);
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+
 .elev__groove {
   stroke: rgba(0, 0, 0, 0.5);
   stroke-width: 0.6;

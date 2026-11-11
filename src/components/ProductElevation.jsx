@@ -25,6 +25,8 @@ function layout(product) {
   let y = ENVELOPE.y + (ENVELOPE.h - h) * 0.38;
   if (product.mount === 'floor') y = ENVELOPE.y + ENVELOPE.h - h;
   if (product.mount === 'ceiling') y = ENVELOPE.y;
+  // A pendant hangs on its cables below the ceiling line.
+  if (product.shape === 'pendant') y = ENVELOPE.y + ENVELOPE.h * 0.36;
 
   return { scale, unitsPerCm, box: { x, y, w, h } };
 }
@@ -222,6 +224,86 @@ function ShapeBody({ product, box, unitsPerCm, ids, textured }) {
       );
     }
 
+    case 'pendant': {
+      const canopies = [box.x + box.w / 3, box.x + (2 * box.w) / 3];
+      return (
+        <>
+          {canopies.map((x) => (
+            <g key={r2(x)}>
+              <rect className="elev__metal" {...rectOf({ x: x - 2.5, y: ENVELOPE.y, w: 5, h: 1.2 })} />
+              <line className="elev__cable" x1={r2(x)} y1={r2(ENVELOPE.y + 1.2)} x2={r2(x)} y2={r2(box.y)} />
+            </g>
+          ))}
+          {lit && <Wash box={box} ids={ids} spread={18} length={38} inset={0} />}
+          <Surface box={box} ids={ids} textured={textured} />
+          {lit && (
+            <rect
+              className="elev__diffuser"
+              {...rectOf({ x: box.x + 1, y: bottom - box.h * 0.3, w: box.w - 2, h: box.h * 0.22 })}
+            />
+          )}
+        </>
+      );
+    }
+
+    case 'sconce':
+      return (
+        <>
+          {lit && (
+            <rect
+              {...rectOf({ x: box.x - 16, y: box.y - 12, w: box.w + 32, h: box.h + 24 })}
+              fill={`url(#${ids.halo})`}
+            />
+          )}
+          <Surface box={box} ids={ids} textured={textured} rx={0.6} />
+          {lit && (
+            <rect
+              className="elev__diffuser"
+              {...rectOf({ x: box.x + box.w * 0.3, y: box.y + 1.5, w: box.w * 0.4, h: box.h - 3 })}
+              rx={0.3}
+            />
+          )}
+        </>
+      );
+
+    case 'baffle': {
+      const t = Math.max(1.2 * unitsPerCm, 1);
+      const inner = { x: box.x + t, y: box.y + t, w: box.w - 2 * t, h: box.h - 2 * t };
+      const grooves = [];
+      for (let gx = inner.x + 2; gx < inner.x + inner.w - 1; gx += 2) grooves.push(r2(gx));
+      return (
+        <>
+          <Surface box={box} ids={ids} textured={textured} rx={0.4} />
+          <rect className="elev__felt" {...rectOf(inner)} />
+          {grooves.map((gx) => (
+            <line key={gx} className="elev__groove" x1={gx} y1={r2(inner.y)} x2={gx} y2={r2(inner.y + inner.h)} />
+          ))}
+        </>
+      );
+    }
+
+    case 'hub':
+      return (
+        <>
+          <rect
+            className="elev__flange"
+            {...rectOf({ x: box.x - 1.2, y: box.y - 1.2, w: box.w + 2.4, h: box.h + 2.4 })}
+          />
+          <Surface box={box} ids={ids} textured={textured} rx={0.2} />
+          <line
+            className="elev__bus"
+            x1={r2(box.x + 1)}
+            y1={r2(box.y + box.h / 2)}
+            x2={r2(box.x + box.w - 1)}
+            y2={r2(box.y + box.h / 2)}
+          />
+          <rect
+            className="elev__metal"
+            {...rectOf({ x: cx - box.w * 0.1, y: box.y + box.h * 0.2, w: box.w * 0.2, h: box.h * 0.6 })}
+          />
+        </>
+      );
+
     case 'track':
       return (
         <>
@@ -249,7 +331,11 @@ function anchorPoints(product, box) {
   const n = product.mountingPoints;
   const cx = box.x + box.w / 2;
   if (product.mount === 'floor') return [[cx, box.y + 5]];
-  if (product.mount === 'ceiling') return [[cx, box.y + box.h * 0.06]];
+  if (product.mount === 'ceiling') {
+    const y = product.shape === 'pendant' ? ENVELOPE.y + 0.6 : box.y + box.h * 0.06;
+    if (n < 2) return [[cx, y]];
+    return Array.from({ length: n }, (_, i) => [box.x + (box.w * (i + 1)) / (n + 1), y]);
+  }
   if (product.shape === 'track' && n > 1) {
     return Array.from({ length: n }, (_, i) => [box.x + 3 + ((box.w - 6) * i) / (n - 1), box.y + box.h / 2]);
   }
@@ -355,7 +441,7 @@ export function ProductElevation({ product, finish, technical = false }) {
       </defs>
 
       {product.mount === 'floor' && <Ground y={box.y + box.h} side={1} />}
-      {product.mount === 'ceiling' && <Ground y={box.y} side={-1} />}
+      {product.mount === 'ceiling' && <Ground y={ENVELOPE.y} side={-1} />}
       <ShapeBody product={product} box={box} unitsPerCm={unitsPerCm} ids={ids} textured={textured} />
       {technical && <TechnicalOverlay product={product} box={box} scale={scale} />}
     </svg>

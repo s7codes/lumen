@@ -64,7 +64,16 @@ function place(product, wCm, hCm, env) {
   let y = env.y + (env.h - h) / 2;
   if (product.mount === 'floor') y = env.y + env.h - h;
   if (product.mount === 'ceiling') y = env.y;
+  if (product.shape === 'pendant') y = env.y + Math.min(env.h * 0.35, env.h - h);
   return { scale, u, box: { x, y, w, h } };
+}
+
+/** Suspension cables from the ceiling datum down to a pendant body. */
+function Cables({ box, ceilingY }) {
+  if (box.y - ceilingY < 1) return null;
+  return [box.x + box.w / 3, box.x + (2 * box.w) / 3].map((x) => (
+    <Line key={r2(x)} x1={x} y1={ceilingY} x2={x} y2={box.y} className="bp__thin" />
+  ));
 }
 
 export function Rect({ box, className, ...rest }) {
@@ -226,6 +235,23 @@ function frontDetail(product, box, u) {
     }
     case 'track':
       return <Line x1={x + 1} y1={y + h / 2} x2={x + w - 1} y2={y + h / 2} className="bp__bus" />;
+    case 'pendant':
+      return lit ? <Line x1={x + 1.5} y1={y + h * 0.85} x2={x + w - 1.5} y2={y + h * 0.85} className="bp__led" /> : null;
+    case 'sconce':
+      return lit ? (
+        <Rect box={{ x: x + w * 0.3, y: y + 1.5 * u, w: w * 0.4, h: h - 3 * u }} className="bp__led-fill" />
+      ) : null;
+    case 'baffle': {
+      const t = 1.2 * u;
+      return <Rect box={{ x: x + t, y: y + t, w: w - 2 * t, h: h - 2 * t }} className="bp__inner bp__inner--felt" />;
+    }
+    case 'hub':
+      return (
+        <>
+          <Line x1={x + 1} y1={y + h / 2} x2={x + w - 1} y2={y + h / 2} className="bp__bus" />
+          <Rect box={{ x: x + w * 0.4, y: y + h * 0.2, w: w * 0.2, h: h * 0.6 }} className="bp__inner" />
+        </>
+      );
     default:
       return lit ? <Line x1={x + 2} y1={y + h} x2={x + w - 2} y2={y + h} className="bp__led" /> : null;
   }
@@ -239,7 +265,8 @@ function FrontView({ product, ids }) {
   return (
     <>
       {product.mount === 'floor' && <Datum x1={30} x2={270} y={box.y + box.h} side={1} label="FFL +0" />}
-      {product.mount === 'ceiling' && <Datum x1={30} x2={270} y={box.y} side={-1} label="Ceiling" />}
+      {product.mount === 'ceiling' && <Datum x1={30} x2={270} y={env.y} side={-1} label="Ceiling" />}
+      {product.shape === 'pendant' && <Cables box={box} ceilingY={env.y} />}
       <Rect box={box} className="bp__body" fill={`url(#${ids.fill})`} />
       {frontDetail(product, box, u)}
       <Dim from={[box.x, box.y + box.h]} to={[box.x + box.w, box.y + box.h]} offset={12} label={`W ${fmtCm(wCm)}`} testId="dim-width" />
@@ -276,7 +303,8 @@ function SideView({ product, ids }) {
   return (
     <>
       {product.mount === 'floor' && <Datum x1={26} x2={200} y={box.y + box.h} side={1} label="FFL +0" />}
-      {product.mount === 'ceiling' && <Datum x1={26} x2={200} y={box.y} side={-1} label="Ceiling" />}
+      {product.mount === 'ceiling' && <Datum x1={26} x2={200} y={env.y} side={-1} label="Ceiling" />}
+      {product.shape === 'pendant' && <Line x1={box.x + box.w / 2} y1={env.y} x2={box.x + box.w / 2} y2={box.y} className="bp__thin" />}
       {product.mount !== 'ceiling' && (
         <WallDatum x={wallX} y1={env.y - 6} y2={env.y + env.h + 4} label={recessed ? 'Plaster face' : 'Wall'} />
       )}

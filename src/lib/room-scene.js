@@ -219,6 +219,10 @@ function emitterBoxes(shape, b) {
       return [{ x0: xMid - 1.5, x1: xMid + 1.5, y0: b.y0 + 4, y1: b.y1 - 6, z0: b.z1 - 1.2, z1: b.z1 + 0.6 }];
     case 'spot':
       return [{ x0: b.x0 + 3, x1: b.x1 - 3, y0: b.y0 - 0.3, y1: b.y0 + 0.4, z0: b.z0 + 3, z1: b.z1 - 3 }];
+    case 'pendant':
+      return [{ x0: b.x0 + 1, x1: b.x1 - 1, y0: b.y0 - 0.3, y1: b.y0 + 0.5, z0: b.z0 + 1, z1: b.z1 - 1 }];
+    case 'sconce':
+      return [{ x0: xMid - 1.5, x1: xMid + 1.5, y0: b.y0 + 1.5, y1: b.y1 - 1.5, z0: b.z1 - 0.2, z1: b.z1 + 0.3 }];
     default:
       return [];
   }
@@ -275,9 +279,32 @@ function moduleLights(item, product, b, room, rig) {
       return [spot('beam', [xMid, b.y0 - 0.5, (b.z0 + b.z1) / 2], [xMid, Math.max(0, b.y0 - 150), 2], 26, 7, 360)];
     case 'frame':
       return [point('halo', [xMid, yMid, 0.6], 1.6, 120)];
+    case 'pendant': {
+      const zMid = (b.z0 + b.z1) / 2;
+      return [spot('down', [xMid, b.y0 - 0.5, zMid], [xMid, 0, zMid], 64, 5.5, 380)];
+    }
+    case 'sconce':
+      return [
+        spot('down', [xMid, b.y0 - 0.5, b.z1 - 1], [xMid, Math.max(0, b.y0 - 140), 2], 38, 3, 280),
+        spot('up', [xMid, b.y1 + 0.5, b.z1 - 1], [xMid, Math.min(room.heightCm, b.y1 + 140), 2], 38, 3, 280),
+      ];
     default:
       return [];
   }
+}
+
+const FELT_INSET_CM = new Map([
+  ['frame', 3],
+  ['baffle', 1.2],
+]);
+
+function feltRecord(shape, box) {
+  const t = FELT_INSET_CM.get(shape);
+  if (t === undefined) return null;
+  return {
+    color: '#3a3834',
+    ...boxRecord({ x0: box.x0 + t, x1: box.x1 - t, y0: box.y0 + t, y1: box.y1 - t, z0: box.z1 - 1, z1: box.z1 + 0.15 }),
+  };
 }
 
 function moduleRecord(item, room, rig, conflicts, selectedUid) {
@@ -313,10 +340,7 @@ function moduleRecord(item, room, rig, conflicts, selectedUid) {
       intensity: lit ? rig.emissive : 0,
       ...boxRecord(e),
     })),
-    felt:
-      product.shape === 'frame'
-        ? { color: '#3a3834', ...boxRecord({ x0: box.x0 + 3, x1: box.x1 - 3, y0: box.y0 + 3, y1: box.y1 - 3, z0: box.z1 - 1, z1: box.z1 + 0.15 }) }
-        : null,
+    felt: feltRecord(product.shape, box),
     lights: moduleLights(item, product, box, room, rig),
     selected: item.uid === selectedUid,
     conflict: conflicts.has(item.uid),

@@ -40,6 +40,7 @@ const MAX_SEGMENTS = 48;
 const MIN_R_M = 0.02;
 
 const DOWN = Object.freeze([0, -1, 0]);
+const UP = Object.freeze([0, 1, 0]);
 const LEFT = Object.freeze([-1, 0, 0]);
 const RIGHT = Object.freeze([1, 0, 0]);
 
@@ -78,6 +79,16 @@ function apertures(shape, b) {
       return [
         { from: [b.x0 + 2, b.y0 + 3, 1.5], to: [b.x0 + 2, b.y1 - 3, 1.5], axes: [LEFT] },
         { from: [b.x1 - 2, b.y0 + 3, 1.5], to: [b.x1 - 2, b.y1 - 3, 1.5], axes: [RIGHT] },
+      ];
+    case 'pendant': {
+      const zMid = (b.z0 + b.z1) / 2;
+      return [{ from: [b.x0 + 2, b.y0, zMid], to: [b.x1 - 2, b.y0, zMid], axes: [DOWN] }];
+    }
+    case 'sconce':
+      // Open blade ends: one lobe down the wall from the foot, one up from the head.
+      return [
+        { from: [xMid, b.y0, b.z1 - 1], to: null, axes: [DOWN] },
+        { from: [xMid, b.y1, b.z1 - 1], to: null, axes: [UP] },
       ];
     default:
       return [];

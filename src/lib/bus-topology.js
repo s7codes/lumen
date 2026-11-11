@@ -3,6 +3,17 @@ import { BUS_VOLTAGE, busCurrent, CONDUCTOR_MM2, DROP_LIMIT, voltageDrop } from 
 
 export const FEED_DATUM = Object.freeze({ xCm: 20, yCm: 30 });
 export const TRACK_BUS_ID = 'track-bus-200';
+export const BUS_HUB_ID = 'power-hub-dali';
+// Passive 24V parts: either can feed the run, and every other one is a pass-through node.
+export const BUS_FEED_IDS = Object.freeze([TRACK_BUS_ID, BUS_HUB_ID]);
+const FEED_KIND = new Map([
+  [TRACK_BUS_ID, 'track'],
+  [BUS_HUB_ID, 'hub'],
+]);
+
+function isBusPart(product) {
+  return FEED_KIND.has(product.id);
+}
 export const DROP_LIMIT_PCT = DROP_LIMIT * 100;
 export const CONDUCTOR_LABEL = `2 x ${CONDUCTOR_MM2} mm2`;
 
@@ -31,12 +42,14 @@ function dimensions(source) {
 
 /**
  * Where the 24V pigtail lands on each part, in wall cm (y up from FFL):
- * track bus at its left end cap, ceiling spots at the canopy, everything
- * else at the bottom centre where the driver lead exits.
+ * track bus at its left end cap, the DALI-2 hub at its terminal block,
+ * ceiling parts at the canopy, everything else at the bottom centre where the
+ * driver lead exits.
  */
 export function feedPoint(item, product) {
   const { w, h } = product.dimsCm;
   if (product.id === TRACK_BUS_ID) return { xCm: item.xCm, yCm: item.yCm + h / 2 };
+  if (product.id === BUS_HUB_ID) return { xCm: item.xCm + w / 2, yCm: item.yCm + h / 2 };
   if (product.mount === 'ceiling') return { xCm: item.xCm + w / 2, yCm: item.yCm + h };
   return { xCm: item.xCm + w / 2, yCm: item.yCm };
 }
@@ -82,8 +95,8 @@ function orderChain(origin, candidates) {
 /**
  * 24V DC daisy-chain for a wall layout ({ wall, items }) or a 3D room
  * ({ room, items }, main wall). The feed sits at the utility datum, or at
- * the first mounted track bus. Every lit module and every other track bus
- * becomes a node.
+ * the first mounted track bus or bus hub. Every lit module and every other
+ * passive bus part becomes a node.
  *
  * Drop model: each hop carries the current of every node downstream of it,
  * on a 2 x 2.5 mm2 copper loop. The worst case is the sum of hop drops at
@@ -101,22 +114,26 @@ export function computeBusTopology(layoutOrRoom) {
     parts.push({ item, product });
   }
 
-  const feedTrack = parts.find(({ product }) => product.id === TRACK_BUS_ID) ?? null;
+  const feedTrack = parts.find(({ product }) => isBusPart(product)) ?? null;
   const origin = feedTrack
-    ? { ...feedPoint(feedTrack.item, feedTrack.product), kind: 'track', uid: feedTrack.item.uid }
+    ? {
+        ...feedPoint(feedTrack.item, feedTrack.product),
+        kind: FEED_KIND.get(feedTrack.product.id),
+        uid: feedTrack.item.uid,
+      }
     : { ...FEED_DATUM, kind: 'datum', uid: null };
 
   const candidates = parts
     .filter(({ item, product }) => {
       if (feedTrack && item === feedTrack.item) return false;
-      if (product.id === TRACK_BUS_ID) return true;
+      if (isBusPart(product)) return true;
       return product.watts > 0 && item.led !== false && item.ledOn !== false;
     })
     .slice(0, MAX_NODES)
     .map(({ item, product }) => ({
       uid: item.uid,
       productId: product.id,
-      watts: product.id === TRACK_BUS_ID ? 0 : product.watts,
+      watts: isBusPart(product) ? 0 : product.watts,
       point: feedPoint(item, product),
     }));
 
