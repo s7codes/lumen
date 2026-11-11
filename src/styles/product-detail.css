@@ -143,7 +143,8 @@
 .bp line,
 .bp rect,
 .bp circle,
-.bp polyline {
+.bp polyline,
+.bp polygon {
   vector-effect: non-scaling-stroke;
 }
 
@@ -284,6 +285,175 @@
 .bp__anchor line {
   stroke: var(--lumen-amber);
   stroke-width: 0.75;
+}
+
+/* Exploded assembly. --spread (0 assembled, 1 exploded) is written to the
+   sheet by the fader's animation loop; layers, alignment axes and balloons
+   all derive from it, so React never re-renders during a drag. */
+
+.bp {
+  --spread: 0.65;
+}
+
+.bp-x__layer {
+  transform: translate(calc(var(--spread) * var(--dx) * 1px), calc(var(--spread) * var(--dy) * 1px));
+}
+
+.bp-x__axis {
+  stroke: var(--text-muted);
+  stroke-width: 0.75;
+  stroke-dasharray: 6 2 1 2;
+  transform-box: view-box;
+  transform: scale(calc(var(--axis-base) + var(--axis-travel) * var(--spread)));
+}
+
+.bp-x__face {
+  stroke: var(--text-secondary);
+  stroke-width: 0.75;
+  stroke-linejoin: round;
+}
+
+.bp-x__face--top {
+  fill: rgba(242, 238, 231, 0.07);
+}
+
+.bp-x__face--side {
+  fill: rgba(242, 238, 231, 0.025);
+}
+
+.bp-x__part--steel .bp-x__face--front,
+.bp-x__part--plate .bp-x__face--front {
+  fill: rgba(184, 184, 184, 0.12);
+}
+
+.bp-x__part--body .bp-x__face {
+  stroke: var(--text-primary);
+}
+
+.bp-x__part--body .bp-x__face--top {
+  fill: color-mix(in srgb, var(--finish-base) 34%, transparent);
+}
+
+.bp-x__part--body .bp-x__face--side {
+  fill: color-mix(in srgb, var(--finish-base) 18%, transparent);
+}
+
+.bp-x__part--copper .bp-x__face {
+  stroke: var(--lumen-amber);
+}
+
+.bp-x__part--copper .bp-x__face--front {
+  fill: var(--lumen-amber-dim);
+}
+
+.bp-x__part--optic .bp-x__face {
+  stroke: var(--lumen-amber-soft);
+}
+
+.bp-x__part--optic .bp-x__face--front {
+  fill: rgba(242, 238, 231, 0.16);
+}
+
+/* Balloons stack on each other when assembled, so they fade in with the spread. */
+.bp-x__balloon {
+  opacity: clamp(0, calc((var(--spread) - 0.18) * 4), 1);
+}
+
+.bp-x__balloon circle {
+  fill: var(--bg-inset);
+  stroke: var(--text-primary);
+  stroke-width: 0.75;
+}
+
+.bp-x__balloon text {
+  fill: var(--text-primary);
+  font-size: 4.6px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.bp-x__lead {
+  stroke: var(--text-secondary);
+  stroke-width: 0.6;
+}
+
+.bp-x__assembled {
+  opacity: clamp(0, calc(1 - var(--spread) * 6), 1);
+}
+
+.bp-x__part-label {
+  fill: var(--text-primary);
+  font-size: 5.6px;
+  letter-spacing: 0.02em;
+}
+
+/* Explosion Spread fader */
+
+.explode-control {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  animation: lumen-focus var(--duration-cinematic) var(--ease-cinematic) both;
+}
+
+.explode-control__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.explode-control__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.explode-control__value {
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+.explode-control__range {
+  width: 100%;
+  accent-color: var(--text-primary);
+}
+
+.explode-control__scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: calc(var(--space-2) * -1);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.explode-control__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.explode-control__action {
+  justify-content: center;
+  min-width: 0;
+  padding-inline: var(--space-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .explode-control {
+    animation: none;
+  }
 }
 
 /* Photometric and electrical panels */

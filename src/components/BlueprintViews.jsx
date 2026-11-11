@@ -1,18 +1,43 @@
-import { useId } from 'react';
+import { lazy, Suspense, useId } from 'react';
 import { anchorPoints } from '../lib/wall-studio.js';
 
 export const BLUEPRINT_VIEWS = Object.freeze([
-  { id: 'front', index: '01', label: 'Front Elevation', title: 'Front Elevation' },
-  { id: 'side', index: '02', label: 'Side Section', title: 'Side Section (Z-Depth & 24V Bus Channel)' },
-  { id: 'mounting', index: '03', label: 'Mounting Detail', title: 'Mounting & Anchor Detail' },
+  { id: 'front', index: '01', label: 'Front Elevation', title: 'Front Elevation', testId: 'blueprint-view-front' },
+  {
+    id: 'side',
+    index: '02',
+    label: 'Side Section',
+    title: 'Side Section (Z-Depth & 24V Bus Channel)',
+    testId: 'blueprint-view-side',
+  },
+  {
+    id: 'mounting',
+    index: '03',
+    label: 'Mounting Detail',
+    title: 'Mounting & Anchor Detail',
+    testId: 'blueprint-view-mounting',
+  },
+  {
+    id: 'exploded',
+    index: '04',
+    label: 'Exploded Assembly',
+    title: 'Exploded Assembly (Z-Axis Projection)',
+    testId: 'blueprint-tab-exploded',
+  },
 ]);
+
+export const DEFAULT_SPREAD = 0.65;
+
+// The exploded sheet and its fader ship as one chunk, fetched when the tab is first approached.
+export const loadExplodedAssembly = () => import('./ExplodedAssembly.jsx');
+const ExplodedView = lazy(() => loadExplodedAssembly().then((module) => ({ default: module.ExplodedView })));
 
 const VIEW_W = 320;
 const VIEW_H = 214;
 const TITLE_Y = 192;
-const SCALES = [1, 2, 5, 10, 20, 25, 50];
-const CHANNEL_CM = { w: 1.2, h: 0.8 };
-const SHELL_CM = 1.8;
+export const SCALES = [1, 2, 5, 10, 20, 25, 50];
+export const CHANNEL_CM = { w: 1.2, h: 0.8 };
+export const SHELL_CM = 1.8;
 
 const FIXINGS = {
   wall: 'M6 x 60 nylon plug, 5 x 50 screw',
@@ -21,7 +46,7 @@ const FIXINGS = {
   recessed: 'Plaster-in clip, M4 x 30',
 };
 
-const r2 = (value) => Math.round(value * 100) / 100;
+export const r2 = (value) => Math.round(value * 100) / 100;
 export const fmtCm = (value) => String(Number(value.toFixed(1)));
 
 // Paper millimetres: a part drawn at 1:N spans (cm * 10) / N units. The scale
@@ -42,11 +67,11 @@ function place(product, wCm, hCm, env) {
   return { scale, u, box: { x, y, w, h } };
 }
 
-function Rect({ box, className, ...rest }) {
+export function Rect({ box, className, ...rest }) {
   return <rect x={r2(box.x)} y={r2(box.y)} width={r2(box.w)} height={r2(box.h)} className={className} {...rest} />;
 }
 
-function Line({ x1, y1, x2, y2, className }) {
+export function Line({ x1, y1, x2, y2, className }) {
   return <line x1={r2(x1)} y1={r2(y1)} x2={r2(x2)} y2={r2(y2)} className={className} />;
 }
 
@@ -129,7 +154,7 @@ function WallDatum({ x, y1, y2, label }) {
   );
 }
 
-function TitleBlock({ product, view, scale }) {
+export function TitleBlock({ product, view, scale }) {
   const cells = [view.title.toUpperCase(), `1:${scale}`, product.sku];
   return (
     <g className="bp__title">
@@ -349,7 +374,7 @@ function MountingView({ product }) {
   );
 }
 
-export function BlueprintDrawing({ product, view, finish }) {
+export function BlueprintDrawing({ product, view, finish, svgRef }) {
   const uid = useId().replace(/[^A-Za-z0-9_-]/g, '');
   const ids = { fill: `${uid}-fill`, hatch: `${uid}-hatch`, title: `${uid}-title` };
   const meta = BLUEPRINT_VIEWS.find((entry) => entry.id === view) ?? BLUEPRINT_VIEWS[0];
@@ -357,6 +382,7 @@ export function BlueprintDrawing({ product, view, finish }) {
 
   return (
     <svg
+      ref={svgRef}
       className="bp"
       viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
       role="img"
@@ -381,6 +407,11 @@ export function BlueprintDrawing({ product, view, finish }) {
       {meta.id === 'front' && <FrontView product={product} ids={ids} />}
       {meta.id === 'side' && <SideView product={product} ids={ids} />}
       {meta.id === 'mounting' && <MountingView product={product} />}
+      {meta.id === 'exploded' && (
+        <Suspense fallback={null}>
+          <ExplodedView product={product} finish={finish} ids={ids} />
+        </Suspense>
+      )}
     </svg>
   );
 }

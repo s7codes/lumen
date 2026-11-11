@@ -1,6 +1,13 @@
-import { useId, useState } from 'react';
+import { lazy, Suspense, useId, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { anchorSchedule, BlueprintDrawing, BLUEPRINT_VIEWS, fmtCm } from '../components/BlueprintViews.jsx';
+import {
+  anchorSchedule,
+  BlueprintDrawing,
+  BLUEPRINT_VIEWS,
+  DEFAULT_SPREAD,
+  fmtCm,
+  loadExplodedAssembly,
+} from '../components/BlueprintViews.jsx';
 import { ArrowRight, PlusGlyph } from '../components/icons.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { PhotometricCurve } from '../components/PhotometricCurve.jsx';
@@ -25,6 +32,12 @@ import '../styles/product.css';
 import '../styles/product-detail.css';
 
 const VIEW_IDS = BLUEPRINT_VIEWS.map((view) => view.id);
+const ExplosionSpreadControl = lazy(() =>
+  loadExplodedAssembly().then((module) => ({ default: module.ExplosionSpreadControl })),
+);
+const warmExploded = () => {
+  loadExplodedAssembly().catch(() => {});
+};
 
 function specRows(product) {
   const efficacy = efficacyLmPerW(product);
@@ -99,6 +112,8 @@ function ProductDetail({ product }) {
   const [qty, setQty] = useState(1);
   const [status, setStatus] = useState('');
   const uid = useId();
+  const drawingRef = useRef(null);
+  const spreadRef = useRef(DEFAULT_SPREAD);
 
   const [finishId, setFinishId] = useState(() => {
     const requested = params.get('finish');
@@ -166,7 +181,9 @@ function ProductDetail({ product }) {
                   type="button"
                   className="segment-switch__option"
                   aria-pressed={view === entry.id}
-                  data-testid={`blueprint-view-${entry.id}`}
+                  data-testid={entry.testId}
+                  onPointerEnter={entry.id === 'exploded' ? warmExploded : undefined}
+                  onFocus={entry.id === 'exploded' ? warmExploded : undefined}
                   onClick={() => isOneOf(entry.id, VIEW_IDS) && setView(entry.id)}
                 >
                   <span className="segment-switch__index">{entry.index}</span> {entry.label}
@@ -174,8 +191,13 @@ function ProductDetail({ product }) {
               ))}
             </div>
             <div className="detail__sheet">
-              <BlueprintDrawing product={product} view={view} finish={finish} />
+              <BlueprintDrawing product={product} view={view} finish={finish} svgRef={drawingRef} />
             </div>
+            {view === 'exploded' && (
+              <Suspense fallback={null}>
+                <ExplosionSpreadControl targetRef={drawingRef} spreadRef={spreadRef} />
+              </Suspense>
+            )}
             {view === 'mounting' && (
               <dl className="spec-table spec-table--inline" data-testid="anchor-schedule">
                 <div className="spec-table__row">
