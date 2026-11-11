@@ -2067,3 +2067,109 @@
     transition: none;
   }
 }
+
+/* Multi-selection: marquee, smart guides, align tools */
+
+.wall:focus {
+  outline: none;
+}
+
+.wall-marquee {
+  position: absolute;
+  z-index: 7;
+  border: 1px solid rgba(242, 238, 231, 0.72);
+  background: rgba(242, 238, 231, 0.035);
+  pointer-events: none;
+}
+
+.wall-marquee[hidden] {
+  display: none;
+}
+
+.wall[data-selection] .wall-module[data-selected] {
+  outline-color: var(--lumen-amber);
+}
+
+.wall-smart {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.wall-smart__line {
+  stroke: rgba(232, 146, 58, 0.55);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  shape-rendering: crispEdges;
+}
+
+.wall-smart__guide[data-exact] .wall-smart__line {
+  stroke: var(--lumen-amber);
+  stroke-dasharray: none;
+}
+
+.wall-smart__guide[data-kind='wall-centre'] .wall-smart__line,
+.wall-smart__guide[data-kind='eye-level'] .wall-smart__line {
+  stroke: rgba(242, 238, 231, 0.6);
+}
+
+.wall-smart__tick {
+  stroke: var(--lumen-amber-soft);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.wall-smart__label {
+  fill: var(--lumen-amber-soft);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  paint-order: stroke;
+  stroke: rgba(11, 11, 10, 0.85);
+  stroke-width: 3px;
+}
+
+.studio-align {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.studio-align + .studio-align {
+  margin-top: var(--space-2);
+}
+
+.studio-align--pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.studio-align__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding-inline: var(--space-2);
+}
+
+.studio-align__button:hover:not(:disabled) {
+  translate: 0 -1px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+}
+
+.studio-align__button:active:not(:disabled) {
+  translate: 0 0;
+  box-shadow: none;
+}
+
+.studio-align__glyph {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+  stroke-linecap: square;
+}

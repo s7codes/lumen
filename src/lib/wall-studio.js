@@ -254,6 +254,249 @@ export function removeItem(layout, uid) {
   return { ...layout, items: layout.items.filter((entry) => entry !== item) };
 }
 
+/* Multi-selection. Group edits touch unlocked modules only. */
+
+function pickUnlocked(layout, uids) {
+  if (!Array.isArray(uids)) return [];
+  const wanted = new Set(uids);
+  return layout.items.filter((item) => wanted.has(item.uid) && !item.locked);
+}
+
+function withPositions(layout, spots) {
+  let changed = false;
+  const items = layout.items.map((item) => {
+    const spot = spots.get(item.uid);
+    if (!spot || (spot.xCm === item.xCm && spot.yCm === item.yCm)) return item;
+    changed = true;
+    return { ...item, xCm: spot.xCm, yCm: spot.yCm };
+  });
+  return changed ? { ...layout, items } : layout;
+}
+
+export function boundsOf(rects) {
+  if (!Array.isArray(rects) || rects.length === 0) return null;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const r of rects) {
+    x0 = Math.min(x0, r.x);
+    y0 = Math.min(y0, r.y);
+    x1 = Math.max(x1, r.x + r.w);
+    y1 = Math.max(y1, r.y + r.h);
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** Uids of modules whose rect touches or crosses `rect` (wall cm). */
+export function modulesInRect(items, rect) {
+  if (!isRecord(rect) || ![rect.x, rect.y, rect.w, rect.h].every(isFiniteNumber)) return [];
+  return items
+    .filter((item) => {
+      const r = itemRect(item);
+      return r.x <= rect.x + rect.w && rect.x <= r.x + r.w && r.y <= rect.y + rect.h && rect.y <= r.y + r.h;
+    })
+    .map((item) => item.uid);
+}
+
+// Each rect bounds the shared translation from both sides; the group moves as
+// far toward (dx, dy) as its most constrained member allows.
+export function clampGroupDelta(wall, rects, dx, dy) {
+  if (rects.length === 0) return { dx: 0, dy: 0 };
+  let loX = -Infinity;
+  let hiX = Infinity;
+  let loY = -Infinity;
+  let hiY = Infinity;
+  for (const r of rects) {
+    loX = Math.max(loX, -r.x);
+    hiX = Math.min(hiX, wall.widthCm - r.w - r.x);
+    loY = Math.max(loY, -r.y);
+    hiY = Math.min(hiY, wall.heightCm - r.h - r.y);
+  }
+  const clamp = (v, lo, hi) => (lo > hi ? 0 : Math.min(hi, Math.max(lo, v)));
+  return { dx: clamp(dx, loX, hiX), dy: clamp(dy, loY, hiY) };
+}
+
+/** Translates the unlocked modules in `uids` as one rigid group, kept inside the wall. */
+export function moveModules(layout, uids, dx, dy) {
+  const items = pickUnlocked(layout, uids);
+  if (items.length === 0 || !isFiniteNumber(dx) || !isFiniteNumber(dy)) return layout;
+  const delta = clampGroupDelta(layout.wall, items.map(itemRect), Math.round(dx), Math.round(dy));
+  if (delta.dx === 0 && delta.dy === 0) return layout;
+  return withPositions(
+    layout,
+    new Map(items.map((item) => [item.uid, { xCm: item.xCm + delta.dx, yCm: item.yCm + delta.dy }])),
+  );
+}
+
+export function removeModules(layout, uids) {
+  const doomed = new Set(pickUnlocked(layout, uids).map((item) => item.uid));
+  if (doomed.size === 0) return layout;
+  return { ...layout, items: layout.items.filter((item) => !doomed.has(item.uid)) };
+}
+
+/** Batch finish and LED channel. Parts that do not ship in the finish keep theirs. */
+export function updateModules(layout, uids, patch) {
+  if (!Array.isArray(uids) || !isRecord(patch)) return layout;
+  const safe = {};
+  if (typeof patch.finish === 'string') safe.finish = patch.finish;
+  if (typeof patch.led === 'boolean') safe.led = patch.led;
+  if (Object.keys(safe).length === 0) return layout;
+  return [...new Set(uids)].reduce((acc, uid) => updateItem(acc, uid, safe), layout);
+}
+
+export const ALIGN_MODES = Object.freeze(['left', 'center-x', 'right', 'top', 'center-y', 'bottom']);
+export const DISTRIBUTE_AXES = Object.freeze(['horizontal', 'vertical']);
+
+/** Aligns 2+ unlocked modules to an edge or centreline of their joint bounding box. */
+export function alignModules(layout, uids, mode) {
+  if (!isOneOf(mode, ALIGN_MODES)) return layout;
+  const items = pickUnlocked(layout, uids);
+  if (items.length < 2) return layout;
+  const rects = items.map(itemRect);
+  const box = boundsOf(rects);
+  const spots = new Map();
+  items.forEach((item, i) => {
+    const r = rects[i];
+    let { x, y } = r;
+    if (mode === 'left') x = box.x;
+    else if (mode === 'right') x = box.x + box.w - r.w;
+    else if (mode === 'center-x') x = Math.round(box.x + (box.w - r.w) / 2);
+    else if (mode === 'bottom') y = box.y;
+    else if (mode === 'top') y = box.y + box.h - r.h;
+    else y = Math.round(box.y + (box.h - r.h) / 2);
+    spots.set(item.uid, clampToWall(getProduct(item.productId), layout.wall, x, y));
+  });
+  return withPositions(layout, spots);
+}
+
+/**
+ * Spaces 3+ unlocked modules evenly between the outermost two along an axis.
+ * Gaps are equalized; when the parts are too wide for the span (gaps would be
+ * negative) the centres are spaced evenly instead. The end modules stay put.
+ */
+export function distributeModules(layout, uids, axis) {
+  if (!isOneOf(axis, DISTRIBUTE_AXES)) return layout;
+  const items = pickUnlocked(layout, uids);
+  if (items.length < 3) return layout;
+  const horizontal = axis === 'horizontal';
+  const entries = items
+    .map((item) => {
+      const r = itemRect(item);
+      return { item, start: horizontal ? r.x : r.y, size: horizontal ? r.w : r.h };
+    })
+    .sort((a, b) => a.start + a.size / 2 - (b.start + b.size / 2) || a.start - b.start);
+
+  const n = entries.length;
+  const first = entries[0];
+  const last = entries[n - 1];
+  const totalSize = entries.reduce((sum, e) => sum + e.size, 0);
+  const gap = (last.start + last.size - first.start - totalSize) / (n - 1);
+  const starts = [];
+  if (gap >= 0) {
+    let cursor = first.start;
+    for (const e of entries) {
+      starts.push(Math.round(cursor));
+      cursor += e.size + gap;
+    }
+  } else {
+    const c0 = first.start + first.size / 2;
+    const pitch = (last.start + last.size / 2 - c0) / (n - 1);
+    entries.forEach((e, i) => starts.push(Math.round(c0 + pitch * i - e.size / 2)));
+  }
+
+  const spots = new Map();
+  entries.forEach((e, i) => {
+    const x = horizontal ? starts[i] : e.item.xCm;
+    const y = horizontal ? e.item.yCm : starts[i];
+    spots.set(e.item.uid, clampToWall(getProduct(e.item.productId), layout.wall, x, y));
+  });
+  return withPositions(layout, spots);
+}
+
+/* Smart alignment guides */
+
+export const EYE_DATUM_CM = 145;
+export const GUIDE_TOLERANCE_CM = 2;
+const MAX_GUIDES = 12;
+
+function edgeValues(r, axis) {
+  return axis === 'x'
+    ? [
+        ['left', r.x],
+        ['center-x', r.x + r.w / 2],
+        ['right', r.x + r.w],
+      ]
+    : [
+        ['bottom', r.y],
+        ['center-y', r.y + r.h / 2],
+        ['top', r.y + r.h],
+      ];
+}
+
+/**
+ * Alignment hits for a dragged module or group against the wall centreline,
+ * the 145 cm eye-level datum and every other module's edges and centrelines.
+ * `active` is a uid or a list of uids; the group is treated as its bounding
+ * box. Each guide is a line in wall cm: axis 'x' is vertical at x = `at`,
+ * axis 'y' horizontal at y = `at`, running `from` -> `to` along the other
+ * axis. `delta` is the signed offset of the matching edge (0 = exact).
+ */
+export function computeSmartGuides(wall, items, active) {
+  const ids = new Set(typeof active === 'string' ? [active] : Array.isArray(active) ? active : []);
+  const moving = items.filter((item) => ids.has(item.uid));
+  if (moving.length === 0) return [];
+  const box = boundsOf(moving.map(itemRect));
+  const others = items.filter((item) => !ids.has(item.uid)).map((item) => ({ uid: item.uid, r: itemRect(item) }));
+
+  const targets = {
+    x: [{ at: wall.widthCm / 2, kind: 'wall-centre', span: [0, wall.heightCm] }],
+    y: [{ at: EYE_DATUM_CM, kind: 'eye-level', span: [0, wall.widthCm] }],
+  };
+  for (const { uid, r } of others) {
+    for (const [edge, at] of edgeValues(r, 'x')) targets.x.push({ at, kind: 'module', uid, edge, span: [r.y, r.y + r.h] });
+    for (const [edge, at] of edgeValues(r, 'y')) targets.y.push({ at, kind: 'module', uid, edge, span: [r.x, r.x + r.w] });
+  }
+
+  const merged = new Map();
+  for (const axis of ['x', 'y']) {
+    const own = axis === 'x' ? [box.y, box.y + box.h] : [box.x, box.x + box.w];
+    const edges = edgeValues(box, axis);
+    for (const target of targets[axis]) {
+      let best = null;
+      for (const [edge, value] of edges) {
+        const delta = value - target.at;
+        if (Math.abs(delta) > GUIDE_TOLERANCE_CM + 1e-9) continue;
+        if (!best || Math.abs(delta) < Math.abs(best.delta)) best = { edge, delta };
+      }
+      if (!best) continue;
+      const key = `${axis}:${target.at}`;
+      const from = Math.min(target.span[0], own[0]);
+      const to = Math.max(target.span[1], own[1]);
+      const prev = merged.get(key);
+      if (prev) {
+        prev.from = Math.min(prev.from, from);
+        prev.to = Math.max(prev.to, to);
+        if (target.uid) prev.targets.push(target.uid);
+        continue;
+      }
+      merged.set(key, {
+        axis,
+        at: target.at,
+        kind: target.kind,
+        edge: best.edge,
+        delta: Math.round(best.delta * 10) / 10,
+        from,
+        to,
+        targets: target.uid ? [target.uid] : [],
+      });
+    }
+  }
+
+  const rank = (g) => (g.kind === 'module' ? 1 : 0) * 100 + Math.abs(g.delta);
+  return [...merged.values()].sort((a, b) => rank(a) - rank(b)).slice(0, MAX_GUIDES);
+}
+
 export function sanitizeWall(input) {
   const source = isRecord(input) ? input : {};
   const dim = (value, range) => (isFiniteNumber(value) ? clampInt(value, range.min, range.max) : range.initial);

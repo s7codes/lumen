@@ -29,6 +29,15 @@ import '../styles/studio.css';
 
 const TEXT_ENTRY = 'textarea, select, [contenteditable="true"], input:not([type="radio"]):not([type="checkbox"])';
 
+function samePreview(a, b) {
+  if (!a || !b || a.uid !== b.uid || a.spots.size !== b.spots.size) return false;
+  for (const [uid, spot] of b.spots) {
+    const prev = a.spots.get(uid);
+    if (!prev || prev.xCm !== spot.xCm || prev.yCm !== spot.yCm) return false;
+  }
+  return true;
+}
+
 function useHistoryShortcuts(actions) {
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -53,7 +62,7 @@ function useHistoryShortcuts(actions) {
 export default function WallStudioPage() {
   useDocumentTitle('Wall Studio');
   const [mode] = useDisplayMode();
-  const { layout, selected, notice, canUndo, canRedo, actions } = useWallStudio();
+  const { layout, selected, selectedUids, notice, canUndo, canRedo, actions } = useWallStudio();
   const { addMany } = useBag();
   const { openBag } = useBagDrawer();
   const [drag, setDrag] = useState(null);
@@ -74,14 +83,19 @@ export default function WallStudioPage() {
   });
 
   // While dragging, geometry, conflicts and readouts follow the preview
-  // position; the history only receives the final drop.
+  // positions of the dragged module or group; the history only receives the
+  // final drop.
   const live = useMemo(() => {
     if (!drag) return layout;
     return {
       ...layout,
-      items: layout.items.map((item) => (item.uid === drag.uid ? { ...item, xCm: drag.xCm, yCm: drag.yCm } : item)),
+      items: layout.items.map((item) => {
+        const spot = drag.spots.get(item.uid);
+        return spot ? { ...item, xCm: spot.xCm, yCm: spot.yCm } : item;
+      }),
     };
   }, [layout, drag]);
+  const dragUids = useMemo(() => (drag ? [...drag.spots.keys()] : []), [drag]);
 
   const conflicts = useMemo(() => findConflicts(live), [live]);
   const summary = useMemo(() => summarizeWall(layout), [layout]);
@@ -94,17 +108,30 @@ export default function WallStudioPage() {
   );
   const showBus = mode === 'technical' || busOn;
   const liveSelected = selected ? (live.items.find((item) => item.uid === selected.uid) ?? null) : null;
+  const liveSelection = useMemo(() => {
+    const wanted = new Set(selectedUids);
+    return live.items.filter((item) => wanted.has(item.uid));
+  }, [live, selectedUids]);
 
   const preview = (next) => {
-    setDrag((prev) => {
-      if (next === null) return null;
-      return prev && prev.uid === next.uid && prev.xCm === next.xCm && prev.yCm === next.yCm ? prev : next;
-    });
+    setDrag((prev) => (next === null ? null : samePreview(prev, next) ? prev : next));
   };
 
+  // A null uid means the bare wall has focus: act on the whole selection.
+  const inGroup = (uid) => selectedUids.length > 1 && (uid === null || selectedUids.includes(uid));
+
   const nudge = (uid, dx, dy) => {
-    const item = layout.items.find((entry) => entry.uid === uid);
-    if (item && !item.locked) actions.update(uid, { xCm: item.xCm + dx, yCm: item.yCm + dy });
+    if (inGroup(uid)) {
+      actions.moveGroup(selectedUids, dx, dy);
+      return;
+    }
+    const item = layout.items.find((entry) => entry.uid === (uid ?? selectedUids[0]));
+    if (item && !item.locked) actions.update(item.uid, { xCm: item.xCm + dx, yCm: item.yCm + dy });
+  };
+
+  const remove = (uid) => {
+    if (inGroup(uid)) actions.removeMany(selectedUids);
+    else if (uid ?? selectedUids[0]) actions.remove(uid ?? selectedUids[0]);
   };
 
   const syncToBag = () => {
@@ -140,7 +167,9 @@ export default function WallStudioPage() {
             layout={live}
             conflicts={conflicts}
             selectedUid={selected?.uid ?? null}
+            selectedUids={selectedUids}
             dragUid={drag?.uid ?? null}
+            dragUids={dragUids}
             technical={mode === 'technical'}
             busTopology={showBus ? bus : null}
             luxMap={luxMap}
@@ -160,10 +189,14 @@ export default function WallStudioPage() {
               />
             }
             onSelect={actions.select}
+            onToggleSelect={actions.toggleSelect}
+            onSelectMany={actions.selectMany}
+            onSelectAll={actions.selectAll}
             onDragPreview={preview}
             onDragCommit={(uid, xCm, yCm) => actions.update(uid, { xCm, yCm })}
+            onGroupCommit={actions.moveGroup}
             onNudge={nudge}
-            onRemove={actions.remove}
+            onRemove={remove}
           />
           <StudioSummary
             summary={summary}
@@ -184,7 +217,13 @@ export default function WallStudioPage() {
         </div>
 
         <div className="studio-layout__inspector">
-          <StudioInspector layout={live} item={liveSelected} conflicts={conflicts} actions={actions} />
+          <StudioInspector
+            layout={live}
+            item={liveSelected}
+            selection={liveSelection}
+            conflicts={conflicts}
+            actions={actions}
+          />
         </div>
       </div>
     </>

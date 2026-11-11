@@ -2,7 +2,18 @@ import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { getFinish, getProduct } from '../../data/products.js';
 import { formatInt } from '../../lib/format.js';
 import { rgbTriplet } from '../../lib/photometry.js';
-import { anchorPoints, PX_PER_CM, SLOPE_CM, snapStep, snapToWall } from '../../lib/wall-studio.js';
+import {
+  anchorPoints,
+  boundsOf,
+  clampGroupDelta,
+  computeSmartGuides,
+  itemRect,
+  modulesInRect,
+  PX_PER_CM,
+  SLOPE_CM,
+  snapStep,
+  snapToWall,
+} from '../../lib/wall-studio.js';
 import { LuxHeatmap } from './LuxHeatmap.jsx';
 
 const RULER_PX = 36;
@@ -318,6 +329,60 @@ function Slope({ ppcm }) {
   );
 }
 
+const GUIDE_LABELS = { 'wall-centre': 'CL', 'eye-level': 'EYE', module: 'ALN' };
+const TICK_PX = 4;
+
+function SmartGuides({ guides, wall, ppcm }) {
+  const W = wall.widthCm * ppcm;
+  const H = wall.heightCm * ppcm;
+  return (
+    <svg
+      className="wall-smart"
+      data-testid="smart-alignment-guides"
+      data-count={guides.length}
+      viewBox={`0 0 ${W} ${H}`}
+      width={W}
+      height={H}
+      aria-hidden="true"
+      focusable="false"
+    >
+      {guides.map((g) => {
+        const vertical = g.axis === 'x';
+        const at = vertical ? g.at * ppcm : H - g.at * ppcm;
+        const a = vertical ? H - g.to * ppcm : g.from * ppcm;
+        const b = vertical ? H - g.from * ppcm : g.to * ppcm;
+        const line = vertical ? { x1: at, x2: at, y1: a, y2: b } : { x1: a, x2: b, y1: at, y2: at };
+        const tick = (p) =>
+          vertical
+            ? { x1: at - TICK_PX, x2: at + TICK_PX, y1: p, y2: p }
+            : { x1: p, x2: p, y1: at - TICK_PX, y2: at + TICK_PX };
+        const label = `${GUIDE_LABELS[g.kind]} ${g.at} / ${g.delta === 0 ? '0' : Math.abs(g.delta)} cm`;
+        const labelAt = vertical ? { x: at + 5, y: Math.max(12, a + 12) } : { x: Math.max(4, a + 4), y: at - 5 };
+        return (
+          <g
+            key={`${g.axis}-${g.at}`}
+            className="wall-smart__guide"
+            data-testid="smart-guide"
+            data-axis={g.axis}
+            data-kind={g.kind}
+            data-edge={g.edge}
+            data-at={g.at}
+            data-delta={g.delta}
+            data-exact={g.delta === 0 || undefined}
+          >
+            <line className="wall-smart__line" {...line} />
+            <line className="wall-smart__tick" {...tick(a)} />
+            <line className="wall-smart__tick" {...tick(b)} />
+            <text className="wall-smart__label" {...labelAt}>
+              {label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 function describeConflict(conflict) {
   if (!conflict) return '';
   if (conflict.bounds) return ', exceeds wall';
@@ -331,14 +396,20 @@ export function WallStage({
   layout,
   conflicts,
   selectedUid,
+  selectedUids = selectedUid ? [selectedUid] : [],
   dragUid,
+  dragUids = dragUid ? [dragUid] : [],
   technical,
   busTopology,
   luxMap,
   toolbar,
   onSelect,
+  onToggleSelect,
+  onSelectMany,
+  onSelectAll,
   onDragPreview,
   onDragCommit,
+  onGroupCommit,
   onNudge,
   onRemove,
 }) {
@@ -346,6 +417,8 @@ export function WallStage({
   const hostRef = useRef(null);
   const cursorRef = useRef(null);
   const dragRef = useRef(null);
+  const marqueeRef = useRef(null);
+  const marqueeBoxRef = useRef(null);
   const probeRef = useRef(null);
   const reticleRef = useRef(null);
   const pointerCmRef = useRef(null);
@@ -384,21 +457,41 @@ export function WallStage({
   const wallH = Math.round(wall.heightCm * ppcm);
   const active = items.find((item) => item.uid === (dragUid ?? selectedUid)) ?? null;
   const conflictCount = conflicts.size;
+  const selectedSet = new Set(selectedUids);
+  const draggingSet = new Set(dragUids);
+  const multi = selectedUids.length > 1;
+  const multiBox = multi ? boundsOf(items.filter((item) => selectedSet.has(item.uid)).map(itemRect)) : null;
+  const smartGuides = dragUids.length > 0 ? computeSmartGuides(wall, items, dragUids) : [];
 
+  // A single module snaps its own position to the grid; a group snaps the
+  // shared translation, so the members keep their relative offsets.
   const resolveDrag = (drag) => {
-    const dx = drag.lastX - drag.startX;
-    const dy = drag.lastY - drag.startY;
-    if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return null;
+    const dxPx = drag.lastX - drag.startX;
+    const dyPx = drag.lastY - drag.startY;
+    if (!drag.moved && Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return null;
     drag.moved = true;
-    return snapToWall(drag.product, drag.wall, drag.originX + dx / drag.ppcm, drag.originY - dy / drag.ppcm);
+    if (!drag.group) {
+      const spot = snapToWall(drag.product, drag.wall, drag.originX + dxPx / drag.ppcm, drag.originY - dyPx / drag.ppcm);
+      return { spots: new Map([[drag.uid, spot]]), dx: spot.xCm - drag.originX, dy: spot.yCm - drag.originY };
+    }
+    const step = snapStep(drag.wall);
+    const quantize = (cm) => Math.round(cm / step) * step;
+    const { dx, dy } = clampGroupDelta(
+      drag.wall,
+      drag.members.map((m) => m.rect),
+      quantize(dxPx / drag.ppcm),
+      quantize(-dyPx / drag.ppcm),
+    );
+    const spots = new Map(drag.members.map((m) => [m.uid, { xCm: m.rect.x + dx, yCm: m.rect.y + dy }]));
+    return { spots, dx, dy };
   };
 
   const flushDrag = () => {
     const drag = dragRef.current;
     if (!drag) return;
     drag.frame = 0;
-    const spot = resolveDrag(drag);
-    if (spot) onDragPreview({ uid: drag.uid, ...spot });
+    const result = resolveDrag(drag);
+    if (result) onDragPreview({ uid: drag.uid, spots: result.spots });
   };
 
   const endDrag = (event, commit) => {
@@ -411,23 +504,36 @@ export function WallStage({
     }
     drag.lastX = event.clientX;
     drag.lastY = event.clientY;
-    const spot = commit ? resolveDrag(drag) : null;
+    const result = commit ? resolveDrag(drag) : null;
     onDragPreview(null);
-    if (spot && (spot.xCm !== drag.originX || spot.yCm !== drag.originY)) {
-      onDragCommit(drag.uid, spot.xCm, spot.yCm);
+    if (!result) {
+      // A plain click on a member of a multi-selection narrows it to that module.
+      if (commit && drag.group) onSelect(drag.uid);
+      return;
     }
+    if (result.dx === 0 && result.dy === 0) return;
+    if (drag.group) onGroupCommit(drag.members.map((m) => m.uid), result.dx, result.dy);
+    else onDragCommit(drag.uid, drag.originX + result.dx, drag.originY + result.dy);
   };
 
   const itemHandlers = (item, product) => ({
     onPointerDown: (event) => {
-      if (event.button !== 0 || dragRef.current) return;
+      if (event.button !== 0 || dragRef.current || marqueeRef.current) return;
       event.preventDefault();
       event.currentTarget.focus({ preventScroll: true });
-      onSelect(item.uid);
+      if (event.shiftKey) {
+        onToggleSelect(item.uid);
+        return;
+      }
+      const group = multi && selectedSet.has(item.uid);
+      if (!group) onSelect(item.uid);
       if (item.locked) return;
+      const members = group ? items.filter((entry) => selectedSet.has(entry.uid) && !entry.locked) : [item];
       event.currentTarget.setPointerCapture(event.pointerId);
       dragRef.current = {
         uid: item.uid,
+        group,
+        members: members.map((entry) => ({ uid: entry.uid, rect: itemRect(entry) })),
         pointerId: event.pointerId,
         product,
         wall,
@@ -451,23 +557,101 @@ export function WallStage({
     },
     onPointerUp: (event) => endDrag(event, true),
     onPointerCancel: (event) => endDrag(event, false),
-    onKeyDown: (event) => {
-      const step = snapStep(wall) * (event.shiftKey ? 10 : 1);
-      const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
-      if (moves[event.key]) {
-        event.preventDefault();
-        onNudge(item.uid, ...moves[event.key]);
-      } else if (event.key === 'Delete' || event.key === 'Backspace') {
-        event.preventDefault();
-        onRemove(item.uid);
-      } else if (event.key === 'Escape') {
-        onSelect(null);
-        event.currentTarget.blur();
-      }
-    },
   });
 
+  // One handler for the wall and every module in it. A focused module acts on
+  // itself (or on the group it belongs to); the bare wall acts on the selection.
+  const onWallKeyDown = (event) => {
+    const uid = event.target instanceof HTMLElement && event.target !== event.currentTarget ? event.target.dataset.uid : null;
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'a') {
+      event.preventDefault();
+      onSelectAll();
+      return;
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (!uid && selectedUids.length === 0) return;
+    const step = snapStep(wall) * (event.shiftKey ? 10 : 1);
+    const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
+    if (moves[event.key]) {
+      event.preventDefault();
+      onNudge(uid ?? null, ...moves[event.key]);
+    } else if (event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault();
+      onRemove(uid ?? null);
+    } else if (event.key === 'Escape') {
+      onSelect(null);
+      event.target.blur();
+    }
+  };
+
+  const paintMarquee = () => {
+    const m = marqueeRef.current;
+    const box = marqueeBoxRef.current;
+    if (!m || !box) return;
+    m.frame = 0;
+    box.hidden = !m.moved;
+    box.style.left = `${Math.min(m.x0, m.x1)}px`;
+    box.style.top = `${Math.min(m.y0, m.y1)}px`;
+    box.style.width = `${Math.abs(m.x1 - m.x0)}px`;
+    box.style.height = `${Math.abs(m.y1 - m.y0)}px`;
+  };
+
+  const onWallPointerDown = (event) => {
+    if (event.button !== 0 || dragRef.current || marqueeRef.current) return;
+    if (!(event.target instanceof Element) || event.target.closest('[data-testid="wall-module"]')) return;
+    event.preventDefault();
+    const canvas = event.currentTarget;
+    canvas.focus({ preventScroll: true });
+    canvas.setPointerCapture(event.pointerId);
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    marqueeRef.current = {
+      pointerId: event.pointerId,
+      originLeft: rect.left,
+      originTop: rect.top,
+      heightPx: rect.height,
+      x0: x,
+      y0: y,
+      x1: x,
+      y1: y,
+      additive: event.shiftKey,
+      moved: false,
+      frame: 0,
+    };
+  };
+
+  const endMarquee = (event, commit) => {
+    const m = marqueeRef.current;
+    if (!m || m.pointerId !== event.pointerId) return;
+    marqueeRef.current = null;
+    cancelAnimationFrame(m.frame);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (marqueeBoxRef.current) marqueeBoxRef.current.hidden = true;
+    if (!commit) return;
+    if (!m.moved) {
+      if (!m.additive) onSelect(null);
+      return;
+    }
+    const rect = {
+      x: Math.min(m.x0, m.x1) / ppcm,
+      y: (m.heightPx - Math.max(m.y0, m.y1)) / ppcm,
+      w: Math.abs(m.x1 - m.x0) / ppcm,
+      h: Math.abs(m.y1 - m.y0) / ppcm,
+    };
+    onSelectMany(modulesInRect(items, rect), m.additive);
+  };
+
   const onWallPointerMove = (event) => {
+    const m = marqueeRef.current;
+    if (m && m.pointerId === event.pointerId) {
+      m.x1 = Math.min(Math.max(event.clientX - m.originLeft, 0), wallW);
+      m.y1 = Math.min(Math.max(event.clientY - m.originTop, 0), wallH);
+      if (!m.moved && Math.hypot(m.x1 - m.x0, m.y1 - m.y0) >= DRAG_THRESHOLD_PX) m.moved = true;
+      if (m.moved && !m.frame) m.frame = requestAnimationFrame(paintMarquee);
+    }
     const readout = cursorRef.current;
     if (!readout) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -517,12 +701,15 @@ export function WallStage({
               data-height-cm={wall.heightCm}
               data-ppcm={ppcm}
               data-lux-map={luxMap ? true : undefined}
+              data-selection={selectedUids.length || undefined}
+              tabIndex={-1}
               style={{ width: wallW, height: wallH, '--ppcm': ppcm }}
-              onPointerDown={(event) => {
-                if (event.target === event.currentTarget) onSelect(null);
-              }}
+              onPointerDown={onWallPointerDown}
               onPointerMove={onWallPointerMove}
+              onPointerUp={(event) => endMarquee(event, true)}
+              onPointerCancel={(event) => endMarquee(event, false)}
               onPointerLeave={onWallPointerLeave}
+              onKeyDown={onWallKeyDown}
             >
               <LightLayer items={items} ppcm={ppcm} />
               {wall.slope && <Slope ppcm={ppcm} />}
@@ -540,8 +727,8 @@ export function WallStage({
                 const product = getProduct(item.productId);
                 const finish = getFinish(item.finish);
                 const conflict = conflicts.get(item.uid);
-                const selected = item.uid === selectedUid;
-                const dragging = item.uid === dragUid;
+                const selected = selectedSet.has(item.uid);
+                const dragging = draggingSet.has(item.uid);
                 return (
                   <button
                     key={item.uid}
@@ -573,7 +760,7 @@ export function WallStage({
                   >
                     <span className="wall-module__detail" aria-hidden="true" />
                     {item.locked && <span className="wall-module__lock" aria-hidden="true" />}
-                    {dragging && (
+                    {item.uid === dragUid && (
                       <span className="wall-module__readout mono" data-testid="drag-readout" aria-hidden="true">
                         X {item.xCm} / Y {item.yCm}
                       </span>
@@ -587,6 +774,16 @@ export function WallStage({
               {technical && (
                 <Guides items={items} active={active} wall={wall} ppcm={ppcm} showTags={ppcm >= MIN_TAG_PPCM} />
               )}
+
+              {smartGuides.length > 0 && <SmartGuides guides={smartGuides} wall={wall} ppcm={ppcm} />}
+
+              <span
+                ref={marqueeBoxRef}
+                className="wall-marquee"
+                data-testid="marquee-selection-box"
+                aria-hidden="true"
+                hidden
+              />
 
               <span className="wall__floor" aria-hidden="true">
                 <span className="wall__floor-label mono">FFL 0</span>
@@ -604,9 +801,11 @@ export function WallStage({
       <div className="workspace-frame__bar workspace-frame__bar--bottom studio-stage__readouts mono">
         <span ref={cursorRef}>Cursor --</span>
         <span data-testid="item-readout">
-          {active
-            ? `${getProduct(active.productId).name} / X ${active.xCm} cm / Y ${active.yCm} cm`
-            : 'No module selected'}
+          {multiBox
+            ? `${selectedUids.length} modules / X ${multiBox.x} cm / Y ${multiBox.y} cm / ${multiBox.w} x ${multiBox.h} cm`
+            : active
+              ? `${getProduct(active.productId).name} / X ${active.xCm} cm / Y ${active.yCm} cm`
+              : 'No module selected'}
         </span>
         <span data-testid="view-scale">
           1 cm = {PX_PER_CM} px / View {Math.round((ppcm / PX_PER_CM) * 100)}%
