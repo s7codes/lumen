@@ -18,7 +18,7 @@ function WallSettings({ wall, onWall }) {
   return (
     <PanelSection title="Wall Setup">
       <Disclosure label="Dimensions" summary={`${wall.widthCm} x ${wall.heightCm} cm`} testId="wall-dimensions">
-        <div className="studio-fields">
+        <div className="wall-fields dimension-fields">
           <NumberField
             label="Width (cm)"
             value={wall.widthCm}

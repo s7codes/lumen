@@ -248,7 +248,7 @@ export function PaletteItem({ product, note, disabled, withDepth = false, onMoun
       <span className="palette-item__body">
         <span className="palette-item__name">{product.name}</span>
         <span className="palette-item__meta">
-          {size}, {power}
+          <span>{size}</span>, <span>{power}</span>
         </span>
       </span>
       <span className="palette-item__price">{note}</span>

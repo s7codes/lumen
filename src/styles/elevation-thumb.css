@@ -1,0 +1,39 @@
+/* Elevation thumbnail: plaster wall, finish-filled modules, hairline strokes */
+
+.elevation-thumb__wall {
+  fill: var(--plaster-100);
+  fill-opacity: 0.08;
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.elevation-thumb__joint {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.elevation-thumb__module {
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.elevation-thumb__module[data-diff='added'] {
+  stroke: var(--lumen-amber);
+  stroke-width: 2;
+}
+
+.elevation-thumb__module[data-diff='modified'] {
+  stroke: #ffffff;
+  stroke-width: 1.5;
+}
+
+.elevation-thumb__module[data-diff='removed'] {
+  fill-opacity: 0.32;
+  stroke: var(--signal-fault-soft);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}

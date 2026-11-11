@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { Link } from 'react-router-dom';
 import {
   deleteProject,
@@ -9,50 +9,36 @@ import {
   loadQuotes,
   subscribeCloudTransport,
 } from '../api/client.js';
+import { ElevationThumb } from '../components/ElevationThumb.jsx';
 import { EmptyState } from '../components/EmptyState.jsx';
 import { ArrowRight } from '../components/icons.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useToast } from '../contexts/ToastContext.jsx';
-import { getFinish, getProduct } from '../data/products.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { useScrollReveal } from '../hooks/useScrollReveal.js';
+import { accountDiffSources } from '../lib/diff-sources.js';
 import { formatUsd, padIndex } from '../lib/format.js';
-import { persistProjectName } from '../lib/project-library.js';
+import { loadProjectName, persistProjectName } from '../lib/project-library.js';
 import { formatMoney, getCurrency } from '../lib/quote.js';
-import { DEFAULT_ROOM_WALL, getFurniture, LIGHTING_MODES, persistRoomState, wallCounts, wallOf } from '../lib/room-3d.js';
-import { persistLayout, summarizeWall } from '../lib/wall-studio.js';
+import {
+  DEFAULT_ROOM_WALL,
+  getFurniture,
+  LIGHTING_MODES,
+  loadRoomState,
+  persistRoomState,
+  wallCounts,
+  wallOf,
+} from '../lib/room-3d.js';
+import { loadLayout, persistLayout, summarizeWall } from '../lib/wall-studio.js';
 import '../styles/pages.css';
 import '../styles/account.css';
 
-/** Main-wall elevation drawn from stored module positions (floor at the bottom). */
-function ElevationThumb({ widthCm, heightCm, items, label }) {
-  return (
-    <svg
-      className="project-card__thumb"
-      viewBox={`0 0 ${widthCm} ${heightCm}`}
-      preserveAspectRatio="xMidYMid meet"
-      role="img"
-      aria-label={label}
-    >
-      <rect className="project-card__wall" x="0" y="0" width={widthCm} height={heightCm} />
-      {items.map((item) => {
-        const { w, h } = getProduct(item.productId).dimsCm;
-        return (
-          <rect
-            key={item.uid}
-            className="project-card__module"
-            x={item.xCm}
-            y={heightCm - item.yCm - h}
-            width={w}
-            height={h}
-            fill={getFinish(item.finish).hex}
-          />
-        );
-      })}
-    </svg>
-  );
-}
+// The diff engine pulls in the acoustic and photometric models; the account
+// entry only loads them, in the chunk the planners share, once a compare opens.
+const ProjectDiffModal = lazy(() =>
+  import('../components/ProjectDiffModal.jsx').then((module) => ({ default: module.ProjectDiffModal })),
+);
 
 function formatSavedAt(iso) {
   const date = new Date(iso);
@@ -70,7 +56,7 @@ function describeProject(record) {
       action: 'Open in Wall Studio',
       envelope: `${widthCm} x ${heightCm} cm${slope ? ', attic slope' : ''}`,
       context: surface === 'daylight' ? 'Daylight elevation' : 'Ambient elevation',
-      thumb: { widthCm, heightCm, items: data.items },
+      thumb: { widthCm, heightCm, slope, items: data.items },
       restore: () => {
         persistLayout(data);
         persistProjectName('wall', record.name);
@@ -94,7 +80,7 @@ function describeProject(record) {
   };
 }
 
-function ProjectCard({ record, index, deleting, onDelete }) {
+function ProjectCard({ record, index, deleting, onDelete, onCompare }) {
   const view = describeProject(record);
   const summary = summarizeWall(record.data);
   return (
@@ -116,7 +102,11 @@ function ProjectCard({ record, index, deleting, onDelete }) {
           Rev {padIndex(record.revision)}
         </span>
       </header>
-      <ElevationThumb {...view.thumb} label={`${record.name} elevation, ${summary.modules} modules`} />
+      <ElevationThumb
+        {...view.thumb}
+        className="project-card__thumb"
+        label={`${record.name} elevation, ${summary.modules} modules`}
+      />
       <h3 className="project-card__title">{record.name}</h3>
       <dl className="project-card__spec mono">
         <div>
@@ -158,6 +148,17 @@ function ProjectCard({ record, index, deleting, onDelete }) {
           {view.action}
           <ArrowRight />
         </Link>
+        <button
+          type="button"
+          className="button project-card__compare"
+          data-testid="compare-saved-project"
+          aria-haspopup="dialog"
+          aria-label={`Compare ${record.name}`}
+          disabled={deleting}
+          onClick={(event) => onCompare(record, event.currentTarget)}
+        >
+          Compare
+        </button>
         <button
           type="button"
           className="button project-card__delete"
@@ -296,6 +297,17 @@ export default function AccountPage() {
   // Read on every render: a refused session drops to the profile library during the load.
   const scope = getLibraryScope();
 
+  // The live drafts are read from storage once, when the dialog opens.
+  const [compare, setCompare] = useState(null);
+  const closeCompare = useCallback(() => setCompare(null), []);
+  const openCompare = (focusId, trigger) => {
+    const drafts = {
+      wall: { state: loadLayout(), name: loadProjectName('wall') },
+      room: { state: loadRoomState(), name: loadProjectName('room') },
+    };
+    setCompare({ trigger, view: accountDiffSources(cloud.projects, drafts, focusId) });
+  };
+
   const leave = () => {
     const bound = getLibraryScope() === 'account';
     signOut();
@@ -365,13 +377,26 @@ export default function AccountPage() {
           aria-labelledby="account-projects-title"
           data-testid="account-projects"
         >
-          <header className="account-panel__head">
-            <p className="index-label">
-              <span className="index-label__num">02</span> / Projects
-            </p>
-            <h2 id="account-projects-title" className="account-panel__title" tabIndex={-1}>
-              Saved Spatial Projects
-            </h2>
+          <header className="account-panel__head account-panel__head--action">
+            <div>
+              <p className="index-label">
+                <span className="index-label__num">02</span> / Projects
+              </p>
+              <h2 id="account-projects-title" className="account-panel__title" tabIndex={-1}>
+                Saved Spatial Projects
+              </h2>
+            </div>
+            {!loading && cloud.projects.length >= 2 && (
+              <button
+                type="button"
+                className="button account-panel__compare"
+                data-testid="open-project-compare"
+                aria-haspopup="dialog"
+                onClick={(event) => openCompare(null, event.currentTarget)}
+              >
+                Compare Projects
+              </button>
+            )}
           </header>
           {loading ? (
             <CloudLoading testId="projects-loading" rows={2} />
@@ -384,6 +409,7 @@ export default function AccountPage() {
                   index={i + 1}
                   deleting={cloud.deleting.has(record.id)}
                   onDelete={remove}
+                  onCompare={(focus, trigger) => openCompare(focus.id, trigger)}
                 />
               ))}
             </div>
@@ -435,6 +461,20 @@ export default function AccountPage() {
           )}
         </section>
       </div>
+
+      {compare && (
+        <Suspense fallback={null}>
+          <ProjectDiffModal
+            open
+            onClose={closeCompare}
+            sources={compare.view.sources}
+            baseId={compare.view.baseId}
+            targetId={compare.view.targetId}
+            returnFocus={compare.trigger}
+            title="Compare Projects"
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

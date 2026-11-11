@@ -1,5 +1,5 @@
 import { BusTelemetryCell } from '../BusTelemetryCell.jsx';
-import { CloudSaveButton } from '../CloudSaveButton.jsx';
+import { CloudSaveButton, CompareChangesButton } from '../CloudSaveButton.jsx';
 import { EnvironmentalPhysicsCell } from '../EnvironmentalPhysicsCell.jsx';
 import { ProjectNameField } from '../ProjectNameField.jsx';
 import { SummaryKpis } from '../SummaryKpis.jsx';
@@ -21,6 +21,7 @@ export function StudioSummary({
   project,
   onSave,
   onSync,
+  onCompare,
 }) {
   const { modules, psu } = summary;
   const empty = modules === 0;
@@ -31,12 +32,15 @@ export function StudioSummary({
         <SummaryKpis summary={summary} prefix="wall" />
 
         <div className="studio-summary__action">
-          <ProjectNameField
-            value={project.name}
-            onChange={project.change}
-            onCommit={project.commit}
-            className="studio-summary__name"
-          />
+          <div className="studio-summary__project">
+            <ProjectNameField
+              value={project.name}
+              onChange={project.change}
+              onCommit={project.commit}
+              className="studio-summary__name"
+            />
+            <CompareChangesButton onCompare={onCompare} />
+          </div>
           <div className="studio-summary__buttons">
             <CloudSaveButton
               status={cloudStatus}

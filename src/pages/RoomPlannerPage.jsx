@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { PageHeader } from '../components/PageHeader.jsx';
+import { ProjectDiffModal } from '../components/ProjectDiffModal.jsx';
 import { RoomControls } from '../components/room3d/RoomControls.jsx';
 import { RoomInspector } from '../components/room3d/RoomInspector.jsx';
 import { RoomSummary } from '../components/room3d/RoomSummary.jsx';
@@ -10,12 +11,14 @@ import { useBag, useBagDrawer } from '../hooks/useBag.js';
 import { useCloudSave } from '../hooks/useCloudSave.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
+import { useDraftDiff } from '../hooks/useDraftDiff.js';
 import { useHistoryShortcuts } from '../hooks/useHistoryShortcuts.js';
 import { useLaunchedModule } from '../hooks/useLaunchedModule.js';
 import { useProjectName } from '../hooks/useProjectName.js';
 import { useRoom3d } from '../hooks/useRoom3d.js';
 import { useSharedSceneLoader, useShareLink } from '../hooks/useSceneShare.js';
 import { computeBusTopology } from '../lib/bus-topology.js';
+import { plannerDiffSources } from '../lib/diff-sources.js';
 import { computeFloorLuxField } from '../lib/illuminance-field.js';
 import { matchLightingScene, roomSurface } from '../lib/lighting-scenes.js';
 import { computeEnvironmentalPhysics } from '../lib/room-physics.js';
@@ -52,6 +55,12 @@ export default function RoomPlannerPage() {
   const cloud = useCloudSave('room');
   const project = useProjectName('room');
   const shareLink = useShareLink('room');
+  const draftDiff = useDraftDiff();
+  const diffProjects = draftDiff.session?.projects ?? null;
+  const diffView = useMemo(
+    () => (diffProjects ? plannerDiffSources('room', state, project.name, diffProjects, cloud.record) : null),
+    [diffProjects, state, project.name, cloud.record],
+  );
   useHistoryShortcuts(actions);
   useLaunchedModule(state.items, actions);
   useSharedSceneLoader('room', ({ state: shared, name }) => {
@@ -169,6 +178,10 @@ export default function RoomPlannerPage() {
             onExportObj={exportObj}
             onSave={() => cloud.save(state, project.commit())}
             onSync={syncToBag}
+            onCompare={(trigger) => {
+              project.commit();
+              draftDiff.open(trigger);
+            }}
           />
         </div>
 
@@ -180,6 +193,16 @@ export default function RoomPlannerPage() {
           <RoomInspector state={state} item={selected} activeWall={activeWall} conflicts={conflicts} actions={actions} />
         </div>
       </div>
+
+      <ProjectDiffModal
+        open={draftDiff.session !== null}
+        onClose={draftDiff.close}
+        sources={diffView?.sources ?? null}
+        baseId={diffView?.baseId}
+        targetId={diffView?.targetId}
+        returnFocus={draftDiff.session?.trigger ?? null}
+        title="Draft against Cloud Revision"
+      />
     </>
   );
 }

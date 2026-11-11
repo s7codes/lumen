@@ -7,8 +7,6 @@ const LABELS = Object.freeze({
   saved: 'Project Saved',
 });
 
-const SIZER_LABELS = [...new Set(Object.values(LABELS))];
-
 function UploadGlyph() {
   return (
     <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
@@ -36,8 +34,9 @@ function CheckGlyph() {
 }
 
 /**
- * Save button with an in-place sync state. All labels share one grid cell so
- * the button keeps the width of its longest label while the state changes.
+ * Save button with an in-place sync state. The glyph and the active label
+ * travel as one centred unit; the key's width comes from its row, never from
+ * the label, so it holds still while the state changes.
  */
 export function CloudSaveButton({ status, disabled = false, onSave, className = '', testId }) {
   const saving = status === 'saving';
@@ -53,21 +52,28 @@ export function CloudSaveButton({ status, disabled = false, onSave, className = 
       aria-busy={saving || undefined}
       onClick={onSave}
     >
-      <span className="cloud-save__icon">
+      <span className="cloud-save__icon" aria-hidden="true">
         {saving ? <SpinnerRing /> : status === 'saved' ? <CheckGlyph /> : <UploadGlyph />}
       </span>
-      <span className="cloud-save__labels">
-        {SIZER_LABELS.map((text) => (
-          <span
-            key={text}
-            className="cloud-save__label"
-            data-active={text === label || undefined}
-            aria-hidden={text === label ? undefined : 'true'}
-          >
-            {text}
-          </span>
-        ))}
+      <span key={label} className="cloud-save__label">
+        {label}
       </span>
+    </button>
+  );
+}
+
+/** Opens the A/B diff of the live draft against its last cloud revision. */
+export function CompareChangesButton({ onCompare }) {
+  return (
+    <button
+      type="button"
+      className="button studio-summary__compare"
+      data-testid="open-draft-diff"
+      aria-haspopup="dialog"
+      title="Compare the draft with its last saved cloud revision"
+      onClick={(event) => onCompare(event.currentTarget)}
+    >
+      Compare Changes
     </button>
   );
 }

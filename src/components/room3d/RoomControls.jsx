@@ -39,7 +39,7 @@ function RoomSettings({ room, onRoom }) {
         summary={`${room.widthCm} x ${room.depthCm} x ${room.heightCm} cm`}
         testId="room-dimensions"
       >
-        <div className="room3d-fields">
+        <div className="room3d-fields dimension-fields">
           <NumberField
             label="Width (cm)"
             value={room.widthCm}

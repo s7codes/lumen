@@ -1092,6 +1092,27 @@
   gap: var(--space-3);
 }
 
+/* Envelope dimensions: one row per field, the label left and a fixed numeric
+   well right, so three-digit values clear the padding in a narrow sidebar. */
+.dimension-fields {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.dimension-fields .studio-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.dimension-fields .field__input {
+  height: 34px;
+  padding-inline: var(--space-3);
+  text-align: right;
+  letter-spacing: 0.02em;
+}
+
 /* Disclosure: a summary row that unfolds to its controls. Collapsed content
    is visibility: hidden (and inert in markup) once the fold has closed. */
 
@@ -1206,7 +1227,7 @@
 .studio-switch {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 10px;
   width: 100%;
   min-height: 32px;
   font-size: 13px;
@@ -1253,10 +1274,19 @@
   transform: translateX(12px);
 }
 
+/* The label never breaks; in a sidebar too narrow for both, the hint gives way. */
+.studio-switch__label {
+  flex: none;
+  white-space: nowrap;
+}
+
 .studio-switch__hint {
+  min-width: 0;
   margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: var(--text-2xs);
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   white-space: nowrap;
   color: var(--text-muted);
 }
@@ -1384,6 +1414,11 @@
   font-size: 12px;
   line-height: 1.35;
   color: var(--text-body);
+}
+
+/* Size and power each hold together: the line breaks after the comma, never inside a figure. */
+.palette-item__meta > span {
+  white-space: nowrap;
 }
 
 .palette-item__price {
@@ -1679,15 +1714,24 @@
   gap: var(--space-2);
 }
 
+/* Commit block: the project row (name well and revision compare) over two
+   keys of one height that split the row evenly. */
+.studio-summary__project {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
 .studio-summary__buttons {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
   gap: var(--space-2);
 }
 
 .studio-summary__buttons > * {
-  flex: 1 1 150px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .studio-summary__sync {
@@ -1695,20 +1739,37 @@
 }
 
 .studio-summary__name {
-  align-self: stretch;
-  height: 40px;
+  flex: 1 1 auto;
+  height: 38px;
 }
 
 /* The project keys read as plain sentence-case actions, not mono captions. */
 .studio-summary .button {
-  height: 40px;
+  height: 38px;
+  gap: 8px;
   padding-inline: var(--space-4);
   border-radius: 10px;
   font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 600;
+  line-height: 1;
   letter-spacing: -0.005em;
   text-transform: none;
+  white-space: nowrap;
+}
+
+.studio-summary .studio-summary__compare {
+  flex: none;
+  padding-inline: 14px;
+  border-color: var(--border-hairline);
+  background: transparent;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.studio-summary .studio-summary__compare:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
 .studio-summary .project-name {
@@ -1846,6 +1907,10 @@
 
   .studio-summary__buttons > * {
     flex: 1 1 100%;
+  }
+
+  .studio-summary .project-name__label {
+    padding-inline: var(--space-2);
   }
 
   .studio-summary__status {

@@ -63,6 +63,22 @@ svg {
   max-width: 100%;
 }
 
+/* Numeric wells carry no native spin keys: they sit over the last digit and
+   clash with the hairline fields. Arrow keys still step the value. */
+input[type='number'] {
+  -webkit-appearance: none;
+  appearance: none;
+  -moz-appearance: textfield;
+  font-variant-numeric: tabular-nums;
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  display: none;
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 ::selection {
   background: var(--lumen-amber);
   color: var(--text-inverse);

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { PageHeader } from '../components/PageHeader.jsx';
+import { ProjectDiffModal } from '../components/ProjectDiffModal.jsx';
 import { BlueprintSheetModal } from '../components/studio/BlueprintSheetModal.jsx';
 import { StudioInspector } from '../components/studio/StudioInspector.jsx';
 import { StudioPalette } from '../components/studio/StudioPalette.jsx';
@@ -10,12 +11,14 @@ import { useBag, useBagDrawer } from '../hooks/useBag.js';
 import { useCloudSave } from '../hooks/useCloudSave.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
+import { useDraftDiff } from '../hooks/useDraftDiff.js';
 import { useHistoryShortcuts } from '../hooks/useHistoryShortcuts.js';
 import { useLaunchedModule } from '../hooks/useLaunchedModule.js';
 import { useProjectName } from '../hooks/useProjectName.js';
 import { useSharedSceneLoader, useShareLink } from '../hooks/useSceneShare.js';
 import { useWallStudio } from '../hooks/useWallStudio.js';
 import { computeBusTopology } from '../lib/bus-topology.js';
+import { plannerDiffSources } from '../lib/diff-sources.js';
 import { computeWallLuxField, createWallLuxProbe } from '../lib/illuminance-field.js';
 import { matchLightingScene } from '../lib/lighting-scenes.js';
 import { computeEnvironmentalPhysics } from '../lib/room-physics.js';
@@ -55,6 +58,12 @@ export default function WallStudioPage() {
   const shareLink = useShareLink('wall');
   const [blueprint, setBlueprint] = useState(null);
   const closeBlueprint = useCallback(() => setBlueprint(null), []);
+  const draftDiff = useDraftDiff();
+  const diffProjects = draftDiff.session?.projects ?? null;
+  const diffView = useMemo(
+    () => (diffProjects ? plannerDiffSources('wall', layout, project.name, diffProjects, cloud.record) : null),
+    [diffProjects, layout, project.name, cloud.record],
+  );
 
   useHistoryShortcuts(actions);
   useLaunchedModule(layout.items, actions);
@@ -195,6 +204,10 @@ export default function WallStudioPage() {
             project={project}
             onSave={() => cloud.save(layout, project.commit())}
             onSync={syncToBag}
+            onCompare={(trigger) => {
+              project.commit();
+              draftDiff.open(trigger);
+            }}
           />
         </div>
 
@@ -219,6 +232,16 @@ export default function WallStudioPage() {
         layout={layout}
         projectName={blueprint?.name ?? ''}
         returnFocus={blueprint?.trigger ?? null}
+      />
+
+      <ProjectDiffModal
+        open={draftDiff.session !== null}
+        onClose={draftDiff.close}
+        sources={diffView?.sources ?? null}
+        baseId={diffView?.baseId}
+        targetId={diffView?.targetId}
+        returnFocus={draftDiff.session?.trigger ?? null}
+        title="Draft against Cloud Revision"
       />
     </>
   );

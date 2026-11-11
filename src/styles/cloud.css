@@ -1,12 +1,24 @@
 /* Cloud save: in-place sync state on the save key, no status dots */
 
+/* Glyph and label are one tight unit centred in the key. The key takes its
+   width from the row it sits in, so a longer state label never resizes it. */
 .cloud-save {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .cloud-save__icon {
   display: inline-grid;
+  flex: none;
   place-items: center;
+  width: 14px;
+  height: 14px;
+}
+
+.cloud-save__icon svg {
   width: 14px;
   height: 14px;
 }
@@ -15,18 +27,11 @@
   transform: translateY(-2px);
 }
 
-.cloud-save__labels {
-  display: inline-grid;
-}
-
 .cloud-save__label {
-  grid-area: 1 / 1;
-  text-align: center;
-  visibility: hidden;
-}
-
-.cloud-save__label[data-active] {
-  visibility: visible;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   animation: cloud-save-label 420ms var(--ease-cinematic) both;
 }
 
