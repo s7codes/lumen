@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext.jsx';
+import { LightingSceneBar } from '../LightingSceneBar.jsx';
 import { MAX_IMPORT_BYTES, sanitizeLayout, serializeLayout } from '../../lib/wall-studio.js';
 import { safeJsonParse } from '../../security/sanitize.js';
 
@@ -29,6 +30,7 @@ export function StudioToolbar({
   onShare,
   blueprintOpen,
   onOpenBlueprint,
+  activeScene = null,
 }) {
   const fileRef = useRef(null);
   const [armed, setArmed] = useState(false);
@@ -180,6 +182,8 @@ export function StudioToolbar({
           Blueprint
         </button>
       </div>
+
+      <LightingSceneBar active={activeScene} disabled={count === 0} onApply={actions.applyScene} />
 
       <p className="studio-toolbar__notice mono" role="status" aria-live="polite" data-tone={notice.tone}>
         <span key={notice.serial} className="notice-transient" data-testid="studio-notice">

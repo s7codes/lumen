@@ -1,4 +1,5 @@
 import { getProduct } from '../data/products.js';
+import { dimFactor } from './dimming.js';
 import { beamProfile } from './photometry.js';
 import { computeEnvironmentalPhysics, MAINTENANCE_FACTOR, REFERENCE_DEPTH_CM } from './room-physics.js';
 import { SLOPE_CM } from './wall-studio.js';
@@ -98,7 +99,7 @@ function apertures(shape, b) {
 /**
  * Point sources for every active luminous module (watts > 0, led !== false).
  * Each entry is { x, y, z, cd, ax, ay, az, m } with cd already scaled by the
- * maintenance factor.
+ * maintenance factor and the module's DALI-2 dim level.
  */
 export function luminousSources(items) {
   const sources = [];
@@ -115,7 +116,8 @@ export function luminousSources(items) {
     const list = apertures(product.shape, box);
     const lobes = list.reduce((sum, a) => sum + a.axes.length, 0);
     if (lobes === 0) continue;
-    const lobeCd = (product.lumens / lobes) * ((profile.m + 1) / (2 * Math.PI)) * MAINTENANCE_FACTOR;
+    const lobeCd =
+      ((product.lumens * dimFactor(item)) / lobes) * ((profile.m + 1) / (2 * Math.PI)) * MAINTENANCE_FACTOR;
 
     for (const aperture of list) {
       const { from, to } = aperture;

@@ -1,6 +1,7 @@
 import { getFinish, getProduct } from '../data/products.js';
 import { sanitizeText } from '../security/sanitize.js';
 import { computeBusTopology, formatBusTelemetry } from './bus-topology.js';
+import { dimPctFor } from './dimming.js';
 import { PROJECT_NAME_MAX, PROJECT_NAMES } from './project-library.js';
 import { anchorPoints, DEFAULT_WALL, SLOPE_CM, summarizeWall } from './wall-studio.js';
 
@@ -223,6 +224,7 @@ export function compileBlueprintSheet(layout, options = {}) {
     h: product.dimsCm.h,
     watts: product.watts,
     lit: product.watts > 0 && item.led !== false,
+    dimPct: dimPctFor(product, item.dimPct),
   }));
 
   const anchors = [];
@@ -315,6 +317,8 @@ export function compileBlueprintSheet(layout, options = {}) {
       moduleCount: modules.length,
       anchorCount: anchors.length,
       loadW: summary.loadW,
+      activeW: summary.activeW,
+      dimmed: summary.dimmed,
       psu: summary.psu.label,
     },
   };

@@ -1,5 +1,6 @@
 import { getProduct, productHasFinish } from '../data/products.js';
 import { isOneOf, safeStorage } from '../security/sanitize.js';
+import { dimPatch, recordChanged, sanitizeDimPct, withDimPct } from './dimming.js';
 import {
   clampToWall,
   createLayout,
@@ -395,16 +396,17 @@ export function updateRoomItem(state, uid, patch) {
 
   const current = state.items[index];
   const product = getProduct(current.productId);
-  const next = { ...current };
+  let next = { ...current };
   if (productHasFinish(product, patch.finish)) next.finish = patch.finish;
   if (typeof patch.led === 'boolean' && product.watts > 0) next.led = patch.led;
+  if (isFiniteNumber(patch.dimPct) && product.watts > 0) next = withDimPct(next, sanitizeDimPct(patch.dimPct));
   if (isFiniteNumber(patch.xCm) || isFiniteNumber(patch.yCm)) {
     const x = isFiniteNumber(patch.xCm) ? patch.xCm : current.xCm;
     const y = isFiniteNumber(patch.yCm) ? patch.yCm : current.yCm;
     Object.assign(next, clampToWall(product, roomWall(state.room), Math.round(x), Math.round(y)));
   }
 
-  if (Object.keys(next).every((key) => next[key] === current[key])) return state;
+  if (!recordChanged(next, current)) return state;
   return { ...state, items: state.items.map((item, i) => (i === index ? next : item)) };
 }
 
@@ -415,8 +417,8 @@ export function removeRoomItem(state, uid) {
 
 /* Untrusted input */
 
-function stripLock({ uid, productId, finish, xCm, yCm, led }) {
-  return { uid, productId, finish, xCm, yCm, led };
+function stripLock({ uid, productId, finish, xCm, yCm, led, dimPct }) {
+  return { uid, productId, finish, xCm, yCm, led, ...dimPatch(getProduct(productId), dimPct) };
 }
 
 /**

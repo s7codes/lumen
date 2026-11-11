@@ -10,12 +10,14 @@ import { useBag, useBagDrawer } from '../hooks/useBag.js';
 import { useCloudSave } from '../hooks/useCloudSave.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
+import { useHistoryShortcuts } from '../hooks/useHistoryShortcuts.js';
 import { useLaunchedModule } from '../hooks/useLaunchedModule.js';
 import { useProjectName } from '../hooks/useProjectName.js';
 import { useRoom3d } from '../hooks/useRoom3d.js';
 import { useSharedSceneLoader, useShareLink } from '../hooks/useSceneShare.js';
 import { computeBusTopology } from '../lib/bus-topology.js';
 import { computeFloorLuxField } from '../lib/illuminance-field.js';
+import { matchLightingScene, roomSurface } from '../lib/lighting-scenes.js';
 import { computeEnvironmentalPhysics } from '../lib/room-physics.js';
 import { downloadText } from '../lib/download.js';
 import { buildRoomObj, countObjObjects, OBJ_MIME, objFilename } from '../lib/obj-export.js';
@@ -32,7 +34,7 @@ function plural(count, word) {
 export default function RoomPlannerPage() {
   useDocumentTitle('Room Planner');
   const [mode] = useDisplayMode();
-  const { state, selected, notice, actions } = useRoom3d();
+  const { state, selected, notice, canUndo, canRedo, actions } = useRoom3d();
   const { addMany } = useBag();
   const { openBag } = useBagDrawer();
   const { addToast } = useToast();
@@ -43,6 +45,7 @@ export default function RoomPlannerPage() {
   const cloud = useCloudSave('room');
   const project = useProjectName('room');
   const shareLink = useShareLink('room');
+  useHistoryShortcuts(actions);
   useLaunchedModule(state.items, actions);
   useSharedSceneLoader('room', ({ state: shared, name }) => {
     project.change(name);
@@ -55,6 +58,7 @@ export default function RoomPlannerPage() {
   const bus = useMemo(() => computeBusTopology(state), [state]);
   const physics = useMemo(() => computeEnvironmentalPhysics(state), [state]);
   const floorLux = useMemo(() => (floorLuxOn ? computeFloorLuxField(state) : null), [floorLuxOn, state]);
+  const activeScene = useMemo(() => matchLightingScene(state.items, roomSurface(state.room)), [state.items, state.room]);
   const { room } = state;
 
   const pushToWall = () => {
@@ -108,7 +112,20 @@ export default function RoomPlannerPage() {
             technical={mode === 'technical'}
             wireframe={wireframe}
             floorLux={floorLux}
-            toolbar={<RoomToolbar camera={state.camera} notice={notice} onCamera={actions.setCamera} />}
+            toolbar={
+              <RoomToolbar
+                camera={state.camera}
+                notice={notice}
+                onCamera={actions.setCamera}
+                activeScene={activeScene}
+                sceneDisabled={state.items.length === 0}
+                canUndo={canUndo}
+                canRedo={canRedo}
+                onApplyScene={actions.applyScene}
+                onUndo={actions.undo}
+                onRedo={actions.redo}
+              />
+            }
             onSelect={actions.select}
             onCameraCommit={actions.setCamera}
             onWireframe={setWireframe}

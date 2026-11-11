@@ -1,6 +1,76 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { getFinish } from '../../data/products.js';
+import { DIM_RANGE } from '../../lib/dimming.js';
 import { ChevronGlyph } from '../icons.jsx';
+
+/**
+ * DALI-2 arc level, 10 to 100% in 5% steps. While the thumb moves, the
+ * readout and fill follow by direct DOM writes, never React state; the
+ * native `change` event (pointer release, or each key step) commits one
+ * undoable edit.
+ */
+export function DimmingSlider({ value, onCommit, mixed = false, disabled = false, hint = '' }) {
+  const id = useId();
+  const inputRef = useRef(null);
+  const readoutRef = useRef(null);
+  const commitRef = useRef(onCommit);
+  commitRef.current = onCommit;
+
+  const paint = (level, label) => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.style.setProperty('--dim-fill', `${((level - DIM_RANGE.min) / (DIM_RANGE.max - DIM_RANGE.min)) * 100}%`);
+    if (readoutRef.current) readoutRef.current.textContent = label;
+  };
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.value = String(value);
+    paint(value, mixed ? 'Mixed' : `${value}%`);
+  }, [value, mixed]);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return undefined;
+    const onInput = () => paint(Number(input.value), `${input.value}%`);
+    const onChange = () => commitRef.current(Number(input.value));
+    input.addEventListener('input', onInput);
+    input.addEventListener('change', onChange);
+    return () => {
+      input.removeEventListener('input', onInput);
+      input.removeEventListener('change', onChange);
+    };
+  }, []);
+
+  return (
+    <div className="dim-slider" data-disabled={disabled || undefined}>
+      <div className="dim-slider__head">
+        <label className="field__label" htmlFor={id}>
+          Dimming (10-100%)
+        </label>
+        <output className="dim-slider__value mono" htmlFor={id} ref={readoutRef} data-testid="module-dim-value">
+          {mixed ? 'Mixed' : `${value}%`}
+        </output>
+      </div>
+      <input
+        ref={inputRef}
+        id={id}
+        className="dim-slider__input"
+        type="range"
+        min={DIM_RANGE.min}
+        max={DIM_RANGE.max}
+        step={DIM_RANGE.step}
+        defaultValue={value}
+        disabled={disabled}
+        aria-valuetext={mixed ? 'Mixed levels' : `${value} percent`}
+        data-testid="module-dim-slider"
+        data-dim-pct={mixed ? 'mixed' : value}
+      />
+      {hint && <p className="dim-slider__hint mono">{hint}</p>}
+    </div>
+  );
+}
 
 /**
  * Numeric input that commits on Enter or blur, never per keystroke, so one

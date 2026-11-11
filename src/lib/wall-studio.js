@@ -2,6 +2,7 @@ import { getProduct, productHasFinish } from '../data/products.js';
 import { getWallPreset } from '../data/wall-presets.js';
 import { isOneOf, isSafeId, safeStorage } from '../security/sanitize.js';
 import { recommendPsu } from './bag.js';
+import { dimFactor, dimPatch, recordChanged, sanitizeDimPct, withDimPct } from './dimming.js';
 
 export const WALL_STORAGE_KEY = 'lumen_wall_studio_v1';
 export const LAYOUT_FORMAT = 'lumen.wall';
@@ -222,7 +223,7 @@ export function duplicateItem(layout, uid) {
     y: source.yCm,
   });
   if (!result) return null;
-  const item = { ...result.item, finish: source.finish, led: source.led };
+  const item = { ...result.item, finish: source.finish, led: source.led, ...dimPatch(product, source.dimPct) };
   return { ...result, item, layout: { ...layout, items: [...layout.items, item] } };
 }
 
@@ -232,10 +233,11 @@ export function updateItem(layout, uid, patch) {
 
   const current = layout.items[index];
   const product = getProduct(current.productId);
-  const next = { ...current };
+  let next = { ...current };
 
   if (productHasFinish(product, patch.finish)) next.finish = patch.finish;
   if (typeof patch.led === 'boolean' && product.watts > 0) next.led = patch.led;
+  if (isFiniteNumber(patch.dimPct) && product.watts > 0) next = withDimPct(next, sanitizeDimPct(patch.dimPct));
   if (typeof patch.locked === 'boolean') next.locked = patch.locked;
   if (!current.locked && (isFiniteNumber(patch.xCm) || isFiniteNumber(patch.yCm))) {
     const x = isFiniteNumber(patch.xCm) ? patch.xCm : current.xCm;
@@ -243,8 +245,7 @@ export function updateItem(layout, uid, patch) {
     Object.assign(next, snapToWall(product, layout.wall, x, y));
   }
 
-  const changed = Object.keys(next).some((key) => next[key] !== current[key]);
-  if (!changed) return layout;
+  if (!recordChanged(next, current)) return layout;
   return { ...layout, items: layout.items.map((item, i) => (i === index ? next : item)) };
 }
 
@@ -335,12 +336,13 @@ export function removeModules(layout, uids) {
   return { ...layout, items: layout.items.filter((item) => !doomed.has(item.uid)) };
 }
 
-/** Batch finish and LED channel. Parts that do not ship in the finish keep theirs. */
+/** Batch finish, LED channel and dim level. Parts that do not ship in the finish keep theirs. */
 export function updateModules(layout, uids, patch) {
   if (!Array.isArray(uids) || !isRecord(patch)) return layout;
   const safe = {};
   if (typeof patch.finish === 'string') safe.finish = patch.finish;
   if (typeof patch.led === 'boolean') safe.led = patch.led;
+  if (isFiniteNumber(patch.dimPct)) safe.dimPct = patch.dimPct;
   if (Object.keys(safe).length === 0) return layout;
   return [...new Set(uids)].reduce((acc, uid) => updateItem(acc, uid, safe), layout);
 }
@@ -569,6 +571,7 @@ export function sanitizeItems(entries, wall) {
       xCm: spot.xCm,
       yCm: spot.yCm,
       led: product.watts > 0 && entry.led !== false,
+      ...dimPatch(product, entry.dimPct),
       locked: entry.locked === true,
     });
   }
@@ -594,13 +597,14 @@ export function serializeLayout(layout) {
     format: LAYOUT_FORMAT,
     version: LAYOUT_VERSION,
     wall: { ...layout.wall },
-    items: layout.items.map(({ uid, productId, finish, xCm, yCm, led, locked }) => ({
+    items: layout.items.map(({ uid, productId, finish, xCm, yCm, led, dimPct, locked }) => ({
       uid,
       productId,
       finish,
       xCm,
       yCm,
       led,
+      ...dimPatch(getProduct(productId), dimPct),
       locked,
     })),
   };
@@ -617,21 +621,36 @@ export function persistLayout(layout) {
 
 /* Telemetry and bag aggregation */
 
+/**
+ * loadW is the rated connected load and sizes the driver; activeW and
+ * lumens are what the lit channels actually draw and emit at their dim level.
+ */
 export function summarizeWall(layout) {
   let loadW = 0;
   let activeW = 0;
   let lumens = 0;
   let priceUsd = 0;
+  let dimmed = 0;
   for (const item of layout.items) {
     const product = getProduct(item.productId);
     loadW += product.watts;
     priceUsd += product.priceUsd;
     if (item.led) {
-      activeW += product.watts;
-      lumens += product.lumens;
+      const factor = dimFactor(item);
+      activeW += product.watts * factor;
+      lumens += product.lumens * factor;
+      if (product.watts > 0 && factor < 1) dimmed += 1;
     }
   }
-  return { modules: layout.items.length, loadW, activeW, lumens, priceUsd, psu: recommendPsu(loadW) };
+  return {
+    modules: layout.items.length,
+    loadW,
+    activeW: Math.round(activeW * 10) / 10,
+    lumens: Math.round(lumens),
+    dimmed,
+    priceUsd,
+    psu: recommendPsu(loadW),
+  };
 }
 
 /** Groups modules into bag lines by (productId, finish), in first-mounted order. */

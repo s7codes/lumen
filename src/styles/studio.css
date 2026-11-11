@@ -2483,3 +2483,117 @@
     animation: none;
   }
 }
+
+/* DALI-2 dimming */
+
+.dim-slider {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+}
+
+.dim-slider__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.dim-slider__value {
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+.dim-slider__input {
+  --dim-fill: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.dim-slider__input:focus-visible {
+  outline: 1px solid var(--text-primary);
+  outline-offset: 4px;
+}
+
+.dim-slider__input::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, var(--text-primary) var(--dim-fill), rgba(255, 255, 255, 0.12) var(--dim-fill));
+}
+
+.dim-slider__input::-moz-range-track {
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, var(--text-primary) var(--dim-fill), rgba(255, 255, 255, 0.12) var(--dim-fill));
+}
+
+.dim-slider__input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 4px;
+  height: 16px;
+  margin-top: -7px;
+  border: 0;
+  border-radius: 1px;
+  background: #ffffff;
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dim-slider__input::-moz-range-thumb {
+  width: 4px;
+  height: 16px;
+  border: 0;
+  border-radius: 1px;
+  background: #ffffff;
+}
+
+.dim-slider__input:active::-webkit-slider-thumb {
+  transform: scaleY(1.25);
+}
+
+.dim-slider[data-disabled] {
+  opacity: 0.45;
+}
+
+.dim-slider__hint {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+/* DALI-2 scene recall */
+
+.scene-bar {
+  align-items: center;
+}
+
+.scene-bar__label {
+  padding-inline: var(--space-2) var(--space-1);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-muted);
+}
+
+.scene-bar .scene-bar__button[aria-pressed='true'] {
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+  color: var(--text-inverse);
+}
+
+.room3d-hud__row {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

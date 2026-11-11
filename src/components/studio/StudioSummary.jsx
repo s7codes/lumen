@@ -1,4 +1,4 @@
-import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
+import { formatInt, formatUsd, formatWatts, padIndex } from '../../lib/format.js';
 import { BusTelemetryCell } from '../BusTelemetryCell.jsx';
 import { CloudSaveButton } from '../CloudSaveButton.jsx';
 import { EnvironmentalPhysicsCell } from '../EnvironmentalPhysicsCell.jsx';
@@ -17,7 +17,7 @@ export function StudioSummary({
   onSave,
   onSync,
 }) {
-  const { modules, loadW, activeW, lumens, priceUsd, psu } = summary;
+  const { modules, loadW, activeW, lumens, dimmed, priceUsd, psu } = summary;
   const empty = modules === 0;
 
   return (
@@ -33,14 +33,23 @@ export function StudioSummary({
             <span data-testid="wall-load">{loadW} W</span>
             {activeW !== loadW && (
               <span className="studio-summary__sub" data-testid="wall-active-load">
-                {activeW} W live
+                {formatWatts(activeW)} W live
               </span>
             )}
           </dd>
         </div>
         <div className="studio-summary__cell">
           <dt>Luminous Flux</dt>
-          <dd data-testid="wall-flux">{formatInt(lumens)} lm</dd>
+          <dd>
+            <span data-testid="wall-flux" data-lm={lumens}>
+              {formatInt(lumens)} lm
+            </span>
+            {dimmed > 0 && (
+              <span className="studio-summary__sub" data-testid="wall-dimmed">
+                {dimmed} {dimmed === 1 ? 'channel' : 'channels'} dimmed / DALI-2
+              </span>
+            )}
+          </dd>
         </div>
         <div className="studio-summary__cell">
           <dt>Price</dt>

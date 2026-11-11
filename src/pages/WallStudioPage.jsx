@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { BlueprintSheetModal } from '../components/studio/BlueprintSheetModal.jsx';
 import { StudioInspector } from '../components/studio/StudioInspector.jsx';
@@ -10,12 +10,14 @@ import { useBag, useBagDrawer } from '../hooks/useBag.js';
 import { useCloudSave } from '../hooks/useCloudSave.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
+import { useHistoryShortcuts } from '../hooks/useHistoryShortcuts.js';
 import { useLaunchedModule } from '../hooks/useLaunchedModule.js';
 import { useProjectName } from '../hooks/useProjectName.js';
 import { useSharedSceneLoader, useShareLink } from '../hooks/useSceneShare.js';
 import { useWallStudio } from '../hooks/useWallStudio.js';
 import { computeBusTopology } from '../lib/bus-topology.js';
 import { computeWallLuxField, createWallLuxProbe } from '../lib/illuminance-field.js';
+import { matchLightingScene } from '../lib/lighting-scenes.js';
 import { computeEnvironmentalPhysics } from '../lib/room-physics.js';
 import {
   aggregateBagLines,
@@ -28,8 +30,6 @@ import {
 import '../styles/pages.css';
 import '../styles/studio.css';
 
-const TEXT_ENTRY = 'textarea, select, [contenteditable="true"], input:not([type="radio"]):not([type="checkbox"])';
-
 function samePreview(a, b) {
   if (!a || !b || a.uid !== b.uid || a.spots.size !== b.spots.size) return false;
   for (const [uid, spot] of b.spots) {
@@ -37,27 +37,6 @@ function samePreview(a, b) {
     if (!prev || prev.xCm !== spot.xCm || prev.yCm !== spot.yCm) return false;
   }
   return true;
-}
-
-function useHistoryShortcuts(actions) {
-  useEffect(() => {
-    const onKeyDown = (event) => {
-      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest(`${TEXT_ENTRY}, [role="dialog"]`)) return;
-
-      const key = event.key.toLowerCase();
-      if (key === 'z' && !event.shiftKey) {
-        event.preventDefault();
-        actions.undo();
-      } else if (key === 'y' || (key === 'z' && event.shiftKey)) {
-        event.preventDefault();
-        actions.redo();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [actions]);
 }
 
 export default function WallStudioPage() {
@@ -109,6 +88,7 @@ export default function WallStudioPage() {
     () => (luxOn ? { field: computeWallLuxField(live), probe: createWallLuxProbe(live) } : null),
     [luxOn, live],
   );
+  const activeScene = useMemo(() => matchLightingScene(layout.items, layout.wall.surface), [layout]);
   const showBus = mode === 'technical' || busOn;
   const liveSelected = selected ? (live.items.find((item) => item.uid === selected.uid) ?? null) : null;
   const liveSelection = useMemo(() => {
@@ -191,6 +171,7 @@ export default function WallStudioPage() {
                 onShare={() => shareLink.share(layout, project.commit())}
                 blueprintOpen={blueprint !== null}
                 onOpenBlueprint={(trigger) => setBlueprint({ trigger, name: project.commit() })}
+                activeScene={activeScene}
               />
             }
             onSelect={actions.select}

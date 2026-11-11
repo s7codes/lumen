@@ -1,6 +1,7 @@
 import { FINISH_IDS } from '../data/products.js';
 import { hasForbiddenKey, isOneOf, safeJsonParse } from '../security/sanitize.js';
 import { sanitizeProjectName } from './project-library.js';
+import { DIM_RANGE, sanitizeDimPct } from './dimming.js';
 import { ROOM_FORMAT, ROOM_VERSION, sanitizeRoomState } from './room-3d.js';
 import { LAYOUT_FORMAT, LAYOUT_VERSION, MAX_WALL_ITEMS, sanitizeLayout } from './wall-studio.js';
 
@@ -50,11 +51,22 @@ function hasForbiddenJsonKey(text) {
 
 const bit = (flag) => (flag ? 1 : 0);
 
+// Undimmed modules keep the legacy tuple, so links made before dimming and
+// links for undimmed scenes encode byte for byte as they always have. A
+// dimmed module appends its level as the 7th element.
+function withDim(tuple, item, legacyLength) {
+  const dimPct = sanitizeDimPct(item.dimPct);
+  if (dimPct === DIM_RANGE.initial) return tuple;
+  return [...tuple, ...Array(Math.max(0, 6 - legacyLength)).fill(0), dimPct];
+}
+
 function packWall(layout) {
   const { wall, items } = layout;
   return {
     w: [wall.widthCm, wall.heightCm, bit(wall.slope), bit(wall.snap), wall.surface],
-    i: items.map((item) => [item.productId, item.finish, item.xCm, item.yCm, bit(item.led !== false), bit(item.locked)]),
+    i: items.map((item) =>
+      withDim([item.productId, item.finish, item.xCm, item.yCm, bit(item.led !== false), bit(item.locked)], item, 6),
+    ),
   };
 }
 
@@ -63,15 +75,16 @@ function packRoom(state) {
   return {
     w: [room.widthCm, room.depthCm, room.heightCm, room.furniture, room.lighting],
     c: [camera.yaw, camera.pitch, camera.zoom],
-    i: items.map((item) => [item.productId, item.finish, item.xCm, item.yCm, bit(item.led !== false)]),
+    i: items.map((item) => withDim([item.productId, item.finish, item.xCm, item.yCm, bit(item.led !== false)], item, 5)),
   };
 }
 
 function unpackItem(entry) {
-  if (!Array.isArray(entry) || entry.length < 4 || entry.length > 6) return null;
-  const [productId, finish, xCm, yCm, led = 1, locked = 0] = entry;
+  if (!Array.isArray(entry) || entry.length < 4 || entry.length > 7) return null;
+  const [productId, finish, xCm, yCm, led = 1, locked = 0, dimPct = DIM_RANGE.initial] = entry;
   if (!isOneOf(finish, FINISH_IDS)) return null;
-  return { productId, finish, xCm, yCm, led: led !== 0, locked: locked === 1 };
+  if (typeof dimPct !== 'number' || !Number.isFinite(dimPct)) return null;
+  return { productId, finish, xCm, yCm, led: led !== 0, locked: locked === 1, dimPct: sanitizeDimPct(dimPct) };
 }
 
 function unpackWall(payload) {

@@ -1,9 +1,10 @@
 import { getFinish, getProduct } from '../../data/products.js';
-import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
+import { dimFactor, sanitizeDimPct } from '../../lib/dimming.js';
+import { formatInt, formatUsd, formatWatts, padIndex } from '../../lib/format.js';
 import { getFurniture, roomWall } from '../../lib/room-3d.js';
 import { clampToWall } from '../../lib/wall-studio.js';
 import '../../styles/product.css';
-import { FinishPicker, NumberField, PanelSection, Switch } from '../studio/controls.jsx';
+import { DimmingSlider, FinishPicker, NumberField, PanelSection, Switch } from '../studio/controls.jsx';
 
 function conflictText(conflict, items, room) {
   if (!conflict) return 'Clear';
@@ -91,9 +92,16 @@ function ModuleDetail({ item, state, conflict, actions }) {
           onChange={(led) => actions.update(item.uid, { led })}
           testId="room-led-channel"
         />
-        <p className="studio-panel__note mono">
+        {lit && (
+          <DimmingSlider
+            value={sanitizeDimPct(item.dimPct)}
+            onCommit={(dimPct) => actions.update(item.uid, { dimPct })}
+            hint={item.led ? '' : 'Channel off / level held for the next scene'}
+          />
+        )}
+        <p className="studio-panel__note mono" data-testid="room-module-output">
           {lit
-            ? `${product.watts} W / ${formatInt(product.lumens)} lm / ${product.kelvin} K / CRI ${product.cri}`
+            ? `${formatWatts(product.watts * dimFactor(item))} W / ${formatInt(Math.round(product.lumens * dimFactor(item)))} lm at ${sanitizeDimPct(item.dimPct)}% / ${product.kelvin} K / CRI ${product.cri}`
             : 'No light source / bus hardware'}
         </p>
       </PanelSection>

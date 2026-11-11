@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { getFinish, getProduct } from '../../data/products.js';
+import { dimFactor, dimPctFor } from '../../lib/dimming.js';
 import { formatInt } from '../../lib/format.js';
 import { rgbTriplet } from '../../lib/photometry.js';
 import {
@@ -118,7 +119,12 @@ function LightLayer({ items, ppcm }) {
             key={item.uid}
             className="wall-glow"
             data-shape={product.shape}
-            style={{ ...boxStyle(item, product, ppcm), '--light-rgb': rgbTriplet(product.kelvin) }}
+            // Perceived glow follows the arc level, floored so a 10% channel still reads as lit.
+            style={{
+              ...boxStyle(item, product, ppcm),
+              '--light-rgb': rgbTriplet(product.kelvin),
+              opacity: 0.2 + 0.8 * dimFactor(item),
+            }}
           />
         );
       })}
@@ -744,6 +750,7 @@ export function WallStage({
                     data-x-cm={item.xCm}
                     data-y-cm={item.yCm}
                     data-led={product.watts > 0 ? String(item.led) : 'none'}
+                    data-dim-pct={dimPctFor(product, item.dimPct)}
                     data-conflict={conflict ? 'true' : 'false'}
                     data-selected={selected || undefined}
                     data-locked={item.locked || undefined}

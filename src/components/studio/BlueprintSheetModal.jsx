@@ -135,6 +135,12 @@ export function BlueprintSheetModal({ open, onClose, layout, projectName, return
                 <dt>24V load</dt>
                 <dd>{t.loadW} W</dd>
               </div>
+              {t.dimmed > 0 && (
+                <div className="blueprint-spec__row">
+                  <dt>DALI-2 scene</dt>
+                  <dd data-testid="blueprint-scene-draw">{t.activeW} W</dd>
+                </div>
+              )}
               <div className="blueprint-spec__row">
                 <dt>Bus run</dt>
                 <dd>

@@ -1,4 +1,5 @@
 import { getProduct } from '../data/products.js';
+import { dimFactor } from './dimming.js';
 import { BUS_VOLTAGE, busCurrent, CONDUCTOR_MM2, DROP_LIMIT, voltageDrop } from './electrical.js';
 
 export const FEED_DATUM = Object.freeze({ xCm: 20, yCm: 30 });
@@ -100,7 +101,8 @@ function orderChain(origin, candidates) {
  *
  * Drop model: each hop carries the current of every node downstream of it,
  * on a 2 x 2.5 mm2 copper loop. The worst case is the sum of hop drops at
- * the last node.
+ * the last node. A node draws its rated watts scaled by its DALI-2 dim
+ * level; ratedWatts keeps the undimmed connected load for driver sizing.
  */
 export function computeBusTopology(layoutOrRoom) {
   const { widthCm, heightCm } = dimensions(layoutOrRoom);
@@ -133,12 +135,15 @@ export function computeBusTopology(layoutOrRoom) {
     .map(({ item, product }) => ({
       uid: item.uid,
       productId: product.id,
-      watts: isBusPart(product) ? 0 : product.watts,
+      watts: isBusPart(product) ? 0 : product.watts * dimFactor(item),
+      ratedWatts: isBusPart(product) ? 0 : product.watts,
+      dimPct: isBusPart(product) ? 100 : Math.round(dimFactor(item) * 100),
       point: feedPoint(item, product),
     }));
 
   const chain = orderChain(origin, candidates);
   const activeWatts = chain.reduce((sum, node) => sum + node.watts, 0);
+  const ratedWatts = chain.reduce((sum, node) => sum + node.ratedWatts, 0);
 
   const segments = [];
   const nodes = [];
@@ -161,7 +166,9 @@ export function computeBusTopology(layoutOrRoom) {
       label: `N${String(order).padStart(2, '0')}`,
       xCm: node.point.xCm,
       yCm: node.point.yCm,
-      watts: node.watts,
+      watts: round(node.watts, 2),
+      ratedWatts: node.ratedWatts,
+      dimPct: node.dimPct,
       hopCm,
       hopM: round(hopCm / 100, 2),
       dropV: round(dropV, 3),
@@ -178,7 +185,8 @@ export function computeBusTopology(layoutOrRoom) {
     segments,
     totalRunCm: round(runCm, 1),
     totalRunM: round(runCm / 100, 2),
-    activeWatts,
+    activeWatts: round(activeWatts, 2),
+    ratedWatts,
     currentA: round(busCurrent(activeWatts), 3),
     voltageDropV: round(dropV, 3),
     voltageDropPct: round(voltageDropPct, 2),

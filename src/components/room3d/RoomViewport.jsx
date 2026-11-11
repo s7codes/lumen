@@ -90,6 +90,8 @@ function SceneManifest({ scene, floorLux, renderer, manifestRef }) {
           data-dims={module.dims}
           data-led={module.led}
           data-lit={module.lit || undefined}
+          data-dim-pct={module.dimPct}
+          data-emissive={module.emitters[0]?.intensity ?? 0}
         />
       ))}
       {scene.lights.map((light) => (

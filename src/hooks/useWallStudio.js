@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useReducer } from 'react';
 import { getFinish, getProduct } from '../data/products.js';
 import { getWallPreset } from '../data/wall-presets.js';
+import { applyLightingSceneToLayout, getLightingScene } from '../lib/lighting-scenes.js';
 import {
   alignModules,
   commitHistory,
@@ -151,6 +152,14 @@ function studioReducer(state, action) {
     case 'wall':
       return commit(state, updateWall(layout, action.patch));
 
+    case 'scene': {
+      const scene = getLightingScene(action.sceneId);
+      if (!scene) return state;
+      const next = applyLightingSceneToLayout(layout, action.sceneId);
+      if (next === layout) return withNotice(state, `${scene.label} already active.`);
+      return withNotice(commit(state, next), `Recalled ${scene.label}: task ${scene.task}% / accent ${scene.accent}%.`);
+    }
+
     case 'preset': {
       const preset = getWallPreset(action.presetId);
       const next = layoutFromPreset(action.presetId, layout.wall);
@@ -212,6 +221,7 @@ export function useWallStudio() {
       update: (uid, patch) => dispatch({ type: 'update', uid, patch }),
       remove: (uid) => dispatch({ type: 'remove', uid }),
       setWall: (patch) => dispatch({ type: 'wall', patch }),
+      applyScene: (sceneId) => dispatch({ type: 'scene', sceneId }),
       loadPreset: (presetId) => dispatch({ type: 'preset', presetId }),
       clear: () => dispatch({ type: 'clear' }),
       importLayout: (next, message) => dispatch({ type: 'import', layout: next, message }),

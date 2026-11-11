@@ -1,11 +1,12 @@
 import { getFinish, getProduct } from '../data/products.js';
+import { dimFactor } from './dimming.js';
 import { SLOPE_CM } from './wall-studio.js';
 
 /**
  * Environmental physics for a Wall Studio layout or a 3D room.
  *
  * Illuminance follows the lumen method: each lit module sends a share of its
- * flux straight to the floor, and all flux then inter-reflects inside the
+ * flux (rated lumens x DALI-2 dim level) straight to the floor, and all flux then inter-reflects inside the
  * envelope as an integrating sphere, E_r = MF * phi * rho / (S * (1 - rho)).
  *
  * Reverberation follows Sabine in six ISO octave bands, 125 Hz to 4 kHz,
@@ -227,8 +228,9 @@ export function computeEnvironmentalPhysics(subject) {
     const finish = getFinish(item.finish);
     if (!product || !finish) continue;
     if (item.led && product.lumens > 0) {
-      fluxLm += product.lumens;
-      directLm += product.lumens * (DIRECT_FLOOR_RATIO.get(product.shape) ?? 0.5);
+      const lumens = product.lumens * dimFactor(item);
+      fluxLm += lumens;
+      directLm += lumens * (DIRECT_FLOOR_RATIO.get(product.shape) ?? 0.5);
     }
     if (product.mount === 'wall') {
       const face = (product.dimsCm.w * product.dimsCm.h) / 1e4;
@@ -284,7 +286,7 @@ export function computeEnvironmentalPhysics(subject) {
     floorAreaM2: round(area.floor, 2),
     volumeM3: round(area.volume, 2),
     reflectance: round(rho, 2),
-    fluxLm,
+    fluxLm: Math.round(fluxLm),
     // The uniform inter-reflected component every surface point receives.
     reflectedLux: round(reflected, 1),
     avgFloorLux,

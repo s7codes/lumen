@@ -10,10 +10,11 @@ import {
   updateRoom,
   updateRoomItem,
 } from '../lib/room-3d.js';
-import { MAX_WALL_ITEMS } from '../lib/wall-studio.js';
+import { applyLightingSceneToRoom, getLightingScene } from '../lib/lighting-scenes.js';
+import { commitHistory, createHistory, MAX_WALL_ITEMS, redoHistory, undoHistory } from '../lib/wall-studio.js';
 
 function init() {
-  return { state: loadRoomState(), selectedUid: null, notice: { text: '', tone: 'info', serial: 0 } };
+  return { history: createHistory(loadRoomState()), selectedUid: null, notice: { text: '', tone: 'info', serial: 0 } };
 }
 
 function withNotice(store, text, tone = 'info') {
@@ -21,7 +22,21 @@ function withNotice(store, text, tone = 'info') {
 }
 
 function withState(store, state) {
-  return state === store.state ? store : { ...store, state };
+  const history = commitHistory(store.history, state);
+  return history === store.history ? store : { ...store, history };
+}
+
+// The camera is a view, not an edit: it never enters the history, and an
+// undo or redo keeps the current view.
+function withCamera(store, state) {
+  if (state === store.history.present) return store;
+  return { ...store, history: { ...store.history, present: state } };
+}
+
+function travel(store, history, text) {
+  if (history === store.history) return store;
+  const camera = store.history.present.camera;
+  return withNotice({ ...store, history: { ...history, present: { ...history.present, camera } } }, text);
 }
 
 function plural(count, word) {
@@ -29,7 +44,7 @@ function plural(count, word) {
 }
 
 function roomReducer(store, action) {
-  const { state } = store;
+  const state = store.history.present;
 
   switch (action.type) {
     case 'select': {
@@ -41,7 +56,21 @@ function roomReducer(store, action) {
       return withState(store, updateRoom(state, action.patch));
 
     case 'camera':
-      return withState(store, updateCamera(state, action.camera));
+      return withCamera(store, updateCamera(state, action.camera));
+
+    case 'scene': {
+      const scene = getLightingScene(action.sceneId);
+      if (!scene) return store;
+      const next = applyLightingSceneToRoom(state, action.sceneId);
+      if (next === state) return withNotice(store, `${scene.label} already active.`);
+      return withNotice(withState(store, next), `Recalled ${scene.label}: task ${scene.task}% / accent ${scene.accent}%.`);
+    }
+
+    case 'undo':
+      return travel(store, undoHistory(store.history), 'Undo.');
+
+    case 'redo':
+      return travel(store, redoHistory(store.history), 'Redo.');
 
     case 'mount': {
       const product = getProduct(action.productId);
@@ -92,7 +121,8 @@ function roomReducer(store, action) {
 
 export function useRoom3d() {
   const [store, dispatch] = useReducer(roomReducer, undefined, init);
-  const { state, selectedUid, notice } = store;
+  const { history, selectedUid, notice } = store;
+  const state = history.present;
 
   // Writing on mount also replaces a tampered payload with the sanitized room.
   useEffect(() => {
@@ -110,6 +140,9 @@ export function useRoom3d() {
       importWall: () => dispatch({ type: 'import' }),
       replace: (state, text) => dispatch({ type: 'replace', state, text }),
       announce: (text, tone) => dispatch({ type: 'notice', text, tone }),
+      applyScene: (sceneId) => dispatch({ type: 'scene', sceneId }),
+      undo: () => dispatch({ type: 'undo' }),
+      redo: () => dispatch({ type: 'redo' }),
     }),
     [],
   );
@@ -119,5 +152,12 @@ export function useRoom3d() {
     [state.items, selectedUid],
   );
 
-  return { state, selected, notice, actions };
+  return {
+    state,
+    selected,
+    notice,
+    canUndo: history.past.length > 0,
+    canRedo: history.future.length > 0,
+    actions,
+  };
 }

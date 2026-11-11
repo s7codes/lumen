@@ -1,14 +1,27 @@
 import { activePreset, CAMERA_PRESETS, CAMERA_ZOOM, DEFAULT_CAMERA, sameCamera } from '../../lib/room-3d.js';
 import { ResetGlyph } from '../icons.jsx';
+import { LightingSceneBar } from '../LightingSceneBar.jsx';
 
 const ZOOM_STEP = 0.1;
 
 /**
  * Floating camera HUD over the room viewport: view presets on the left, zoom
- * on the right, and a transient status line along the bottom edge. Rendered
- * as siblings inside .room3d-hud so the viewport can lay them out.
+ * on the right, history and DALI-2 scene recall on a second row, and a
+ * transient status line along the bottom edge. Rendered as siblings inside
+ * .room3d-hud so the viewport can lay them out.
  */
-export function RoomToolbar({ camera, notice, onCamera }) {
+export function RoomToolbar({
+  camera,
+  notice,
+  onCamera,
+  activeScene = null,
+  sceneDisabled = false,
+  canUndo = false,
+  canRedo = false,
+  onApplyScene,
+  onUndo,
+  onRedo,
+}) {
   const preset = activePreset(camera);
   const atDefault = sameCamera(camera, DEFAULT_CAMERA);
   const zoomBy = (delta) => onCamera({ ...camera, zoom: camera.zoom + delta });
@@ -63,6 +76,37 @@ export function RoomToolbar({ camera, notice, onCamera }) {
         >
           +
         </button>
+      </div>
+
+      <div className="room3d-hud__row">
+        <div className="studio-toolbar__group room3d-hud__pill" role="group" aria-label="History">
+          <button
+            type="button"
+            className="tool-button"
+            data-testid="room-undo"
+            disabled={!canUndo}
+            aria-keyshortcuts="Control+Z"
+            onClick={onUndo}
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            className="tool-button"
+            data-testid="room-redo"
+            disabled={!canRedo}
+            aria-keyshortcuts="Control+Y"
+            onClick={onRedo}
+          >
+            Redo
+          </button>
+        </div>
+        <LightingSceneBar
+          className="room3d-hud__pill"
+          active={activeScene}
+          disabled={sceneDisabled}
+          onApply={onApplyScene}
+        />
       </div>
 
       <p className="studio-toolbar__notice room3d-hud__notice mono" role="status" aria-live="polite" data-tone={notice.tone}>

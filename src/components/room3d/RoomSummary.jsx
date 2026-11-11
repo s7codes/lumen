@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
+import { formatInt, formatUsd, formatWatts, padIndex } from '../../lib/format.js';
 import { BusTelemetryCell } from '../BusTelemetryCell.jsx';
 import { CloudSaveButton } from '../CloudSaveButton.jsx';
 import { EnvironmentalPhysicsCell } from '../EnvironmentalPhysicsCell.jsx';
@@ -24,7 +24,7 @@ export function RoomSummary({
   onSave,
   onSync,
 }) {
-  const { modules, loadW, activeW, lumens, priceUsd, psu } = summary;
+  const { modules, loadW, activeW, lumens, dimmed, priceUsd, psu } = summary;
   const empty = modules === 0;
 
   return (
@@ -38,12 +38,25 @@ export function RoomSummary({
           <dt>24V DC Load</dt>
           <dd>
             <span data-testid="room-load">{loadW} W</span>
-            {activeW !== loadW && <span className="studio-summary__sub">{activeW} W live</span>}
+            {activeW !== loadW && (
+              <span className="studio-summary__sub" data-testid="room-active-load">
+                {formatWatts(activeW)} W live
+              </span>
+            )}
           </dd>
         </div>
         <div className="studio-summary__cell">
           <dt>Luminous Flux</dt>
-          <dd data-testid="room-flux">{formatInt(lumens)} lm</dd>
+          <dd>
+            <span data-testid="room-flux" data-lm={lumens}>
+              {formatInt(lumens)} lm
+            </span>
+            {dimmed > 0 && (
+              <span className="studio-summary__sub" data-testid="room-dimmed">
+                {dimmed} {dimmed === 1 ? 'channel' : 'channels'} dimmed / DALI-2
+              </span>
+            )}
+          </dd>
         </div>
         <div className="studio-summary__cell">
           <dt>Price</dt>

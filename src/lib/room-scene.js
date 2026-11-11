@@ -1,4 +1,5 @@
 import { getFinish, getProduct } from '../data/products.js';
+import { dimFactor } from './dimming.js';
 import { kelvinToRgb } from './photometry.js';
 import { CAMERA_ZOOM, clearanceCallouts, furnitureLayout, moduleBox } from './room-3d.js';
 
@@ -231,12 +232,13 @@ function emitterBoxes(shape, b) {
 /**
  * The real light each lit module throws, in metres. Spot lights wash the
  * wall and floor below shelves and bars; the column and the backlit frame
- * are omnidirectional. Intensity scales with the part's rated lumens.
+ * are omnidirectional. Intensity scales with the part's rated lumens and its
+ * DALI-2 dim level.
  */
 function moduleLights(item, product, b, room, rig) {
   if (!item.led || product.watts === 0) return [];
   const color = hex(kelvinToRgb(product.kelvin ?? 2700));
-  const strength = (product.lumens / 1000) * rig.led;
+  const strength = (product.lumens / 1000) * rig.led * dimFactor(item);
   const xMid = (b.x0 + b.x1) / 2;
   const yMid = (b.y0 + b.y1) / 2;
   const spot = (id, from, to, angleDeg, intensity, distanceCm) => ({
@@ -312,6 +314,7 @@ function moduleRecord(item, room, rig, conflicts, selectedUid) {
   const finish = getFinish(item.finish);
   const box = moduleBox(item);
   const lit = item.led && product.watts > 0;
+  const level = product.watts > 0 ? dimFactor(item) : 1;
   const light = hex(kelvinToRgb(product.kelvin ?? 2700));
   const cylinder = product.shape === 'column' || product.shape === 'spot';
   const { w, h, d } = product.dimsCm;
@@ -334,10 +337,11 @@ function moduleRecord(item, room, rig, conflicts, selectedUid) {
     dims: `${w}x${h}x${d}`,
     led: product.watts > 0 ? String(item.led) : 'none',
     lit,
+    dimPct: Math.round(level * 100),
     emitters: emitterBoxes(product.shape, box).map((e, i) => ({
       key: `${item.uid}-e${i}`,
       color: light,
-      intensity: lit ? rig.emissive : 0,
+      intensity: lit ? Number((rig.emissive * level).toFixed(3)) : 0,
       ...boxRecord(e),
     })),
     felt: feltRecord(product.shape, box),

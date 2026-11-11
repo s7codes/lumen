@@ -1,8 +1,9 @@
 import { getFinish, getProduct } from '../../data/products.js';
-import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
+import { dimFactor, sanitizeDimPct } from '../../lib/dimming.js';
+import { formatInt, formatUsd, formatWatts, padIndex } from '../../lib/format.js';
 import { anchorPoints, boundsOf, itemRect, snapToWall } from '../../lib/wall-studio.js';
 import '../../styles/product.css';
-import { FinishPicker, NumberField, PanelSection, Switch } from './controls.jsx';
+import { DimmingSlider, FinishPicker, NumberField, PanelSection, Switch } from './controls.jsx';
 
 function conflictText(conflict, items) {
   if (!conflict) return 'Clear';
@@ -85,9 +86,16 @@ function ModuleDetail({ item, layout, conflict, actions }) {
           onChange={(led) => actions.update(item.uid, { led })}
           testId="led-channel"
         />
-        <p className="studio-panel__note mono">
+        {lit && (
+          <DimmingSlider
+            value={sanitizeDimPct(item.dimPct)}
+            onCommit={(dimPct) => actions.update(item.uid, { dimPct })}
+            hint={item.led ? '' : 'Channel off / level held for the next scene'}
+          />
+        )}
+        <p className="studio-panel__note mono" data-testid="module-output">
           {lit
-            ? `${product.watts} W / ${formatInt(product.lumens)} lm / ${product.kelvin} K / CRI ${product.cri}`
+            ? `${formatWatts(product.watts * dimFactor(item))} W / ${formatInt(Math.round(product.lumens * dimFactor(item)))} lm at ${sanitizeDimPct(item.dimPct)}% / ${product.kelvin} K / CRI ${product.cri}`
             : 'No light source / bus hardware'}
         </p>
       </PanelSection>
@@ -231,7 +239,10 @@ function MultiDetail({ items, actions }) {
   const lit = items.filter((item) => getProduct(item.productId).watts > 0);
   const litOn = lit.filter((item) => item.led);
   const box = boundsOf(items.map(itemRect));
-  const watts = litOn.reduce((sum, item) => sum + getProduct(item.productId).watts, 0);
+  const watts = litOn.reduce((sum, item) => sum + getProduct(item.productId).watts * dimFactor(item), 0);
+  const levels = lit.map((item) => sanitizeDimPct(item.dimPct));
+  const sharedLevel = levels.length > 0 && levels.every((level) => level === levels[0]) ? levels[0] : null;
+  const meanLevel = levels.length > 0 ? Math.round(levels.reduce((a, b) => a + b, 0) / levels.length / 5) * 5 : 100;
   const priceUsd = items.reduce((sum, item) => sum + getProduct(item.productId).priceUsd, 0);
 
   return (
@@ -298,8 +309,15 @@ function MultiDetail({ items, actions }) {
           onChange={(led) => actions.updateMany(uids, { led })}
           testId="batch-led"
         />
+        {lit.length > 0 && (
+          <DimmingSlider
+            value={sharedLevel ?? meanLevel}
+            mixed={sharedLevel === null}
+            onCommit={(dimPct) => actions.updateMany(uids, { dimPct })}
+          />
+        )}
         <p className="studio-panel__note mono">
-          {formatInt(watts)} W active / {formatUsd(priceUsd)} list
+          {formatWatts(watts)} W active / {formatUsd(priceUsd)} list
         </p>
       </PanelSection>
 
