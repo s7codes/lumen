@@ -1,17 +1,24 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v3.1.0-e8923a)
-![React](https://img.shields.io/badge/React-19-2a2825)
-![Vite](https://img.shields.io/badge/Vite-8-2a2825)
-![three.js](https://img.shields.io/badge/three.js-r187-2a2825)
-![CSP](https://img.shields.io/badge/CSP-strict-44484b)
+![Release](https://img.shields.io/badge/release-v3.2.0-e8923a)
+![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v3.1.0**. The lighting engine resolves illuminance point by point.
+Current release: **v3.2.0**. Acoustics now read six ISO octave bands, 125 Hz to 4 kHz:
+Sabine per band with frequency-dependent coefficients and an air term above 500 Hz,
+reported as `octaveRt60`, plus a reverberation-only Speech Transmission Index graded
+Poor, Fair, Good or Excellent. Both planners show `STI 0.54 (Fair)` under the 500 Hz
+RT60 and, in Technical mode, a six-bar RT60 spectrum. The catalog grows to 12 parts:
+**Linear Suspension Pendant 150**, **Acoustic Wall Baffle 120** (50 mm PET felt, NRC 0.85),
+**Vertical Architectural Sconce 80** and the **Recessed 24V DALI-2 Bus Hub**, which feeds
+and passes through the bus like the track. Every drawing, the 3D room, the bus router and
+the photometric field handle all twelve. The code is MIT licensed.
+
+v3.1.0 resolved illuminance point by point.
 `src/lib/illuminance-field.js` reduces every lit module to its emission aperture and
 sums `E = I(theta) * cos(phi) / r^2` over a 24 x 16 grid on the wall and on the floor,
 on top of the inter-reflected cavity bounce. The 2D Wall Studio gains an **Iso-Lux Map**:
@@ -66,6 +73,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v3.2.0  | Six-band octave RT60 and STI, 12-part catalog (pendant, baffle, sconce, DALI-2 hub), MIT license |
 | v3.1.0  | Point-by-point photometric field, Iso-Lux Map with contours and cursor probe, 3D Floor Lux Grid |
 | v3.0.0  | Session-bound account libraries with guest claim, isolated E2E store, Sabine RT60 and lux engine, exploded assembly drawing |
 | v2.0.0  | Lumen Cloud HTTP API in `server/`, atomic JSON persistence, signed sessions, dual-transport client with offline sync |
@@ -166,7 +174,7 @@ tests/                  Playwright specs, named by architectural domain
 | Path         | View          | Role                                                      |
 | ------------ | ------------- | --------------------------------------------------------- |
 | `/`          | Overview      | Pendant hero, surface and dimming lab, core modules       |
-| `/catalog`   | Catalog       | Category, search and sort over 8 parts, finish swatch     |
+| `/catalog`   | Catalog       | Category, search and sort over 12 parts, finish swatch    |
 | `/catalog/:id` | Spec sheet  | Orthographic set, exploded assembly, photometry or bus curve, launchers |
 | `/checkout`  | Project Quote | BOM, driver, currency, trade code, print, export, submit  |
 | `/room-3d`   | Room Planner  | Lazy chunk. WebGL room, clearances, 2D bridge, cloud save, cart sync |
@@ -184,7 +192,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '3.1.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '3.2.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -479,7 +487,7 @@ custom properties, so React never re-renders on pointer movement.
   the wall on screen and reports the view percentage. Walls run 180-400 cm wide and
   180-320 cm high (default 300 x 250 cm), with an optional 90 x 90 cm attic slope cut
   from the top-right corner, a 5 cm grid snap and an Ambient Dark or Daylight surface.
-- The palette mounts any of the 8 parts at its catalog `dimsCm`, default finish, in the
+- The palette mounts any of the 12 parts at its catalog `dimsCm`, default finish, in the
   first clear position near its natural height (floor, eye level, ceiling). Three
   presets load collision-free compositions: Nordic Reading Wall, Acoustic Media Spine
   and Attic Study Alcove.
@@ -617,16 +625,28 @@ read as the front of a reference zone 260 cm deep, minus the attic slope prism.
   carrying its finish LRV. `avgFloorLux` grades **Ambient Lounge** (<100 lx),
   **Residential Balanced** (100-250 lx) or **Studio Task** (>250 lx);
   `avgWallLux` and coverage of the 300 lx `taskTarget` (EN 12464-1 reading) ride along.
-- Reverberation, Sabine at 500 Hz: `RT60 = 0.161 * V / A`. The baseline `A` is the bare
-  envelope (timber floor 0.10, plasterboard ceiling 0.05, painted walls 0.03) plus the
-  reference furniture (sofa 1.4, bed 1.6, desk 0.15 m2 sabins). A mounted module adds
-  its face at its own coefficient in place of the wall it covers: the Acoustic Art
-  Frame 50x70 puts its 40 x 60 cm PET felt core in at NRC 0.70, timber finishes 0.10,
-  aluminium 0.04. One frame on the default wall reads `RT60: 1.44 s` and
+- Reverberation, Sabine in six octave bands (`OCTAVE_BANDS`, 125 Hz to 4 kHz):
+  `RT60 = 0.161 * V / (A + 4mV)`. The baseline `A` is the bare envelope plus the
+  reference furniture, each with its own coefficient per band (500 Hz values: timber
+  floor 0.10, plasterboard ceiling 0.05, painted walls 0.03; sofa 1.4, bed 1.6, desk
+  0.15 m2 sabins). Timber and the plasterboard ceiling absorb most at 125-500 Hz; the
+  air term `4mV` (ISO 9613-1) only enters at 1 kHz and above. A mounted module adds its
+  face at its own coefficient in place of the wall it covers: the Acoustic Art Frame
+  50x70 puts its 40 x 60 cm 30 mm felt core in at NRC 0.70, the Acoustic Wall Baffle 120
+  its 117.6 x 32.6 cm 50 mm core at NRC 0.85, both strongest from 500 Hz to 4 kHz.
+- `octaveRt60` and `baselineOctaveRt60` hold the six bands in seconds. `rt60Sec` is the
+  500 Hz reference band: one frame on the default wall reads `RT60: 1.44 s` and
   `-0.12 s damping`; `acousticDeltaSec` is computed from the rounded figures so the
   readout always adds up.
-- The derivation (`V`, `A` in m2 sabins, `rho`, wall lux, task coverage) appears under
-  the readout in Technical mode only.
+- Speech Transmission Index, reverberation only: per band, `m(F) = 1 / sqrt(1 + (2 pi F T
+  / 13.8)^2)` over the 14 IEC 60268-16 modulation frequencies (0.63-12.5 Hz), mapped to
+  an apparent SNR clipped to +/-15 dB and averaged to a transmission index, then
+  weighted toward 2 and 4 kHz. `stiScore` (0.00-1.00) grades **Poor** (<0.45), **Fair**
+  (0.45-0.60), **Good** (0.60-0.75) or **Excellent** (>=0.75). The default wall reads
+  `STI 0.54 (Fair)`; a baffle and a frame lift it to 0.58.
+- The six-bar spectrum (`acoustic-octave-spectrum`, one fixed 2.5 s scale) and the
+  derivation (`V`, `A` in m2 sabins, `rho`, wall lux, task coverage) appear under the
+  readout in Technical mode only.
 
 ### Point-by-point field
 
@@ -638,7 +658,9 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
 - Every module with `watts > 0` and `led !== false` becomes its emission aperture, matching
   the emitter strips of the 3D scene: the shelf's front lip 23 cm out, the cube's top
   panel, the sideboard's underside, the lightbar's opal face, the column's bilateral slot,
-  the spot's canopy and the frame's rear halo channels. Lines split into 2.5 cm segments.
+  the spot's canopy, the frame's rear halo channels, the pendant's microprismatic
+  underside and the sconce's open blade ends (one lobe down, one up). Lines split into
+  2.5 cm segments.
 - Each segment carries an equal share of its lobe, `I(theta) = I0 * cos^m(theta)` with
   `I0 = phi * (m + 1) / (2 * pi)` from `src/lib/photometry.js`, scaled by the 0.8
   maintenance factor. A point on a surface with normal `n` receives
@@ -683,7 +705,8 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
   polar curve integrates back to the catalog lumens. The spot uses `m` solved from its
   36 deg beam. A probe slider reads intensity at any angle; on-axis lux at 0.5, 1.0 and
   2.0 m follows the inverse-square law.
-- The Track Bus 200 shows its 24V feed instead: 6.25 A at 150 W, 2 x 2.5 mm2 copper,
+- Parts without an LED channel (Track Bus 200, DALI-2 Bus Hub, Acoustic Wall Baffle 120)
+  show the 24V feed instead: 6.25 A at 150 W, 2 x 2.5 mm2 copper,
   end-fed worst-case drop for 60 / 100 / 150 W against run length, and the run that
   stays inside a 3% drop.
 - **Mount in 2D Wall Studio** and **Place in 3D Room** write the part, in the chosen
@@ -768,7 +791,7 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
   first navbar pill (`Search`, with the shortcut on a hairline key cap) opens it too and
   folds to its glyph below 560px.
 - One search field ranks matches within three fixed groups: **Workspaces** (Overview,
-  Catalog, 3D Room Planner, 2D Wall Studio, Project Quote, Account), **Modules** (all 8
+  Catalog, 3D Room Planner, 2D Wall Studio, Project Quote, Account), **Modules** (all 12
   parts with SKU, 24V load and USD price; Enter opens the spec sheet) and **Commands**
   (Switch to Technical or Architectural Mode, Set Currency: USD, EUR or HUF, Open Cart
   Drawer). A label prefix outranks a word start, which outranks any other match, and
@@ -858,9 +881,17 @@ store can stay up during a test run.
 
 ## Workflow
 
-- `main` holds tagged releases, `develop` integrates, each milestone lands on `feat/*`.
+- `main` holds releases, `develop` integrates, each milestone lands on a short-lived
+  `feat/*` branch. Once `develop` and `main` are pushed, the feature branch is deleted
+  locally and on `origin`, so only `main` and `develop` stay published.
+- Only major releases are tagged: `v1.0.0`, `v2.0.0`, `v3.0.0`. Minor and patch releases
+  ship untagged and are recorded in the release history above.
 - Releases advance `develop` and `main` by pointer (`git branch -f`) from the finished
   feature branch, never by switching back first, so no working-tree directories are
   deleted on synced (OneDrive) folders.
 - Lower-case Conventional Commits: `feat:`, `fix:`, `chore:`, `test:`, `security:`, `docs:`.
 - Test files are named by domain, for example `app-shell.spec.js`.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Copyright (c) 2026 Lumen Spatial Studio Kft.
