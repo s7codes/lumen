@@ -1,37 +1,57 @@
+import { sanitizeSessionToken, sanitizeUser } from '../lib/auth.js';
+import {
+  MAX_REVISION,
+  MAX_STORED_PROJECTS,
+  MAX_STORED_QUOTES,
+  normalizeProjects,
+  normalizeQuotes,
+  PROJECT_CODECS,
+  QUOTE_STATUSES,
+  sanitizeProjectRecord,
+  sanitizeQuoteRecord,
+  serializeProjectRecord,
+} from '../lib/cloud-records.js';
 import {
   isProjectId,
   PROJECT_KINDS,
   PROJECT_NAME_MAX,
   PROJECT_NAMES,
   projectIdFor,
-  projectIdKind,
   sanitizeProjectName,
 } from '../lib/project-library.js';
-import { sanitizeRoomState, serializeRoomState } from '../lib/room-3d.js';
-import { CURRENCY_CODES, requisitionRef, sanitizeProject, validateProject } from '../lib/quote.js';
-import { sanitizeLayout, serializeLayout } from '../lib/wall-studio.js';
-import { isOneOf, safeStorage, sanitizeText } from '../security/sanitize.js';
+import { sanitizeProject, validateProject } from '../lib/quote.js';
+import { isOneOf, safeJsonParse, safeStorage, sanitizeText } from '../security/sanitize.js';
 
 /**
- * Lumen Cloud client. Every call resolves after a simulated round trip so the
- * UI is built against real network timing. Until the server/ API ships, the
- * transport is safeStorage: records are snapshotted at call time, written
- * after the delay, and sanitized again on every read.
+ * Lumen Cloud client. Calls go over HTTP to the same-origin /api/* server,
+ * scoped to this browser profile by the X-Lumen-Client namespace. The
+ * localStorage mirror stays the offline copy: after every server response it
+ * is reconciled to the server list, and a fingerprint marker records the
+ * mirror state that matched. A mirror that no longer matches its marker was
+ * changed on this device (offline saves, a v1 library) and is pushed to
+ * /api/sync before the next call. When the API is unreachable, projects fall
+ * back to the mirror; requisitions are refused rather than issued offline.
  */
 
 export const PROJECTS_STORAGE_KEY = 'lumen_cloud_projects_v1';
 export const QUOTES_STORAGE_KEY = 'lumen_cloud_quotes_v1';
-export const LATENCY_MS = Object.freeze({ min: 500, max: 1200 });
-export { PROJECT_KINDS, PROJECT_NAME_MAX, PROJECT_NAMES };
-export const MAX_STORED_PROJECTS = 12;
-export const QUOTE_STATUSES = Object.freeze(['Pending review', 'In production', 'Delivered', 'Quote expired']);
-export const MAX_STORED_QUOTES = 24;
+export const CLIENT_STORAGE_KEY = 'lumen_cloud_client_v1';
+export const SYNC_STORAGE_KEY = 'lumen_cloud_sync_v1';
+export const CLIENT_HEADER = 'X-Lumen-Client';
+export const API_BASE = '/api';
+// A floor, not a simulation: saving and syncing states never flash on a fast link.
+export const LATENCY_MS = Object.freeze({ min: 500 });
+export const REQUEST_TIMEOUT_MS = 8000;
+export const TRANSPORT_LABELS = Object.freeze({
+  idle: 'Connecting',
+  http: 'Lumen Cloud API (HTTP)',
+  local: 'Device storage (offline)',
+});
+export { MAX_STORED_PROJECTS, MAX_STORED_QUOTES, PROJECT_KINDS, PROJECT_NAME_MAX, PROJECT_NAMES, QUOTE_STATUSES };
 
-const MAX_REVISION = 9999;
-const MAX_SCANNED_PROJECTS = 64;
-const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-const REQUISITION_PATTERN = /^LMN-R-[0-9A-F]{8}$/;
-const QUOTE_ID_PATTERN = /^LMN-Q-\d{8}-[0-9A-Z]{6}$/;
+const SYNC_BATCH_CHARS = 48 * 1024;
+const MAX_RESPONSE_CHARS = 2_000_000;
+const CLIENT_ID_PATTERN = /^[a-f0-9]{32}$/;
 
 export class ApiError extends Error {
   constructor(code, message) {
@@ -41,93 +61,272 @@ export class ApiError extends Error {
   }
 }
 
+class OfflineError extends Error {}
+
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isBoundedInt(value, min, max) {
-  return Number.isInteger(value) && value >= min && value <= max;
+function now() {
+  return typeof performance === 'undefined' ? Date.now() : performance.now();
 }
 
-function sanitizeTimestamp(value) {
-  if (typeof value !== 'string' || !ISO_TIMESTAMP.test(value)) return null;
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
-}
-
-function latency() {
-  return LATENCY_MS.min + Math.round(Math.random() * (LATENCY_MS.max - LATENCY_MS.min));
-}
-
-function roundTrip(work) {
-  return new Promise((resolve, reject) => {
-    window.setTimeout(() => {
-      try {
-        resolve(work());
-      } catch (error) {
-        reject(error);
-      }
-    }, latency());
-  });
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function unreachable() {
   return new ApiError('storage', 'Lumen Cloud is unreachable from this device. Nothing was saved.');
 }
 
-/* Projects */
+/* Transport telemetry */
 
-const PROJECT_CODECS = {
-  wall: { sanitize: sanitizeLayout, serialize: serializeLayout },
-  room: { sanitize: sanitizeRoomState, serialize: serializeRoomState },
-};
+let transport = Object.freeze({ mode: 'idle', label: TRANSPORT_LABELS.idle, roundTripMs: null });
+const transportListeners = new Set();
+
+function setTransport(mode, roundTripMs) {
+  if (transport.mode === mode && transport.roundTripMs === roundTripMs) return;
+  transport = Object.freeze({ mode, label: TRANSPORT_LABELS[mode], roundTripMs });
+  transportListeners.forEach((listener) => listener());
+}
+
+/** Last settled transport: `idle` before any call, `http` when the API answered, `local` on fallback. */
+export function getCloudTransport() {
+  return transport;
+}
+
+export function subscribeCloudTransport(listener) {
+  transportListeners.add(listener);
+  return () => transportListeners.delete(listener);
+}
+
+/* Client namespace */
+
+let memoryClientId = null;
+
+function randomHex(bytes) {
+  const buffer = new Uint8Array(bytes);
+  crypto.getRandomValues(buffer);
+  return Array.from(buffer, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/** 128-bit id per browser profile. Without storage it lives for the page only. */
+function clientId() {
+  const stored = safeStorage.read(CLIENT_STORAGE_KEY, {
+    fallback: null,
+    validate: (value) => typeof value === 'string' && CLIENT_ID_PATTERN.test(value),
+  });
+  if (stored) return stored;
+  const id = memoryClientId ?? randomHex(16);
+  memoryClientId = safeStorage.write(CLIENT_STORAGE_KEY, id) ? null : id;
+  return id;
+}
+
+/* HTTP */
+
+async function request(trip, method, path, body, headers = {}) {
+  if (typeof fetch !== 'function') throw new OfflineError();
+  const init = {
+    method,
+    headers: { Accept: 'application/json', [CLIENT_HEADER]: clientId(), ...headers },
+    credentials: 'same-origin',
+    cache: 'no-store',
+    redirect: 'error',
+  };
+  if (body !== undefined) {
+    init.headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(body);
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const started = now();
+  let response;
+  let text;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { ...init, signal: controller.signal });
+    text = await response.text();
+  } catch {
+    throw new OfflineError();
+  } finally {
+    clearTimeout(timer);
+  }
+  trip.networkMs += now() - started;
+
+  // A static host answers /api/* with its HTML fallback: the API is not deployed there.
+  const type = response.headers.get('content-type') ?? '';
+  if (!type.startsWith('application/json') && !(response.ok && text === '')) throw new OfflineError();
+  const payload = text === '' ? {} : safeJsonParse(text, { fallback: null, maxLength: MAX_RESPONSE_CHARS });
+
+  if (response.ok) {
+    if (!isRecord(payload)) throw new ApiError('storage', 'Lumen Cloud sent an unreadable response.');
+    return payload;
+  }
+  const fault = isRecord(payload) && isRecord(payload.error) ? payload.error : {};
+  const message =
+    sanitizeText(fault.message, { maxLength: 240 }) || `Lumen Cloud refused the request (HTTP ${response.status}).`;
+  const code = fault.code === 'quota' ? 'quota' : response.status >= 500 ? 'storage' : 'invalid';
+  throw new ApiError(code, message);
+}
 
 /**
- * Rebuilds one stored project. Legacy single-slot records carry no id or
- * name and read as the kind's default project. An id that does not belong
- * to the record's kind is treated as tampered.
+ * Runs one client call. Storage writes are queued on the trip and applied
+ * when the call settles, never sooner than LATENCY_MS.min after it started,
+ * so the mirror changes exactly when the UI leaves its pending state.
  */
-function sanitizeProjectRecord(entry) {
-  if (!isRecord(entry) || !isOneOf(entry.kind, PROJECT_KINDS)) return null;
-  const { kind } = entry;
-  const id = entry.id === undefined ? kind : entry.id;
-  if (projectIdKind(id) !== kind) return null;
-  const savedAt = sanitizeTimestamp(entry.savedAt);
-  if (!savedAt || !isBoundedInt(entry.revision, 1, MAX_REVISION)) return null;
-  const data = PROJECT_CODECS[kind].sanitize(entry.data);
-  if (!data) return null;
-  return { id, kind, name: sanitizeProjectName(entry.name, kind), revision: entry.revision, savedAt, data };
-}
-
-function readProjects() {
-  const stored = safeStorage.read(PROJECTS_STORAGE_KEY, { fallback: [], validate: Array.isArray });
-  const seen = new Set();
-  const projects = [];
-  for (const entry of stored.slice(0, MAX_SCANNED_PROJECTS)) {
-    const project = sanitizeProjectRecord(entry);
-    if (!project || seen.has(project.id)) continue;
-    seen.add(project.id);
-    projects.push(project);
+async function roundTrip(work) {
+  const started = now();
+  const trip = { mode: 'http', networkMs: 0, commits: new Map() };
+  let value;
+  let failure = null;
+  try {
+    value = await work(trip);
+  } catch (error) {
+    failure = error;
   }
-  return projects.sort((a, b) => b.savedAt.localeCompare(a.savedAt)).slice(0, MAX_STORED_PROJECTS);
+  const remaining = LATENCY_MS.min - (now() - started);
+  if (remaining > 0) await delay(remaining);
+
+  try {
+    trip.commits.forEach((commit) => commit());
+  } catch (error) {
+    failure ??= error;
+  }
+  setTransport(trip.mode, trip.mode === 'http' ? Math.round(trip.networkMs) : null);
+  if (failure) throw failure;
+  return value;
 }
 
-function writeProjects(projects) {
-  const stored = projects.map(({ id, kind, name, revision, savedAt, data }) => ({
-    id,
-    kind,
-    name,
-    revision,
-    savedAt,
-    data: PROJECT_CODECS[kind].serialize(data),
-  }));
-  if (!safeStorage.write(PROJECTS_STORAGE_KEY, stored)) throw unreachable();
+function goOffline(trip, error) {
+  if (!(error instanceof OfflineError)) throw error;
+  trip.mode = 'local';
+  trip.commits.clear();
 }
+
+/* Device mirror and sync marker */
+
+const COLLECTIONS = {
+  projects: { key: PROJECTS_STORAGE_KEY, normalize: normalizeProjects, serialize: serializeProjectRecord },
+  quotes: { key: QUOTES_STORAGE_KEY, normalize: normalizeQuotes, serialize: (quote) => quote },
+};
+
+function readMirror(name) {
+  const { key, normalize } = COLLECTIONS[name];
+  const raw = safeStorage.read(key, { fallback: null });
+  return { raw, list: normalize(Array.isArray(raw) ? raw : []) };
+}
+
+// FNV-1a over the canonical JSON: cheap change detection, not a security boundary.
+function fingerprint(raw) {
+  if (raw === null) return null;
+  const text = JSON.stringify(raw);
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `${text.length.toString(36)}.${hash.toString(36)}`;
+}
+
+function readMarkers() {
+  const stored = safeStorage.read(SYNC_STORAGE_KEY, { fallback: {}, validate: isRecord });
+  const pick = (value) => (typeof value === 'string' && value.length <= 32 ? value : null);
+  return { projects: pick(stored.projects), quotes: pick(stored.quotes) };
+}
+
+function writeMarker(name, value) {
+  safeStorage.write(SYNC_STORAGE_KEY, { ...readMarkers(), [name]: value });
+}
+
+/** Mirror := server list. A semantically equal mirror is left as written and only re-marked. */
+function reconcile(name, serverList) {
+  return () => {
+    const { key, serialize } = COLLECTIONS[name];
+    const { raw, list } = readMirror(name);
+    const wire = serverList.map(serialize);
+    if (JSON.stringify(list.map(serialize)) === JSON.stringify(wire)) {
+      writeMarker(name, fingerprint(raw));
+    } else if (safeStorage.write(key, wire)) {
+      writeMarker(name, fingerprint(wire));
+    } else {
+      // Never leave a stale mirror marked as unsynced: it would be pushed over the server copy.
+      safeStorage.remove(key);
+      writeMarker(name, null);
+    }
+  };
+}
+
+function writeOffline(name, list) {
+  const { key, serialize } = COLLECTIONS[name];
+  return () => {
+    if (!safeStorage.write(key, list.map(serialize))) throw unreachable();
+  };
+}
+
+function batchBySize(records) {
+  const batches = [[]];
+  let size = 0;
+  for (const record of records) {
+    const length = JSON.stringify(record).length;
+    if (size + length > SYNC_BATCH_CHARS && batches.at(-1).length > 0) {
+      batches.push([]);
+      size = 0;
+    }
+    batches.at(-1).push(record);
+    size += length;
+  }
+  return batches;
+}
+
+/** Pushes a diverged mirror and resolves with the server list, or null when the mirror is in sync. */
+async function syncIfDiverged(trip, name) {
+  const { raw, list } = readMirror(name);
+  if (fingerprint(raw) === readMarkers()[name]) return null;
+
+  let payload;
+  if (name === 'quotes') {
+    payload = await request(trip, 'POST', '/sync', { quotes: list });
+  } else {
+    // A full 12-project library can exceed one 64 KB body; later batches merge.
+    const batches = batchBySize(list.map(serializeProjectRecord));
+    for (const [i, projects] of batches.entries()) {
+      payload = await request(trip, 'POST', '/sync', { mode: i === 0 ? 'replace' : 'merge', projects });
+    }
+  }
+  const synced = COLLECTIONS[name].normalize(payload[name]);
+  trip.commits.set(name, reconcile(name, synced));
+  return synced;
+}
+
+async function loadCollection(name) {
+  return roundTrip(async (trip) => {
+    try {
+      const list =
+        (await syncIfDiverged(trip, name)) ?? COLLECTIONS[name].normalize((await request(trip, 'GET', `/${name}`))[name]);
+      trip.commits.set(name, reconcile(name, list));
+      return list;
+    } catch (error) {
+      goOffline(trip, error);
+      return readMirror(name).list;
+    }
+  });
+}
+
+/* Projects */
 
 function requestedName(kind, data, options) {
   if (isRecord(options) && typeof options.name === 'string') return sanitizeProjectName(options.name, kind);
   if (isRecord(data) && typeof data.projectName === 'string') return sanitizeProjectName(data.projectName, kind);
   return PROJECT_NAMES[kind];
+}
+
+function assertRoomFor(projects, id) {
+  if (!projects.some((project) => project.id === id) && projects.length >= MAX_STORED_PROJECTS) {
+    throw new ApiError(
+      'quota',
+      `Lumen Cloud holds ${MAX_STORED_PROJECTS} projects. Delete one from your account to save a new name.`,
+    );
+  }
 }
 
 /**
@@ -147,25 +346,31 @@ export function saveProject(kind, data, options = {}) {
   const name = requestedName(kind, data, options);
   const id = projectIdFor(kind, name);
 
-  return roundTrip(() => {
-    const projects = readProjects();
-    const previous = projects.find((project) => project.id === id);
-    if (!previous && projects.length >= MAX_STORED_PROJECTS) {
-      throw new ApiError(
-        'quota',
-        `Lumen Cloud holds ${MAX_STORED_PROJECTS} projects. Delete one from your account to save a new name.`,
-      );
+  return roundTrip(async (trip) => {
+    try {
+      // The mirror tracks the server, so a full library is refused before the request.
+      assertRoomFor((await syncIfDiverged(trip, 'projects')) ?? readMirror('projects').list, id);
+      const payload = await request(trip, 'POST', '/projects', { kind, name, data: codec.serialize(snapshot) });
+      const record = sanitizeProjectRecord(payload.project);
+      if (!record) throw new ApiError('storage', 'Lumen Cloud sent an unreadable project record.');
+      trip.commits.set('projects', reconcile('projects', normalizeProjects(payload.projects)));
+      return record;
+    } catch (error) {
+      goOffline(trip, error);
+      const projects = readMirror('projects').list;
+      assertRoomFor(projects, id);
+      const previous = projects.find((project) => project.id === id);
+      const record = {
+        id,
+        kind,
+        name,
+        revision: Math.min(MAX_REVISION, (previous?.revision ?? 0) + 1),
+        savedAt: new Date().toISOString(),
+        data: snapshot,
+      };
+      trip.commits.set('projects', writeOffline('projects', [record, ...projects.filter((p) => p.id !== id)]));
+      return record;
     }
-    const record = {
-      id,
-      kind,
-      name,
-      revision: Math.min(MAX_REVISION, (previous?.revision ?? 0) + 1),
-      savedAt: new Date().toISOString(),
-      data: snapshot,
-    };
-    writeProjects([record, ...projects.filter((project) => project.id !== id)]);
-    return record;
   });
 }
 
@@ -175,57 +380,49 @@ export function saveProject(kind, data, options = {}) {
  */
 export function deleteProject(id) {
   if (!isProjectId(id)) return Promise.reject(new ApiError('invalid', 'Unknown project.'));
-  return roundTrip(() => {
-    const remaining = readProjects().filter((project) => project.id !== id);
-    writeProjects(remaining);
-    return remaining;
+  return roundTrip(async (trip) => {
+    try {
+      await syncIfDiverged(trip, 'projects');
+      const payload = await request(trip, 'DELETE', `/projects/${encodeURIComponent(id)}`);
+      const remaining = normalizeProjects(payload.projects);
+      trip.commits.set('projects', reconcile('projects', remaining));
+      return remaining;
+    } catch (error) {
+      goOffline(trip, error);
+      const remaining = readMirror('projects').list.filter((project) => project.id !== id);
+      trip.commits.set('projects', writeOffline('projects', remaining));
+      return remaining;
+    }
   });
 }
 
 /** Resolves with every saved project, newest first. Tampered entries are dropped. */
 export function loadProjects() {
-  return roundTrip(readProjects);
+  return loadCollection('projects');
 }
 
 /* Quotes */
 
-function sanitizeQuoteRecord(entry) {
-  if (!isRecord(entry)) return null;
-  const { ref, quoteId, currency, grossMinor, lines, loadW, status } = entry;
-  const submittedAt = sanitizeTimestamp(entry.submittedAt);
-  const reference = sanitizeText(entry.reference, { maxLength: 96 });
-  const preparedFor = sanitizeText(entry.preparedFor, { maxLength: 96 });
-  if (
-    !submittedAt ||
-    !reference ||
-    !preparedFor ||
-    typeof ref !== 'string' ||
-    !REQUISITION_PATTERN.test(ref) ||
-    typeof quoteId !== 'string' ||
-    !QUOTE_ID_PATTERN.test(quoteId) ||
-    !isOneOf(currency, CURRENCY_CODES) ||
-    !isOneOf(status, QUOTE_STATUSES) ||
-    !isBoundedInt(grossMinor, 0, 1e12) ||
-    !isBoundedInt(lines, 1, 999) ||
-    !isBoundedInt(loadW, 0, 100_000)
-  ) {
-    return null;
-  }
-  return { ref, quoteId, submittedAt, reference, preparedFor, currency, grossMinor, lines, loadW, status };
-}
-
-function readQuotes() {
-  const stored = safeStorage.read(QUOTES_STORAGE_KEY, { fallback: [], validate: Array.isArray });
-  return stored
-    .slice(0, MAX_STORED_QUOTES)
-    .map(sanitizeQuoteRecord)
-    .filter(Boolean)
-    .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+// The server rebuilds totals from these inputs; grossMinor is its cross-check.
+function quotePayload(quote) {
+  return {
+    currency: quote.currency.code,
+    promo: quote.promo ? quote.promo.code : null,
+    includeDriver: quote.electrical.driverIncluded,
+    grossMinor: quote.totals.gross,
+    items: quote.lines
+      .filter((line) => !line.driver)
+      .map((line) => {
+        const [id, finish] = line.key.split(':');
+        return { id, finish, qty: line.qty };
+      }),
+  };
 }
 
 /**
- * Submits a built quote with its project fields as a requisition. Resolves
- * with the stored record, whose `ref` is the requisition reference.
+ * Submits a built quote with its project fields as a requisition. The
+ * server prices it again and issues the reference. Resolves with the stored
+ * record, whose `ref` is the requisition reference.
  */
 export function submitQuote({ quote, project }) {
   const fields = sanitizeProject(project);
@@ -235,29 +432,62 @@ export function submitQuote({ quote, project }) {
   if (quote.lines.length === 0) {
     return Promise.reject(new ApiError('invalid', 'The quote has no valid lines.'));
   }
+  const body = { quote: quotePayload(quote), project: fields };
 
-  const record = sanitizeQuoteRecord({
-    ref: requisitionRef(),
-    quoteId: quote.quoteId,
-    submittedAt: new Date().toISOString(),
-    reference: fields.reference,
-    preparedFor: fields.preparedFor,
-    currency: quote.currency.code,
-    grossMinor: quote.totals.gross,
-    lines: quote.lines.length,
-    loadW: quote.electrical.loadW,
-    status: 'Pending review',
-  });
-  if (!record) return Promise.reject(new ApiError('invalid', 'The quote could not be encoded.'));
-
-  return roundTrip(() => {
-    const next = [record, ...readQuotes()].slice(0, MAX_STORED_QUOTES);
-    if (!safeStorage.write(QUOTES_STORAGE_KEY, next)) throw unreachable();
-    return record;
+  return roundTrip(async (trip) => {
+    try {
+      await syncIfDiverged(trip, 'quotes');
+      const payload = await request(trip, 'POST', '/quotes', body);
+      const record = sanitizeQuoteRecord(payload.quote);
+      if (!record) throw new ApiError('storage', 'Lumen Cloud sent an unreadable requisition.');
+      trip.commits.set('quotes', reconcile('quotes', normalizeQuotes(payload.quotes)));
+      return record;
+    } catch (error) {
+      goOffline(trip, error);
+      throw new ApiError(
+        'storage',
+        'Lumen Cloud is unreachable, so the requisition was not submitted. The quote sheet is unchanged.',
+      );
+    }
   });
 }
 
 /** Resolves with submitted requisitions, newest first. */
 export function loadQuotes() {
-  return roundTrip(readQuotes);
+  return loadCollection('quotes');
+}
+
+/* Sessions */
+
+/**
+ * Opens a server session. Resolves with `{ user, token, expiresAt }`, or
+ * with null when the API is unreachable so the caller can fall back to a
+ * device-only guest session. Rejects with ApiError when the server refuses.
+ */
+export async function openSession({ email, password }) {
+  const trip = { mode: 'http', networkMs: 0 };
+  try {
+    const payload = await request(trip, 'POST', '/auth/session', { email, password });
+    const user = sanitizeUser(payload.user);
+    const token = sanitizeSessionToken(payload.token);
+    if (!user || !token) throw new ApiError('storage', 'Lumen Cloud sent an unreadable session.');
+    setTransport('http', Math.round(trip.networkMs));
+    return { user, token, expiresAt: typeof payload.expiresAt === 'string' ? payload.expiresAt : null };
+  } catch (error) {
+    if (!(error instanceof OfflineError)) throw error;
+    setTransport('local', null);
+    return null;
+  }
+}
+
+/** Revokes a server session. Fire and forget: never rejects. */
+export async function closeSession(token) {
+  const bearer = sanitizeSessionToken(token);
+  if (!bearer) return false;
+  try {
+    await request({ networkMs: 0 }, 'DELETE', '/auth/session', undefined, { Authorization: `Bearer ${bearer}` });
+    return true;
+  } catch {
+    return false;
+  }
 }

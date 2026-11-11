@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { isApiPath } from './server/app.js';
+import { createLumenCloud } from './server/config.js';
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'));
 
@@ -17,6 +19,17 @@ function devCspRelax() {
         .replace("connect-src 'self';", "connect-src 'self' ws://localhost:* ws://127.0.0.1:*;");
     },
   };
+}
+
+// Lumen Cloud runs in-process on the same origin as the app, so the strict
+// `connect-src 'self'` policy covers /api/* in dev, in preview and in E2E.
+function lumenCloudApi() {
+  let cloud = null;
+  const mount = (server) => {
+    cloud ??= createLumenCloud(new URL('./', import.meta.url));
+    server.middlewares.use((req, res, next) => (isApiPath(req.url) ? cloud.handler(req, res) : next()));
+  };
+  return { name: 'lumen:cloud-api', configureServer: mount, configurePreviewServer: mount };
 }
 
 // Fonts are requested only once React renders text, so without a hint they
@@ -47,7 +60,7 @@ function fontPreload() {
 }
 
 export default defineConfig({
-  plugins: [react(), devCspRelax(), fontPreload()],
+  plugins: [react(), devCspRelax(), fontPreload(), lumenCloudApi()],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },

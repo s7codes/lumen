@@ -8,9 +8,9 @@ import { ArrowRight } from './icons.jsx';
 const EMPTY = { email: '', password: '' };
 
 /**
- * Sign-in dialog for the front-end account shell. The form validates
- * locally and opens a mock session; the password lives only in component
- * state and is cleared on submit.
+ * Sign-in dialog. The form validates locally, then opens a signed session on
+ * the Lumen Cloud API; the password lives only in component state and in the
+ * one request body, and is cleared on submit.
  */
 export function AuthModal({ open, onClose, onSignedIn, returnFocus }) {
   const panelRef = useRef(null);
@@ -20,6 +20,7 @@ export function AuthModal({ open, onClose, onSignedIn, returnFocus }) {
   const { addToast } = useToast();
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
+  const [pending, setPending] = useState(false);
 
   // Stable, so the modal effect does not re-run (and refocus) on every keystroke.
   const close = useCallback(() => {
@@ -38,9 +39,12 @@ export function AuthModal({ open, onClose, onSignedIn, returnFocus }) {
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }));
   };
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
-    const result = signIn(form);
+    if (pending) return;
+    setPending(true);
+    const result = await signIn(form);
+    setPending(false);
     if (!result.ok) {
       setErrors(result.errors);
       document.getElementById(`${uid}-${result.errors.email ? 'email' : 'password'}`)?.focus();
@@ -48,7 +52,12 @@ export function AuthModal({ open, onClose, onSignedIn, returnFocus }) {
     }
     setForm(EMPTY);
     setErrors({});
-    addToast(`Signed in as ${result.user.email}.`, 'success');
+    addToast(
+      result.offline
+        ? `Signed in as ${result.user.email} on this device. Lumen Cloud is unreachable.`
+        : `Signed in as ${result.user.email}.`,
+      'success',
+    );
     onSignedIn(result.user);
   };
 
@@ -135,14 +144,20 @@ export function AuthModal({ open, onClose, onSignedIn, returnFocus }) {
             )}
           </div>
 
-          <button type="submit" className="button button--primary auth-modal__submit" data-testid="auth-submit">
-            Sign In
+          <button
+            type="submit"
+            className="button button--primary auth-modal__submit"
+            data-testid="auth-submit"
+            disabled={pending}
+            aria-busy={pending || undefined}
+          >
+            {pending ? 'Signing In...' : 'Sign In'}
             <ArrowRight />
           </button>
 
           <p id={`${uid}-note`} className="auth-modal__note mono">
-            Front-end session shell. Nothing leaves this browser: the session stores a display name and the
-            address only, and the password is discarded on submit. Server accounts arrive with the Lumen API.
+            Sessions are signed by the Lumen Cloud API. The server checks the password length and discards it;
+            this browser keeps the display name, the address and the session token.
           </p>
         </form>
       </div>

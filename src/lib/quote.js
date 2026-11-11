@@ -249,9 +249,3 @@ export function serializeQuote(quote, project) {
     totals: { ...quote.totals },
   };
 }
-
-export function requisitionRef() {
-  const bytes = new Uint8Array(4);
-  crypto.getRandomValues(bytes);
-  return `LMN-R-${[...bytes].map((b) => b.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
-}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { saveProject } from '../api/client.js';
+import { getCloudTransport, saveProject } from '../api/client.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { padIndex } from '../lib/format.js';
 
@@ -34,7 +34,13 @@ export function useCloudSave(kind) {
       setStatus('saving');
       try {
         const saved = await saveProject(kind, data, { name });
-        addToast(`${saved.name} saved to Lumen Cloud. Revision ${padIndex(saved.revision)}.`, 'success');
+        const revision = `Revision ${padIndex(saved.revision)}.`;
+        addToast(
+          getCloudTransport().mode === 'local'
+            ? `${saved.name} saved on this device. ${revision} Lumen Cloud syncs it when the API is reachable.`
+            : `${saved.name} saved to Lumen Cloud. ${revision}`,
+          'success',
+        );
         if (mounted.current) {
           setRecord(saved);
           setStatus('saved');

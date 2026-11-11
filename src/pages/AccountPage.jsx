@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { Link } from 'react-router-dom';
-import { deleteProject, loadProjects, loadQuotes } from '../api/client.js';
+import {
+  deleteProject,
+  getCloudTransport,
+  loadProjects,
+  loadQuotes,
+  subscribeCloudTransport,
+} from '../api/client.js';
 import { EmptyState } from '../components/EmptyState.jsx';
 import { ArrowRight } from '../components/icons.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
@@ -223,7 +229,10 @@ function useCloudAccount() {
   useEffect(() => {
     let live = true;
     Promise.all([loadProjects(), loadQuotes()]).then(
-      ([projects, quotes]) => live && setCloud({ status: 'ready', projects, quotes }),
+      ([projects, quotes]) => {
+        const status = getCloudTransport().mode === 'local' ? 'offline' : 'ready';
+        if (live) setCloud({ status, projects, quotes });
+      },
       () => live && setCloud({ status: 'error', projects: [], quotes: [] }),
     );
     return () => {
@@ -237,7 +246,12 @@ function useCloudAccount() {
       try {
         await deleteProject(record.id);
         setCloud((prev) => ({ ...prev, projects: prev.projects.filter((project) => project.id !== record.id) }));
-        addToast(`${record.name} deleted from Lumen Cloud.`, 'success');
+        addToast(
+          getCloudTransport().mode === 'local'
+            ? `${record.name} deleted on this device. Lumen Cloud syncs it when the API is reachable.`
+            : `${record.name} deleted from Lumen Cloud.`,
+          'success',
+        );
         return true;
       } catch (error) {
         addToast(error?.name === 'ApiError' ? error.message : 'Delete failed. Try again.', 'error');
@@ -256,13 +270,14 @@ function useCloudAccount() {
   return { ...cloud, deleting, removeProject };
 }
 
-const SYNC_LABELS = { loading: 'Syncing', ready: 'Up to date', error: 'Offline' };
+const SYNC_LABELS = { loading: 'Syncing', ready: 'Up to date', offline: 'Device copy', error: 'Offline' };
 
 export default function AccountPage() {
   useDocumentTitle('Account');
   const { user, signOut } = useAuth();
   const { addToast } = useToast();
   const cloud = useCloudAccount();
+  const transport = useSyncExternalStore(subscribeCloudTransport, getCloudTransport, getCloudTransport);
   const reveal = useScrollReveal();
   const loading = cloud.status === 'loading';
 
@@ -277,8 +292,19 @@ export default function AccountPage() {
 
   const leave = () => {
     signOut();
-    addToast('Signed out. Saved projects stay on this device.', 'info');
+    addToast('Signed out. Saved projects stay with this browser profile.', 'info');
   };
+
+  const facts = [
+    {
+      term: 'Transport',
+      value: loading && transport.mode === 'idle' ? '--' : transport.label,
+      attrs: { 'data-mode': transport.mode, 'data-round-trip-ms': transport.roundTripMs ?? undefined },
+    },
+    { term: 'Sync', value: SYNC_LABELS[cloud.status] },
+    { term: 'Projects', value: count(cloud.projects) },
+    { term: 'Quotes', value: count(cloud.quotes) },
+  ];
 
   return (
     <div className="page-atmosphere" data-testid="account-page">
@@ -309,15 +335,12 @@ export default function AccountPage() {
             Sign Out
           </button>
           <dl className="account-profile__facts mono">
-            {[
-              ['Storage', 'Lumen Cloud'],
-              ['Sync', SYNC_LABELS[cloud.status]],
-              ['Projects', count(cloud.projects)],
-              ['Quotes', count(cloud.quotes)],
-            ].map(([term, value]) => (
+            {facts.map(({ term, value, attrs }) => (
               <div key={term}>
                 <dt>{term}</dt>
-                <dd data-testid={`account-fact-${term.toLowerCase()}`}>{value}</dd>
+                <dd data-testid={`account-fact-${term.toLowerCase()}`} {...attrs}>
+                  {value}
+                </dd>
               </div>
             ))}
           </dl>

@@ -242,6 +242,11 @@
   margin-top: var(--space-2);
 }
 
+.auth-modal__submit:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+
 .auth-modal__note {
   font-size: 10px;
   line-height: 1.6;

@@ -1,15 +1,25 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { createSession, loadSession, persistSession, SESSION_STORAGE_KEY, validateCredentials } from '../lib/auth.js';
+import { closeSession, openSession } from '../api/client.js';
+import {
+  createSession,
+  loadSession,
+  loadSessionToken,
+  persistSession,
+  persistSessionToken,
+  SESSION_STORAGE_KEY,
+  validateCredentials,
+} from '../lib/auth.js';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(loadSession);
 
-  // Writing on mount also drops a tampered session payload.
+  // Writing on mount also drops a tampered session payload, and its token with it.
   useEffect(() => {
     persistSession(user);
+    if (!user) persistSessionToken(null);
   }, [user]);
 
   useEffect(() => {
@@ -21,15 +31,32 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const signIn = useCallback(({ email, password }) => {
+  /**
+   * Validates locally, then opens a signed session on the Lumen Cloud API.
+   * When the API is unreachable the visitor still gets a device-only guest
+   * session, so the account shell keeps working offline.
+   */
+  const signIn = useCallback(async ({ email, password }) => {
     const errors = validateCredentials({ email, password });
-    const session = Object.keys(errors).length === 0 ? createSession(email) : null;
-    if (!session) return { ok: false, errors };
-    setUser(session);
-    return { ok: true, user: session, errors: {} };
+    if (Object.keys(errors).length > 0) return { ok: false, errors };
+    let session;
+    try {
+      session = await openSession({ email, password });
+    } catch (error) {
+      return { ok: false, errors: { email: error?.name === 'ApiError' ? error.message : 'Sign-in failed. Try again.' } };
+    }
+    const next = session?.user ?? createSession(email);
+    persistSessionToken(session?.token ?? null);
+    setUser(next);
+    return { ok: true, user: next, errors: {}, offline: !session };
   }, []);
 
-  const signOut = useCallback(() => setUser(null), []);
+  const signOut = useCallback(() => {
+    const token = loadSessionToken();
+    persistSessionToken(null);
+    setUser(null);
+    if (token) closeSession(token);
+  }, []);
 
   const value = useMemo(() => ({ user, signIn, signOut }), [user, signIn, signOut]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
