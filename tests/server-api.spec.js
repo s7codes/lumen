@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { expect, test } from '@playwright/test';
-import { resolveServerOptions } from '../server/config.js';
+import { E2E_SERVER_ENV, resolveServerOptions, TEST_DATA_FILE } from '../server/config.js';
 import {
   CLIENT_STORAGE_KEY,
   MAX_STORED_PROJECTS,
@@ -14,7 +14,8 @@ import { buildQuote } from '../src/lib/quote.js';
 import { layoutFromPreset, serializeLayout, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
 import { collectRuntimeErrors, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
-const SERVER = resolveServerOptions(new URL('../', import.meta.url));
+// The same options the Playwright web server resolves: the isolated test store.
+const SERVER = resolveServerOptions(new URL('../', import.meta.url), { ...process.env, ...E2E_SERVER_ENV });
 const PROJECTS_KEY = `lumen:${PROJECTS_STORAGE_KEY}`;
 const CLIENT_KEY = `lumen:${CLIENT_STORAGE_KEY}`;
 const SESSION_KEY = `lumen:${SESSION_STORAGE_KEY}`;
@@ -95,7 +96,8 @@ test.describe('lumen cloud http api', () => {
     const response = await request.get('/api/health');
     expect(response.status()).toBe(200);
     expect(await response.json()).toEqual({ ok: true, version: pkg.version, storage: 'server' });
-    expect(pkg.version).toBe('2.0.0');
+    expect(pkg.version).toBe('3.0.0');
+    expect(SERVER.file.replaceAll('\\', '/').endsWith(TEST_DATA_FILE)).toBe(true);
     const headers = response.headers();
     expect(headers['x-content-type-options']).toBe('nosniff');
     expect(headers['cache-control']).toBe('no-store');
