@@ -197,6 +197,8 @@ export function computeEnvironmentalPhysics(subject) {
     volumeM3: round(area.volume, 2),
     reflectance: round(rho, 2),
     fluxLm,
+    // The uniform inter-reflected component every surface point receives.
+    reflectedLux: round(reflected, 1),
     avgFloorLux,
     avgWallLux,
     taskTarget: TASK_TARGET_LUX,
