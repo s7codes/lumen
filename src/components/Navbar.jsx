@@ -2,10 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useBag, useBagDrawer } from '../hooks/useBag.js';
+import { useCommandPalette } from '../hooks/useCommandPalette.js';
+import { prefetchRoute } from '../lib/route-manifest.js';
 import { NAV_ROUTES } from '../lib/routes.js';
 import { AuthModal } from './AuthModal.jsx';
 import { BagDrawer } from './BagDrawer.jsx';
-import { LumenMark } from './icons.jsx';
+import { CommandPalette, PALETTE_SHORTCUT_LABEL } from './CommandPalette.jsx';
+import { LumenMark, SearchGlyph } from './icons.jsx';
 import { ModeSwitch } from './ModeSwitch.jsx';
 
 export function Navbar() {
@@ -17,8 +20,11 @@ export function Navbar() {
   const signInRef = useRef(null);
   const accountRef = useRef(null);
   const focusAccount = useRef(false);
+  const { open: paletteOpen, openPalette } = useCommandPalette();
+  const paletteTriggerRef = useRef(null);
 
   const closeAuth = useCallback(() => setAuthOpen(false), []);
+  const openAuth = useCallback(() => setAuthOpen(true), []);
   const onSignedIn = useCallback(() => {
     focusAccount.current = true;
     setAuthOpen(false);
@@ -47,7 +53,13 @@ export function Navbar() {
             <ul className="navbar__links">
               {NAV_ROUTES.map((route) => (
                 <li key={route.path}>
-                  <NavLink to={route.path} end={route.path === '/'} className="navbar__link">
+                  <NavLink
+                    to={route.path}
+                    end={route.path === '/'}
+                    className="navbar__link"
+                    onPointerEnter={() => prefetchRoute(route.path)}
+                    onFocus={() => prefetchRoute(route.path)}
+                  >
                     <span className="navbar__link-index">{route.index}</span>
                     <span className="navbar__link-sep" aria-hidden="true">
                       /
@@ -60,6 +72,21 @@ export function Navbar() {
           </nav>
 
           <div className="navbar__controls">
+            <button
+              ref={paletteTriggerRef}
+              type="button"
+              className="palette-trigger"
+              aria-label="Search commands"
+              aria-haspopup="dialog"
+              aria-expanded={paletteOpen}
+              aria-keyshortcuts="Control+K Meta+K"
+              data-testid="command-palette-trigger"
+              onClick={() => openPalette(paletteTriggerRef.current)}
+            >
+              <SearchGlyph />
+              <span className="palette-trigger__label">Search</span>
+              <kbd className="palette-trigger__kbd">{PALETTE_SHORTCUT_LABEL}</kbd>
+            </button>
             <ModeSwitch />
             {user ? (
               <NavLink
@@ -101,6 +128,7 @@ export function Navbar() {
 
       <BagDrawer open={bagOpen} onClose={closeBag} returnFocus={returnFocus} />
       <AuthModal open={authOpen} onClose={closeAuth} onSignedIn={onSignedIn} returnFocus={signInRef.current} />
+      <CommandPalette onSignIn={openAuth} />
     </>
   );
 }

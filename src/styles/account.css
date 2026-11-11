@@ -210,9 +210,69 @@
   color: var(--text-primary);
 }
 
-.project-card__open {
-  justify-content: space-between;
+/* Open and Delete share a row on a wide card; on a narrow one Delete drops
+   to its own full-width row instead of crushing the open key. */
+.project-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   margin-top: auto;
+}
+
+.project-card__actions .button {
+  padding-inline: var(--space-4);
+  white-space: nowrap;
+}
+
+.project-card__open {
+  flex: 1 1 200px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.project-card__delete {
+  flex: 1 1 96px;
+  justify-content: center;
+  border-color: var(--border-hairline);
+  color: var(--text-secondary);
+}
+
+.project-card__delete:hover:not(:disabled) {
+  border-color: var(--signal-fault);
+  color: var(--signal-fault-soft);
+}
+
+.project-card__delete:disabled {
+  cursor: default;
+}
+
+/* Both labels share one cell so the key holds its width while deleting. */
+.project-card__delete-labels {
+  display: inline-grid;
+}
+
+.project-card__delete-labels > span {
+  grid-area: 1 / 1;
+  text-align: center;
+  visibility: hidden;
+}
+
+.project-card__delete-labels > span[data-active] {
+  visibility: visible;
+}
+
+.project-card[data-busy] {
+  border-color: var(--bento-edge);
+}
+
+.project-card[data-busy] > :not(.project-card__actions),
+.project-card[data-busy] .project-card__open {
+  opacity: 0.36;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+
+.project-card[data-busy] .project-card__open {
+  pointer-events: none;
 }
 
 /* Cloud loading: shimmering placeholder rows while the account syncs */

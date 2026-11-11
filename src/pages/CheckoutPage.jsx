@@ -6,23 +6,20 @@ import { ArrowRight } from '../components/icons.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useBag } from '../hooks/useBag.js';
+import { useCurrency } from '../hooks/useCurrency.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { padIndex } from '../lib/format.js';
 import {
   buildQuote,
   CURRENCIES,
-  CURRENCY_CODES,
   FIELD_LIMITS,
   formatMoney,
   ISSUER,
-  loadCurrency,
-  persistCurrency,
   resolvePromo,
   sanitizeProject,
   serializeQuote,
   validateProject,
 } from '../lib/quote.js';
-import { isOneOf } from '../security/sanitize.js';
 import '../styles/pages.css';
 import '../styles/checkout.css';
 
@@ -249,7 +246,7 @@ export default function CheckoutPage() {
   useDocumentTitle('Checkout');
   const uid = useId();
   const { items, count } = useBag();
-  const [currencyCode, setCurrencyCode] = useState(loadCurrency);
+  const [currencyCode, selectCurrency] = useCurrency();
   const [promoInput, setPromoInput] = useState('');
   const [promo, setPromo] = useState(null);
   const [promoNote, setPromoNote] = useState({ text: '', tone: 'info' });
@@ -267,12 +264,6 @@ export default function CheckoutPage() {
   );
   const project = useMemo(() => sanitizeProject(form), [form]);
   const needsDriver = quote.electrical.psu.drivers > 0;
-
-  const selectCurrency = (code) => {
-    if (!isOneOf(code, CURRENCY_CODES)) return;
-    setCurrencyCode(code);
-    persistCurrency(code);
-  };
 
   const applyPromo = (event) => {
     event.preventDefault();

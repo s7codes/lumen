@@ -100,3 +100,59 @@
     stroke-dashoffset: 0;
   }
 }
+
+/* Project name: an inline-labelled well that sits on the save key's baseline
+   and takes the height of the row it joins. */
+
+.project-name {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.project-name:hover {
+  border-color: var(--border-strong);
+}
+
+.project-name:focus-within {
+  border-color: var(--lumen-amber);
+}
+
+.project-name__label {
+  display: flex;
+  align-items: center;
+  padding-inline: var(--space-3);
+  border-right: 1px solid var(--border-hairline);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-muted);
+  cursor: text;
+}
+
+.project-name__input {
+  flex: 1 1 auto;
+  width: 20ch;
+  min-width: 0;
+  padding-inline: var(--space-3);
+  border: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  outline: none;
+}
+
+@media (max-width: 767px) {
+  .project-name__input {
+    width: auto;
+  }
+}

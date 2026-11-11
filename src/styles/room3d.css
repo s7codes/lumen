@@ -458,11 +458,13 @@
 
 /* Telemetry and bridge */
 
-.room3d-summary {
+.studio-summary.room3d-summary {
+  display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
 
 .room3d-bridge {
+  container: room-bridge / inline-size;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -473,8 +475,37 @@
 .room3d-bridge__actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+}
+
+.room3d-bridge__tools,
+.room3d-bridge__commit {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+.room3d-bridge__tools {
+  align-items: center;
+}
+
+.room3d-bridge__commit {
+  flex: 1 1 100%;
+  justify-content: flex-end;
+}
+
+/* The name takes its own row until the bar is wide enough for name, save
+   and sync side by side. */
+.room3d-bridge__name {
+  flex: 1 1 100%;
+}
+
+@container room-bridge (min-width: 780px) {
+  .room3d-bridge__name {
+    flex: 1 1 220px;
+  }
 }
 
 .room3d-bridge .tool-button {
@@ -489,11 +520,6 @@
 .room3d-bridge__sync,
 .room3d-bridge__save {
   height: 32px;
-  margin-left: auto;
-}
-
-.room3d-bridge__save + .room3d-bridge__sync {
-  margin-left: 0;
 }
 
 .room3d-bridge__sync:disabled {
@@ -529,13 +555,15 @@
     flex: 1 1 100%;
   }
 
-  .room3d-bridge__actions > * {
+  .room3d-bridge__tools,
+  .room3d-bridge__commit {
     flex: 1 1 100%;
-    justify-content: center;
+    margin-left: 0;
   }
 
-  .room3d-bridge__sync,
-  .room3d-bridge__save {
-    margin-left: 0;
+  .room3d-bridge__tools > *,
+  .room3d-bridge__commit > * {
+    flex: 1 1 100%;
+    justify-content: center;
   }
 }

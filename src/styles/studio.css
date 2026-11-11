@@ -1453,9 +1453,11 @@
 
 /* Telemetry summary and cart sync */
 
+/* Readouts and keys share a row while both fit; in a narrow column the keys
+   wrap below instead of squeezing the readouts under them. */
 .studio-summary {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-4) var(--space-5);
   padding: var(--space-4) var(--space-5);
@@ -1465,6 +1467,8 @@
 }
 
 .studio-summary__grid {
+  flex: 1 1 340px;
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: var(--space-3) var(--space-4);
@@ -1506,6 +1510,9 @@
 }
 
 .studio-summary__action {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -1534,6 +1541,11 @@
   justify-content: center;
 }
 
+.studio-summary__name {
+  align-self: stretch;
+  height: 32px;
+}
+
 .studio-summary__sync:disabled {
   opacity: 0.4;
   cursor: default;
@@ -1557,11 +1569,11 @@
   }
 
   .studio-summary {
-    grid-template-columns: minmax(0, 1fr);
     padding: var(--space-4);
   }
 
   .studio-summary__action {
+    flex: 1 1 100%;
     align-items: stretch;
   }
 

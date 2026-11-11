@@ -10,6 +10,7 @@ import { useCloudSave } from '../hooks/useCloudSave.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { useLaunchedModule } from '../hooks/useLaunchedModule.js';
+import { useProjectName } from '../hooks/useProjectName.js';
 import { useWallStudio } from '../hooks/useWallStudio.js';
 import {
   aggregateBagLines,
@@ -55,6 +56,7 @@ export default function WallStudioPage() {
   const [syncNote, setSyncNote] = useState('');
   const syncRef = useRef(null);
   const cloud = useCloudSave('wall');
+  const project = useProjectName('wall');
 
   useHistoryShortcuts(actions);
   useLaunchedModule(layout.items, actions);
@@ -88,7 +90,7 @@ export default function WallStudioPage() {
   const syncToBag = () => {
     const lines = aggregateBagLines(layout.items);
     if (lines.length === 0) return;
-    addMany(lines, 'Wall A');
+    addMany(lines, project.commit());
     const modules = layout.items.length;
     setSyncNote(
       `Synced ${modules} ${modules === 1 ? 'module' : 'modules'} as ${lines.length} cart ${lines.length === 1 ? 'line' : 'lines'}.`,
@@ -141,7 +143,8 @@ export default function WallStudioPage() {
             syncNote={syncNote}
             syncRef={syncRef}
             cloudStatus={cloud.status}
-            onSave={() => cloud.save(layout)}
+            project={project}
+            onSave={() => cloud.save(layout, project.commit())}
             onSync={syncToBag}
           />
         </div>

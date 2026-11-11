@@ -1,3 +1,12 @@
+import {
+  isProjectId,
+  PROJECT_KINDS,
+  PROJECT_NAME_MAX,
+  PROJECT_NAMES,
+  projectIdFor,
+  projectIdKind,
+  sanitizeProjectName,
+} from '../lib/project-library.js';
 import { sanitizeRoomState, serializeRoomState } from '../lib/room-3d.js';
 import { CURRENCY_CODES, requisitionRef, sanitizeProject, validateProject } from '../lib/quote.js';
 import { sanitizeLayout, serializeLayout } from '../lib/wall-studio.js';
@@ -13,12 +22,13 @@ import { isOneOf, safeStorage, sanitizeText } from '../security/sanitize.js';
 export const PROJECTS_STORAGE_KEY = 'lumen_cloud_projects_v1';
 export const QUOTES_STORAGE_KEY = 'lumen_cloud_quotes_v1';
 export const LATENCY_MS = Object.freeze({ min: 500, max: 1200 });
-export const PROJECT_KINDS = Object.freeze(['wall', 'room']);
-export const PROJECT_NAMES = Object.freeze({ wall: 'Wall A', room: 'Room' });
+export { PROJECT_KINDS, PROJECT_NAME_MAX, PROJECT_NAMES };
+export const MAX_STORED_PROJECTS = 12;
 export const QUOTE_STATUSES = Object.freeze(['Pending review', 'In production', 'Delivered', 'Quote expired']);
 export const MAX_STORED_QUOTES = 24;
 
 const MAX_REVISION = 9999;
+const MAX_SCANNED_PROJECTS = 64;
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const REQUISITION_PATTERN = /^LMN-R-[0-9A-F]{8}$/;
 const QUOTE_ID_PATTERN = /^LMN-Q-\d{8}-[0-9A-Z]{6}$/;
@@ -72,59 +82,103 @@ const PROJECT_CODECS = {
   room: { sanitize: sanitizeRoomState, serialize: serializeRoomState },
 };
 
+/**
+ * Rebuilds one stored project. Legacy single-slot records carry no id or
+ * name and read as the kind's default project. An id that does not belong
+ * to the record's kind is treated as tampered.
+ */
 function sanitizeProjectRecord(entry) {
   if (!isRecord(entry) || !isOneOf(entry.kind, PROJECT_KINDS)) return null;
+  const { kind } = entry;
+  const id = entry.id === undefined ? kind : entry.id;
+  if (projectIdKind(id) !== kind) return null;
   const savedAt = sanitizeTimestamp(entry.savedAt);
   if (!savedAt || !isBoundedInt(entry.revision, 1, MAX_REVISION)) return null;
-  const data = PROJECT_CODECS[entry.kind].sanitize(entry.data);
+  const data = PROJECT_CODECS[kind].sanitize(entry.data);
   if (!data) return null;
-  return { id: entry.kind, kind: entry.kind, name: PROJECT_NAMES[entry.kind], revision: entry.revision, savedAt, data };
+  return { id, kind, name: sanitizeProjectName(entry.name, kind), revision: entry.revision, savedAt, data };
 }
 
 function readProjects() {
   const stored = safeStorage.read(PROJECTS_STORAGE_KEY, { fallback: [], validate: Array.isArray });
   const seen = new Set();
   const projects = [];
-  for (const entry of stored) {
+  for (const entry of stored.slice(0, MAX_SCANNED_PROJECTS)) {
     const project = sanitizeProjectRecord(entry);
-    if (!project || seen.has(project.kind)) continue;
-    seen.add(project.kind);
+    if (!project || seen.has(project.id)) continue;
+    seen.add(project.id);
     projects.push(project);
   }
-  return projects.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+  return projects.sort((a, b) => b.savedAt.localeCompare(a.savedAt)).slice(0, MAX_STORED_PROJECTS);
 }
 
-function toStoredProject({ kind, revision, savedAt, data }) {
-  return { kind, revision, savedAt, data: PROJECT_CODECS[kind].serialize(data) };
+function writeProjects(projects) {
+  const stored = projects.map(({ id, kind, name, revision, savedAt, data }) => ({
+    id,
+    kind,
+    name,
+    revision,
+    savedAt,
+    data: PROJECT_CODECS[kind].serialize(data),
+  }));
+  if (!safeStorage.write(PROJECTS_STORAGE_KEY, stored)) throw unreachable();
+}
+
+function requestedName(kind, data, options) {
+  if (isRecord(options) && typeof options.name === 'string') return sanitizeProjectName(options.name, kind);
+  if (isRecord(data) && typeof data.projectName === 'string') return sanitizeProjectName(data.projectName, kind);
+  return PROJECT_NAMES[kind];
 }
 
 /**
- * Saves the wall or room as its cloud project, one slot per kind, bumping the
- * revision. Resolves with the stored record; rejects with ApiError when the
- * kind or payload is invalid or storage refuses the write.
+ * Saves a wall or room to the cloud library. The default name ("Wall A",
+ * "Room") keeps the single-slot id; any other name is its own project with a
+ * deterministic id, so saving an existing name bumps its revision. A new name
+ * is refused once the library is full, so nothing is evicted silently.
+ * Resolves with the stored record; rejects with ApiError.
  */
-export function saveProject(kind, data) {
+export function saveProject(kind, data, options = {}) {
   if (!isOneOf(kind, PROJECT_KINDS)) return Promise.reject(new ApiError('invalid', 'Unknown project type.'));
   const codec = PROJECT_CODECS[kind];
   const snapshot = codec.sanitize(codec.serialize(data));
   if (!snapshot || snapshot.items.length === 0) {
     return Promise.reject(new ApiError('invalid', 'Mount at least one module before saving.'));
   }
+  const name = requestedName(kind, data, options);
+  const id = projectIdFor(kind, name);
 
   return roundTrip(() => {
     const projects = readProjects();
-    const previous = projects.find((project) => project.kind === kind);
+    const previous = projects.find((project) => project.id === id);
+    if (!previous && projects.length >= MAX_STORED_PROJECTS) {
+      throw new ApiError(
+        'quota',
+        `Lumen Cloud holds ${MAX_STORED_PROJECTS} projects. Delete one from your account to save a new name.`,
+      );
+    }
     const record = {
-      id: kind,
+      id,
       kind,
-      name: PROJECT_NAMES[kind],
+      name,
       revision: Math.min(MAX_REVISION, (previous?.revision ?? 0) + 1),
       savedAt: new Date().toISOString(),
       data: snapshot,
     };
-    const next = [record, ...projects.filter((project) => project.kind !== kind)];
-    if (!safeStorage.write(PROJECTS_STORAGE_KEY, next.map(toStoredProject))) throw unreachable();
+    writeProjects([record, ...projects.filter((project) => project.id !== id)]);
     return record;
+  });
+}
+
+/**
+ * Removes one project from the cloud library. Idempotent: an id that is
+ * already gone resolves too. Resolves with the remaining projects, newest first.
+ */
+export function deleteProject(id) {
+  if (!isProjectId(id)) return Promise.reject(new ApiError('invalid', 'Unknown project.'));
+  return roundTrip(() => {
+    const remaining = readProjects().filter((project) => project.id !== id);
+    writeProjects(remaining);
+    return remaining;
   });
 }
 

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { loadProjects, loadQuotes } from '../api/client.js';
+import { deleteProject, loadProjects, loadQuotes } from '../api/client.js';
 import { EmptyState } from '../components/EmptyState.jsx';
 import { ArrowRight } from '../components/icons.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
@@ -10,6 +10,7 @@ import { getFinish, getProduct } from '../data/products.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { formatUsd, padIndex } from '../lib/format.js';
+import { persistProjectName } from '../lib/project-library.js';
 import { formatMoney, getCurrency } from '../lib/quote.js';
 import { getFurniture, LIGHTING_MODES, persistRoomState } from '../lib/room-3d.js';
 import { persistLayout, summarizeWall } from '../lib/wall-studio.js';
@@ -62,7 +63,10 @@ function describeProject(record) {
       envelope: `${widthCm} x ${heightCm} cm${slope ? ', attic slope' : ''}`,
       context: surface === 'daylight' ? 'Daylight elevation' : 'Ambient elevation',
       thumb: { widthCm, heightCm, items: data.items },
-      restore: () => persistLayout(data),
+      restore: () => {
+        persistLayout(data);
+        persistProjectName('wall', record.name);
+      },
     };
   }
   const { widthCm, depthCm, heightCm, furniture, lighting } = data.room;
@@ -73,11 +77,14 @@ function describeProject(record) {
     envelope: `${widthCm} x ${depthCm} x ${heightCm} cm`,
     context: `${LIGHTING_MODES.find((mode) => mode.id === lighting).label} / ${getFurniture(furniture).label}`,
     thumb: { widthCm, heightCm, items: data.items },
-    restore: () => persistRoomState(data),
+    restore: () => {
+      persistRoomState(data);
+      persistProjectName('room', record.name);
+    },
   };
 }
 
-function ProjectCard({ record, index }) {
+function ProjectCard({ record, index, deleting, onDelete }) {
   const view = describeProject(record);
   const summary = summarizeWall(record.data);
   return (
@@ -87,6 +94,9 @@ function ProjectCard({ record, index }) {
       data-project={record.kind}
       data-modules={summary.modules}
       data-revision={record.revision}
+      data-project-id={record.id}
+      data-busy={deleting || undefined}
+      aria-busy={deleting || undefined}
     >
       <header className="project-card__head">
         <p className="index-label">
@@ -126,11 +136,32 @@ function ProjectCard({ record, index }) {
           <dd>{formatSavedAt(record.savedAt)}</dd>
         </div>
       </dl>
-      {/* Opening a project checks the saved revision out into the planner workspace. */}
-      <Link to={view.href} className="button project-card__open" onClick={view.restore}>
-        {view.action}
-        <ArrowRight />
-      </Link>
+      <div className="project-card__actions">
+        {/* Opening a project checks the saved revision out into the planner workspace. */}
+        <Link
+          to={view.href}
+          className="button project-card__open"
+          onClick={(event) => (deleting ? event.preventDefault() : view.restore())}
+          aria-disabled={deleting || undefined}
+          tabIndex={deleting ? -1 : undefined}
+        >
+          {view.action}
+          <ArrowRight />
+        </Link>
+        <button
+          type="button"
+          className="button project-card__delete"
+          data-testid="delete-saved-project"
+          aria-label={`Delete ${record.name}`}
+          disabled={deleting}
+          onClick={() => onDelete(record)}
+        >
+          <span className="project-card__delete-labels">
+            <span data-active={!deleting || undefined}>Delete</span>
+            <span data-active={deleting || undefined}>Deleting...</span>
+          </span>
+        </button>
+      </div>
     </article>
   );
 }
@@ -186,6 +217,8 @@ function CloudLoading({ testId, rows }) {
 
 function useCloudAccount() {
   const [cloud, setCloud] = useState({ status: 'loading', projects: [], quotes: [] });
+  const [deleting, setDeleting] = useState(() => new Set());
+  const { addToast } = useToast();
 
   useEffect(() => {
     let live = true;
@@ -198,7 +231,29 @@ function useCloudAccount() {
     };
   }, []);
 
-  return cloud;
+  const removeProject = useCallback(
+    async (record) => {
+      setDeleting((prev) => new Set(prev).add(record.id));
+      try {
+        await deleteProject(record.id);
+        setCloud((prev) => ({ ...prev, projects: prev.projects.filter((project) => project.id !== record.id) }));
+        addToast(`${record.name} deleted from Lumen Cloud.`, 'success');
+        return true;
+      } catch (error) {
+        addToast(error?.name === 'ApiError' ? error.message : 'Delete failed. Try again.', 'error');
+        return false;
+      } finally {
+        setDeleting((prev) => {
+          const next = new Set(prev);
+          next.delete(record.id);
+          return next;
+        });
+      }
+    },
+    [addToast],
+  );
+
+  return { ...cloud, deleting, removeProject };
 }
 
 const SYNC_LABELS = { loading: 'Syncing', ready: 'Up to date', error: 'Offline' };
@@ -210,6 +265,14 @@ export default function AccountPage() {
   const cloud = useCloudAccount();
   const reveal = useScrollReveal();
   const loading = cloud.status === 'loading';
+
+  // The deleted card takes focus with it; land on the panel title instead of the page body.
+  const remove = async (record) => {
+    const removed = await cloud.removeProject(record);
+    if (removed && (document.activeElement === document.body || !document.activeElement?.isConnected)) {
+      document.getElementById('account-projects-title')?.focus();
+    }
+  };
   const count = (list) => (loading ? '--' : padIndex(list.length));
 
   const leave = () => {
@@ -270,7 +333,7 @@ export default function AccountPage() {
             <p className="index-label">
               <span className="index-label__num">02</span> / Projects
             </p>
-            <h2 id="account-projects-title" className="account-panel__title">
+            <h2 id="account-projects-title" className="account-panel__title" tabIndex={-1}>
               Saved Spatial Projects
             </h2>
           </header>
@@ -279,7 +342,13 @@ export default function AccountPage() {
           ) : cloud.projects.length > 0 ? (
             <div className="project-grid" data-testid="saved-projects">
               {cloud.projects.map((record, i) => (
-                <ProjectCard key={record.id} record={record} index={i + 1} />
+                <ProjectCard
+                  key={record.id}
+                  record={record}
+                  index={i + 1}
+                  deleting={cloud.deleting.has(record.id)}
+                  onDelete={remove}
+                />
               ))}
             </div>
           ) : (

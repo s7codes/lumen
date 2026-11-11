@@ -11,7 +11,10 @@ import { useCloudSave } from '../hooks/useCloudSave.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { useLaunchedModule } from '../hooks/useLaunchedModule.js';
+import { useProjectName } from '../hooks/useProjectName.js';
 import { useRoom3d } from '../hooks/useRoom3d.js';
+import { downloadText } from '../lib/download.js';
+import { buildRoomObj, countObjObjects, OBJ_MIME, objFilename } from '../lib/obj-export.js';
 import { exportToWallStudio, findRoomConflicts, getFurniture } from '../lib/room-3d.js';
 import { aggregateBagLines, summarizeWall } from '../lib/wall-studio.js';
 import '../styles/pages.css';
@@ -33,6 +36,7 @@ export default function RoomPlannerPage() {
   const [wireframe, setWireframe] = useState(false);
   const syncRef = useRef(null);
   const cloud = useCloudSave('room');
+  const project = useProjectName('room');
   useLaunchedModule(state.items, actions);
 
   const conflicts = useMemo(() => findRoomConflicts(state), [state]);
@@ -52,9 +56,18 @@ export default function RoomPlannerPage() {
   const syncToBag = () => {
     const lines = aggregateBagLines(state.items);
     if (lines.length === 0) return;
-    addMany(lines, 'Room 3D');
+    addMany(lines, project.commit());
     setStatus(`Synced ${plural(state.items.length, 'module')} as ${plural(lines.length, 'cart line')}.`);
     openBag(syncRef.current);
+  };
+
+  const exportObj = () => {
+    const name = project.commit();
+    const text = buildRoomObj(state, name);
+    downloadText(objFilename(name), text, OBJ_MIME);
+    const detail = `${plural(state.items.length, 'module')}, ${plural(countObjObjects(text), 'object')}`;
+    setStatus(`Exported Wavefront OBJ: ${detail}, cm units.`);
+    addToast(`${name} exported as Wavefront .OBJ. ${detail}.`, 'success');
   };
 
   return (
@@ -95,8 +108,10 @@ export default function RoomPlannerPage() {
               actions.importWall();
               setStatus('');
             }}
+            project={project}
             onExport={pushToWall}
-            onSave={() => cloud.save(state)}
+            onExportObj={exportObj}
+            onSave={() => cloud.save(state, project.commit())}
             onSync={syncToBag}
           />
         </div>

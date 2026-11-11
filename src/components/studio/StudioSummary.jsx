@@ -1,8 +1,9 @@
 import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
 import { CloudSaveButton } from '../CloudSaveButton.jsx';
+import { ProjectNameField } from '../ProjectNameField.jsx';
 import { ArrowRight } from '../icons.jsx';
 
-export function StudioSummary({ summary, conflictCount, syncNote, syncRef, cloudStatus, onSave, onSync }) {
+export function StudioSummary({ summary, conflictCount, syncNote, syncRef, cloudStatus, project, onSave, onSync }) {
   const { modules, loadW, activeW, lumens, priceUsd, psu } = summary;
   const empty = modules === 0;
 
@@ -44,6 +45,12 @@ export function StudioSummary({ summary, conflictCount, syncNote, syncRef, cloud
             ? `${conflictCount} ${conflictCount === 1 ? 'module' : 'modules'} in conflict`
             : 'Driver sized on full connected load'}
         </p>
+        <ProjectNameField
+          value={project.name}
+          onChange={project.change}
+          onCommit={project.commit}
+          className="studio-summary__name"
+        />
         <div className="studio-summary__buttons">
           <CloudSaveButton
             status={cloudStatus}

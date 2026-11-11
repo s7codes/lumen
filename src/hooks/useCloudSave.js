@@ -27,13 +27,13 @@ export function useCloudSave(kind) {
   }, []);
 
   const save = useCallback(
-    async (data) => {
+    async (data, name) => {
       if (inFlight.current) return null;
       inFlight.current = true;
       window.clearTimeout(holdTimer.current);
       setStatus('saving');
       try {
-        const saved = await saveProject(kind, data);
+        const saved = await saveProject(kind, data, { name });
         addToast(`${saved.name} saved to Lumen Cloud. Revision ${padIndex(saved.revision)}.`, 'success');
         if (mounted.current) {
           setRecord(saved);

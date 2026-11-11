@@ -3,6 +3,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import { LayoutShell } from './components/LayoutShell.jsx';
 import { RouteError, RouteFallback } from './components/RouteFallback.jsx';
 import { RequireAuth } from './contexts/AuthContext.jsx';
+import { ROUTE_LOADERS } from './lib/route-manifest.js';
 import AccountPage from './pages/AccountPage.jsx';
 import CatalogPage from './pages/CatalogPage.jsx';
 import CheckoutPage from './pages/CheckoutPage.jsx';
@@ -10,10 +11,12 @@ import HomePage from './pages/HomePage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
 import ProductDetailPage from './pages/ProductDetailPage.jsx';
 
+export { prefetchRoute } from './lib/route-manifest.js';
+
 // The two planners are the heaviest views (the room planner also pulls the
 // WebGL engine behind it), so each ships as its own chunk on first visit.
-const RoomPlannerPage = lazy(() => import('./pages/RoomPlannerPage.jsx'));
-const WallStudioPage = lazy(() => import('./pages/WallStudioPage.jsx'));
+const RoomPlannerPage = lazy(ROUTE_LOADERS['/room-3d']);
+const WallStudioPage = lazy(ROUTE_LOADERS['/studio-2d']);
 
 function deferred(Page, label) {
   return (

@@ -109,3 +109,38 @@ export function WallGlyph() {
     </svg>
   );
 }
+
+export function SearchGlyph({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.25" />
+      <path d="M10.5 10.5 14 14" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
+    </svg>
+  );
+}
+
+export function WorkspaceGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <rect x="2.5" y="2.5" width="11" height="11" stroke="currentColor" strokeWidth="1" />
+      <path d="M2.5 6h11M6 6v7.5" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  );
+}
+
+export function ModuleGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <path d="M8 2 13.5 5v6L8 14l-5.5-3V5L8 2Z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
+      <path d="M2.5 5 8 8l5.5-3M8 8v6" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function CommandGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <path d="M3 4.5 6.5 8 3 11.5M8.5 12H13" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
+    </svg>
+  );
+}

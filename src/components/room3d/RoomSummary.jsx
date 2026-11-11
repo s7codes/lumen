@@ -1,9 +1,22 @@
 import { Link } from 'react-router-dom';
 import { formatInt, formatUsd, padIndex } from '../../lib/format.js';
 import { CloudSaveButton } from '../CloudSaveButton.jsx';
+import { ProjectNameField } from '../ProjectNameField.jsx';
 import { ArrowRight } from '../icons.jsx';
 
-export function RoomSummary({ summary, conflictCount, status, syncRef, cloudStatus, onImport, onExport, onSave, onSync }) {
+export function RoomSummary({
+  summary,
+  conflictCount,
+  status,
+  syncRef,
+  cloudStatus,
+  project,
+  onImport,
+  onExport,
+  onExportObj,
+  onSave,
+  onSync,
+}) {
   const { modules, loadW, activeW, lumens, priceUsd, psu } = summary;
   const empty = modules === 0;
 
@@ -42,39 +55,52 @@ export function RoomSummary({ summary, conflictCount, status, syncRef, cloudStat
             : '2D wall bridge / lumen_wall_studio_v1'}
         </p>
         <div className="room3d-bridge__actions">
-          <button type="button" className="tool-button" data-testid="import-from-wall-studio" onClick={onImport}>
-            Load from 2D Wall Studio
-          </button>
-          <button
-            type="button"
-            className="tool-button"
-            data-testid="export-to-wall-studio"
-            disabled={empty}
-            onClick={onExport}
-          >
-            Push to 2D Wall Studio
-          </button>
-          <Link to="/studio-2d" className="tool-button room3d-bridge__link">
-            Open Wall Studio
-          </Link>
-          <CloudSaveButton
-            status={cloudStatus}
-            disabled={empty}
-            onSave={onSave}
-            className="room3d-bridge__save"
-            testId="save-room-to-cloud"
-          />
-          <button
-            ref={syncRef}
-            type="button"
-            className="button button--primary room3d-bridge__sync"
-            data-testid="sync-room-to-bag"
-            disabled={empty}
-            onClick={onSync}
-          >
-            Sync Room to Cart
-            <ArrowRight />
-          </button>
+          <div className="room3d-bridge__tools">
+            <button type="button" className="tool-button" data-testid="import-from-wall-studio" onClick={onImport}>
+              Load from 2D Wall Studio
+            </button>
+            <button
+              type="button"
+              className="tool-button"
+              data-testid="export-to-wall-studio"
+              disabled={empty}
+              onClick={onExport}
+            >
+              Push to 2D Wall Studio
+            </button>
+            <Link to="/studio-2d" className="tool-button room3d-bridge__link">
+              Open Wall Studio
+            </Link>
+            <button type="button" className="tool-button" data-testid="export-room-obj" onClick={onExportObj}>
+              Export 3D .OBJ
+            </button>
+          </div>
+          <div className="room3d-bridge__commit">
+            <ProjectNameField
+              value={project.name}
+              onChange={project.change}
+              onCommit={project.commit}
+              className="room3d-bridge__name"
+            />
+            <CloudSaveButton
+              status={cloudStatus}
+              disabled={empty}
+              onSave={onSave}
+              className="room3d-bridge__save"
+              testId="save-room-to-cloud"
+            />
+            <button
+              ref={syncRef}
+              type="button"
+              className="button button--primary room3d-bridge__sync"
+              data-testid="sync-room-to-bag"
+              disabled={empty}
+              onClick={onSync}
+            >
+              Sync Room to Cart
+              <ArrowRight />
+            </button>
+          </div>
         </div>
         <p className="studio-summary__status mono" role="status" aria-live="polite" data-testid="room-bridge-status">
           {status}
