@@ -272,7 +272,9 @@ test.describe('app shell', () => {
         return box.right - Number.parseFloat(getComputedStyle(el).paddingRight);
       });
       expect(Math.abs(looks[2].right - frameRight), `${width}px`).toBeLessThanOrEqual(1);
-      await expect(pills[2]).toHaveCSS('text-transform', 'uppercase');
+      // Natural Title Case in the sans face, never all-caps mono.
+      await expect(pills[2]).toHaveCSS('text-transform', 'none');
+      await expect(pills[2]).toHaveCSS('font-size', '13.5px');
     }
 
     const engaged = page.locator('.mode-switch__segment[aria-pressed="true"]');

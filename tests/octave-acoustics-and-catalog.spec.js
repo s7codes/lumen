@@ -354,7 +354,9 @@ test.describe('repository hygiene', () => {
     const pkg = JSON.parse(pkgText);
 
     expect(license.startsWith('MIT License\n')).toBe(true);
-    expect(license).toContain('Copyright (c) 2026 Lumen Spatial Studio Kft.');
+    expect(license).toContain('Copyright (c) 2026 s7codes');
+    expect(license).not.toContain('Lumen Spatial Studio');
+    expect(readme).toContain('MIT License, Copyright (c) 2026 s7codes');
     expect(license).toContain('Permission is hereby granted, free of charge, to any person obtaining a copy');
     expect(license).toContain('THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND');
     expect(pkg.license).toBe('MIT');

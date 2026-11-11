@@ -223,13 +223,15 @@ test.describe('brand mark and display mode switch', () => {
     expect(favicon).toContain('<rect x="14.25" y="8.5" width="2" height="6.5" fill="#e8923a"/>');
   });
 
-  test('Arch / Tech is a flat inverting segment switch with zero glowing status dots', async ({ page }) => {
+  test('Visual / Specs is a flat inverting segment switch with zero glowing status dots', async ({ page }) => {
     await page.goto('/');
     const html = page.locator('html');
     const group = page.getByRole('group', { name: 'Display mode' });
     const arch = group.getByRole('button', { name: 'Architectural' });
     const tech = group.getByRole('button', { name: 'Technical' });
-    await expect(group.getByRole('button')).toHaveText(['Arch', 'Tech']);
+    await expect(group.getByRole('button')).toHaveText(['Visual', 'Specs']);
+    await expect(arch).toHaveAttribute('title', 'Visual mode - clean presentation');
+    await expect(tech).toHaveAttribute('title', 'Specs mode - dimensions, wiring & engineering data');
 
     const paint = (locator) =>
       locator.evaluate((el) => {

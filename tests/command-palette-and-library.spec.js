@@ -89,7 +89,7 @@ test.describe('command palette', () => {
     ]);
     await expect(items.and(page.locator('[data-group="modules"]'))).toHaveCount(PRODUCTS.length);
     await expect(items.and(page.locator('[data-group="commands"]'))).toHaveText([
-      /Switch to Technical Mode/,
+      /Switch to Specs Mode/,
       /Set Currency: USD/,
       /Set Currency: EUR/,
       /Set Currency: HUF/,
@@ -143,11 +143,11 @@ test.describe('command palette', () => {
     const input = page.getByTestId('command-palette-input');
     await input.fill('technical');
     const items = page.getByTestId('command-palette-item');
-    await expect(items.first()).toHaveText(/Switch to Technical Mode/);
+    await expect(items.first()).toHaveText(/Switch to Specs Mode/);
     await page.keyboard.press('Enter');
     await expect(palette(page)).toBeHidden();
     await expect(page.locator('html')).toHaveAttribute('data-mode', 'technical');
-    await expect(lastToast(page)).toHaveText('Display mode: Technical.');
+    await expect(lastToast(page)).toHaveText('Display mode: Specs.');
     expect(await readJson(page, 'lumen:display-mode')).toBe('technical');
 
     // Arrow keys move through the matches and wrap at both ends.
@@ -172,7 +172,7 @@ test.describe('command palette', () => {
 
     await page.keyboard.press('Control+k');
     await input.fill('mode');
-    await expect(items.first()).toHaveText(/Switch to Architectural Mode/);
+    await expect(items.first()).toHaveText(/Switch to Visual Mode/);
     await input.fill('cart');
     await page.keyboard.press('Enter');
     await expect(page.getByRole('dialog', { name: 'Cart' })).toBeVisible();
@@ -417,7 +417,8 @@ test.describe('wavefront export', () => {
     expect(objects.filter((name) => name.startsWith('furniture_sofa-200_'))).toHaveLength(furniture.parts.length);
     expect(objects.filter((name) => name.startsWith('module_'))).toHaveLength(ROOM.items.length);
     expect(objects).toHaveLength(1 + furniture.parts.length + ROOM.items.length);
-    expect(faces).toHaveLength(4 + 6 * (furniture.parts.length + ROOM.items.length));
+    // Floor plus all four walls, then six faces per box.
+    expect(faces).toHaveLength(5 + 6 * (furniture.parts.length + ROOM.items.length));
 
     // Every face indexes real records and winds counter-clockwise around its normal.
     const { widthCm, depthCm, heightCm } = ROOM.room;
