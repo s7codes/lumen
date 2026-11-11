@@ -8,6 +8,7 @@ import { useCurrency } from '../hooks/useCurrency.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useModalDialog } from '../hooks/useModalDialog.js';
 import { buildCommandIndex, QUERY_MAX, searchCommands } from '../lib/command-index.js';
+import { MODE_LABELS } from '../lib/display-mode.js';
 import { padIndex } from '../lib/format.js';
 import { getCurrency } from '../lib/quote.js';
 import { prefetchRoute } from '../lib/route-manifest.js';
@@ -17,7 +18,7 @@ import '../styles/command-palette.css';
 const GROUP_GLYPHS = { workspaces: WorkspaceGlyph, modules: ModuleGlyph, commands: CommandGlyph };
 
 const IS_APPLE = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-export const PALETTE_SHORTCUT_LABEL = IS_APPLE ? 'Cmd K' : 'Ctrl K';
+export const PALETTE_SHORTCUT_LABEL = IS_APPLE ? 'Cmd+K' : 'Ctrl+K';
 
 function isPaletteShortcut(event) {
   return (
@@ -116,7 +117,7 @@ function PaletteDialog({ returnFocus, onClose, onSignIn }) {
       onSignIn();
     } else if (action.type === 'mode') {
       setMode(action.mode);
-      addToast(`Display mode: ${action.mode === 'technical' ? 'Technical' : 'Architectural'}.`, 'info');
+      addToast(`Display mode: ${MODE_LABELS[action.mode]}.`, 'info');
     } else if (action.type === 'currency') {
       setCurrency(action.code);
       addToast(`Quote currency set to ${action.code}, ${getCurrency(action.code).label}.`, 'success');

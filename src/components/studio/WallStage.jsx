@@ -21,6 +21,8 @@ const RULER_PX = 36;
 const FLOOR_OVERHANG_PX = 12;
 const DRAG_THRESHOLD_PX = 3;
 const MIN_TAG_PPCM = 1.5;
+// A module whose top sits this close to the ceiling shows its name tag below it.
+const TAG_HEADROOM_CM = 24;
 
 /**
  * Pixels per cm for the viewport: the 2.5 px/cm drawing scale, reduced only
@@ -768,6 +770,14 @@ export function WallStage({
                   >
                     <span className="wall-module__detail" aria-hidden="true" />
                     {item.locked && <span className="wall-module__lock" aria-hidden="true" />}
+                    <span
+                      className="wall-module__tag"
+                      data-side={item.yCm + product.dimsCm.h > wall.heightCm - TAG_HEADROOM_CM ? 'below' : 'above'}
+                      aria-hidden="true"
+                    >
+                      {product.name}
+                      <span className="wall-module__tag-finish">{finish.label}</span>
+                    </span>
                     {item.uid === dragUid && (
                       <span className="wall-module__readout mono" data-testid="drag-readout" aria-hidden="true">
                         X {item.xCm} / Y {item.yCm}

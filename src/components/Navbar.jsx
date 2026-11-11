@@ -60,11 +60,7 @@ export function Navbar() {
                     onPointerEnter={() => prefetchRoute(route.path)}
                     onFocus={() => prefetchRoute(route.path)}
                   >
-                    <span className="navbar__link-index">{route.index}</span>
-                    <span className="navbar__link-sep" aria-hidden="true">
-                      /
-                    </span>
-                    <span>{route.label}</span>
+                    {route.label}
                   </NavLink>
                 </li>
               ))}
@@ -81,11 +77,11 @@ export function Navbar() {
               aria-expanded={paletteOpen}
               aria-keyshortcuts="Control+K Meta+K"
               data-testid="command-palette-trigger"
+              title={`Search (${PALETTE_SHORTCUT_LABEL})`}
               onClick={() => openPalette(paletteTriggerRef.current)}
             >
               <SearchGlyph />
               <span className="palette-trigger__label">Search</span>
-              <kbd className="palette-trigger__kbd">{PALETTE_SHORTCUT_LABEL}</kbd>
             </button>
             <ModeSwitch />
             {user ? (

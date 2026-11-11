@@ -1,6 +1,6 @@
 import { getFinish, getProduct } from '../../data/products.js';
 import { dimFactor, sanitizeDimPct } from '../../lib/dimming.js';
-import { formatInt, formatUsd, formatWatts, padIndex } from '../../lib/format.js';
+import { formatInt, formatUsd, formatWatts } from '../../lib/format.js';
 import { anchorPoints, boundsOf, itemRect, snapToWall } from '../../lib/wall-studio.js';
 import '../../styles/product.css';
 import { DimmingSlider, FinishPicker, NumberField, PanelSection, Switch } from './controls.jsx';
@@ -22,12 +22,12 @@ function conflictText(conflict, items) {
 
 function ModuleList({ items, conflicts, onSelect }) {
   return (
-    <PanelSection index="04" title="Modules">
+    <PanelSection title="Modules">
       {items.length === 0 ? (
         <p className="studio-panel__empty">No modules mounted. Pick a component or preset.</p>
       ) : (
         <ul className="module-list">
-          {items.map((item, i) => {
+          {items.map((item) => {
             const product = getProduct(item.productId);
             const finish = getFinish(item.finish);
             const conflict = conflicts.has(item.uid);
@@ -39,11 +39,15 @@ function ModuleList({ items, conflicts, onSelect }) {
                   data-conflict={conflict || undefined}
                   onClick={() => onSelect(item.uid)}
                 >
-                  <span className="module-list__index mono">{padIndex(i + 1)}</span>
+                  <span
+                    className="module-list__swatch"
+                    style={{ '--swatch': finish.hex, '--swatch-hi': finish.highlight, '--swatch-lo': finish.shade }}
+                    aria-hidden="true"
+                  />
                   <span className="module-list__name">{product.name}</span>
-                  <span className="module-list__meta mono">
+                  <span className="module-list__meta">
                     {finish.label}
-                    <span className="module-list__coords"> / {item.xCm}, {item.yCm}</span>
+                    <span className="module-list__coords mono"> / {item.xCm}, {item.yCm}</span>
                   </span>
                 </button>
               </li>
@@ -64,7 +68,7 @@ function ModuleDetail({ item, layout, conflict, actions }) {
 
   return (
     <div className="studio-inspector__detail">
-      <PanelSection index="04" title="Module" className="studio-inspector__head">
+      <PanelSection title="Module" className="studio-inspector__head">
         <p className="studio-inspector__name" data-testid="inspector-name">
           {product.name}
         </p>
@@ -76,7 +80,7 @@ function ModuleDetail({ item, layout, conflict, actions }) {
         </p>
       </PanelSection>
 
-      <PanelSection index="05" title="Finish and channel">
+      <PanelSection title="Finish & Light">
         <FinishPicker product={product} finishId={item.finish} onChange={(finish) => actions.update(item.uid, { finish })} />
         <Switch
           label="24V LED channel"
@@ -100,7 +104,7 @@ function ModuleDetail({ item, layout, conflict, actions }) {
         </p>
       </PanelSection>
 
-      <PanelSection index="06" title="Position" className="studio-inspector__position">
+      <PanelSection title="Position" className="studio-inspector__position">
         <div className="studio-fields">
           <NumberField
             label="Left X (cm)"
@@ -135,7 +139,7 @@ function ModuleDetail({ item, layout, conflict, actions }) {
         </dl>
       </PanelSection>
 
-      <PanelSection index="07" title="Actions">
+      <PanelSection title="Actions">
         <dl className="studio-inspector__price mono">
           <div>
             <dt>Unit price</dt>
@@ -247,7 +251,7 @@ function MultiDetail({ items, actions }) {
 
   return (
     <div className="studio-inspector__detail" data-testid="multi-select-inspector" data-count={items.length}>
-      <PanelSection index="04" title="Selection" className="studio-inspector__head">
+      <PanelSection title="Selection" className="studio-inspector__head">
         <p className="studio-inspector__name" data-testid="multi-select-title">
           Multi-Selection ({items.length} modules)
         </p>
@@ -259,7 +263,7 @@ function MultiDetail({ items, actions }) {
         </p>
       </PanelSection>
 
-      <PanelSection index="05" title="Align and distribute">
+      <PanelSection title="Align & Distribute">
         <div className="studio-align" role="group" aria-label="Align selection">
           {ALIGN_TOOLS.map((tool) => (
             <button
@@ -299,7 +303,7 @@ function MultiDetail({ items, actions }) {
         </p>
       </PanelSection>
 
-      <PanelSection index="06" title="Finish and channel">
+      <PanelSection title="Finish & Light">
         <BatchFinish items={items} onChange={(finish) => actions.updateMany(uids, { finish })} />
         <Switch
           label="24V LED channel"
@@ -321,7 +325,7 @@ function MultiDetail({ items, actions }) {
         </p>
       </PanelSection>
 
-      <PanelSection index="07" title="Actions">
+      <PanelSection title="Actions">
         <div className="studio-actions">
           <button
             type="button"

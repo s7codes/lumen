@@ -1,9 +1,9 @@
-import { getFinish, PRODUCTS } from '../../data/products.js';
+import { PRODUCTS } from '../../data/products.js';
 import { WALL_PRESETS } from '../../data/wall-presets.js';
-import { formatUsd, padIndex } from '../../lib/format.js';
+import { formatUsd } from '../../lib/format.js';
 import { MAX_WALL_ITEMS, productFits, SLOPE_CM, WALL_HEIGHT, WALL_WIDTH } from '../../lib/wall-studio.js';
 import { clampNumber } from '../../security/sanitize.js';
-import { Disclosure, NumberField, PanelSection, Switch } from './controls.jsx';
+import { Disclosure, NumberField, PaletteItem, PanelSection, Switch } from './controls.jsx';
 
 const SURFACE_OPTIONS = [
   { id: 'ambient', label: 'Ambient Dark' },
@@ -16,7 +16,7 @@ function dimension(range) {
 
 function WallSettings({ wall, onWall }) {
   return (
-    <PanelSection index="01" title="Wall">
+    <PanelSection title="Wall Setup">
       <Disclosure label="Dimensions" summary={`${wall.widthCm} x ${wall.heightCm} cm`} testId="wall-dimensions">
         <div className="studio-fields">
           <NumberField
@@ -38,8 +38,8 @@ function WallSettings({ wall, onWall }) {
             testId="wall-height"
           />
         </div>
-        <p className="studio-panel__note mono">
-          W {WALL_WIDTH.min}-{WALL_WIDTH.max} / H {WALL_HEIGHT.min}-{WALL_HEIGHT.max} cm
+        <p className="studio-panel__note">
+          Width {WALL_WIDTH.min}-{WALL_WIDTH.max}, height {WALL_HEIGHT.min}-{WALL_HEIGHT.max} cm
         </p>
       </Disclosure>
 
@@ -76,38 +76,16 @@ function WallSettings({ wall, onWall }) {
 
 function ComponentList({ wall, full, onMount }) {
   return (
-    <PanelSection index="02" title="Components">
+    <PanelSection title="Components" hint="Click a part to mount it on the wall.">
       <ul className="palette-list">
-        {PRODUCTS.map((product, i) => {
-          const finish = getFinish(product.defaultFinish);
+        {PRODUCTS.map((product) => {
           const fits = productFits(product, wall);
-          const blocked = !fits || full;
           let note = formatUsd(product.priceUsd);
           if (!fits) note = 'Exceeds wall';
           else if (full) note = 'Wall full';
           return (
             <li key={product.id}>
-              <button
-                type="button"
-                className="palette-item"
-                disabled={blocked}
-                data-product={product.id}
-                aria-label={`Mount ${product.name}`}
-                onClick={() => onMount(product.id)}
-              >
-                <span
-                  className="palette-item__swatch"
-                  style={{ '--swatch': finish.hex, '--swatch-hi': finish.highlight, '--swatch-lo': finish.shade }}
-                  aria-hidden="true"
-                />
-                <span className="palette-item__body">
-                  <span className="palette-item__name">{product.name}</span>
-                  <span className="palette-item__meta mono">
-                    {padIndex(i + 1)} / {product.dimsCm.w} x {product.dimsCm.h} cm / {product.watts} W
-                  </span>
-                </span>
-                <span className="palette-item__price mono">{note}</span>
-              </button>
+              <PaletteItem product={product} note={note} disabled={!fits || full} onMount={onMount} />
             </li>
           );
         })}
@@ -118,7 +96,7 @@ function ComponentList({ wall, full, onMount }) {
 
 function PresetList({ onPreset }) {
   return (
-    <PanelSection index="03" title="Presets">
+    <PanelSection title="Wall Presets">
       <ul className="preset-list">
         {WALL_PRESETS.map((preset) => (
           <li key={preset.id}>
@@ -130,9 +108,9 @@ function PresetList({ onPreset }) {
               onClick={() => onPreset(preset.id)}
             >
               <span className="preset-item__name">{preset.name}</span>
-              <span className="preset-item__meta mono">
-                {preset.items.length} modules / {preset.wall.widthCm} x {preset.wall.heightCm} cm
-                {preset.wall.slope ? ' / slope' : ''}
+              <span className="preset-item__meta">
+                {preset.items.length} modules, {preset.wall.widthCm} x {preset.wall.heightCm} cm
+                {preset.wall.slope ? ', attic slope' : ''}
               </span>
               <span className="preset-item__summary">{preset.summary}</span>
             </button>

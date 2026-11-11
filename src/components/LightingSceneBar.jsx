@@ -10,8 +10,8 @@ export function LightingSceneBar({ active, disabled = false, onApply, className 
       data-testid="lighting-scene-bar"
       data-active-scene={active ?? 'custom'}
     >
-      <span className="scene-bar__label mono" aria-hidden="true">
-        DALI-2
+      <span className="studio-toolbar__caption scene-bar__label" aria-hidden="true" title="DALI-2 scene recall">
+        Scenes
       </span>
       {LIGHTING_SCENES.map((scene) => (
         <button

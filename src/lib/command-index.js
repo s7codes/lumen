@@ -1,4 +1,5 @@
 import { PRODUCTS } from '../data/products.js';
+import { MODE_LABELS } from './display-mode.js';
 import { formatUsd } from './format.js';
 import { CURRENCIES } from './quote.js';
 import { sanitizeText } from '../security/sanitize.js';
@@ -48,7 +49,7 @@ export function buildCommandIndex({ mode, currency, signedIn }) {
   }));
 
   const nextMode = mode === 'technical' ? 'architectural' : 'technical';
-  const modeLabel = nextMode === 'technical' ? 'Technical' : 'Architectural';
+  const modeLabel = MODE_LABELS[nextMode];
   const commands = [
     {
       id: 'cmd-mode',
@@ -56,7 +57,7 @@ export function buildCommandIndex({ mode, currency, signedIn }) {
       label: `Switch to ${modeLabel} Mode`,
       detail: 'Display mode',
       meta: '',
-      keywords: 'mode display view toggle technical architectural tech arch',
+      keywords: 'mode display view toggle visual specs technical architectural tech arch',
       action: { type: 'mode', mode: nextMode },
     },
     ...CURRENCIES.map((entry) => ({

@@ -1,10 +1,15 @@
-import { formatInt, formatUsd, formatWatts, padIndex } from '../../lib/format.js';
 import { BusTelemetryCell } from '../BusTelemetryCell.jsx';
 import { CloudSaveButton } from '../CloudSaveButton.jsx';
 import { EnvironmentalPhysicsCell } from '../EnvironmentalPhysicsCell.jsx';
 import { ProjectNameField } from '../ProjectNameField.jsx';
+import { SummaryKpis } from '../SummaryKpis.jsx';
 import { ArrowRight } from '../icons.jsx';
 
+/**
+ * Primary strip: the four key figures beside the project name, cloud save
+ * and cart sync. Below a hairline, the engineering telemetry sits in its own
+ * sub-grid; Specs mode lifts it forward.
+ */
 export function StudioSummary({
   summary,
   bus,
@@ -17,88 +22,66 @@ export function StudioSummary({
   onSave,
   onSync,
 }) {
-  const { modules, loadW, activeW, lumens, dimmed, priceUsd, psu } = summary;
+  const { modules, psu } = summary;
   const empty = modules === 0;
 
   return (
     <section className="studio-summary" aria-label="Wall telemetry" data-testid="wall-summary">
-      <dl className="studio-summary__grid">
-        <div className="studio-summary__cell">
-          <dt>Modules</dt>
-          <dd data-testid="wall-modules">{padIndex(modules)}</dd>
-        </div>
-        <div className="studio-summary__cell">
-          <dt>24V DC Load</dt>
-          <dd>
-            <span data-testid="wall-load">{loadW} W</span>
-            {activeW !== loadW && (
-              <span className="studio-summary__sub" data-testid="wall-active-load">
-                {formatWatts(activeW)} W live
-              </span>
-            )}
-          </dd>
-        </div>
-        <div className="studio-summary__cell">
-          <dt>Luminous Flux</dt>
-          <dd>
-            <span data-testid="wall-flux" data-lm={lumens}>
-              {formatInt(lumens)} lm
-            </span>
-            {dimmed > 0 && (
-              <span className="studio-summary__sub" data-testid="wall-dimmed">
-                {dimmed} {dimmed === 1 ? 'channel' : 'channels'} dimmed / DALI-2
-              </span>
-            )}
-          </dd>
-        </div>
-        <div className="studio-summary__cell">
-          <dt>Price</dt>
-          <dd data-testid="wall-price">{formatUsd(priceUsd)}</dd>
-        </div>
-        <div className="studio-summary__cell studio-summary__cell--psu">
-          <dt>Driver</dt>
-          <dd data-testid="wall-psu">{psu.label}</dd>
-        </div>
-        <BusTelemetryCell topology={bus} />
-        <EnvironmentalPhysicsCell physics={physics} />
-      </dl>
+      <div className="studio-summary__primary">
+        <SummaryKpis summary={summary} prefix="wall" />
 
-      <div className="studio-summary__action">
-        <p className="studio-summary__note mono" data-conflicts={conflictCount > 0 || undefined}>
-          {conflictCount > 0
-            ? `${conflictCount} ${conflictCount === 1 ? 'module' : 'modules'} in conflict`
-            : 'Driver sized on full connected load'}
-        </p>
-        <ProjectNameField
-          value={project.name}
-          onChange={project.change}
-          onCommit={project.commit}
-          className="studio-summary__name"
-        />
-        <div className="studio-summary__buttons">
-          <CloudSaveButton
-            status={cloudStatus}
-            disabled={empty}
-            onSave={onSave}
-            className="studio-summary__save"
-            testId="save-wall-to-cloud"
+        <div className="studio-summary__action">
+          <ProjectNameField
+            value={project.name}
+            onChange={project.change}
+            onCommit={project.commit}
+            className="studio-summary__name"
           />
-          <button
-            ref={syncRef}
-            type="button"
-            className="button button--primary studio-summary__sync"
-            data-testid="sync-wall-to-bag"
-            disabled={empty}
-            onClick={onSync}
-          >
-            Sync Wall to Cart
-            <ArrowRight />
-          </button>
+          <div className="studio-summary__buttons">
+            <CloudSaveButton
+              status={cloudStatus}
+              disabled={empty}
+              onSave={onSave}
+              className="studio-summary__save"
+              testId="save-wall-to-cloud"
+            />
+            <button
+              ref={syncRef}
+              type="button"
+              className="button button--primary studio-summary__sync"
+              data-testid="sync-wall-to-bag"
+              disabled={empty}
+              onClick={onSync}
+            >
+              Sync Wall to Cart
+              <ArrowRight />
+            </button>
+          </div>
         </div>
-        <p className="studio-summary__status mono" role="status" aria-live="polite" data-testid="sync-status">
-          {syncNote}
-        </p>
       </div>
+
+      <div className="studio-summary__engineering" role="group" aria-label="Engineering telemetry">
+        <div className="studio-summary__engineering-head">
+          <h3 className="studio-summary__engineering-title">Engineering Telemetry</h3>
+          <p className="studio-summary__note" data-conflicts={conflictCount > 0 || undefined}>
+            {conflictCount > 0
+              ? `${conflictCount} ${conflictCount === 1 ? 'module' : 'modules'} in conflict`
+              : 'Driver sized on full connected load'}
+          </p>
+        </div>
+        <dl className="studio-summary__grid">
+          <div className="studio-summary__cell studio-summary__cell--psu">
+            <dt>Driver</dt>
+            <dd data-testid="wall-psu">{psu.label}</dd>
+          </div>
+          <BusTelemetryCell topology={bus} />
+          <EnvironmentalPhysicsCell physics={physics} />
+        </dl>
+      </div>
+
+      <p className="studio-summary__status" role="status" aria-live="polite" data-testid="sync-status">
+        {syncNote}
+      </p>
     </section>
   );
 }

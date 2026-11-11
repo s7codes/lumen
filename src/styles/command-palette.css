@@ -1,23 +1,23 @@
 /* Command palette trigger: the first navbar pill, same 32px glass key as the
-   mode switch, account and cart. Below 560px it folds to the glyph alone. */
+   mode switch, account and cart. Glyph and word only; the Ctrl+K / Cmd+K
+   shortcut lives in the title. Below 560px it folds to the glyph alone. */
 
 .palette-trigger {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   height: var(--pill-height);
-  padding-inline: var(--space-3) 5px;
+  padding-inline: var(--space-3) var(--space-4);
   border: 1px solid var(--pill-edge);
   border-radius: var(--pill-radius);
   background: var(--pill-surface);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: var(--nav-font-size);
+  font-weight: var(--nav-font-weight);
   line-height: 1;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  letter-spacing: var(--nav-tracking);
   white-space: nowrap;
   color: var(--text-secondary);
   transition:
@@ -51,39 +51,15 @@
   border-radius: var(--pill-radius);
 }
 
-.palette-trigger__kbd {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding-inline: 6px;
-  border: 1px solid var(--pill-edge);
-  border-radius: var(--pill-radius);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-}
-
-.palette-trigger[aria-expanded='true'] .palette-trigger__kbd {
-  border-color: rgba(11, 11, 10, 0.2);
-  color: var(--text-inverse);
-}
-
-@media (max-width: 1439px) {
+@media (max-width: 699px) {
   .palette-trigger__label {
     display: none;
   }
-}
 
-@media (max-width: 559px) {
   .palette-trigger {
     justify-content: center;
     width: var(--pill-height);
     padding-inline: 0;
-  }
-
-  .palette-trigger__kbd {
-    display: none;
   }
 }
 
@@ -100,13 +76,12 @@
   .navbar__controls .bag-trigger,
   .navbar__controls .account-trigger {
     padding-inline: var(--space-2);
-    letter-spacing: 0.04em;
+    font-size: 12.5px;
   }
 
   .navbar__controls .mode-switch__segment {
-    min-width: 34px;
-    padding-inline: var(--space-1);
-    letter-spacing: 0.04em;
+    padding-inline: 6px;
+    font-size: 12.5px;
   }
 }
 

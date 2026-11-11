@@ -79,7 +79,10 @@ export function StudioToolbar({
 
   return (
     <div className="studio-toolbar">
-      <div className="studio-toolbar__group" role="group" aria-label="History">
+      <div className="studio-toolbar__cluster" role="group" aria-label="History and edit">
+        <span className="studio-toolbar__caption" aria-hidden="true">
+          Edit
+        </span>
         <button
           type="button"
           className="tool-button"
@@ -98,28 +101,9 @@ export function StudioToolbar({
         >
           Redo
         </button>
-      </div>
-
-      <div className="studio-toolbar__group" role="group" aria-label="Layout file">
-        <button type="button" className="tool-button" onClick={exportLayout}>
-          Export JSON
-        </button>
-        <button type="button" className="tool-button" onClick={() => fileRef.current?.click()}>
-          Import JSON
-        </button>
-        <input
-          ref={fileRef}
-          className="visually-hidden"
-          type="file"
-          accept=".json,application/json"
-          tabIndex={-1}
-          aria-label="Import layout file"
-          data-testid="import-layout"
-          onChange={importFile}
-        />
         <button
           type="button"
-          className="tool-button"
+          className="tool-button tool-button--danger"
           data-armed={armed || undefined}
           disabled={count === 0}
           onBlur={() => setArmed(false)}
@@ -132,11 +116,21 @@ export function StudioToolbar({
             actions.clear();
           }}
         >
-          {armed ? `Confirm: clear ${count}` : 'Clear wall'}
+          {armed ? `Confirm: clear ${count}` : 'Clear Wall'}
         </button>
       </div>
 
-      <div className="studio-toolbar__group" role="group" aria-label="Overlay and sharing">
+      <LightingSceneBar
+        className="studio-toolbar__cluster"
+        active={activeScene}
+        disabled={count === 0}
+        onApply={actions.applyScene}
+      />
+
+      <div className="studio-toolbar__cluster" role="group" aria-label="Engineering overlays and export">
+        <span className="studio-toolbar__caption" aria-hidden="true">
+          Engineering
+        </span>
         <button
           type="button"
           className="tool-button"
@@ -157,19 +151,7 @@ export function StudioToolbar({
         >
           Iso-Lux Map
         </button>
-        <button
-          type="button"
-          className="tool-button"
-          data-testid="copy-share-link"
-          data-share-url={shareUrl || undefined}
-          title="Copy a link that reopens this wall"
-          onClick={onShare}
-        >
-          Share Link
-        </button>
-      </div>
-
-      <div className="studio-toolbar__group" role="group" aria-label="Drawings">
+        <span className="studio-toolbar__divider" aria-hidden="true" />
         <button
           type="button"
           className="tool-button"
@@ -181,11 +163,40 @@ export function StudioToolbar({
         >
           Blueprint
         </button>
+        <button
+          type="button"
+          className="tool-button"
+          data-testid="copy-share-link"
+          data-share-url={shareUrl || undefined}
+          title="Copy a link that reopens this wall"
+          onClick={onShare}
+        >
+          Share Link
+        </button>
+        <button type="button" className="tool-button" title="Download this wall as a Lumen JSON file" onClick={exportLayout}>
+          Export JSON
+        </button>
+        <button
+          type="button"
+          className="tool-button"
+          title="Open a Lumen JSON wall file"
+          onClick={() => fileRef.current?.click()}
+        >
+          Import JSON
+        </button>
+        <input
+          ref={fileRef}
+          className="visually-hidden"
+          type="file"
+          accept=".json,application/json"
+          tabIndex={-1}
+          aria-label="Import layout file"
+          data-testid="import-layout"
+          onChange={importFile}
+        />
       </div>
 
-      <LightingSceneBar active={activeScene} disabled={count === 0} onApply={actions.applyScene} />
-
-      <p className="studio-toolbar__notice mono" role="status" aria-live="polite" data-tone={notice.tone}>
+      <p className="studio-toolbar__notice" role="status" aria-live="polite" data-tone={notice.tone}>
         <span key={notice.serial} className="notice-transient" data-testid="studio-notice">
           {notice.text}
         </span>

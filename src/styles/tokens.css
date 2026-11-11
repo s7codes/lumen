@@ -124,6 +124,11 @@
   --pill-edge: rgba(255, 255, 255, 0.08);
   --pill-edge-hover: rgba(255, 255, 255, 0.18);
 
+  /* Navbar type: legible sans in natural Title Case, never all-caps mono */
+  --nav-font-size: 13.5px;
+  --nav-font-weight: 500;
+  --nav-tracking: -0.01em;
+
   /* Page atmosphere: a faint oak-amber light falling in from the top right */
   --glow-oak: radial-gradient(circle at top right, rgba(232, 146, 58, 0.05), transparent 40%);
 
@@ -166,6 +171,30 @@
   --key-plinth-neutral: #2a2825;
   --magnet-range-x: 4px;
   --magnet-range-y: 3px;
+
+  /* Planner cards: soft raised surfaces inside the sidebars and toolbars */
+  --text-body: #a1a1aa;
+  --card-surface: rgba(255, 255, 255, 0.03);
+  --card-edge: rgba(255, 255, 255, 0.08);
+  --card-radius: 12px;
+  --cluster-surface: rgba(255, 255, 255, 0.025);
+  --cluster-edge: rgba(255, 255, 255, 0.07);
+  --cluster-edge-strong: rgba(255, 255, 255, 0.12);
+  --cluster-radius: 10px;
+
+  /* Elevation stage: the surround stays a step darker than the wall itself */
+  --stage-surround: #11100f;
+  --stage-surround-day: #191816;
+  --wall-surface: #1e1c19;
+  --wall-edge: #38342e;
+  --wall-surface-day: #e8e2d8;
+  --wall-edge-day: #c9c2b5;
+  --floor-datum: #6b645a;
+  --floor-datum-day: #8a8378;
+  --floor-hatch: rgba(242, 238, 231, 0.14);
+
+  /* 3D stage: a warm architectural horizon behind the transparent canvas */
+  --room-horizon: radial-gradient(ellipse at 50% 35%, #1d1b18 0%, #11100e 65%, #0a0a09 100%);
 
   /* Glass panels for floating studio chrome */
   --glass-surface: rgba(18, 17, 16, 0.46);

@@ -3,6 +3,9 @@ import { isOneOf, safeStorage } from '../security/sanitize.js';
 export const DISPLAY_MODES = ['architectural', 'technical'];
 export const DEFAULT_MODE = 'architectural';
 
+/** Everyday names for the two modes; the stored values stay architectural / technical. */
+export const MODE_LABELS = Object.freeze({ architectural: 'Visual', technical: 'Specs' });
+
 const STORAGE_KEY = 'display-mode';
 const listeners = new Set();
 let currentMode = null;

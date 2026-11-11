@@ -120,23 +120,14 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.5ch;
   height: var(--nav-height);
   padding-inline: var(--space-3);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: 500;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-sans);
+  font-size: var(--nav-font-size);
+  font-weight: var(--nav-font-weight);
+  letter-spacing: var(--nav-tracking);
   white-space: nowrap;
   color: var(--text-secondary);
-  transition: color var(--duration-fast) var(--ease-out);
-}
-
-.navbar__link-index,
-.navbar__link-sep {
-  color: var(--text-muted);
   transition: color var(--duration-fast) var(--ease-out);
 }
 
@@ -159,10 +150,6 @@
 
 .navbar__link[aria-current='page'] {
   color: var(--text-primary);
-}
-
-.navbar__link[aria-current='page'] .navbar__link-index {
-  color: var(--lumen-amber);
 }
 
 .navbar__link[aria-current='page']::after {
@@ -195,15 +182,14 @@
 }
 
 .mode-switch__segment {
-  min-width: 48px;
+  min-width: 52px;
   padding-inline: var(--space-3);
   border-radius: var(--pill-radius);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: var(--nav-font-size);
+  font-weight: var(--nav-font-weight);
   line-height: 1;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  letter-spacing: var(--nav-tracking);
   color: var(--text-secondary);
   transition:
     color var(--duration-fast) var(--ease-out),
@@ -240,12 +226,11 @@
   background: var(--pill-surface);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: var(--nav-font-size);
+  font-weight: var(--nav-font-weight);
   line-height: 1;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  letter-spacing: var(--nav-tracking);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   transition:
@@ -311,7 +296,7 @@
 
 @media (max-width: 559px) {
   .mode-switch__segment {
-    min-width: 40px;
+    min-width: 0;
     padding-inline: var(--space-2);
   }
 
@@ -807,8 +792,7 @@
   padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border-hairline);
   font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
