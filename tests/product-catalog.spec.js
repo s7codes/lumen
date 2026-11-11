@@ -37,16 +37,28 @@ test.describe('product catalog', () => {
     const filters = page.getByRole('group', { name: 'Category' });
     const search = page.getByRole('searchbox', { name: 'Search' });
 
-    await expect(cards).toHaveCount(8);
-    await expect(count).toHaveText('08 results');
+    await expect(cards).toHaveCount(12);
+    await expect(count).toHaveText('12 results');
 
     await filters.getByRole('button', { name: /^lighting/i }).click();
     await expect(filters.getByRole('button', { name: /^lighting/i })).toHaveAttribute('aria-pressed', 'true');
     await expect(page).toHaveURL((url) => url.pathname === '/catalog' && url.search === '?category=lighting');
-    await expect(names).toHaveText(['Linear Lightbar 60', 'Corner Floor Column 140', 'Directional Spot Monopoint']);
+    await expect(names).toHaveText([
+      'Linear Lightbar 60',
+      'Corner Floor Column 140',
+      'Directional Spot Monopoint',
+      'Linear Suspension Pendant 150',
+      'Vertical Architectural Sconce 80',
+    ]);
 
     await page.getByRole('combobox', { name: 'Sort' }).selectOption('price-desc');
-    await expect(names).toHaveText(['Corner Floor Column 140', 'Linear Lightbar 60', 'Directional Spot Monopoint']);
+    await expect(names).toHaveText([
+      'Linear Suspension Pendant 150',
+      'Corner Floor Column 140',
+      'Vertical Architectural Sconce 80',
+      'Linear Lightbar 60',
+      'Directional Spot Monopoint',
+    ]);
 
     await search.fill('spot');
     await expect(names).toHaveText(['Directional Spot Monopoint']);
@@ -57,12 +69,12 @@ test.describe('product catalog', () => {
     await expect(page.getByText('No modules match "lmn-tr".')).toBeVisible();
 
     await page.getByRole('button', { name: 'Reset filters' }).click();
-    await expect(cards).toHaveCount(8);
+    await expect(cards).toHaveCount(12);
     await expect(search).toHaveValue('');
     await expect(page).toHaveURL((url) => url.search === '');
 
     await filters.getByRole('button', { name: /^hardware/i }).click();
-    await expect(names).toHaveText(['Recessed 24V Track Bus 200']);
+    await expect(names).toHaveText(['Recessed 24V Track Bus 200', 'Recessed 24V DALI-2 Bus Hub']);
   });
 
   test('the category query is validated before it filters', async ({ page }) => {
@@ -70,13 +82,14 @@ test.describe('product catalog', () => {
 
     for (const value of ['__proto__', 'constructor', '<img src=x onerror=alert(1)>', 'LIGHTING', '']) {
       await page.goto(`/catalog?category=${encodeURIComponent(value)}`);
-      await expect(page.getByRole('article'), `category=${value}`).toHaveCount(8);
+      await expect(page.getByRole('article'), `category=${value}`).toHaveCount(12);
       await expect(all).toHaveAttribute('aria-pressed', 'true');
     }
 
     await page.goto('/catalog?category=surfaces');
     await expect(page.getByRole('article').getByRole('heading', { level: 3 })).toHaveText([
       'Acoustic Art Frame 50x70',
+      'Acoustic Wall Baffle 120',
     ]);
   });
 
@@ -125,7 +138,7 @@ test.describe('product catalog', () => {
 
     await modeButton(page, /technical/i).click();
     await expect(page.locator('html')).toHaveAttribute('data-mode', 'technical');
-    await expect(telemetry).toHaveCount(8);
+    await expect(telemetry).toHaveCount(12);
     await expect(shelf.getByText('LMN-SH-110')).toBeVisible();
     await expect(shelf.getByText('16 W')).toBeVisible();
     expect(await readTelemetry(shelf)).toEqual({
@@ -165,7 +178,7 @@ test.describe('product catalog', () => {
         await page.setViewportSize({ width, height: 900 });
         await page.goto('/catalog');
         await expect(page.locator('html')).toHaveAttribute('data-mode', mode);
-        await expect(page.getByRole('article')).toHaveCount(8);
+        await expect(page.getByRole('article')).toHaveCount(12);
         expect(await horizontalOverflow(page), `${mode} at ${width}px`).toBeLessThanOrEqual(0);
       }
       expect(await readCspViolations(page), `CSP violations in ${mode} mode`).toEqual([]);

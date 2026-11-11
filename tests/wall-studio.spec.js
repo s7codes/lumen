@@ -289,7 +289,7 @@ test.describe('wall studio', () => {
       'X 122.5 / Y 122',
     ]);
 
-    await page.getByRole('button', { name: /architectural/i }).click();
+    await page.getByRole('group', { name: 'Display mode' }).getByRole('button', { name: /architectural/i }).click();
     await expect(page.getByTestId('technical-overlay')).toHaveCount(0);
   });
 
