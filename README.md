@@ -1,14 +1,26 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v3.2.0-e8923a)
+![Release](https://img.shields.io/badge/release-v3.3.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v3.2.0**. Acoustics now read six ISO octave bands, 125 Hz to 4 kHz:
+Current release: **v3.3.0**. The 2D Wall Studio becomes a CAD selection surface.
+`Shift + Click` toggles modules into a selection, a rubber-band marquee on bare wall picks
+every module it touches, `Ctrl+A` / `Cmd+A` takes all unlocked modules and `Escape`
+clears. A selection moves as a rigid group by pointer or arrow keys, clamped so no member
+leaves the wall, and deletes as one undo step. A **Multi-Selection** inspector aligns
+edges and centrelines to the selection's bounding box, distributes three or more modules
+with equal gaps, and switches finish and the 24V channel in one edit. While dragging,
+**smart guides** draw hairlines wherever an edge or centreline falls within 2 cm of the
+wall centreline, the 145 cm eye-level datum or a sibling module, labelled with the
+offset. CI drops the `--with-deps` apt step that failed on unreachable Ubuntu mirrors and
+runs once per release push instead of twice.
+
+v3.2.0 read acoustics in six ISO octave bands, 125 Hz to 4 kHz:
 Sabine per band with frequency-dependent coefficients and an air term above 500 Hz,
 reported as `octaveRt60`, plus a reverberation-only Speech Transmission Index graded
 Poor, Fair, Good or Excellent. Both planners show `STI 0.54 (Fair)` under the 500 Hz
@@ -73,6 +85,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v3.3.0  | CAD multi-select and marquee, group move, align and distribute, smart alignment guides, hardened CI |
 | v3.2.0  | Six-band octave RT60 and STI, 12-part catalog (pendant, baffle, sconce, DALI-2 hub), MIT license |
 | v3.1.0  | Point-by-point photometric field, Iso-Lux Map with contours and cursor probe, 3D Floor Lux Grid |
 | v3.0.0  | Session-bound account libraries with guest claim, isolated E2E store, Sabine RT60 and lux engine, exploded assembly drawing |
@@ -110,7 +123,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 ```
 index.html              CSP meta policy, favicon, entry point
 vite.config.js          build config, dev-only CSP relaxation for HMR
-.github/workflows/      ci.yml: install, Chromium, build, Playwright on main and develop
+.github/workflows/      ci.yml: install, Chromium, build, Playwright on main pushes and PRs
 src/
   main.jsx              boot: fonts, tokens, persisted display mode, router
   router.jsx            route table, lazy planner routes, per-entry history key seeding
@@ -192,7 +205,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '3.2.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '3.3.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -495,6 +508,22 @@ custom properties, so React never re-renders on pointer movement.
   snap) and clamped to the wall. Conflicts are flagged live: AABB overlap between
   modules, cuts into the slope (`x + y > W + H - 90` at the module's top-right corner)
   and modules larger than a resized wall. Arrow keys nudge, Shift multiplies by 10.
+- Selection: `Shift + Click` toggles a module; a marquee dragged on bare wall selects
+  every module it touches (`Shift` adds to the set); `Ctrl+A` / `Cmd+A` on the stage
+  takes all unlocked modules; `Escape` clears. A selection drags and nudges as a rigid
+  group: the shared translation snaps to the active step and is clamped by the most
+  constrained member, so nothing leaves the wall. Locked members hold. `Delete` removes
+  the unlocked members. Each group edit is one undo step.
+- With two or more modules selected the inspector becomes **Multi-Selection (N modules)**:
+  align left, centre, right, top, middle or bottom to the selection's bounding box;
+  distribute three or more horizontally or vertically with the end modules fixed and the
+  gaps equalized (centres, when the parts are wider than the span); batch finish, batch
+  24V channel and batch remove.
+- Smart guides (`computeSmartGuides`) run during every drag: a hairline with end ticks
+  and a `CL`, `EYE` or `ALN` label appears wherever the dragged module's or group's left,
+  centre, right, bottom, middle or top lies within 2 cm of the wall centreline, the
+  145 cm eye-level datum or another module's edge or centreline. Solid amber marks an
+  exact hit.
 - Technical mode adds SKU tags, mounting anchors, offsets from the left wall edge and
   the floor, and module dimensions on the elevation.
 - The inspector switches finish, toggles the 24V LED channel, edits `Left X` and
@@ -875,9 +904,14 @@ store can stay up during a test run.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push and pull request to `main` and `develop`:
-`npm ci`, Playwright Chromium with system dependencies, `npm run build`, then
+`.github/workflows/ci.yml` runs on pushes to `main` and on pull requests to `main` and
+`develop`: `npm ci`, the Playwright Chromium binary, `npm run build`, then
 `npx playwright test` against the built bundle. The HTML report is kept as an artifact.
+`ubuntu-latest` already carries Chromium's shared libraries and every font is
+self-hosted, so the job installs no apt packages and does not depend on Ubuntu mirrors.
+Releases push `develop` and `main` at the same SHA; triggering pushes on `main` only, with
+`concurrency` grouped by ref and `cancel-in-progress`, yields one run per release. Every
+push is followed by a check of the run on the GitHub Actions API until it completes green.
 
 ## Workflow
 
