@@ -1,7 +1,9 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { getFinish, getProduct } from '../../data/products.js';
+import { formatInt } from '../../lib/format.js';
 import { rgbTriplet } from '../../lib/photometry.js';
 import { anchorPoints, PX_PER_CM, SLOPE_CM, snapStep, snapToWall } from '../../lib/wall-studio.js';
+import { LuxHeatmap } from './LuxHeatmap.jsx';
 
 const RULER_PX = 36;
 const FLOOR_OVERHANG_PX = 12;
@@ -332,6 +334,7 @@ export function WallStage({
   dragUid,
   technical,
   busTopology,
+  luxMap,
   toolbar,
   onSelect,
   onDragPreview,
@@ -343,7 +346,40 @@ export function WallStage({
   const hostRef = useRef(null);
   const cursorRef = useRef(null);
   const dragRef = useRef(null);
+  const probeRef = useRef(null);
+  const reticleRef = useRef(null);
+  const pointerCmRef = useRef(null);
   const ppcm = useFitScale(hostRef, wall);
+
+  // Written to the DOM directly: the probe tracks the pointer at display rate.
+  const writeProbe = (probe, at) => {
+    const readout = probeRef.current;
+    const reticle = reticleRef.current;
+    if (!readout) return;
+    const lux = probe && at ? probe(at.x, at.y) : null;
+    if (lux === null) {
+      readout.textContent = readout.dataset.dark ? 'No lit modules / probe --' : 'Probe --';
+      delete readout.dataset.lux;
+      delete readout.dataset.xCm;
+      delete readout.dataset.yCm;
+      if (reticle) reticle.dataset.on = 'false';
+      return;
+    }
+    readout.textContent = `Probe ${formatInt(lux)} lx @ X ${at.x} / Y ${at.y}`;
+    readout.dataset.lux = String(lux);
+    readout.dataset.xCm = String(at.x);
+    readout.dataset.yCm = String(at.y);
+    if (reticle) {
+      reticle.dataset.on = 'true';
+      reticle.style.left = `${at.x * ppcm}px`;
+      reticle.style.bottom = `${at.y * ppcm}px`;
+    }
+  };
+
+  const luxProbe = luxMap?.probe ?? null;
+  useLayoutEffect(() => {
+    if (luxProbe) writeProbe(luxProbe, pointerCmRef.current);
+  });
   const wallW = Math.round(wall.widthCm * ppcm);
   const wallH = Math.round(wall.heightCm * ppcm);
   const active = items.find((item) => item.uid === (dragUid ?? selectedUid)) ?? null;
@@ -438,10 +474,14 @@ export function WallStage({
     const x = Math.round((event.clientX - rect.left) / ppcm);
     const y = Math.round((rect.bottom - event.clientY) / ppcm);
     readout.textContent = `Cursor X ${x} / Y ${y} cm`;
+    pointerCmRef.current = { x, y };
+    if (luxProbe) writeProbe(luxProbe, pointerCmRef.current);
   };
 
   const onWallPointerLeave = () => {
     if (cursorRef.current) cursorRef.current.textContent = 'Cursor --';
+    pointerCmRef.current = null;
+    if (luxProbe) writeProbe(luxProbe, null);
   };
 
   return (
@@ -476,6 +516,7 @@ export function WallStage({
               data-width-cm={wall.widthCm}
               data-height-cm={wall.heightCm}
               data-ppcm={ppcm}
+              data-lux-map={luxMap ? true : undefined}
               style={{ width: wallW, height: wallH, '--ppcm': ppcm }}
               onPointerDown={(event) => {
                 if (event.target === event.currentTarget) onSelect(null);
@@ -485,6 +526,9 @@ export function WallStage({
             >
               <LightLayer items={items} ppcm={ppcm} />
               {wall.slope && <Slope ppcm={ppcm} />}
+              {luxMap && (
+                <LuxHeatmap field={luxMap.field} wall={wall} ppcm={ppcm} probeRef={probeRef} reticleRef={reticleRef} />
+              )}
 
               {items.length === 0 && (
                 <p className="wall__empty">

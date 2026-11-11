@@ -14,6 +14,7 @@ import { useProjectName } from '../hooks/useProjectName.js';
 import { useSharedSceneLoader, useShareLink } from '../hooks/useSceneShare.js';
 import { useWallStudio } from '../hooks/useWallStudio.js';
 import { computeBusTopology } from '../lib/bus-topology.js';
+import { computeWallLuxField, createWallLuxProbe } from '../lib/illuminance-field.js';
 import { computeEnvironmentalPhysics } from '../lib/room-physics.js';
 import {
   aggregateBagLines,
@@ -61,6 +62,7 @@ export default function WallStudioPage() {
   const cloud = useCloudSave('wall');
   const project = useProjectName('wall');
   const [busOn, setBusOn] = useState(false);
+  const [luxOn, setLuxOn] = useState(false);
   const shareLink = useShareLink('wall');
 
   useHistoryShortcuts(actions);
@@ -85,6 +87,11 @@ export default function WallStudioPage() {
   const summary = useMemo(() => summarizeWall(layout), [layout]);
   const bus = useMemo(() => computeBusTopology(live), [live]);
   const physics = useMemo(() => computeEnvironmentalPhysics(layout), [layout]);
+  // Follows the drag preview, so the photometric field moves with the module.
+  const luxMap = useMemo(
+    () => (luxOn ? { field: computeWallLuxField(live), probe: createWallLuxProbe(live) } : null),
+    [luxOn, live],
+  );
   const showBus = mode === 'technical' || busOn;
   const liveSelected = selected ? (live.items.find((item) => item.uid === selected.uid) ?? null) : null;
 
@@ -136,6 +143,7 @@ export default function WallStudioPage() {
             dragUid={drag?.uid ?? null}
             technical={mode === 'technical'}
             busTopology={showBus ? bus : null}
+            luxMap={luxMap}
             toolbar={
               <StudioToolbar
                 layout={layout}
@@ -145,6 +153,8 @@ export default function WallStudioPage() {
                 actions={actions}
                 busOn={busOn}
                 onToggleBus={() => setBusOn((on) => !on)}
+                luxOn={luxOn}
+                onToggleLux={() => setLuxOn((on) => !on)}
                 shareUrl={shareLink.shareUrl}
                 onShare={() => shareLink.share(layout, project.commit())}
               />

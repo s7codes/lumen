@@ -15,7 +15,19 @@ function downloadJson(filename, value) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function StudioToolbar({ layout, canUndo, canRedo, notice, actions, busOn, onToggleBus, shareUrl, onShare }) {
+export function StudioToolbar({
+  layout,
+  canUndo,
+  canRedo,
+  notice,
+  actions,
+  busOn,
+  onToggleBus,
+  luxOn,
+  onToggleLux,
+  shareUrl,
+  onShare,
+}) {
   const fileRef = useRef(null);
   const [armed, setArmed] = useState(false);
   const { addToast } = useToast();
@@ -130,6 +142,16 @@ export function StudioToolbar({ layout, canUndo, canRedo, notice, actions, busOn
           onClick={onToggleBus}
         >
           24V Bus
+        </button>
+        <button
+          type="button"
+          className="tool-button"
+          aria-pressed={luxOn}
+          data-testid="toggle-lux-heatmap"
+          title="Point-by-point illuminance with 100 / 250 / 500 lx iso-lux contours"
+          onClick={onToggleLux}
+        >
+          Iso-Lux Map
         </button>
         <button
           type="button"

@@ -1787,3 +1787,219 @@
     animation: none;
   }
 }
+
+/* Iso-lux photometric map. The wrapper adds no stacking context, so the
+   field sits under the modules while the markers and the panel sit above. */
+
+.lux-map {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.lux-map__field {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0.94;
+  animation: lux-map-focus 1000ms var(--ease-cinematic) both;
+}
+
+@keyframes lux-map-focus {
+  from {
+    opacity: 0;
+    transform: scale(1.05);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 0.94;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
+.lux-map__canvas,
+.lux-map__contours {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.lux-map__iso line {
+  fill: none;
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+.lux-map__iso[data-tone='bronze'] line {
+  stroke: rgba(214, 160, 110, 0.7);
+  stroke-dasharray: 2 3;
+}
+
+.lux-map__iso[data-tone='amber'] line {
+  stroke: rgba(240, 178, 115, 0.9);
+}
+
+.lux-map__iso[data-tone='alabaster'] line {
+  stroke: #f6efe4;
+}
+
+.lux-map__hotspot,
+.lux-map__reticle {
+  position: absolute;
+  z-index: 6;
+  width: 15px;
+  height: 15px;
+  transform: translate(-50%, 50%);
+}
+
+.lux-map__hotspot::before,
+.lux-map__hotspot::after,
+.lux-map__reticle::before,
+.lux-map__reticle::after {
+  content: '';
+  position: absolute;
+  background: var(--marker-ink, #f6efe4);
+}
+
+.lux-map__hotspot::before,
+.lux-map__reticle::before {
+  left: 7px;
+  top: 0;
+  width: 1px;
+  height: 15px;
+}
+
+.lux-map__hotspot::after,
+.lux-map__reticle::after {
+  top: 7px;
+  left: 0;
+  width: 15px;
+  height: 1px;
+}
+
+.lux-map__hotspot {
+  border: 1px solid rgba(246, 239, 228, 0.9);
+  --marker-ink: rgba(246, 239, 228, 0.55);
+}
+
+.lux-map__reticle {
+  --marker-ink: var(--lumen-amber-soft);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.lux-map__reticle[data-on='true'] {
+  opacity: 1;
+}
+
+.lux-map__panel {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: calc(100% - 16px);
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%), rgba(11, 11, 10, 0.74);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  font-size: 10px;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  animation: lux-panel-focus 1000ms var(--ease-cinematic) both;
+}
+
+@keyframes lux-panel-focus {
+  from {
+    opacity: 0;
+    transform: scale(1.05);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
+.lux-map__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.lux-map__badges span {
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.lux-map__probe {
+  min-height: 1.3em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--lumen-amber-soft);
+}
+
+.lux-map__legend {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lux-map__ramp {
+  position: relative;
+  width: min(180px, 100%);
+  height: 4px;
+  margin-top: 3px;
+  border-radius: 1px;
+}
+
+.lux-map__tick {
+  position: absolute;
+  top: 6px;
+  transform: translateX(-50%);
+  font-size: 8px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+.lux-map__tick::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -8px;
+  width: 1px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.lux-map__scale {
+  font-size: 8px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lux-map__field,
+  .lux-map__panel {
+    animation: none;
+  }
+
+  .lux-map__reticle {
+    transition: none;
+  }
+}
