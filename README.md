@@ -1,14 +1,31 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v4.1.0-e8923a)
+![Release](https://img.shields.io/badge/release-v4.2.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v4.1.0**. Two versions of a design now sit side by side.
+Current release: **v4.2.0**. Every quote now carries a freight manifest. Each catalog part
+states its mass (`weightKg`, 1.4 to 18.5 kg; 0.6 kg for the 60W driver, 1.2 kg for the
+150W unit), read out as **Mass / Weight** on its spec sheet. `src/lib/logistics.js`
+exports `computeLogisticsSchedule(bagLines, electrical, { fulfilmentMode })`, a pure
+manifest attached to `buildQuote` as `quote.logistics`: net mass, tare (18% of net, 0.8
+kg minimum), gross, crated volume in m3, crates and dispatch waves. Parts with a span of
+120 cm or more pack into a **Long-Span Timber Tube**, shelves, cubes, sideboards and
+frames into a **Reinforced Millwork Crate**, and spots, sconces, lightbars, hubs and
+drivers into a **Precision Hardware Carton**, first-fit by mass (25, 45 and 15 kg caps)
+and numbered `CRT-01` onward. Freight is **Parcel Courier** under 35 kg with no crate
+over 160 cm, **Dedicated Van / LTL** under 65 kg and **ISPM-15 Euro-Pallet Freight** from
+65 kg. **Consolidated Dispatch** ships everything in one wave at the longest lead time.
+**Split Rough-In Dispatch** sends the driver and every part on two weeks or less in Wave
+01, so the 24V trunk and driver go in during rough-in, and fabricated parts in Wave 02.
+Mass is summed in tenths of a kilogram, so net + tare === gross exactly. Quote totals are
+untouched, so the server's `grossMinor` cross-check is unchanged.
+
+v4.1.0 set two versions of a design side by side.
 `src/lib/project-diff.js` exports `compareProjectStates(base, target)`, a pure comparison
 of two walls or rooms, cloud records or live states, rebuilt through the planner
 sanitizers. It returns eight deltas, each `{ base, target, delta }`: `modules`, `loadW`,
@@ -25,7 +42,7 @@ Target (B) selects over every saved project and both live drafts, a swap key, tw
 elevations with added, modified and removed modules outlined, six delta tiles and an
 itemized change log.
 
-v4.1.0 also settles three planner details. Number wells drop the native spin keys app
+v4.1.0 also settled three planner details. Number wells drop the native spin keys app
 wide (`appearance: none`, `textfield` in Firefox), and the Dimensions forms in both
 planners become label-left rows with an 88px right-aligned tabular well, so `300`, `280`
 and `250` keep 12px of padding clear. **Save to Cloud** centres its glyph and label as one
@@ -166,6 +183,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v4.2.0  | Part and driver mass, crate packing and freight class engine, consolidated or split rough-in dispatch waves on checkout |
 | v4.1.0  | Project and revision A/B diff engine and comparison dialog; spin-free number wells, centred cloud save key, one-line sidebar labels |
 | v4.0.0  | Four-wall 360-degree room with wall selector and per-wall mounting, collisions, bridge, lux and OBJ; human-friendly planner UI; Visual / Specs switch |
 | v3.5.0  | Per-module DALI-2 dimming across physics, lux, bus and WebGL, four scene presets, 3D undo |
@@ -255,7 +273,8 @@ src/
                         and Sabine RT60 (room-physics), point-by-point lux
                         field and iso-lux contours (illuminance-field), share link
                         codec (scene-codec), clipboard with fallback,
-                        quote engine, formatting, nav routes, lazy chunk loaders
+                        quote engine, crate packing and dispatch waves
+                        (logistics), boxed driver specs (drivers), formatting, nav routes, lazy chunk loaders
                         and prefetch (route-manifest)
   security/sanitize.js  safeJsonParse, safeStorage, input validators
   styles/               tokens, base, animations, shell, toast, home, pages, product,
@@ -280,7 +299,7 @@ tests/                  Playwright specs, named by architectural domain
 | `/`          | Overview      | Pendant hero, surface and dimming lab, core modules       |
 | `/catalog`   | Catalog       | Category, search and sort over 12 parts, finish swatch    |
 | `/catalog/:id` | Spec sheet  | Orthographic set, exploded assembly, photometry or bus curve, launchers |
-| `/checkout`  | Project Quote | BOM, driver, currency, trade code, print, export, submit  |
+| `/checkout`  | Project Quote | BOM, driver, freight, currency, trade code, print, export, submit |
 | `/room-3d`   | Room Planner  | Lazy chunk. WebGL room, clearances, 2D bridge, cloud save, cart sync |
 | `/studio-2d` | Wall Studio   | Lazy chunk. To-scale elevation planner, cloud save, cart sync |
 | `/account`   | Account       | Signed in only: cloud projects and submitted requisitions |
@@ -296,7 +315,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '4.1.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '4.2.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -904,6 +923,11 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
   allowance and SELV circuits (one per 150 W started; none for a passive cart). The cable
   allowance is a 3 m lead-in per circuit, plus the span, plus 0.5 m per powered part,
   rounded up to 0.5 m. It prints with the quote and ships in the JSON export.
+- The **Logistics & Crate Schedule** reads net / gross mass, crated volume, freight class
+  and dispatch window, then lists each crate (`CRT-01`, dimensions, gross mass, SKUs) and
+  each dispatch wave. **Consolidated Dispatch** and **Split Rough-In Dispatch** switch
+  the waves without changing a price. The section prints without the switch and exports
+  as `logistics` in the spec JSON.
 - An empty cart renders the wall elevation empty state inside a bento tile.
 
 ## Share links
