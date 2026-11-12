@@ -400,6 +400,26 @@ function describeConflict(conflict) {
   return parts.length ? `, conflict: ${parts.join(' and ')}` : '';
 }
 
+/**
+ * The drafting-room backdrop behind the elevation: a hairline studio frame
+ * with registration crosses at the corners and ticks at each edge centre.
+ * The warm ambient wash itself is the viewport background.
+ */
+function StudioAtmosphere() {
+  return (
+    <div className="wall-stage__atmosphere" data-testid="studio-backdrop" aria-hidden="true">
+      <span className="wall-stage__reg wall-stage__reg--tl" />
+      <span className="wall-stage__reg wall-stage__reg--tr" />
+      <span className="wall-stage__reg wall-stage__reg--bl" />
+      <span className="wall-stage__reg wall-stage__reg--br" />
+      <span className="wall-stage__tick wall-stage__tick--top" />
+      <span className="wall-stage__tick wall-stage__tick--right" />
+      <span className="wall-stage__tick wall-stage__tick--bottom" />
+      <span className="wall-stage__tick wall-stage__tick--left" />
+    </div>
+  );
+}
+
 export function WallStage({
   layout,
   conflicts,
@@ -677,7 +697,7 @@ export function WallStage({
   };
 
   return (
-    <section className="workspace-frame studio-stage" aria-label="Wall elevation" data-active={active ? true : undefined}>
+    <section className="workspace-frame studio-stage wall-stage" aria-label="Wall elevation" data-active={active ? true : undefined}>
       <div className="workspace-frame__bar mono">
         <span data-testid="wall-label">
           Elevation / Wall A / {wall.widthCm} x {wall.heightCm} cm
@@ -694,6 +714,7 @@ export function WallStage({
       {toolbar}
 
       <div className="workspace-frame__viewport studio-stage__viewport" data-surface={wall.surface}>
+        <StudioAtmosphere />
         <div ref={hostRef} className="studio-stage__fit">
           <div
             className="wall-grid"
@@ -806,6 +827,8 @@ export function WallStage({
               <span className="wall__floor" aria-hidden="true">
                 <span className="wall__floor-label mono">FFL 0</span>
               </span>
+              <span className="wall__horizon" aria-hidden="true" />
+              <span className="wall__plinth" data-testid="wall-plinth" aria-hidden="true" />
             </div>
           </div>
         </div>

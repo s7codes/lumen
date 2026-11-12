@@ -8,6 +8,8 @@ import {
   PENDANT_CABLES,
   pointOnRun,
   project,
+  PULSE_SPACING_CM,
+  PULSE_SPEED_CM_S,
   projectPolygon,
   projectSegment,
   SHELF,
@@ -282,10 +284,9 @@ function paintBus(ctx, frame) {
   ctx.stroke();
   ctx.restore();
 
-  const speed = 170;
-  const spacing = 84;
+  const spacing = PULSE_SPACING_CM;
   for (const run of runs) {
-    const head = (((time * speed - run.offset) % spacing) + spacing) % spacing;
+    const head = (((time * PULSE_SPEED_CM_S - run.offset) % spacing) + spacing) % spacing;
     for (let s = head; s <= run.total; s += spacing) {
       const p = project(view, pointOnRun(run, s));
       if (!p) continue;

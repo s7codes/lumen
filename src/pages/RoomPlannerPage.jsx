@@ -25,7 +25,7 @@ import { plannerDiffSources } from '../lib/diff-sources.js';
 import { computeFloorLuxField } from '../lib/illuminance-field.js';
 import { matchLightingScene, roomSurface } from '../lib/lighting-scenes.js';
 import { computeEnvironmentalPhysics } from '../lib/room-physics.js';
-import { downloadText } from '../lib/download.js';
+import { downloadBlob, downloadText } from '../lib/download.js';
 import { buildRoomObj, countObjObjects, OBJ_MIME, objFilename } from '../lib/obj-export.js';
 import {
   DEFAULT_ROOM_WALL,
@@ -36,6 +36,13 @@ import {
   WALL_LABELS,
 } from '../lib/room-3d.js';
 import { FREE_SNAP_CM, GRID_SNAP_CM, sanitizeAxisLock } from '../lib/room-raycast.js';
+import {
+  canvasToPngBlob,
+  composeRoomSnapshotCanvas,
+  SNAPSHOT_HEIGHT,
+  SNAPSHOT_WIDTH,
+  snapshotFilename,
+} from '../lib/render-snapshot.js';
 import {
   CAMERA_MODE_LABELS,
   CAMERA_MODES,
@@ -88,6 +95,7 @@ export default function RoomPlannerPage() {
   const [axisLock, setAxisLock] = useState('free');
   const [zen, setZen] = useState(false);
   const syncRef = useRef(null);
+  const captureRef = useRef(null);
   const cloud = useCloudSave('room');
   const project = useProjectName('room');
   const shareLink = useShareLink('room');
@@ -222,6 +230,29 @@ export default function RoomPlannerPage() {
     addToast(`${name} exported as Wavefront .OBJ. ${detail}.`, 'success');
   };
 
+  // The frame grab and the composition run in one task: the WebGL buffer is
+  // only readable until the browser presents it.
+  const capturePng = async () => {
+    const name = project.commit();
+    try {
+      const canvas = composeRoomSnapshotCanvas({
+        sourceCanvas: captureRef.current?.() ?? null,
+        projectName: name,
+        room,
+        summary,
+        physics,
+        cameraMode,
+      });
+      const blob = await canvasToPngBlob(canvas);
+      downloadBlob(snapshotFilename(name), blob);
+      const frame = canvas.dataset.frame === 'webgl' ? 'live WebGL frame' : 'drafted axonometric frame';
+      setStatus(`Captured studio render: ${SNAPSHOT_WIDTH} x ${SNAPSHOT_HEIGHT} px PNG, ${frame}.`);
+      addToast(`${name} captured as studio .PNG render.`, 'success');
+    } catch {
+      addToast('Studio render could not be captured.', 'error');
+    }
+  };
+
   return (
     <>
       <div
@@ -296,6 +327,7 @@ export default function RoomPlannerPage() {
               onInsideFov={onInsideFov}
               onEngineReady={onEngineReady}
               onReplayBoot={onReplayBoot}
+              captureRef={captureRef}
             />
           </div>
 
@@ -335,6 +367,7 @@ export default function RoomPlannerPage() {
             project={project}
             onExport={pushToWall}
             onExportObj={exportObj}
+            onCapturePng={capturePng}
             onSave={() => cloud.save(state, project.commit())}
             onSync={syncToBag}
             onCompare={(trigger) => {

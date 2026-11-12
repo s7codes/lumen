@@ -84,7 +84,7 @@ export default function CatalogPage() {
   return (
     <>
       <PageHeader
-        index="02"
+        index="03"
         section="Catalog"
         title="Catalog"
         lede="Fixtures, shelving, surfaces and bus hardware in one index. Every part lists its dimensions, output and load on the 24V bus."

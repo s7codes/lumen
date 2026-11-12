@@ -8,7 +8,7 @@ import { launchHref, LAUNCH_PATH } from '../lib/launch-presets.js';
 import { prefetchRoute } from '../lib/route-manifest.js';
 import { SHOWCASE_3D_ID } from '../lib/routes.js';
 import { ACTS, STAGE_ROOM } from '../lib/showcase-scene.js';
-import { ArrowRight, CubeGlyph, PresetEyeGlyph, PresetLoftGlyph, PresetOrbitGlyph } from './icons.jsx';
+import { ArrowRight, CubeGlyph, PresetEyeGlyph, PresetGizmoGlyph, PresetLoftGlyph, PresetOrbitGlyph } from './icons.jsx';
 
 const STAGE_ID = 'showcase3d-stage';
 const ENGINE_VERSION = __APP_VERSION__.split('.').slice(0, 2).join('.');
@@ -19,22 +19,25 @@ const PILLARS = Object.freeze([
     act: 'orbit',
     index: '01',
     title: '360-Degree Four-Wall Envelope',
-    body: 'Orbit every wall without a stop, from 5 deg above the floor to an 85 deg plan view. Envelopes run from a compact bedroom to a 900 x 900 cm loft.',
-    spec: 'Yaw -180 / +180 deg / Pitch 5-85 deg',
+    summary: 'Circle every wall of the room, from floor level up to plan view.',
+    chips: ['Full 360-Degree Orbit', 'Up to 9 x 9 m Loft'],
+    Glyph: PresetOrbitGlyph,
   },
   {
     act: 'inside',
     index: '02',
     title: '165 cm Eye-Level Walkthrough',
-    body: 'Stand where you will stand. A 78 deg architectural lens at eye height, widened to 92 deg on the wheel, with vertical illuminance read at the eye.',
-    spec: 'Eye 165 cm / FOV 50-92 deg / lx at eye',
+    summary: 'Stand where you will stand, and read the light at your eye.',
+    chips: ['165 cm Eye Height', 'Live Eye Lux'],
+    Glyph: PresetEyeGlyph,
   },
   {
     act: 'gizmo',
     index: '03',
     title: 'Direct 3D Raycast & Gizmo',
-    body: 'Take a module and slide it across the wall plane under the cursor. Transform gizmo, axis locks and laser dimensions to floor, ceiling and both corners.',
-    spec: 'Ray to wall plane / 5 cm snap / X Y locks',
+    summary: 'Take any module and slide it along the wall under your cursor.',
+    chips: ['5 cm Grid Snap', 'X and Y Axis Locks'],
+    Glyph: PresetGizmoGlyph,
   },
 ]);
 
@@ -75,7 +78,7 @@ function Pillar({ pillar, active, held, theatre }) {
   const reveal = useScrollReveal();
   const cardRef = useRef(null);
   useCardTilt(cardRef);
-  const { act } = pillar;
+  const { act, Glyph } = pillar;
   return (
     <li ref={reveal} className="showcase3d__pillar-cell reveal-up">
       <article
@@ -87,16 +90,27 @@ function Pillar({ pillar, active, held, theatre }) {
         onPointerLeave={() => theatre.current?.endPreview(act)}
         onClick={() => theatre.current?.pick(act)}
       >
-        <p className="index-label">
-          <span className="index-label__num">{pillar.index}</span> / Capability
-        </p>
+        <div className="showcase3d__pillar-top" aria-hidden="true">
+          <span className="showcase3d__pillar-index mono">{pillar.index}</span>
+          <span className="showcase3d__pillar-badge">
+            <Glyph />
+          </span>
+        </div>
         <h3 className="showcase3d__pillar-title">
           <button type="button" className="showcase3d__pillar-key" aria-pressed={held} aria-controls={STAGE_ID}>
             {pillar.title}
           </button>
         </h3>
-        <p className="showcase3d__pillar-body">{pillar.body}</p>
-        <p className="showcase3d__pillar-spec mono">{pillar.spec}</p>
+        <p className="showcase3d__pillar-body" data-testid="showcase-pillar-summary">
+          {pillar.summary}
+        </p>
+        <ul className="showcase3d__pillar-chips" aria-label={`${pillar.title} key figures`}>
+          {pillar.chips.map((chip) => (
+            <li key={chip} className="showcase3d__pillar-chip mono" data-testid="showcase-pillar-chip">
+              {chip}
+            </li>
+          ))}
+        </ul>
       </article>
     </li>
   );
@@ -186,6 +200,21 @@ function Theatre({ stage, setStageNode, canvasRef, theatre }) {
   );
 }
 
+/*
+ * A light ribbon tracing the key's perimeter. Each rect has pathLength 100,
+ * so a dash is a share of the perimeter at any key width and the ribbon moves
+ * at one even speed round the long and short edges alike; the trail and the
+ * head share their leading edge, which tapers the ribbon toward its tail.
+ */
+function CtaBorderBeam() {
+  return (
+    <svg className="launchpad__cta-beam" data-testid="cta-border-beam" aria-hidden="true" focusable="false">
+      <rect className="launchpad__cta-beam-trail" width="100%" height="100%" rx="3" pathLength="100" />
+      <rect className="launchpad__cta-beam-head" width="100%" height="100%" rx="3" pathLength="100" />
+    </svg>
+  );
+}
+
 function Launchpad() {
   const reveal = useScrollReveal();
   return (
@@ -218,6 +247,7 @@ function Launchpad() {
               </span>
             </span>
             <ArrowRight className="launchpad__cta-arrow" />
+            <CtaBorderBeam />
           </Link>
           <p className="launchpad__spec mono">240-900 cm envelopes / 3 lenses / OBJ and Wall Studio bridge</p>
         </div>
@@ -287,7 +317,7 @@ export function SpatialShowcase() {
     >
       <header ref={reveal} className="section-head showcase3d__head reveal-up">
         <p className="index-label">
-          <span className="index-label__num">04</span> / 3D Spatial Studio
+          <span className="index-label__num">03</span> / 3D Spatial Studio
         </p>
         <h2 id="showcase3d-title" className="section-head__title showcase3d__title">
           Step inside a four-walled room before a single hole is drilled.

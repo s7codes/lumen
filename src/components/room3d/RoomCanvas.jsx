@@ -1032,6 +1032,29 @@ function ScreenProbe({ modules, manifestRef }) {
   return null;
 }
 
+/**
+ * Lends the page a synchronous frame grab for the studio render: advance()
+ * draws one frame on demand and the caller reads the canvas in the same task,
+ * before the buffer is presented and cleared, so no preserveDrawingBuffer
+ * cost is paid on every frame.
+ */
+function SnapshotBridge({ captureRef }) {
+  const gl = useThree((state) => state.gl);
+  const advance = useThree((state) => state.advance);
+  useEffect(() => {
+    if (!captureRef) return undefined;
+    const capture = () => {
+      advance(performance.now());
+      return gl.domElement;
+    };
+    captureRef.current = capture;
+    return () => {
+      if (captureRef.current === capture) captureRef.current = null;
+    };
+  }, [captureRef, gl, advance]);
+  return null;
+}
+
 const tenthPx = (value) => Math.round(value * 10) / 10;
 
 /**
@@ -1204,6 +1227,7 @@ export default function RoomCanvas({
   api,
   drag,
   manifestRef,
+  captureRef,
   onSelect,
   onHover,
   onReady,
@@ -1243,6 +1267,7 @@ export default function RoomCanvas({
       <ScreenProbe modules={scene.modules} manifestRef={manifestRef} />
       <DragBridge drag={drag} room={room} />
       <OverlayProbe drag={drag} api={api} room={room} cameraMode={cameraMode} manifestRef={manifestRef} />
+      <SnapshotBridge captureRef={captureRef} />
     </Canvas>
   );
 }

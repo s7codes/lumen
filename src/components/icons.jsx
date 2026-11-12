@@ -213,3 +213,17 @@ export function PresetLoftGlyph() {
     </svg>
   );
 }
+
+/** Transform gizmo: a module plate with its X and Y handles and the cursor ray landing on it. */
+export function PresetGizmoGlyph() {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
+      <g stroke="currentColor" strokeWidth="1.1">
+        <path d="M3 27h26" strokeOpacity="0.5" />
+        <rect x="9" y="13" width="12" height="6" rx="0.5" />
+        <path d="M15 16h11m-2.5-2.2L26 16l-2.5 2.2M15 16V5m-2.2 2.5L15 5l2.2 2.5" strokeOpacity="0.85" />
+      </g>
+      <path d="M5 4.5 15 16" stroke="var(--lumen-amber)" strokeWidth="1.1" strokeDasharray="1.6 1.6" />
+    </svg>
+  );
+}

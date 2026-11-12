@@ -43,6 +43,23 @@ function SectionNavLink({ route, section }) {
   );
 }
 
+/**
+ * A primary link into a workspace route: the page inside it, and the location
+ * while the overview is scrolled through the section that previews it.
+ */
+function RouteNavLink({ route, section }) {
+  const { pathname } = useLocation();
+  const warm = () => prefetchRoute(route.path);
+  let current;
+  if (pathname === route.path || pathname.startsWith(`${route.path}/`)) current = 'page';
+  else if (pathname === '/' && route.spy && section === route.spy) current = 'location';
+  return (
+    <Link to={route.path} className={linkClass(current)} aria-current={current} onPointerEnter={warm} onFocus={warm}>
+      {route.label}
+    </Link>
+  );
+}
+
 /** Overview stays current on the overview until the reader scrolls into a spied section. */
 function OverviewNavLink({ route, section }) {
   const { pathname } = useLocation();
@@ -103,14 +120,7 @@ export function Navbar() {
                   ) : route.path === '/' ? (
                     <OverviewNavLink route={route} section={section} />
                   ) : (
-                    <NavLink
-                      to={route.path}
-                      className="navbar__link"
-                      onPointerEnter={() => prefetchRoute(route.path)}
-                      onFocus={() => prefetchRoute(route.path)}
-                    >
-                      {route.label}
-                    </NavLink>
+                    <RouteNavLink route={route} section={section} />
                   )}
                 </li>
               ))}

@@ -10,8 +10,8 @@ import { ArrowRight } from '../icons.jsx';
 /**
  * Primary strip: the four key figures beside the project name, cloud save
  * and cart sync. Below a hairline, engineering telemetry and the CAD bridge
- * (2D wall exchange for the active wall, .OBJ export, share link) share a
- * structured sub-grid that Specs mode lifts forward.
+ * (2D wall exchange for the active wall, .OBJ export, .PNG studio render,
+ * share link) share a structured sub-grid that Specs mode lifts forward.
  */
 export function RoomSummary({
   summary,
@@ -30,6 +30,7 @@ export function RoomSummary({
   onImport,
   onExport,
   onExportObj,
+  onCapturePng,
   onSave,
   onSync,
   onCompare,
@@ -140,6 +141,15 @@ export function RoomSummary({
           <span className="studio-toolbar__divider" aria-hidden="true" />
           <button type="button" className="tool-button" data-testid="export-room-obj" onClick={onExportObj}>
             Export 3D .OBJ
+          </button>
+          <button
+            type="button"
+            className="tool-button"
+            data-testid="capture-room-png"
+            title="Download a 1600 x 1000 studio render with the room specification"
+            onClick={onCapturePng}
+          >
+            Capture .PNG
           </button>
           <button
             type="button"

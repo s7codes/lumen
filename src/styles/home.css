@@ -921,7 +921,7 @@
   }
 }
 
-/* 03 / Core modules */
+/* 04 / Core modules */
 
 .modules {
   padding-top: var(--section-space);
@@ -960,7 +960,7 @@
   }
 }
 
-/* 04 / 3D Spatial Studio showcase. The stage is a canvas 2D projection under
+/* 03 / 3D Spatial Studio showcase. The stage is a canvas 2D projection under
    an HTML and SVG HUD; its rAF loop runs only while the stage is on screen,
    and never under reduced motion. */
 
@@ -1003,9 +1003,11 @@
   border-color: rgba(232, 146, 58, 0.28);
 }
 
+/* 3:2 at rest; beside the taller card column the stage grows into the spare
+   height and the projection refits to it, so no dead band opens under the caption. */
 .theatre {
   position: relative;
-  flex: none;
+  flex: 1 0 auto;
   aspect-ratio: 3 / 2;
 }
 
@@ -1212,9 +1214,9 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-4);
   height: 100%;
-  padding: var(--space-5);
+  padding: var(--space-5) var(--space-5) var(--space-6);
   border: 1px solid var(--bento-edge);
   border-radius: var(--bento-radius);
   background: var(--bento-surface);
@@ -1254,8 +1256,46 @@
   background-color: rgba(232, 146, 58, 0.035);
 }
 
-.showcase3d__pillar[data-active] .index-label__num {
+/* Index left, glyph badge right: the card reads at a glance before its copy. */
+.showcase3d__pillar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.showcase3d__pillar-index {
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-muted);
+  transition: color var(--duration-slow) var(--ease-out);
+}
+
+.showcase3d__pillar-badge {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  color: #ffffff;
+  transition: border-color var(--duration-slow) var(--ease-out);
+}
+
+.showcase3d__pillar-badge svg {
+  width: 26px;
+  height: 26px;
+}
+
+.showcase3d__pillar[data-active] .showcase3d__pillar-index {
   color: var(--lumen-amber);
+}
+
+.showcase3d__pillar[data-active] .showcase3d__pillar-badge {
+  border-color: rgba(232, 146, 58, 0.34);
 }
 
 .showcase3d__pillar-title {
@@ -1284,19 +1324,44 @@
 
 .showcase3d__pillar-body {
   flex: 1;
-  max-width: 42ch;
+  max-width: 34ch;
   font-size: var(--text-sm);
   font-weight: var(--weight-light);
-  line-height: 1.55;
+  line-height: 1.7;
   color: var(--text-secondary);
 }
 
-.showcase3d__pillar-spec {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--bento-edge);
-  font-size: var(--text-2xs);
+/* Key figures as quiet pills: a hairline edge, never a lit dot. */
+.showcase3d__pillar-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.showcase3d__pillar-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding-inline: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 10.5px;
+  font-weight: 500;
   letter-spacing: 0.04em;
-  color: #a1a1aa;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  transition:
+    border-color var(--duration-slow) var(--ease-out),
+    color var(--duration-slow) var(--ease-out);
+}
+
+.showcase3d__pillar[data-active] .showcase3d__pillar-chip {
+  border-color: rgba(229, 199, 153, 0.3);
+  color: #f3e3c6;
 }
 
 /* ---------- launchpad portal ---------- */
@@ -1413,12 +1478,15 @@
   margin-top: var(--space-7);
 }
 
-/* The flagship key: sans, sentence case, a taller lift off a deeper plinth. Like every
-   key it never glows: the plinth is a zero-blur slab. */
+/* The flagship key: sans, sentence case, a taller lift off a deeper plinth. A soft
+   champagne cap with espresso ink and a lit top edge; like every key it never
+   glows: the plinth is a zero-blur slab, the highlight a zero-blur inset line. */
 .button.launchpad__cta {
   --key-lift: 3px;
   --key-plinth: 5px;
+  --key-plinth-color: #6f5230;
 
+  position: relative;
   gap: var(--space-4);
   height: auto;
   min-height: 54px;
@@ -1428,6 +1496,17 @@
   font-weight: 600;
   letter-spacing: -0.01em;
   text-transform: none;
+  border-color: rgba(255, 244, 224, 0.55);
+  background: linear-gradient(135deg, #f3e3c6 0%, #e5c799 55%, #d8b27c 100%);
+  color: #141210;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 251, 242, 0.75),
+    calc(var(--mx, 0px) * -1) calc(var(--plinth, 0px) - var(--my, 0px)) 0 0 var(--key-plinth-color);
+}
+
+.button.launchpad__cta:hover:not(:disabled) {
+  border-color: rgba(255, 249, 238, 0.85);
+  background: linear-gradient(135deg, #f8ecd7 0%, #ecd2a8 55%, #e0bd89 100%);
 }
 
 .launchpad__cta-glyph {
@@ -1436,9 +1515,67 @@
   place-items: center;
   width: 34px;
   height: 34px;
-  border: 1px solid rgba(11, 11, 10, 0.24);
+  border: 1px solid rgba(20, 18, 16, 0.18);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* The border beam: an alabaster head on a gold trail, gliding round the key once
+   every 6 s. Each dash starts one dash length back, so both share a leading edge. */
+/* Laid over the border box, so the ribbon runs on the key's own 1px edge. */
+.button.launchpad__cta .launchpad__cta-beam {
+  position: absolute;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* The beam rides the key itself: no icon nudge on hover. */
+.button.launchpad__cta:hover:not(:disabled) .launchpad__cta-beam {
+  transform: none;
+}
+
+.launchpad__cta-beam rect {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.launchpad__cta-beam-trail {
+  stroke: rgba(216, 178, 124, 0.85);
+  stroke-width: 1.5;
+  stroke-dasharray: 26 74;
+  stroke-dashoffset: 26;
+  animation: cta-beam-trail 6s linear infinite;
+}
+
+.launchpad__cta-beam-head {
+  stroke: #fffaf0;
+  stroke-width: 2;
+  stroke-dasharray: 7 93;
+  stroke-dashoffset: 7;
+  animation: cta-beam-head 6s linear infinite;
+}
+
+@keyframes cta-beam-trail {
+  from {
+    stroke-dashoffset: 26;
+  }
+
+  to {
+    stroke-dashoffset: -74;
+  }
+}
+
+@keyframes cta-beam-head {
+  from {
+    stroke-dashoffset: 7;
+  }
+
+  to {
+    stroke-dashoffset: -93;
+  }
 }
 
 .button.launchpad__cta .launchpad__cta-glyph svg {
@@ -1635,6 +1772,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .launchpad__cta-beam rect {
+    animation-play-state: paused;
+  }
+
   .launchpad__status-rule::after {
     animation: none;
     transform: none;

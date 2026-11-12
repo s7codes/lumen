@@ -1,3 +1,5 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { playAcousticAudition, stopAcousticAudition, synthesizeAcousticProfile } from '../lib/acoustic-audition.js';
 import { formatInt } from '../lib/format.js';
 import { formatEnvironmentalPhysics } from '../lib/room-physics.js';
 
@@ -24,6 +26,85 @@ function OctaveSpectrum({ bands }) {
           <span className="octave__label mono">{label}</span>
         </span>
       ))}
+    </span>
+  );
+}
+
+function PlayGlyph() {
+  return (
+    <svg viewBox="0 0 12 12" fill="none" aria-hidden="true" focusable="false">
+      <path d="M3.5 2.2v7.6L9.6 6 3.5 2.2Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+/**
+ * Audition key and decay curve. A take remounts the curve (keyed by its
+ * count), so the CSS sweep restarts on every press; React only re-renders at
+ * the start and end of a take.
+ */
+function AcousticAudition({ physics }) {
+  const profile = useMemo(() => synthesizeAcousticProfile(physics), [physics]);
+  const [take, setTake] = useState({ count: 0, playing: false, audio: null });
+  const timer = useRef(0);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(timer.current);
+      stopAcousticAudition();
+    },
+    [],
+  );
+
+  const audition = () => {
+    const result = playAcousticAudition(physics);
+    const holdMs = Math.max(result.durationSec, profile.windowSec) * 1000;
+    window.clearTimeout(timer.current);
+    setTake((current) => ({ count: current.count + 1, playing: true, audio: result.played ? 'web-audio' : 'silent' }));
+    timer.current = window.setTimeout(() => setTake((current) => ({ ...current, playing: false })), holdMs);
+  };
+
+  const last = profile.envelope.length - 1;
+  return (
+    <span className="audition" data-testid="acoustic-audition">
+      <button
+        type="button"
+        className="audition__key"
+        data-testid="audition-room-acoustics"
+        data-playing={take.playing || undefined}
+        title={`Play the room's decay: RT60 ${profile.rt60Sec.toFixed(2)} s at 500 Hz`}
+        onClick={audition}
+      >
+        <PlayGlyph />
+        Audition RT60
+      </button>
+      <span
+        key={take.count}
+        className="audition__wave"
+        data-testid="acoustic-decay-wave"
+        data-rt60={profile.rt60Sec.toFixed(2)}
+        data-damping-pct={profile.dampingPct}
+        data-duration={profile.durationSec.toFixed(2)}
+        data-clarity-db={profile.clarityDb.toFixed(1)}
+        data-state={take.playing ? 'playing' : 'idle'}
+        data-takes={take.count}
+        data-audio={take.audio ?? undefined}
+        style={{
+          '--window-sec': `${profile.windowSec}s`,
+          '--rt60-at': Math.min(1, profile.rt60Sec / profile.windowSec).toFixed(3),
+        }}
+        aria-hidden="true"
+      >
+        {profile.envelope.map((level, i) => (
+          <span
+            key={i}
+            className="audition__bar"
+            style={{ '--level': level.toFixed(3), '--at': (i / last).toFixed(3) }}
+          />
+        ))}
+        <span className="audition__mark" />
+        {take.playing && <span className="audition__playhead" />}
+      </span>
     </span>
   );
 }
@@ -55,6 +136,7 @@ export function EnvironmentalPhysicsCell({ physics }) {
         <span className="studio-summary__sub" data-testid="physics-damping" data-damped={physics.acousticDeltaSec < 0}>
           {lines.damping}
         </span>
+        <AcousticAudition physics={physics} />
         <span className="physics__spectrum">
           <OctaveSpectrum bands={lines.octave} />
         </span>

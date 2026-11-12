@@ -288,6 +288,7 @@ export function RoomViewport({
   onInsideFov,
   onEngineReady,
   onReplayBoot,
+  captureRef,
 }) {
   const { room, items, camera } = state;
   const hostRef = useRef(null);
@@ -535,6 +536,7 @@ export function RoomViewport({
                   api={api}
                   drag={drag}
                   manifestRef={manifestRef}
+                  captureRef={captureRef}
                   onSelect={onSelect}
                   onHover={onHover}
                   onReady={onReady}

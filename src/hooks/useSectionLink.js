@@ -4,17 +4,20 @@ import { useLocation, useNavigate } from 'react-router-dom';
 const SECTION_STATE_KEY = 'lumenSection';
 
 /*
- * Scroll-spy for overview sections. A section is current while it crosses a
- * thin reading band 40 to 45 percent down the viewport, so it takes over once
- * its head has settled under the navbar and hands back once it scrolls clear.
- * A glide pins its target for the whole flight: the band would otherwise read
- * every section the glide passes on the way.
+ * Scroll-spy for overview sections. The current section is the last spied
+ * section whose head has crossed a reading line 45 percent down the viewport,
+ * so the navbar steps through the sections in page order and holds across the
+ * gaps between them instead of flashing back to Overview. At the very bottom
+ * of the page the last section in view takes over, so a short closing section
+ * still gets its turn. A glide pins its target for the whole flight: the line
+ * would otherwise read every section the glide passes on the way.
  */
-const SPY_BAND = '-40% 0px -55% 0px';
+const READING_LINE = 0.45;
+const END_SLACK_PX = 2;
 const SCROLL_SETTLE_MS = 180;
 const USER_INPUT = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
 
-const spy = { observed: new Set(), pinned: null, listeners: new Set() };
+const spy = { sections: new Map(), measured: null, pinned: null, listeners: new Set(), detach: null };
 let releasePin = null;
 
 function emit() {
@@ -27,16 +30,45 @@ function subscribe(listener) {
 }
 
 function currentSection() {
-  if (spy.pinned) return spy.pinned;
-  for (const id of spy.observed) return id;
-  return null;
+  return spy.pinned ?? spy.measured;
 }
 
-function setObserved(id, inBand) {
+function measure() {
+  const viewport = window.innerHeight;
+  const root = document.documentElement;
+  const atEnd = window.scrollY > 0 && window.scrollY + viewport >= root.scrollHeight - END_SLACK_PX;
+  const limit = atEnd ? viewport : viewport * READING_LINE;
+  let best = null;
+  let bestTop = -Infinity;
+  for (const [id, el] of spy.sections) {
+    const { top } = el.getBoundingClientRect();
+    if (top <= limit && top > bestTop) {
+      best = id;
+      bestTop = top;
+    }
+  }
+  return best;
+}
+
+function remeasure() {
   const before = currentSection();
-  if (inBand) spy.observed.add(id);
-  else spy.observed.delete(id);
+  spy.measured = measure();
   if (currentSection() !== before) emit();
+}
+
+// Scroll events already arrive once per frame, and the read is a handful of
+// rects, so the spy measures in the handler and only emits on a change.
+function attachSpy() {
+  window.addEventListener('scroll', remeasure, { passive: true });
+  window.addEventListener('resize', remeasure);
+  const sizing = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(remeasure);
+  sizing?.observe(document.body);
+  spy.detach = () => {
+    window.removeEventListener('scroll', remeasure);
+    window.removeEventListener('resize', remeasure);
+    sizing?.disconnect();
+    spy.detach = null;
+  };
 }
 
 /**
@@ -61,6 +93,7 @@ function pinSection(id) {
     if (releasePin === release) releasePin = null;
     if (spy.pinned !== id) return;
     spy.pinned = null;
+    spy.measured = measure();
     if (currentSection() !== id) emit();
   }
 
@@ -133,21 +166,20 @@ export function useSectionArrival(ids) {
 export function useSectionSpy(ref, id) {
   useEffect(() => {
     const el = ref.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
-    const io = new IntersectionObserver(([entry]) => setObserved(id, entry.isIntersecting), {
-      rootMargin: SPY_BAND,
-      threshold: 0,
-    });
-    io.observe(el);
+    if (!el) return undefined;
+    spy.sections.set(id, el);
+    if (!spy.detach) attachSpy();
+    remeasure();
     return () => {
-      io.disconnect();
       if (spy.pinned === id) releasePin?.();
-      setObserved(id, false);
+      if (spy.sections.get(id) === el) spy.sections.delete(id);
+      if (spy.sections.size === 0) spy.detach?.();
+      remeasure();
     };
   }, [ref, id]);
 }
 
-/** The overview section the reader is in, or null above and between spied sections. */
+/** The overview section the reader is in, or null above the first spied section. */
 export function useCurrentSection() {
   return useSyncExternalStore(subscribe, currentSection, () => null);
 }

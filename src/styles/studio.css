@@ -2,12 +2,20 @@
    Module geometry arrives as px from the fit scale; --ppcm (px per cm) is set
    on .wall so CSS details can be sized in centimetres. */
 
+/* A low warm wash behind the stage column, so the studio reads as a lit
+   drafting room rather than a dead-black page. */
 .studio-layout {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr) 280px;
   grid-template-areas: 'palette main inspector';
   gap: var(--space-4);
   align-items: start;
+  background: radial-gradient(
+    ellipse 70% 60% at 50% 26%,
+    rgba(232, 168, 92, 0.06) 0%,
+    rgba(232, 168, 92, 0.018) 45%,
+    rgba(232, 168, 92, 0) 72%
+  );
 }
 
 .studio-layout__main {
@@ -124,16 +132,107 @@
   background: var(--signal-fault);
 }
 
+/* Architectural drafting studio: a warm key light pooled over the elevation,
+   falling off into the surround. The surround stays the base colour, so the
+   stage still sits on the same #11100f. */
 .studio-stage__viewport {
   display: flex;
   justify-content: center;
   min-height: 0;
-  padding: var(--space-6) var(--space-5) var(--space-7);
-  background: var(--stage-surround);
+  padding: var(--space-6) var(--space-5) 88px;
+  background:
+    radial-gradient(
+      ellipse 85% 70% at 50% 38%,
+      rgba(232, 168, 92, 0.11) 0%,
+      rgba(46, 39, 32, 0.28) 48%,
+      rgba(15, 14, 13, 0.96) 100%
+    ),
+    var(--stage-surround);
 }
 
 .studio-stage__viewport[data-surface='daylight'] {
-  background: var(--stage-surround-day);
+  background:
+    radial-gradient(
+      ellipse 85% 70% at 50% 38%,
+      rgba(255, 236, 206, 0.09) 0%,
+      rgba(52, 48, 42, 0.3) 48%,
+      rgba(20, 19, 17, 0.96) 100%
+    ),
+    var(--stage-surround-day);
+}
+
+/* Studio frame: a hairline sheet border, registration crosses in the corners
+   and a tick at each edge centre, the way a drawing sheet is registered. */
+.wall-stage__atmosphere {
+  position: absolute;
+  inset: 6px;
+  border: 1px solid rgba(242, 238, 231, 0.05);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.wall-stage__reg {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  background:
+    linear-gradient(rgba(242, 238, 231, 0.22), rgba(242, 238, 231, 0.22)) 50% 0 / 1px 100% no-repeat,
+    linear-gradient(rgba(242, 238, 231, 0.22), rgba(242, 238, 231, 0.22)) 0 50% / 100% 1px no-repeat;
+}
+
+.wall-stage__reg--tl {
+  top: 30px;
+  left: 30px;
+}
+
+.wall-stage__reg--tr {
+  top: 30px;
+  right: 30px;
+}
+
+.wall-stage__reg--bl {
+  bottom: 30px;
+  left: 30px;
+}
+
+.wall-stage__reg--br {
+  right: 30px;
+  bottom: 30px;
+}
+
+.wall-stage__tick {
+  position: absolute;
+  background: rgba(242, 238, 231, 0.2);
+}
+
+.wall-stage__tick--top,
+.wall-stage__tick--bottom {
+  left: calc(50% - 0.5px);
+  width: 1px;
+  height: 9px;
+}
+
+.wall-stage__tick--top {
+  top: -5px;
+}
+
+.wall-stage__tick--bottom {
+  bottom: -5px;
+}
+
+.wall-stage__tick--left,
+.wall-stage__tick--right {
+  top: calc(50% - 0.5px);
+  width: 9px;
+  height: 1px;
+}
+
+.wall-stage__tick--left {
+  left: -5px;
+}
+
+.wall-stage__tick--right {
+  right: -5px;
 }
 
 .studio-stage__fit {
@@ -541,6 +640,57 @@
 
 .wall[data-surface='daylight'] .wall__floor {
   background: var(--floor-datum-day);
+}
+
+/* The datum carried out across the studio as a ground line, fading at both ends.
+   The viewport clips it, so it never widens the page. */
+.wall__horizon {
+  position: absolute;
+  top: 100%;
+  left: -60vw;
+  right: -60vw;
+  z-index: -1;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(242, 238, 231, 0) 0%,
+    rgba(242, 238, 231, 0.12) 36%,
+    rgba(242, 238, 231, 0.12) 64%,
+    rgba(242, 238, 231, 0) 100%
+  );
+  pointer-events: none;
+}
+
+/* A plinth floor in one-point perspective under the elevation: joints run to a
+   vanishing point behind the wall, courses step closer as they recede, and the
+   key light pools on the datum as a soft reflection. */
+.wall__plinth {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: -45%;
+  right: -45%;
+  z-index: -1;
+  height: 150px;
+  background:
+    radial-gradient(ellipse 32% 80% at 50% 0%, rgba(240, 178, 115, 0.3) 0%, rgba(240, 178, 115, 0.09) 45%, rgba(240, 178, 115, 0) 75%),
+    repeating-linear-gradient(90deg, rgba(242, 238, 231, 0.13) 0 1px, rgba(242, 238, 231, 0) 1px 56px),
+    repeating-linear-gradient(180deg, rgba(242, 238, 231, 0.09) 0 1px, rgba(242, 238, 231, 0) 1px 28px),
+    linear-gradient(180deg, rgba(242, 238, 231, 0.035), rgba(242, 238, 231, 0));
+  background-position: 50% 0;
+  transform: perspective(260px) rotateX(50deg);
+  transform-origin: 50% 0;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.5) 45%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.5) 45%, transparent 100%);
+  pointer-events: none;
+}
+
+.wall[data-surface='daylight'] .wall__plinth {
+  background:
+    radial-gradient(ellipse 32% 80% at 50% 0%, rgba(255, 244, 226, 0.24) 0%, rgba(255, 244, 226, 0.07) 45%, rgba(255, 244, 226, 0) 75%),
+    repeating-linear-gradient(90deg, rgba(242, 238, 231, 0.13) 0 1px, rgba(242, 238, 231, 0) 1px 56px),
+    repeating-linear-gradient(180deg, rgba(242, 238, 231, 0.09) 0 1px, rgba(242, 238, 231, 0) 1px 28px),
+    linear-gradient(180deg, rgba(242, 238, 231, 0.035), rgba(242, 238, 231, 0));
+  background-position: 50% 0;
 }
 
 /* Attic slope cut-out */
@@ -2255,6 +2405,147 @@
 @media (prefers-reduced-motion: reduce) {
   .octave__bar {
     transition: none;
+  }
+}
+
+/* RT60 audition: a compact key beside the energy decay curve (dB, on the
+   spectrum's 2.5 s axis). A take sweeps a playhead across it in real time and
+   each sample lights as the sound reaches it; the hairline marks RT60. */
+.audition {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: 6px;
+}
+
+.audition__key {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding-inline: 9px 10px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 6px;
+  background: rgba(242, 238, 231, 0.03);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    translate var(--duration-fast) var(--ease-out);
+}
+
+.audition__key svg {
+  width: 9px;
+  height: 9px;
+}
+
+.audition__key:hover {
+  border-color: var(--border-strong);
+  background: rgba(242, 238, 231, 0.06);
+  color: var(--text-primary);
+}
+
+.audition__key:active {
+  translate: 0 1px;
+}
+
+.audition__key:focus-visible {
+  outline: 1px solid var(--lumen-amber-soft);
+  outline-offset: 2px;
+}
+
+.audition__key[data-playing] {
+  border-color: var(--lumen-amber);
+  color: var(--lumen-amber-soft);
+}
+
+.audition__wave {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: flex-end;
+  gap: 1px;
+  min-width: 72px;
+  max-width: 160px;
+  height: 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.audition__bar {
+  flex: 1 1 0;
+  height: calc(var(--level) * 100%);
+  min-height: 1px;
+  background: rgba(242, 238, 231, 0.24);
+}
+
+.audition__wave[data-state='playing'] .audition__bar {
+  animation: audition-sample var(--window-sec) linear both;
+  animation-delay: calc(var(--at) * var(--window-sec));
+}
+
+@keyframes audition-sample {
+  0% {
+    background-color: rgba(242, 238, 231, 0.24);
+  }
+
+  3% {
+    background-color: #ffe2b8;
+  }
+
+  100% {
+    background-color: rgba(240, 178, 115, 0.55);
+  }
+}
+
+.audition__mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--rt60-at) * 100%);
+  width: 1px;
+  background: rgba(240, 178, 115, 0.6);
+}
+
+/* Full-width carrier with the line on its left edge: translating it by 100%
+   crosses the curve on the compositor, with no layout per frame. */
+.audition__playhead {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #fff4e2 0 1px, transparent 1px);
+  pointer-events: none;
+  animation: audition-sweep var(--window-sec) linear both;
+}
+
+@keyframes audition-sweep {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.studio-layout[data-mode='architectural'] .audition__key {
+  font-size: 10.5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audition__wave[data-state='playing'] .audition__bar {
+    animation: none;
+    background: rgba(240, 178, 115, 0.55);
+  }
+
+  .audition__playhead {
+    display: none;
   }
 }
 

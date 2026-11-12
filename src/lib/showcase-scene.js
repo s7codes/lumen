@@ -12,7 +12,17 @@ const W = STAGE_ROOM.widthCm;
 const D = STAGE_ROOM.depthCm;
 const H = STAGE_ROOM.heightCm;
 
-export const ACT_SECONDS = 4.5;
+/*
+ * Choreography pace. The stage is an architectural turntable, not a spin
+ * test: a long act, a slow yaw, a shallow pitch swell and bus pulses that
+ * drift rather than race.
+ */
+export const ACT_SECONDS = 7;
+export const ACT_DURATION_MS = ACT_SECONDS * 1000;
+export const ORBIT_DEG_PER_S = 20;
+export const ORBIT_PITCH = Object.freeze({ min: 27, max: 35 });
+export const PULSE_SPEED_CM_S = 64;
+export const PULSE_SPACING_CM = 96;
 export const SNAP_CM = 5;
 export const EYE_HEIGHT_CM = 165;
 export const EYE_FOV_DEG = 78;
@@ -79,9 +89,13 @@ export function wrap360(deg) {
 
 export const NEAR_CM = 12;
 
+// The choreography is framed for a 3:2 stage; a taller stage keeps that
+// horizontal framing and gains headroom instead of zooming in.
+export const STAGE_ASPECT = 1.5;
+
 /**
  * A view for one frame: eye on an orbit round `target`, a right-handed basis
- * and a pinhole focal length in CSS px for the stage height.
+ * and a pinhole focal length in CSS px for the stage, fitted to 3:2.
  */
 export function createView(cam, width, height) {
   const yaw = cam.yaw * DEG;
@@ -100,7 +114,7 @@ export function createView(cam, width, height) {
     cy: height / 2,
     width,
     height,
-    focal: height / 2 / Math.tan((cam.fov * DEG) / 2),
+    focal: Math.min(height, width / STAGE_ASPECT) / 2 / Math.tan((cam.fov * DEG) / 2),
   };
 }
 
@@ -276,27 +290,34 @@ export function snapCm(value) {
  * east, Y lifts it, then both axes bring it home. Positions land on 5 cm
  * ticks; `axis` names the handle in use.
  */
+export const GIZMO_PHASES = Object.freeze({ lock: 0.1, x: 0.43, y: 0.73, home: 0.965 });
+
 export function gizmoPose(t) {
   const { home } = SHELF;
   const dx = 150;
   const dy = 45;
+  const at = (fraction) => fraction * ACT_SECONDS;
+  const lockEnd = at(GIZMO_PHASES.lock);
+  const xEnd = at(GIZMO_PHASES.x);
+  const yEnd = at(GIZMO_PHASES.y);
+  const homeEnd = at(GIZMO_PHASES.home);
   let x = home.x;
   let y = home.y;
   let axis = null;
-  let lock = clamp01(t / 0.45);
-  if (t >= 0.45 && t < 1.95) {
-    x = home.x + dx * easeInOut((t - 0.45) / 1.5);
+  let lock = clamp01(t / lockEnd);
+  if (t >= lockEnd && t < xEnd) {
+    x = home.x + dx * easeInOut((t - lockEnd) / (xEnd - lockEnd));
     axis = 'x';
-  } else if (t >= 1.95 && t < 3.3) {
+  } else if (t >= xEnd && t < yEnd) {
     x = home.x + dx;
-    y = home.y + dy * easeInOut((t - 1.95) / 1.35);
+    y = home.y + dy * easeInOut((t - xEnd) / (yEnd - xEnd));
     axis = 'y';
-  } else if (t >= 3.3) {
-    const k = easeInOut((t - 3.3) / 1.05);
+  } else if (t >= yEnd) {
+    const k = easeInOut((t - yEnd) / (homeEnd - yEnd));
     x = home.x + dx * (1 - k);
     y = home.y + dy * (1 - k);
     axis = 'xy';
-    lock = 1 - smoothstep(0.82, 1, (t - 3.3) / 1.2);
+    lock = 1 - smoothstep(0.82, 1, (t - yEnd) / (ACT_SECONDS - yEnd));
   }
   return { x: snapCm(x), y: snapCm(y), axis, lock };
 }
@@ -570,8 +591,6 @@ export function eyeHeading(t) {
 
 /* ---------- choreography ---------- */
 
-export const ORBIT_DEG_PER_S = 360 / ACT_SECONDS;
-
 /**
  * Camera target for an act at act time `t` (seconds, looping) and act age
  * `age` (seconds since the act took the stage). `spin` is the accumulated
@@ -597,7 +616,7 @@ export function actCamera(act, t, age, spin) {
     default:
       return {
         yaw: spin,
-        pitch: 40 - 18 * Math.cos((2 * Math.PI * t) / ACT_SECONDS),
+        pitch: orbitPitch(t),
         dist: 1220,
         tx: W / 2,
         ty: 70,
@@ -605,6 +624,13 @@ export function actCamera(act, t, age, spin) {
         fov: 40,
       };
   }
+}
+
+/** The orbit's pitch swell over one act: ORBIT_PITCH.min, up to max at mid-act, and back. */
+export function orbitPitch(t) {
+  const mid = (ORBIT_PITCH.min + ORBIT_PITCH.max) / 2;
+  const swing = (ORBIT_PITCH.max - ORBIT_PITCH.min) / 2;
+  return mid - swing * Math.cos((2 * Math.PI * t) / ACT_SECONDS);
 }
 
 /** Yaw rate each act feeds into the shared spin accumulator. */

@@ -8,9 +8,9 @@ import { CATEGORIES, PRODUCTS } from '../data/products.js';
 import { useAmbientLight } from '../hooks/useAmbientLight.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { useScrollReveal } from '../hooks/useScrollReveal.js';
-import { useSectionArrival } from '../hooks/useSectionLink.js';
+import { useSectionArrival, useSectionSpy } from '../hooks/useSectionLink.js';
 import { padIndex } from '../lib/format.js';
-import { SHOWCASE_3D_ID } from '../lib/routes.js';
+import { CORE_MODULES_ID, SHOWCASE_3D_ID, WORKSPACES_ID } from '../lib/routes.js';
 import '../styles/home.css';
 
 const FLAGSHIPS = PRODUCTS.flatMap((product, i) => (product.flagship ? [{ product, index: i + 1 }] : []));
@@ -21,10 +21,19 @@ const SPECS = [
   { value: 'FSC Walnut & Anodized Aluminum', detail: 'Oiled solid walnut / 6063-T5' },
 ];
 
+// Same order and indices as the navbar, which the overview scrolls through left to right.
 const ENTRIES = [
   {
-    to: '/catalog',
+    to: '/room-3d',
     index: '02',
+    section: '3D Room',
+    title: 'Room Planner',
+    body: 'Place fixtures in a dimensioned room and read light falloff before anything is drilled.',
+    Glyph: RoomGlyph,
+  },
+  {
+    to: '/catalog',
+    index: '03',
     section: 'Catalog',
     title: 'Catalog',
     body: 'Pendants, wall rails, shelving and drivers, specified by finish, output and mounting.',
@@ -32,19 +41,11 @@ const ENTRIES = [
   },
   {
     to: '/studio-2d',
-    index: '03',
+    index: '04',
     section: 'Wall Studio',
     title: 'Wall Studio',
     body: 'Compose shelves, lights and panels on a to-scale elevation, check clearances, send the parts list to the cart.',
     Glyph: WallGlyph,
-  },
-  {
-    to: '/room-3d',
-    index: '04',
-    section: '3D Room',
-    title: 'Room Planner',
-    body: 'Place fixtures in a dimensioned room and read light falloff before anything is drilled.',
-    Glyph: RoomGlyph,
   },
 ];
 
@@ -123,6 +124,10 @@ export default function HomePage() {
   useDocumentTitle(null);
   useSectionArrival(ARRIVAL_SECTIONS);
   const reveal = useScrollReveal();
+  const modulesRef = useRef(null);
+  const workspacesRef = useRef(null);
+  useSectionSpy(modulesRef, CORE_MODULES_ID);
+  useSectionSpy(workspacesRef, WORKSPACES_ID);
 
   return (
     <>
@@ -155,9 +160,17 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="modules container" aria-labelledby="modules-title" data-testid="core-modules">
+      <SpatialShowcase />
+
+      <section
+        ref={modulesRef}
+        id={CORE_MODULES_ID}
+        className="modules container"
+        aria-labelledby="modules-title"
+        data-testid="core-modules"
+      >
         <SectionHead
-          index="03"
+          index="04"
           section="Core Modules"
           titleId="modules-title"
           title="Three modules that anchor most walls."
@@ -181,15 +194,19 @@ export default function HomePage() {
         </div>
       </section>
 
-      <SpatialShowcase />
-
-      <section className="entries container" aria-labelledby="entries-title">
+      <section
+        ref={workspacesRef}
+        id={WORKSPACES_ID}
+        className="entries container"
+        aria-labelledby="entries-title"
+        data-testid="workspaces"
+      >
         <header ref={reveal} className="entries__head reveal-up">
           <p className="index-label">
             <span className="index-label__num">05</span> / Workspaces
           </p>
           <h2 id="entries-title" className="entries__title">
-            Start from a part, a room or a wall.
+            Start from a room, a part or a wall.
           </h2>
         </header>
 

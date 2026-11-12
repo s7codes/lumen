@@ -61,7 +61,7 @@ function NotFound({ id }) {
   return (
     <>
       <PageHeader
-        index="02"
+        index="03"
         section="Catalog"
         title="No part at this index."
         lede={`The catalog has no part with the id "${shown}". It may have been renamed or withdrawn.`}

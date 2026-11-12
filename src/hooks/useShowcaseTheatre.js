@@ -28,7 +28,7 @@ import { approach, frameDelta, stepSpring } from '../lib/spring.js';
 
 // Near-critical (c = 2 * sqrt(k)): act changes glide without overshoot, and
 // the closed-form step traces the same curve at 60, 120 and 240 Hz.
-const CAMERA_SPRING = { stiffness: 22, damping: 9.4 };
+const CAMERA_SPRING = { stiffness: 14, damping: 7.6 };
 const PARALLAX_SPRING = { stiffness: 90, damping: 19 };
 const PARALLAX_DEG = { yaw: 9, pitch: 6 };
 const PRESENCE_RATE = 5;
