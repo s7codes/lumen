@@ -266,14 +266,22 @@ test.describe('account dashboard', () => {
     await expect(profile.getByRole('heading', { level: 2 })).toHaveText(GUEST.name);
     await expect(page.getByTestId('account-user')).toContainText(GUEST.email);
 
-    // A faint oak-amber wash falls in from the top right, fixed behind the content.
-    const atmosphere = await page.getByTestId('account-page').evaluate((el) => {
-      const glow = getComputedStyle(el, '::before');
-      return { position: glow.position, image: glow.backgroundImage, events: glow.pointerEvents };
+    // The portal sits on the fixed page atmosphere: a tungsten wash from above, the oak glow
+    // from the top right and warm basalt depth; each tile is lit from its top edge.
+    const backdrop = page.getByTestId('ambient-backdrop');
+    await expect(backdrop).toHaveAttribute('data-atmosphere', 'account');
+    const atmosphere = await backdrop.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { position: style.position, image: style.backgroundImage, events: style.pointerEvents };
     });
     expect(atmosphere.position).toBe('fixed');
     expect(atmosphere.events).toBe('none');
-    expect(atmosphere.image).toBe('radial-gradient(circle at 100% 0%, rgba(232, 146, 58, 0.05), rgba(0, 0, 0, 0) 40%)');
+    // The production minifier writes 0% as 0, which Chromium reads back as 0px.
+    expect(atmosphere.image).toMatch(/radial-gradient\(circle at 100% 0(%|px), rgba\(232, 146, 58, 0\.05\)/);
+    expect(atmosphere.image).toContain('linear-gradient(rgb(13, 12, 11) 0%, rgb(20, 18, 16) 48%, rgb(11, 10, 9) 100%)');
+    for (const tile of tiles) {
+      expect(await tile.evaluate((el) => getComputedStyle(el).boxShadow)).toContain('inset');
+    }
 
     // Phone width: the action drops under the identity and nothing overflows.
     await page.setViewportSize({ width: 360, height: 800 });

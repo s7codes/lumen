@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import {
   CAMERA_PITCH,
@@ -53,6 +54,9 @@ import { collectRuntimeErrors, horizontalOverflow, installCspRecorder, readCspVi
 
 const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
 const PLANNER_CHUNK = /\/assets\/(RoomPlannerPage|WallStudioPage|RoomCanvas)-[\w-]+\.js$/;
+// The boot panel names the engine by the release's major.minor, as read from package.json.
+const RELEASE = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
+const ENGINE_LABEL = `LUMEN SPATIAL ENGINE v${RELEASE.split('.').slice(0, 2).join('.')}`;
 
 function viewport(page) {
   return page.getByTestId('room-viewport');
@@ -461,7 +465,7 @@ test.describe('navbar order and the overview 3D showcase', () => {
     expect(cover).toMatchObject({ parent: 'BODY', position: 'fixed', zIndex: '9999', x: 0, y: 0, coversNav: true });
     expect(cover.width).toBe(cover.innerWidth);
     expect(cover.height).toBe(cover.innerHeight);
-    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v6.1');
+    await expect(boot).toContainText(ENGINE_LABEL);
     // Layout sizes, not painted boxes: the panel itself is still pulling focus from 1.05.
     await expect(boot.locator('.studio-boot__mark')).toHaveCSS('width', '56px');
     await expect(boot.locator('.studio-boot__bar')).toHaveCSS('width', '240px');

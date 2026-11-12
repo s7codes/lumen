@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { createRoomState, mountInRoom, ROOM_STORAGE_KEY, sanitizeRoomState, serializeRoomState } from '../src/lib/room-3d.js';
 import {
@@ -27,6 +28,9 @@ import {
 import { collectRuntimeErrors, horizontalOverflow, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
 const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
+// The boot panel names the engine by the release's major.minor, as read from package.json.
+const RELEASE = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
+const ENGINE_LABEL = `LUMEN SPATIAL ENGINE v${RELEASE.split('.').slice(0, 2).join('.')}`;
 const ROOM = { widthCm: 320, depthCm: 280, heightCm: 250 };
 const EYE = [160, 165, 154];
 const SHELF = { xCm: 105, yCm: 146, productId: 'floating-shelf-110' };
@@ -643,7 +647,7 @@ test.describe('studio boot, zen viewport and skip link', () => {
 
     await replay.click();
     await expect(boot).toHaveAttribute('data-state', 'booting');
-    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v6.1');
+    await expect(boot).toContainText(ENGINE_LABEL);
     await expect(boot).toContainText('01 / WebGL2 Shader Pipeline');
     await expect(boot).toContainText('02 / 4-Wall Raycast & Gizmo Solver');
     await expect(boot).toContainText('03 / 24V Photometric Kernel');

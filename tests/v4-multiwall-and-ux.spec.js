@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { PROJECTS_STORAGE_KEY } from '../src/api/client.js';
-import { getProduct } from '../src/data/products.js';
+import { getProduct, PRODUCTS } from '../src/data/products.js';
 import { SESSION_STORAGE_KEY } from '../src/lib/auth.js';
 import { ACTIVE_NAMES_STORAGE_KEY } from '../src/lib/project-library.js';
 import { computeBusTopology } from '../src/lib/bus-topology.js';
@@ -23,6 +23,7 @@ import {
 import { buildScene, cameraFrame, cameraFromPosition, cameraPosition, LIGHTING_RIGS } from '../src/lib/room-scene.js';
 import { boxToRoom, wallToRoom } from '../src/lib/room-walls.js';
 import { decodeSceneParam, encodeSceneParam } from '../src/lib/scene-codec.js';
+import { layoutFromPreset } from '../src/lib/wall-studio.js';
 import {
   collectRuntimeErrors,
   horizontalOverflow,
@@ -562,6 +563,181 @@ test.describe('human-friendly UX and header polish', () => {
         expect(box.x + box.width, `${mode} ${width}px wall tab`).toBeLessThanOrEqual(width);
       }
     }
+    expect(await readCspViolations(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+});
+
+/* Product mini-icons and the page atmosphere */
+
+const GLYPH_SHAPES = ['shelf', 'cube', 'sideboard', 'lightbar', 'column', 'spot', 'frame', 'track', 'pendant', 'baffle', 'sconce', 'hub'];
+
+// Layout sizes, not painted boxes: the docks and inspectors settle in with a transform.
+function glyphFacts(glyphs) {
+  return glyphs.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const style = getComputedStyle(node);
+      return {
+        tag: node.tagName.toLowerCase(),
+        shape: node.dataset.shape,
+        finish: node.dataset.finish,
+        lit: node.dataset.lit,
+        size: [style.width, style.height],
+      };
+    }),
+  );
+}
+
+function computedLayers(locator, pseudo = null) {
+  return locator.evaluate((el, which) => {
+    const style = getComputedStyle(el, which);
+    return { image: style.backgroundImage, size: style.backgroundSize, position: style.position, events: style.pointerEvents };
+  }, pseudo);
+}
+
+const radials = (image) => (image.match(/radial-gradient/g) ?? []).length;
+
+test.describe('product mini-icons', () => {
+  test('both planners and Ctrl+K draw every part as its own architectural glyph, in its finish and light', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const state = updateRoomItem(fourWallRoom(), 'm1', { led: false });
+    await page.goto('/');
+    await seed(page, [[ROOM_KEY, JSON.stringify(serializeRoomState(state))]]);
+
+    // Components (2D) and Asset Shelf (3D): twelve 36 px drawings, one per shape, in the
+    // default finish, with a backlight only on the parts that give light.
+    for (const [path, list] of [
+      ['/studio-2d', '.studio-palette .palette-list'],
+      ['/room-3d', '[data-testid="room-palette"]'],
+    ]) {
+      await page.goto(path);
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      const glyphs = page.locator(list).getByTestId('product-thumb-glyph');
+      await expect(glyphs).toHaveCount(PRODUCTS.length);
+      const drawn = await glyphFacts(glyphs);
+      expect(drawn.map((glyph) => glyph.shape), path).toEqual(GLYPH_SHAPES);
+      for (const [i, product] of PRODUCTS.entries()) {
+        expect(drawn[i], `${path} ${product.id}`).toEqual({
+          tag: 'svg',
+          shape: product.shape,
+          finish: product.defaultFinish,
+          lit: String(product.watts > 0),
+          size: ['36px', '36px'],
+        });
+      }
+      // No two parts share a drawing (gradient ids aside).
+      const art = await glyphs.evaluateAll((nodes) => nodes.map((node) => node.querySelector('g[clip-path]').innerHTML.replace(/ptg-[\w-]+/g, '#')));
+      expect(new Set(art).size, path).toBe(PRODUCTS.length);
+      // The row still mounts by name and reads its size and power plainly.
+      await expect(page.getByRole('button', { name: 'Mount Linear Suspension Pendant 150', exact: true })).toBeVisible();
+    }
+
+    // The 3D outliner: each module at 28 px in its own finish; a channel switched off drops the light.
+    const outliner = page.getByTestId('room-module-list');
+    for (const item of state.items) {
+      const product = getProduct(item.productId);
+      const glyph = outliner.locator(`.module-list__item[data-uid="${item.uid}"]`).getByTestId('product-thumb-glyph');
+      await expect(glyph, item.uid).toHaveAttribute('data-shape', product.shape);
+      await expect(glyph, item.uid).toHaveAttribute('data-finish', item.finish);
+      await expect(glyph, item.uid).toHaveAttribute('data-size', 'sm');
+      await expect(glyph, item.uid).toHaveAttribute('data-lit', String(product.watts > 0 && item.led !== false));
+      expect((await glyphFacts(glyph)).map((facts) => facts.size), item.uid).toEqual([['28px', '28px']]);
+    }
+    await expect(outliner.locator('[data-uid="m1"] [data-testid="product-thumb-glyph"]')).toHaveAttribute('data-lit', 'false');
+    // A finish change repaints the drawing.
+    await outliner.locator('.module-list__item[data-uid="m3"]').click();
+    const inspector = page.getByTestId('room-inspector');
+    await inspector.getByRole('radio', { name: 'Walnut' }).check();
+    await inspector.getByRole('button', { name: 'Done' }).click();
+    await expect(outliner.locator('.module-list__item[data-uid="m3"]').getByTestId('product-thumb-glyph')).toHaveAttribute('data-finish', 'walnut');
+
+    // The 2D module list mirrors the preset, part for part and finish for finish.
+    await page.goto('/studio-2d');
+    await page.getByRole('button', { name: 'Load preset Nordic Reading Wall' }).click();
+    const preset = layoutFromPreset('nordic-reading-wall');
+    const listed = page.getByTestId('studio-inspector').getByTestId('product-thumb-glyph');
+    await expect(listed).toHaveCount(preset.items.length);
+    expect((await glyphFacts(listed)).map((glyph) => [glyph.shape, glyph.finish, glyph.size])).toEqual(
+      preset.items.map((item) => [getProduct(item.productId).shape, item.finish, ['28px', '28px']]),
+    );
+
+    // Ctrl+K lists each part with its drawing.
+    await page.goto('/catalog');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await page.keyboard.press('Control+k');
+    await page.getByTestId('command-palette-input').fill('pendant');
+    const option = page.getByTestId('command-palette-item').filter({ hasText: 'Linear Suspension Pendant 150' });
+    const paletteGlyph = option.getByTestId('product-thumb-glyph');
+    await expect(paletteGlyph).toHaveAttribute('data-shape', 'pendant');
+    // The palette scales in as it opens, so this too reads the layout size.
+    expect((await glyphFacts(paletteGlyph)).map((facts) => facts.size)).toEqual([['28px', '28px']]);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('command-palette')).toHaveCount(0);
+    expect(await readCspViolations(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe('page atmosphere', () => {
+  test('the overview, the 2D Wall Studio and the account sit on lit layers with zero overflow at 360 and 1440 px', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.goto('/');
+    await seed(page, [[SESSION_KEY, JSON.stringify(GUEST)]]);
+    for (const width of [360, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+
+      // Overview: the atmosphere starts at the hero's foot on its floor tone, carries four
+      // washes, drafting lines and a champagne hairline over each section.
+      await page.goto('/');
+      const flow = page.getByTestId('home-atmosphere');
+      // Layout offsets: the hero copy pulls into focus with a transform on load.
+      const seam = await flow.evaluate((el) => {
+        const hero = document.querySelector('[data-testid="ambient-surface"]');
+        return el.offsetTop - (hero.offsetTop + hero.offsetHeight);
+      });
+      expect(seam, `${width}px`).toBe(0);
+      const washes = await computedLayers(flow, '::before');
+      expect(washes.position).toBe('absolute');
+      expect(radials(washes.image), `${width}px washes`).toBe(4);
+      expect(washes.image).toContain('rgb(10, 10, 9) 0px');
+      const drafting = await computedLayers(flow, '::after');
+      expect(drafting.image).toContain('linear-gradient(90deg');
+      expect(drafting.size).toBe('120px 100%');
+      for (const section of ['.lab', '.showcase3d', '.modules', '.entries']) {
+        expect((await computedLayers(flow.locator(`:scope > ${section}`))).image, section).toContain('rgba(229, 199, 153, 0.16)');
+      }
+      await expect(page.getByTestId('ambient-backdrop')).toHaveAttribute('data-atmosphere', 'home');
+      expect(await horizontalOverflow(page), `/ ${width}px`).toBeLessThanOrEqual(0);
+
+      // 2D Wall Studio and Account: one fixed backdrop behind the whole page, not only the stage.
+      for (const [path, zone] of [
+        ['/studio-2d', 'studio-2d'],
+        ['/account', 'account'],
+      ]) {
+        await page.goto(path);
+        await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+        const backdrop = page.getByTestId('ambient-backdrop');
+        await expect(backdrop).toHaveAttribute('data-atmosphere', zone);
+        const layers = await computedLayers(backdrop);
+        expect(layers).toMatchObject({ position: 'fixed', events: 'none' });
+        expect(radials(layers.image), `${path} washes`).toBe(3);
+        expect(layers.image).toContain('radial-gradient(72% 54% at 50% -8%, rgba(232, 168, 92, 0.1)');
+        expect(layers.image).toContain('linear-gradient(rgb(13, 12, 11) 0%, rgb(20, 18, 16) 48%, rgb(11, 10, 9) 100%)');
+        const lattice = await computedLayers(backdrop, '::after');
+        expect(lattice.size).toBe('96px 96px, 96px 96px');
+        expect(await backdrop.boundingBox(), `${path} ${width}px`).toEqual({ x: 0, y: 0, width, height: 900 });
+        // The page header and the planner surround read through it: nothing paints a flat black slab.
+        const header = page.locator('.page-header');
+        expect(await header.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+        expect(await horizontalOverflow(page), `${path} ${width}px`).toBeLessThanOrEqual(0);
+      }
+    }
+    // Account tiles: a warm backlight from the top edge and a champagne hairline inside the border.
+    const profile = page.getByTestId('account-profile');
+    const tile = await profile.evaluate((el) => ({ image: getComputedStyle(el).backgroundImage, shadow: getComputedStyle(el).boxShadow }));
+    expect(radials(tile.image)).toBe(2);
+    expect(tile.shadow).toContain('inset');
     expect(await readCspViolations(page)).toEqual([]);
     expect(errors).toEqual([]);
   });

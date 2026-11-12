@@ -224,6 +224,35 @@ test.describe('concierge engine and live workspace RAG', () => {
     expect(digest).toContain(`2D wall ${WALL.wall.widthCm} x ${WALL.wall.heightCm} cm: ${summary.modules} modules`);
   });
 
+  test('every starter answer is one lead sentence and two to four labelled bullets, within 65 words', () => {
+    const words = (text) => text.split(/\s+/).filter((token) => /[A-Za-z0-9]/.test(token)).length;
+    for (const route of ['/', '/room-3d', '/studio-2d', '/catalog', '/checkout', '/account', '/catalog/linear-pendant-150']) {
+      for (const question of quickPromptsFor(route)) {
+        const label = `${route} ${question}`;
+        const reply = evaluateConciergeQuery(question, context(route));
+        const [body, ...notes] = reply.answer.split('\n\n');
+        const [lead, ...bullets] = body.split('\n');
+        expect(lead, label).toMatch(/^[A-Z0-9].*[.:]$/);
+        expect(bullets.length, label).toBeGreaterThanOrEqual(2);
+        expect(bullets.length, label).toBeLessThanOrEqual(4);
+        for (const line of bullets) expect(line, label).toMatch(/^- \S/);
+        expect(notes, label).toEqual([]);
+        expect(words(reply.answer), label).toBeLessThanOrEqual(65);
+        expect(reply.metrics.length, label).toBeLessThanOrEqual(4);
+      }
+    }
+    // Bullets open with a short label the panel sets in bold.
+    const audit = evaluateConciergeQuery('Audit my live 3D room & RT60', context('/room-3d'));
+    expect(audit.answer.split('\n').slice(1).map((line) => line.slice(2).split(': ')[0])).toEqual(['Power', 'Acoustics', 'Light', 'Layout']);
+    // One figure asked, one figure answered: a bare "check" stays on the voltage drop.
+    const drop = evaluateConciergeQuery('Check my wall voltage drop', context('/studio-2d'));
+    expect(drop.answer.split('\n').slice(1).map((line) => line.slice(2).split(': ')[0])).toEqual(['Load', 'Bus']);
+    // An escalation keeps its lead and bullet, then closes on the unchanged notice.
+    const [head, notice] = evaluateConciergeQuery(BESPOKE).answer.split('\n\n');
+    expect(head).toMatch(/^Outside automated scope: bespoke fabrication, .+\.\n- Automated scope: /);
+    expect(notice).toBe(ESCALATION_NOTICE);
+  });
+
   test('routes bespoke, structural, onsite, freight, invoicing and off-topic inquiries to studio engineering', () => {
     const bespoke = evaluateConciergeQuery(BESPOKE);
     expect(bespoke).toMatchObject({ category: 'engineering', resolved: false });
@@ -956,16 +985,20 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     expect(gateLook).toEqual({ position: 'absolute', overflow: 'hidden', width: 1, height: 1 });
     await expect(panel.locator('.concierge-gate__glyph, .concierge-gate svg')).toHaveCount(0);
 
-    // A graphite question bubble and a quiet dark-glass answer card, never a yellow block.
+    // A warm charcoal-bronze question bubble on the right; the answer sits straight on the
+    // glass beside a 22 px avatar, never in a yellow block.
     const reply = await ask(page, 'What is Visual vs Specs mode?');
     const question = page.getByTestId('concierge-question').last();
-    await expect(question).toHaveCSS('background-color', 'rgb(35, 33, 30)');
+    await expect(question).toHaveCSS('background-color', 'rgb(42, 38, 33)');
     await expect(question).toHaveCSS('color', 'rgb(244, 241, 234)');
-    await expect(question).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.1)');
-    await expect(question).toHaveCSS('border-bottom-right-radius', '2px');
-    // 0.025 alpha is stored in 8 bits (6 / 255), which Chromium serialises as 0.024.
-    await expect(reply).toHaveCSS('background-color', 'rgba(255, 255, 255, 0.024)');
-    await expect(reply).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.07)');
+    await expect(question).toHaveCSS('border-top-color', 'rgba(229, 199, 153, 0.22)');
+    await expect(question).toHaveCSS('border-top-left-radius', '18px');
+    await expect(question).toHaveCSS('border-bottom-right-radius', '4px');
+    await expect(reply).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    const avatar = reply.getByTestId('concierge-avatar');
+    await expect(avatar.getByTestId('lumen-mark')).toBeVisible();
+    await expect(avatar).toHaveCSS('width', '22px');
+    await expect(avatar).toHaveCSS('height', '22px');
     const body = reply.locator('.concierge-msg__body');
     await expect(body).toHaveCSS('font-size', '13.5px');
     await expect(body).toHaveCSS('line-height', '21.6px');
@@ -992,6 +1025,105 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     await trigger.click();
     await expect(reply).toHaveAttribute('data-revealed', 'true');
     await expect(body).toHaveCSS('mask-image', 'none');
+    expect(errors).toEqual([]);
+    expect(await readCspViolations(page)).toEqual([]);
+  });
+
+  test('chat UX: a welcome hero, starter cards that fold into a chip bar, a structured reply and New chat', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(([key, room]) => localStorage.setItem(key, JSON.stringify(room)), [`lumen:${ROOM_STORAGE_KEY}`, serializeRoomState(ROOM)]);
+    await page.goto('/room-3d');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    const panel = await openConcierge(page);
+    const starters = quickPromptsFor('/room-3d');
+
+    // Welcome: the mark, one question, one line and the four starters as cards with arrows.
+    await expect(panel).toHaveAttribute('data-thread', 'welcome');
+    const welcome = panel.getByTestId('concierge-welcome');
+    await expect(welcome.getByRole('heading', { level: 3 })).toHaveText('How can I help with your space?');
+    await expect(welcome).toContainText('Ask about any part, 24V wiring, or audit your live 3D room.');
+    await expect(welcome.getByTestId('lumen-mark')).toBeVisible();
+    const prompts = panel.getByTestId('concierge-quick-prompts');
+    await expect(prompts).toHaveAttribute('data-layout', 'cards');
+    await expect(prompts.getByTestId('concierge-quick-prompt')).toHaveText(starters);
+    await expect(prompts.locator('.concierge-prompt__arrow')).toHaveCount(4);
+    await expect(panel.getByTestId('concierge-reset')).toHaveCount(0);
+
+    // An audit answers as a lead sentence, four labelled bullets and at most four pills.
+    await prompts.getByTestId('concierge-quick-prompt').filter({ hasText: 'Audit my live 3D room & RT60' }).click();
+    const reply = page.getByTestId('concierge-reply').first();
+    await expect(reply).toHaveAttribute('data-category', 'workspace');
+    await expect(panel).toHaveAttribute('data-state', 'idle');
+    await expect(reply.getByTestId('concierge-avatar')).toHaveCSS('width', '22px');
+    await expect(reply.locator('.concierge-msg__lead')).toHaveText('Your 3D room carries 5 modules: North 2 / East 1 / South 1 / West 1.');
+    await expect(reply.locator('.concierge-msg__list li .concierge-msg__label')).toHaveText(['Power', 'Acoustics', 'Light', 'Layout']);
+    await expect(reply.locator('.concierge-msg__label').first()).toHaveCSS('font-weight', '600');
+    await expect(reply.getByTestId('concierge-metrics').locator('.concierge-metric')).toHaveCount(4);
+    const words = await reply.locator('.concierge-msg__body').evaluate((el) => el.innerText.split(/\s+/).filter((token) => /[A-Za-z0-9]/.test(token)).length);
+    expect(words).toBeLessThanOrEqual(65);
+
+    // Active thread: the starters fold into one chip row docked on the composer, and the
+    // thread keeps at least 80% of the full-height panel.
+    await expect(panel).toHaveAttribute('data-thread', 'active');
+    await expect(panel.getByTestId('concierge-welcome')).toHaveCount(0);
+    await expect(prompts).toHaveAttribute('data-layout', 'chips');
+    await expect(prompts.getByTestId('concierge-quick-prompt')).toHaveText(starters);
+    const geometry = await panel.evaluate((el) => {
+      const box = (node) => node.getBoundingClientRect();
+      const chips = box(el.querySelector('[data-testid="concierge-quick-prompts"]'));
+      const composer = box(el.querySelector('.concierge-composer'));
+      return {
+        chipsHeight: chips.height,
+        dock: Math.round(composer.top - chips.bottom),
+        rows: new Set([...el.querySelectorAll('[data-testid="concierge-quick-prompt"]')].map((chip) => Math.round(box(chip).top))).size,
+        share: box(el.querySelector('.concierge-panel__body')).height / box(el).height,
+      };
+    });
+    expect(geometry.chipsHeight).toBeLessThanOrEqual(34);
+    expect(geometry).toMatchObject({ dock: 0, rows: 1 });
+    expect(geometry.share).toBeGreaterThanOrEqual(0.8);
+
+    // The question: a warm bubble on the right. The composer: one pill with a round send key.
+    const bubble = await page.getByTestId('concierge-question').first().evaluate((el) => {
+      const body = el.closest('.concierge-panel__body');
+      const style = getComputedStyle(body);
+      const left = body.getBoundingClientRect().left + body.clientLeft + Number.parseFloat(style.paddingLeft);
+      const right = body.getBoundingClientRect().left + body.clientLeft + body.clientWidth - Number.parseFloat(style.paddingRight);
+      const box = el.getBoundingClientRect();
+      return { gap: Math.abs(right - box.right), share: box.width / (right - left) };
+    });
+    expect(bubble.gap).toBeLessThanOrEqual(1);
+    expect(bubble.share).toBeLessThanOrEqual(0.821);
+    // The composer keeps focus after every send; its resting edge shows once it lets go.
+    const field = panel.locator('.concierge-composer__field');
+    const input = page.getByTestId('concierge-input');
+    await expect(field).toHaveCSS('background-color', 'rgb(24, 23, 21)');
+    await expect(field).toHaveCSS('border-top-color', 'rgba(229, 199, 153, 0.5)');
+    await input.blur();
+    await expect(field).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.14)');
+    expect(Number.parseFloat(await field.evaluate((el) => getComputedStyle(el).borderTopLeftRadius))).toBeGreaterThanOrEqual(20);
+    await input.focus();
+    await expect(field).toHaveCSS('border-top-color', 'rgba(229, 199, 153, 0.5)');
+    const send = page.getByTestId('concierge-send');
+    await expect(send).toHaveAccessibleName('Ask');
+    await expect(send).toHaveCSS('width', '32px');
+    await expect(send).toHaveCSS('border-top-left-radius', '999px');
+
+    // A chip asks straight from the bar; New chat clears the thread back to the welcome.
+    await prompts.getByTestId('concierge-quick-prompt').filter({ hasText: 'How do I walk inside at 165 cm?' }).click();
+    await expect(page.getByTestId('concierge-reply')).toHaveCount(2);
+    await expect(panel).toHaveAttribute('data-state', 'idle');
+    const reset = panel.getByTestId('concierge-reset');
+    await expect(reset).toHaveAccessibleName('New chat');
+    await reset.click();
+    await expect(panel).toHaveAttribute('data-thread', 'welcome');
+    await expect(page.getByTestId('concierge-reply')).toHaveCount(0);
+    await expect(page.getByTestId('concierge-question')).toHaveCount(0);
+    await expect(panel.getByTestId('concierge-quick-prompts')).toHaveAttribute('data-layout', 'cards');
+    await expect(panel.getByTestId('concierge-reset')).toHaveCount(0);
+    await expect(page.getByTestId('concierge-input')).toBeFocused();
+    await expect(panel).toHaveAttribute('data-escalation', 'locked');
     expect(errors).toEqual([]);
     expect(await readCspViolations(page)).toEqual([]);
   });
