@@ -6,6 +6,7 @@ import { getFurniture, ROOM_WALLS, roomWall, WALL_LABELS, wallOf, wallSpanCm } f
 import { AXIS_LOCK_LABELS, AXIS_LOCKS } from '../../lib/room-raycast.js';
 import { clampToWall } from '../../lib/wall-studio.js';
 import '../../styles/product.css';
+import { ProductThumbGlyph } from '../ProductThumbGlyph.jsx';
 import { DimmingSlider, FinishPicker, NumberField, PanelSection, Switch } from '../studio/controls.jsx';
 
 function conflictText(conflict, items, room) {
@@ -76,10 +77,12 @@ function ModuleList({ items, activeWall, conflicts, onSelect, onFocus }) {
                             data-conflict={conflicts.has(item.uid) || undefined}
                             onClick={() => onSelect(item.uid)}
                           >
-                            <span
-                              className="module-list__swatch"
-                              style={{ '--swatch': finish.hex, '--swatch-hi': finish.highlight, '--swatch-lo': finish.shade }}
-                              aria-hidden="true"
+                            <ProductThumbGlyph
+                              product={product}
+                              finish={item.finish}
+                              lit={item.led !== false}
+                              size="sm"
+                              className="module-list__glyph"
                             />
                             <span className="module-list__name">{product.name}</span>
                             <span className="module-list__meta">

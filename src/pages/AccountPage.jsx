@@ -408,7 +408,7 @@ export default function AccountPage() {
   ];
 
   return (
-    <div className="page-atmosphere" data-testid="account-page">
+    <div className="account-page" data-testid="account-page">
       <PageHeader
         index="06"
         section="Account"

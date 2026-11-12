@@ -16,7 +16,7 @@ import { DIM_RANGE } from './dimming.js';
 import { DRIVERS } from './drivers.js';
 import { BUS_RATED_W, BUS_VOLTAGE, LOOP_OHM_PER_M, maxRunM } from './electrical.js';
 import { launchHref } from './launch-presets.js';
-import { ACCENT_SHAPES, LIGHTING_SCENES, TASK_SHAPES } from './lighting-scenes.js';
+import { LIGHTING_SCENES } from './lighting-scenes.js';
 import {
   CRATE_TYPES,
   FREIGHT_CLASSES,
@@ -86,8 +86,7 @@ export const FOLLOW_UP_NOTICE =
   'I have unlocked the Studio Engineering Contact channel below so a Lumen studio engineer can review your exact case with your live workspace specs attached.';
 const GATE_NOTE =
   'If this does not settle it, choose "Did not resolve my issue" and I will unlock direct studio engineering contact.';
-const SCOPE_LINE =
-  'I resolve the 12-part catalog, 24V SELV driver sizing and voltage drop, DALI-2 dimming and scenes, Sabine acoustics and illuminance, the 2D Wall Studio and 3D Spatial Studio, CAD exports, pricing, VAT, fulfilment and Lumen Cloud, and I read your live 2D wall, 3D room and cart.';
+const SCOPE_LINE = 'Automated scope: parts, 24V sizing, DALI-2, acoustics, light, both planners, exports, pricing and delivery';
 
 export const CONCIERGE_CATEGORIES = Object.freeze({
   catalog: 'Catalog & Part Specs',
@@ -719,8 +718,39 @@ function scoreConfidence(score) {
 
 /* Reply sections */
 
-function section(paragraphs, { metrics = [], citations = [], actions = [] } = {}) {
-  return { paragraphs: paragraphs.filter(Boolean), metrics, citations, actions };
+// Every answer reads as one lead sentence, then two to four short bullets in
+// "Label: value" form (the panel sets the label in bold), then any notice.
+const MAX_BULLETS = 4;
+const FOLLOW_UP_BULLETS = 5;
+const REPLY_METRICS = 4;
+
+/**
+ * One block of an answer. `lead` opens the reply, `bullets` follow it and
+ * `tail` paragraphs close it. `brief` is the bullet this block contributes
+ * when it rides along under another topic's lead.
+ */
+function section({ lead = '', bullets = [], tail = [], brief = null } = {}, { metrics = [], citations = [], actions = [] } = {}) {
+  return {
+    lead,
+    bullets: bullets.filter(Boolean),
+    tail: tail.filter(Boolean),
+    brief: brief ? brief.filter(Boolean) : null,
+    metrics,
+    citations,
+    actions,
+  };
+}
+
+/** One lead and its bullets from several knowledge units: the first unit leads, the rest add their brief. */
+function mergeUnits(units, max = MAX_BULLETS) {
+  const [first, ...rest] = units;
+  const riders = rest.flatMap((unit) => unit.brief);
+  const room = Math.max(1, max - riders.length);
+  return { lead: first.lead, bullets: [...first.bullets.slice(0, room), ...riders].slice(0, max), brief: first.brief };
+}
+
+function withoutStop(text) {
+  return text.replace(/\.$/, '');
 }
 
 const CITE = Object.freeze({
@@ -783,80 +813,133 @@ export function noiseReductionCoefficient(product) {
   return Math.round((bands.reduce((sum, a) => sum + a, 0) / bands.length) * 20) / 20;
 }
 
-function stockLine(product) {
-  return `${STOCK_LABELS[product.stock]}, ships in ${weeksLabel(product.leadWeeks)}`;
-}
-
 function finishList(product) {
   return product.finishes.map((id) => FINISHES.find((finish) => finish.id === id).label);
 }
 
-function facetLine(product, facet, currency) {
+function finishLabel(id) {
+  return FINISHES.find((finish) => finish.id === id).label;
+}
+
+/** The catalog summary's first sentence, as a lower-case clause after the part name. */
+function productLead(product) {
+  const end = product.summary.indexOf('. ');
+  const sentence = end === -1 ? product.summary : product.summary.slice(0, end + 1);
+  return `${product.name} (${product.sku}): ${sentence.charAt(0).toLowerCase()}${sentence.slice(1)}`;
+}
+
+function feltLine(product) {
   const nrc = noiseReductionCoefficient(product);
-  switch (facet) {
-    case 'dimensions':
-      return `Dimensions: ${dimsLabel(product)} (w x h x d).`;
-    case 'weight':
-      return `Mass: ${product.weightKg} kg per unit.`;
-    case 'power':
-      return product.watts > 0
-        ? `24V load: ${product.watts} W per unit (${(product.watts / BUS_VOLTAGE).toFixed(2)} A at ${BUS_VOLTAGE} V).`
-        : `Passive part: no 24V load of its own${product.mount === 'recessed' ? '; it carries the bus to the parts downstream' : ''}.`;
-    case 'lumens':
-    case 'efficacy':
-      return product.lumens > 0
-        ? `Output: ${int(product.lumens)} lm at ${product.watts} W (${Math.round(product.lumens / product.watts)} lm/W).`
-        : 'No light output: this part is unlit.';
-    case 'kelvin':
-      return product.kelvin ? `Colour temperature: ${product.kelvin}K.` : 'Unlit part: no colour temperature.';
-    case 'cri':
-      return product.cri ? `Colour rendering: CRI ${product.cri}.` : 'Unlit part: no CRI rating.';
-    case 'nrc':
-      return nrc !== null
-        ? `Acoustic: ${FELT_CORE_MM[product.shape]} mm PET felt core, NRC ${nrc.toFixed(2)}.`
-        : 'No acoustic absorber in this part; the Acoustic Art Frame 50x70 (NRC 0.70) and Acoustic Wall Baffle 120 (NRC 0.85) carry the felt.';
+  return nrc === null ? null : `${FELT_CORE_MM[product.shape]} mm PET felt, NRC ${nrc.toFixed(2)}`;
+}
+
+function lightFacts(product, efficacy = false) {
+  const rate = efficacy ? ` (${Math.round(product.lumens / product.watts)} lm/W)` : '';
+  return `${product.watts} W, ${int(product.lumens)} lm${rate}, ${product.kelvin}K, CRI ${product.cri}`;
+}
+
+// Datasheet groups in reading order; a question about one facet narrows the sheet to it.
+const SHEET_GROUPS = Object.freeze([
+  ['size', ['dimensions', 'weight']],
+  ['light', ['power', 'lumens', 'efficacy', 'kelvin', 'cri', 'nrc']],
+  ['mounting', ['mounting']],
+  ['finishes', ['finishes', 'finishName']],
+  ['order', ['price', 'lead']],
+]);
+const FULL_SHEET = Object.freeze(['size', 'light', 'mounting', 'order']);
+const SHEET_COMPANION = Object.freeze({ size: 'mounting', light: 'size', mounting: 'size', finishes: 'order', order: 'size' });
+
+function sheetGroups(facets) {
+  const asked = SHEET_GROUPS.filter(([, ids]) => ids.some((id) => facets.includes(id))).map(([group]) => group);
+  if (facets.includes('spec') || asked.length === 0) return FULL_SHEET;
+  if (asked.length === 1) asked.push(SHEET_COMPANION[asked[0]]);
+  return asked;
+}
+
+function sheetBullet(product, group, facets, currency) {
+  switch (group) {
+    case 'size':
+      return `Size: ${dimsLabel(product)}, ${product.weightKg} kg`;
+    case 'light': {
+      const felt = feltLine(product);
+      if (product.lumens > 0) {
+        const light = lightFacts(product, facets.includes('efficacy'));
+        return felt ? `Light & acoustics: ${light}; ${felt}` : `Light: ${light}`;
+      }
+      if (felt) return `Acoustics: passive, ${felt}`;
+      return `Power: passive, no 24V load${product.mount === 'recessed' ? ', carries the bus downstream' : ''}`;
+    }
     case 'mounting':
-      return `Mounting: ${plural(product.mountingPoints, 'anchor point')} per unit, ${MOUNT_LABELS[product.mount]}. The Wall Studio Blueprint dimensions every anchor in its 1:20 drilling schedule.`;
+      return `Mounting: ${plural(product.mountingPoints, 'anchor point')}, ${MOUNT_LABELS[product.mount]}`;
     case 'finishes':
-    case 'finishName':
-      return `Finishes: ${finishList(product).join(', ')} (default ${FINISHES.find((f) => f.id === product.defaultFinish).label}).`;
-    case 'lead':
-      return `Availability: ${stockLine(product)}.`;
-    case 'price':
-      return `List price: ${priceLabel(product.priceUsd, currency)} per unit, before VAT.`;
+      return `Finishes: ${finishList(product).join(', ')} (default ${finishLabel(product.defaultFinish)})`;
+    case 'order':
+      return `Order: ${priceLabel(product.priceUsd, currency)}, ${STOCK_LABELS[product.stock].toLowerCase()}, ships in ${weeksLabel(product.leadWeeks)}`;
     default:
       return null;
   }
 }
 
-const SHEET_FACETS = Object.freeze(['dimensions', 'weight', 'power', 'lumens', 'kelvin', 'cri', 'nrc', 'mounting', 'finishes', 'lead', 'price']);
+const FACET_METRICS = Object.freeze({
+  dimensions: 'Size',
+  weight: 'Mass',
+  power: 'Load',
+  lumens: 'Output',
+  efficacy: 'Output',
+  kelvin: 'CCT',
+  cri: 'CRI',
+  nrc: 'NRC',
+  mounting: 'Anchors',
+  lead: 'Lead',
+  price: 'Price',
+});
+const DEFAULT_PRODUCT_METRICS = Object.freeze(['Size', 'Load', 'Output', 'NRC', 'Price', 'Anchors', 'Lead', 'Mass', 'CCT', 'CRI']);
 
-function productMetrics(product, currency) {
+/** The four figures that matter most for the question, the ones it names first. */
+function productMetrics(product, currency, facets = []) {
   const nrc = noiseReductionCoefficient(product);
-  const metrics = [
-    { label: 'Size', value: dimsLabel(product) },
-    { label: 'Mass', value: `${product.weightKg} kg` },
-    { label: 'Load', value: product.watts > 0 ? `${product.watts} W` : 'Passive' },
-  ];
-  if (product.lumens > 0) {
-    metrics.push({ label: 'Output', value: `${int(product.lumens)} lm` });
-    metrics.push({ label: 'CCT', value: `${product.kelvin}K` });
-    metrics.push({ label: 'CRI', value: String(product.cri) });
-  }
-  if (nrc !== null) metrics.push({ label: 'NRC', value: nrc.toFixed(2) });
-  metrics.push({ label: 'Anchors', value: String(product.mountingPoints) });
-  metrics.push({ label: 'Lead', value: weeksLabel(product.leadWeeks) });
-  metrics.push({ label: 'Price', value: priceLabel(product.priceUsd, currency) });
-  return metrics.slice(0, MAX_METRICS);
+  const values = new Map([
+    ['Size', dimsLabel(product)],
+    ['Mass', `${product.weightKg} kg`],
+    ['Load', product.watts > 0 ? `${product.watts} W` : 'Passive'],
+    ['Output', product.lumens > 0 ? `${int(product.lumens)} lm` : null],
+    ['CCT', product.kelvin ? `${product.kelvin}K` : null],
+    ['CRI', product.cri ? String(product.cri) : null],
+    ['NRC', nrc !== null ? nrc.toFixed(2) : null],
+    ['Anchors', String(product.mountingPoints)],
+    ['Lead', weeksLabel(product.leadWeeks)],
+    ['Price', priceLabel(product.priceUsd, currency)],
+  ]);
+  const order = [...facets.map((facet) => FACET_METRICS[facet]).filter(Boolean), ...DEFAULT_PRODUCT_METRICS];
+  return [...new Set(order)]
+    .filter((label) => values.get(label))
+    .slice(0, REPLY_METRICS)
+    .map((label) => ({ label, value: values.get(label) }));
 }
 
 function productSheet(product, facets, currency) {
-  const category = CATEGORIES.find((entry) => entry.id === product.category).label;
-  // "Specs" asks for the whole sheet; a named facet alone narrows it.
-  const wanted = facets.includes('spec') || facets.length === 0 ? SHEET_FACETS : facets;
-  const lines = wanted.map((facet) => facetLine(product, facet, currency)).filter(Boolean);
-  const unique = [...new Set(lines)];
-  return [`${product.name} (${product.sku}, ${category}). ${product.summary}`, unique.map((line) => `- ${line}`).join('\n')];
+  const bullets = sheetGroups(facets).map((group) => sheetBullet(product, group, facets, currency));
+  const brief = `${product.name}: ${dimsLabel(product)}, ${product.watts > 0 ? `${product.watts} W` : 'passive'}, ${priceLabel(product.priceUsd, currency)}`;
+  return { lead: productLead(product), bullets, brief: [brief] };
+}
+
+/** Short facts for one part in a side-by-side comparison, narrowed to the facets asked. */
+function compareFacts(product, facets, currency) {
+  const asked = facets.filter((facet) => facet !== 'spec');
+  const parts = [];
+  const want = (...ids) => asked.length === 0 || ids.some((id) => asked.includes(id));
+  if (want('dimensions')) parts.push(dimsLabel(product));
+  if (asked.includes('weight')) parts.push(`${product.weightKg} kg`);
+  if (want('power')) parts.push(product.watts > 0 ? `${product.watts} W` : 'passive');
+  if (want('lumens', 'efficacy') && product.lumens > 0) parts.push(`${int(product.lumens)} lm`);
+  if (asked.includes('kelvin') && product.kelvin) parts.push(`${product.kelvin}K`);
+  if (asked.includes('cri') && product.cri) parts.push(`CRI ${product.cri}`);
+  if (asked.includes('nrc') && feltLine(product)) parts.push(`NRC ${noiseReductionCoefficient(product).toFixed(2)}`);
+  if (want('mounting')) parts.push(plural(product.mountingPoints, 'anchor'));
+  if (asked.some((facet) => facet === 'finishes' || facet === 'finishName')) parts.push(finishList(product).join(' / '));
+  if (asked.includes('lead')) parts.push(weeksLabel(product.leadWeeks));
+  if (want('price')) parts.push(priceLabel(product.priceUsd, currency));
+  return parts.join(', ');
 }
 
 function catalogSuperlative(kind, currency) {
@@ -872,64 +955,127 @@ function catalogSuperlative(kind, currency) {
   }[kind]();
   const facts = {
     brightest: `${int(pick.lumens)} lm at ${pick.watts} W`,
-    efficient: `${Math.round(pick.lumens / pick.watts)} lm/W (${int(pick.lumens)} lm at ${pick.watts} W)`,
+    efficient: `${Math.round(pick.lumens / pick.watts)} lm/W`,
     lightest: `${pick.weightKg} kg`,
     heaviest: `${pick.weightKg} kg`,
     cheapest: `${priceLabel(pick.priceUsd, currency)} list`,
     priciest: `${priceLabel(pick.priceUsd, currency)} list`,
-    longest: `${pick.dimsCm.w} cm wide (${dimsLabel(pick)})`,
+    longest: `${pick.dimsCm.w} cm wide`,
   }[kind];
-  return { product: pick, line: `${pick.name} (${pick.sku}) leads the 12-part range here: ${facts}.` };
+  return { product: pick, lead: `The ${pick.name} (${pick.sku}) leads the 12-part range: ${facts}.` };
 }
 
+/** One bullet per catalog family, each part formatted by `format`. */
+function byCategory(format, keep = () => true) {
+  return CATEGORIES.map((category) => {
+    const parts = PRODUCTS.filter((product) => product.category === category.id && keep(product));
+    return parts.length > 0 ? `${category.label}: ${parts.map(format).join(', ')}` : null;
+  }).filter(Boolean);
+}
+
+function extremes(list, value) {
+  const sorted = [...list].sort((a, b) => value(a) - value(b));
+  return [sorted[0], sorted.at(-1)];
+}
+
+/** Range-wide answers for one facet, when no single part is named. */
 function catalogFacetOverview(facets, norm, currency) {
-  const paragraphs = [];
   const lit = PRODUCTS.filter((product) => product.lumens > 0);
-  for (const facet of facets) {
-    if (paragraphs.length >= 2) break;
-    if (facet === 'finishes' || facet === 'finishName') {
+  const unlit = PRODUCTS.filter((product) => product.lumens === 0);
+  const facet = facets.find((id) => id !== 'spec' && id !== 'efficacy') ?? (facets.includes('efficacy') ? 'efficacy' : null);
+  switch (facet) {
+    case 'finishes':
+    case 'finishName': {
       const named = FINISHES.filter((finish) => new RegExp(`\\b${finish.id}\\b`).test(norm));
+      if (named.length === 1) {
+        const [finish] = named;
+        const parts = PRODUCTS.filter((product) => product.finishes.includes(finish.id));
+        const defaults = PRODUCTS.filter((product) => product.defaultFinish === finish.id).map((product) => product.name);
+        return {
+          lead: `${finish.label} is ${finish.name}, ${finish.surface.charAt(0).toLowerCase()}${finish.surface.slice(1)}.`,
+          bullets: [
+            parts.length === PRODUCTS.length ? 'Ships in: every part of the range' : `Ships in: ${plural(parts.length, 'part')}, ${parts.map((p) => p.name).join(', ')}`,
+            defaults.length > 0 ? `Default on: ${defaults.join(', ')}` : null,
+            `Light reflectance: LRV ${finish.lrv.toFixed(2)}`,
+          ],
+        };
+      }
       const shown = named.length > 0 ? named : FINISHES;
-      paragraphs.push(
-        shown
-          .map((finish) => {
-            const parts = PRODUCTS.filter((product) => product.finishes.includes(finish.id));
-            const all = parts.length === PRODUCTS.length;
-            return `- ${finish.label}: ${finish.name}, ${finish.surface}. ${all ? 'Every part ships in it.' : `${parts.length} parts: ${parts.map((p) => p.name).join(', ')}.`}`;
-          })
-          .join('\n'),
-      );
       const metalOnly = PRODUCTS.filter((product) => product.finishes.length === 2).map((product) => product.name);
-      if (named.length === 0) paragraphs.push(`Metal-only parts ship in Obsidian and Chalk: ${listLabel(metalOnly)}.`);
-    } else if (facet === 'kelvin') {
-      const odd = lit.filter((product) => product.kelvin !== 2700);
-      paragraphs.push(`Every lit part runs at 2700K except ${listLabel(odd.map((p) => `the ${p.name} at ${p.kelvin}K`))}.`);
-    } else if (facet === 'cri') {
-      const odd = lit.filter((product) => product.cri !== 97);
-      paragraphs.push(`Lit parts render at CRI 97, except ${listLabel(odd.map((p) => `the ${p.name} at CRI ${p.cri}`))}.`);
-    } else if (facet === 'nrc') {
-      const felt = PRODUCTS.filter((product) => noiseReductionCoefficient(product) !== null);
-      paragraphs.push(
-        `Acoustic parts: ${listLabel(felt.map((p) => `${p.name} (${FELT_CORE_MM[p.shape]} mm PET felt, NRC ${noiseReductionCoefficient(p).toFixed(2)})`))}. Every other part is a hard surface and barely changes RT60.`,
-      );
-    } else if (facet === 'lead') {
-      const made = PRODUCTS.filter((product) => product.stock === 'made-to-order');
-      paragraphs.push(
-        `Made to order: ${made.map((p) => `${p.name} ${weeksLabel(p.leadWeeks)}`).join(', ')}. Every other part is in stock and ships in 1-2 weeks.`,
-      );
-    } else if (facet === 'weight') {
-      paragraphs.push(PRODUCTS.map((p) => `- ${p.name}: ${p.weightKg} kg`).join('\n'));
-    } else if (facet === 'dimensions') {
-      paragraphs.push(PRODUCTS.map((p) => `- ${p.name}: ${dimsLabel(p)}`).join('\n'));
-    } else if (facet === 'power' || facet === 'lumens' || facet === 'efficacy') {
-      paragraphs.push(lit.map((p) => `- ${p.name}: ${p.watts} W, ${int(p.lumens)} lm, ${Math.round(p.lumens / p.watts)} lm/W`).join('\n'));
-    } else if (facet === 'price') {
-      paragraphs.push(PRODUCTS.map((p) => `- ${p.name}: ${priceLabel(p.priceUsd, currency)}`).join('\n'));
-    } else if (facet === 'mounting') {
-      paragraphs.push(PRODUCTS.map((p) => `- ${p.name}: ${plural(p.mountingPoints, 'anchor')}, ${MOUNT_LABELS[p.mount]}`).join('\n'));
+      return {
+        lead: named.length > 0 ? `${listLabel(shown.map((finish) => finish.label))} side by side:` : `Four production finishes; ${listLabel(metalOnly)} ship in Obsidian and Chalk only.`,
+        bullets: shown.map((finish) => `${finish.label}: ${finish.name}, ${finish.surface.charAt(0).toLowerCase()}${finish.surface.slice(1)}`),
+      };
     }
+    case 'kelvin': {
+      const odd = lit.filter((product) => product.kelvin !== 2700);
+      return {
+        lead: `Every lit part runs at 2700K except ${listLabel(odd.map((p) => `the ${p.name} at ${p.kelvin}K`))}.`,
+        bullets: [`Rendering: CRI ${Math.min(...lit.map((p) => p.cri))} to ${Math.max(...lit.map((p) => p.cri))} across the range`, `Unlit: ${listLabel(unlit.map((p) => p.name))}`],
+      };
+    }
+    case 'cri': {
+      const odd = lit.filter((product) => product.cri !== 97);
+      return {
+        lead: `Lit parts render at CRI 97, except ${listLabel(odd.map((p) => `the ${p.name} at CRI ${p.cri}`))}.`,
+        bullets: ['Colour temperature: 2700K, the Linear Lightbar 60 at 3000K', `Unlit: ${listLabel(unlit.map((p) => p.name))}`],
+      };
+    }
+    case 'nrc': {
+      const felt = PRODUCTS.filter((product) => feltLine(product));
+      return {
+        lead: `${plural(felt.length, 'part')} carry PET felt absorption; every other part is a hard surface that barely moves RT60.`,
+        bullets: felt.map((p) => `${p.name}: ${feltLine(p)}`),
+      };
+    }
+    case 'lead': {
+      const made = PRODUCTS.filter((product) => product.stock === 'made-to-order');
+      const windows = [...new Set(made.map((p) => weeksLabel(p.leadWeeks)))];
+      return {
+        lead: `${plural(made.length, 'part')} are made to order; every other part is in stock and ships in 1-2 weeks.`,
+        bullets: windows.map((window) => `${window}: ${made.filter((p) => weeksLabel(p.leadWeeks) === window).map((p) => p.name).join(', ')}`),
+      };
+    }
+    case 'weight': {
+      const [light, heavy] = extremes(PRODUCTS, (p) => p.weightKg);
+      return {
+        lead: `Masses run from ${light.weightKg} kg (${light.name}) to ${heavy.weightKg} kg (${heavy.name}).`,
+        bullets: byCategory((p) => `${p.name} ${p.weightKg} kg`),
+      };
+    }
+    case 'dimensions': {
+      const [small, large] = extremes(PRODUCTS, (p) => p.dimsCm.w * p.dimsCm.h);
+      return {
+        lead: `Sizes run from the ${dimsLabel(small)} ${small.name} to the ${dimsLabel(large)} ${large.name}.`,
+        bullets: byCategory((p) => `${p.name} ${dimsLabel(p)}`),
+      };
+    }
+    case 'power':
+    case 'lumens':
+    case 'efficacy': {
+      const [low, high] = extremes(lit, (p) => p.watts);
+      return {
+        lead: `${plural(lit.length, 'lit part')} draw ${low.watts} to ${high.watts} W on the 24V bus.`,
+        bullets: byCategory((p) => `${p.name} ${p.watts} W / ${int(p.lumens)} lm`, (p) => p.lumens > 0),
+      };
+    }
+    case 'price': {
+      const [low, high] = extremes(PRODUCTS, (p) => p.priceUsd);
+      return {
+        lead: `List prices before VAT run from ${priceLabel(low.priceUsd, currency)} to ${priceLabel(high.priceUsd, currency)}.`,
+        bullets: byCategory((p) => `${p.name} ${priceLabel(p.priceUsd, currency)}`),
+      };
+    }
+    case 'mounting': {
+      const [few, many] = extremes(PRODUCTS, (p) => p.mountingPoints);
+      return {
+        lead: `Every part fixes with ${few.mountingPoints} to ${many.mountingPoints} anchor points, dimensioned in the 1:20 drilling schedule.`,
+        bullets: byCategory((p) => `${p.name} ${p.mountingPoints}`),
+      };
+    }
+    default:
+      return null;
   }
-  return [...new Set(paragraphs)];
 }
 
 function composeCatalog(analysis, ctx) {
@@ -939,136 +1085,170 @@ function composeCatalog(analysis, ctx) {
   const products = analysis.products.length > 0 ? analysis.products : fromRoute && facets.length > 0 ? [fromRoute] : [];
 
   if (products.length >= 2) {
-    const paragraphs = products.map((product) => {
-      const wanted = facets.filter((facet) => facet !== 'spec');
-      const lines = (wanted.length > 0 ? wanted : ['dimensions', 'power', 'lumens', 'mounting', 'price'])
-        .map((facet) => facetLine(product, facet, currency))
-        .filter(Boolean);
-      return `${product.name} (${product.sku}): ${[...new Set(lines)].join(' ')}`;
-    });
-    return section(paragraphs, {
-      metrics: products.map((product) => ({ label: product.sku, value: priceLabel(product.priceUsd, currency) })),
-      citations: products.map(productCite),
-      actions: products.map(productAction),
-    });
+    return section(
+      {
+        lead: `${listLabel(products.map((product) => product.name))} side by side, list prices before VAT:`,
+        bullets: products.map((product) => `${product.name} (${product.sku}): ${compareFacts(product, facets, currency)}`),
+        brief: products.slice(0, 2).map((product) => `${product.name} (${product.sku}): ${compareFacts(product, facets, currency)}`),
+      },
+      {
+        metrics: products.map((product) => ({ label: product.sku, value: priceLabel(product.priceUsd, currency) })),
+        citations: products.map(productCite),
+        actions: products.map(productAction),
+      },
+    );
   }
   if (products.length === 1) {
     const [product] = products;
     return section(productSheet(product, facets, currency), {
-      metrics: productMetrics(product, currency),
+      metrics: productMetrics(product, currency, facets),
       citations: [productCite(product)],
       actions: [productAction(product), product.mount === 'ceiling' || product.mount === 'floor' ? ACTIONS.room : ACTIONS.wall],
     });
   }
   if (analysis.superlative) {
-    const { product, line } = catalogSuperlative(analysis.superlative, currency);
-    return section([line, product.summary], {
-      metrics: productMetrics(product, currency).slice(0, 4),
-      citations: [productCite(product), CITE.catalog],
-      actions: [productAction(product), ACTIONS.catalog],
-    });
+    const { product, lead } = catalogSuperlative(analysis.superlative, currency);
+    return section(
+      { lead, bullets: ['size', 'light', 'order'].map((group) => sheetBullet(product, group, facets, currency)) },
+      {
+        metrics: productMetrics(product, currency, facets),
+        citations: [productCite(product), CITE.catalog],
+        actions: [productAction(product), ACTIONS.catalog],
+      },
+    );
   }
   const overview = catalogFacetOverview(facets, analysis.norm, currency);
-  if (overview.length > 0) return section(overview, { citations: [CITE.catalog], actions: [ACTIONS.catalog] });
+  if (overview) return section(overview, { citations: [CITE.catalog], actions: [ACTIONS.catalog] });
 
   const category = CATEGORIES.find((entry) => new RegExp(`\\b${entry.id}\\b|\\b${entry.label.toLowerCase()}\\b`).test(analysis.norm));
-  const groups = (category ? [category] : CATEGORIES).map((entry) => {
-    const parts = PRODUCTS.filter((product) => product.category === entry.id);
-    return `- ${entry.label}: ${parts.map((p) => `${p.name} ${priceLabel(p.priceUsd, currency)}`).join(', ')}`;
-  });
+  const parts = (entry) => PRODUCTS.filter((product) => product.category === entry.id);
   return section(
-    [
-      category
-        ? `${category.label} in the Lumen range, list prices before VAT:`
-        : 'The Lumen range is 12 canonical parts, every one wired for the 24V DC bus or passive. List prices before VAT:',
-      groups.join('\n'),
-    ],
-    { metrics: [{ label: 'Parts', value: String(PRODUCTS.length) }, { label: 'Finishes', value: String(FINISHES.length) }], citations: [CITE.catalog], actions: [ACTIONS.catalog] },
+    category
+      ? {
+          lead: `${category.label} in the Lumen range, list prices before VAT:`,
+          bullets: parts(category).map((p) => `${p.name}: ${dimsLabel(p)}, ${priceLabel(p.priceUsd, currency)}`),
+        }
+      : {
+          lead: `The Lumen range is ${PRODUCTS.length} canonical parts on one 24V DC bus.`,
+          bullets: CATEGORIES.map((entry) => `${entry.label}: ${parts(entry).map((p) => p.name).join(', ')}`),
+        },
+    {
+      metrics: [
+        { label: 'Parts', value: String(PRODUCTS.length) },
+        { label: 'Finishes', value: String(FINISHES.length) },
+      ],
+      citations: [CITE.catalog],
+      actions: [ACTIONS.catalog],
+    },
   );
 }
 
 /* Electrical knowledge */
 
-function driverParagraphs(currency) {
+function headroomW(ratedW) {
+  return Math.round(ratedW * (1 - DRIVER_HEADROOM_PCT / 100));
+}
+
+function driverUnit(currency) {
   const d60 = DRIVERS['driver-60'];
   const d150 = DRIVERS['driver-150'];
-  const keep = (w) => Math.round(w * (1 - DRIVER_HEADROOM_PCT / 100));
-  return [
-    `${d60.name} (${d60.sku}): ${priceLabel(d60.priceUsd, currency)}, carries up to 60 W of connected load (2.50 A at ${BUS_VOLTAGE} V), ${d60.weightKg} kg boxed. ${d150.name} (${d150.sku}): ${priceLabel(d150.priceUsd, currency)}, up to 150 W (6.25 A), ${d150.weightKg} kg boxed.`,
-    `Sizing follows the rated connected load, since any channel can be raised to 100%: up to 60 W runs on one 60W driver, up to 150 W on one 150W driver, and above 150 W the load splits across a multi-bus array of 150W drivers, one per 24V run. Headroom rule: keep the continuous draw at or below ${100 - DRIVER_HEADROOM_PCT}% of the rating (${keep(60)} W on the 60W, ${keep(150)} W on the 150W), a ${DRIVER_HEADROOM_PCT}% margin for inrush and ageing; past that line, step up to the 150W driver or split the bus.`,
-  ];
+  const headroom = `${headroomW(60)} W on the 60W, ${headroomW(150)} W on the 150W`;
+  return {
+    lead: `Size the driver to the rated load with ${DRIVER_HEADROOM_PCT}% headroom; above 150 W, split the bus.`,
+    bullets: [
+      `${d60.name} (${d60.sku}): ${priceLabel(d60.priceUsd, currency)}, up to 60 W`,
+      `${d150.name} (${d150.sku}): ${priceLabel(d150.priceUsd, currency)}, up to 150 W`,
+      `Headroom: ${headroom}`,
+    ],
+    brief: [`Drivers: ${headroom} with ${DRIVER_HEADROOM_PCT}% headroom`],
+  };
 }
 
-function dropParagraph() {
+function dropUnit() {
+  const limit = `under ${DROP_LIMIT_PCT}% (${((DROP_LIMIT_PCT / 100) * BUS_VOLTAGE).toFixed(2)} V) over a ${CONDUCTOR_LABEL} copper loop`;
   const runs = [60, 100, 150].map((w) => `${w} W ${maxRunM(w).toFixed(1)} m`).join(', ');
-  return `The ${BUS_VOLTAGE}V bus is a Class 2 SELV circuit rated ${BUS_RATED_W} W per run. Voltage drop is held under ${DROP_LIMIT_PCT}% (${((DROP_LIMIT_PCT / 100) * BUS_VOLTAGE).toFixed(2)} V) over a ${CONDUCTOR_LABEL} copper loop at ${LOOP_OHM_PER_M.toFixed(4)} ohm per metre of run. Longest end-fed run inside the limit: ${runs}.`;
+  return {
+    lead: `The ${BUS_VOLTAGE}V bus holds voltage drop ${limit}.`,
+    bullets: [
+      `Circuit: Class 2 SELV, rated ${BUS_RATED_W} W per run`,
+      `Loop: ${LOOP_OHM_PER_M.toFixed(4)} ohm per metre of run, both conductors`,
+      `Longest end-fed run: ${runs}`,
+    ],
+    brief: [`Voltage drop: ${limit}`],
+  };
 }
 
-function daliParagraph() {
-  return `DALI-2 gives every powered module its own arc level from ${DIM_RANGE.min}% to ${DIM_RANGE.max}% in ${DIM_RANGE.step}% steps. Flux and active bus draw scale linearly with the level; driver sizing keeps the rated load. The Recessed 24V DALI-2 Bus Hub carries the DALI-2 pair on the same terminal block as the 24V feed.`;
+function dimRange() {
+  return `${DIM_RANGE.min}% to ${DIM_RANGE.max}% in ${DIM_RANGE.step}% steps`;
 }
 
-const SHAPE_PLURALS = Object.freeze({
-  shelf: 'shelves',
-  lightbar: 'lightbars',
-  pendant: 'pendants',
-  spot: 'spots',
-  cube: 'cubes',
-  frame: 'art frames',
-  sconce: 'sconces',
-  column: 'columns',
-  sideboard: 'sideboards',
-});
-
-function scenesParagraph() {
-  const scenes = LIGHTING_SCENES.map(
-    (scene) => `${scene.label}: task ${scene.task}% / accent ${scene.accent}%${scene.surface ? `, ${scene.surface} surface` : ''}`,
-  ).join('; ');
-  const shapes = (list) => listLabel(list.map((shape) => SHAPE_PLURALS[shape] ?? shape));
-  return `The four circadian scenes are ${scenes}. Task channels are the ${shapes(TASK_SHAPES)}; accent channels are the ${shapes(ACCENT_SHAPES)}. Passive parts are never touched.`;
+function daliUnit() {
+  return {
+    lead: `DALI-2 gives every powered module its own arc level from ${dimRange()}.`,
+    bullets: [
+      'Flux and draw: both scale linearly with the level; driver sizing keeps the rated load',
+      'Wiring: the DALI-2 pair shares the 24V terminal block on the Recessed 24V DALI-2 Bus Hub',
+    ],
+    brief: [`DALI-2: every module dims from ${dimRange()}`],
+  };
 }
 
-function busParagraph() {
-  return 'Routing is a Manhattan daisy-chain from the feed: the first mounted track bus or DALI-2 hub, otherwise the utility datum 20 cm from the left corner and 30 cm above the floor. Each hop carries the current of every node downstream, so the worst-case drop is the sum of hop drops at the last node.';
+function scenesUnit() {
+  return {
+    lead: `Four DALI-2 scenes set every task and accent channel at once, each from ${dimRange()}.`,
+    bullets: LIGHTING_SCENES.map(
+      (scene) => `${scene.label}: task ${scene.task}% / accent ${scene.accent}%${scene.surface ? `, ${scene.surface} surface` : ''}`,
+    ),
+    brief: [`Scenes: ${listLabel(LIGHTING_SCENES.map((scene) => scene.short))} set task and accent channels at once`],
+  };
+}
+
+function busUnit() {
+  return {
+    lead: 'Routing is a Manhattan daisy-chain from the feed: the first track bus or DALI-2 hub mounted.',
+    bullets: [
+      'No feed part: the utility datum, 20 cm from the left corner and 30 cm above the floor',
+      'Drop: each hop carries every node downstream, so the worst case sums at the last node',
+    ],
+    brief: ['Routing: a Manhattan daisy-chain from the first track bus or DALI-2 hub'],
+  };
 }
 
 function composeElectrical(analysis, ctx) {
   const currency = getCurrency(ctx.currency);
   const subs = new Set(analysis.subtopics.electrical);
-  const paragraphs = [];
+  const units = [];
   const citations = [];
   if (subs.has('drivers') || subs.has('driverSizes') || subs.has('load')) {
-    paragraphs.push(...driverParagraphs(currency));
+    units.push(driverUnit(currency));
     citations.push(CITE.drivers);
   }
   if (subs.has('drop') || subs.has('wiring') || subs.has('selv')) {
-    paragraphs.push(dropParagraph());
+    units.push(dropUnit());
     citations.push(CITE.bus);
   }
-  if (subs.has('dali')) {
-    paragraphs.push(daliParagraph());
-    citations.push(CITE.dimming);
-  }
+  // A scene answer already states the dimming range, so DALI-2 joins only on its own.
   if (subs.has('scenes')) {
-    paragraphs.push(scenesParagraph());
+    units.push(scenesUnit());
+    citations.push(CITE.dimming);
+  } else if (subs.has('dali')) {
+    units.push(daliUnit());
     citations.push(CITE.dimming);
   }
-  if (subs.has('bus') && paragraphs.length < 3) {
-    paragraphs.push(busParagraph());
+  if (subs.has('bus') && units.length < 3) {
+    units.push(busUnit());
     citations.push(CITE.bus);
   }
-  if (paragraphs.length === 0) {
-    paragraphs.push(dropParagraph(), driverParagraphs(currency)[1]);
+  if (units.length === 0) {
+    units.push(dropUnit(), driverUnit(currency));
     citations.push(CITE.bus, CITE.drivers);
   }
-  return section(paragraphs.slice(0, 4), {
+  return section(mergeUnits(units), {
     metrics: [
       { label: 'Bus', value: `${BUS_VOLTAGE} V SELV` },
       { label: '60W Driver', value: priceLabel(DRIVERS['driver-60'].priceUsd, currency) },
       { label: '150W Driver', value: priceLabel(DRIVERS['driver-150'].priceUsd, currency) },
       { label: 'Drop Limit', value: `<${DROP_LIMIT_PCT}%` },
-      { label: 'Conductor', value: CONDUCTOR_LABEL },
-      { label: 'Dimming', value: `${DIM_RANGE.min}-${DIM_RANGE.max}%` },
     ],
     citations,
     actions: [ACTIONS.wall, ACTIONS.room],
@@ -1077,40 +1257,56 @@ function composeElectrical(analysis, ctx) {
 
 /* Acoustics and photometry */
 
-function acousticsParagraph() {
+function acousticsUnit() {
   const grades = STI_GRADES.map((grade, i) => {
     const next = STI_GRADES[i + 1];
     return next ? `${grade.label} ${grade.min.toFixed(2)}-${next.min.toFixed(2)}` : `${grade.label} from ${grade.min.toFixed(2)}`;
   }).join(', ');
-  return `Reverberation follows Sabine, RT60 = 0.161 V / (A + 4mV), in six octave bands from 125 Hz to 4 kHz; the headline figure is the 500 Hz band. The Acoustic Art Frame 50x70 (NRC 0.70) and Acoustic Wall Baffle 120 (NRC 0.85) add felt absorption in place of the wall they cover. Speech intelligibility is the reverberation-only STI: ${grades}.`;
+  const felt = PRODUCTS.filter((product) => feltLine(product)).map((p) => `${p.name} (NRC ${noiseReductionCoefficient(p).toFixed(2)})`);
+  return {
+    lead: 'Reverberation follows Sabine, RT60 = 0.161 V / (A + 4mV), in six octaves from 125 Hz to 4 kHz.',
+    bullets: [`Absorbers: ${listLabel(felt)}`, `Speech: STI ${grades}`, 'Headline figure: the 500 Hz band'],
+    brief: ['Acoustics: Sabine RT60 in six octaves; felt frames and baffles add absorption'],
+  };
 }
 
-function illuminanceParagraph() {
-  return `Illuminance follows the lumen method: each lit module sends a share of its flux, scaled by its DALI-2 level, straight to the floor, and all flux inter-reflects as an integrating sphere with a 0.8 maintenance factor. The task target is ${TASK_TARGET_LUX} lx (EN 12464-1); grades are Ambient Lounge under 100 lx, Residential Balanced 100-250 lx and Studio Task above 250 lx. The Floor Lux Grid draws point-by-point iso-lux contours.`;
+function illuminanceUnit() {
+  return {
+    lead: `Illuminance follows the lumen method against a ${TASK_TARGET_LUX} lx task target (EN 12464-1).`,
+    bullets: [
+      'Flux: each lit module sends a share to the floor, scaled by its DALI-2 level, with a 0.8 maintenance factor',
+      'Grades: Ambient Lounge under 100 lx, Residential Balanced 100-250 lx, Studio Task above 250 lx',
+      'Floor Lux Grid: point-by-point iso-lux contours in both planners',
+    ],
+    brief: [`Light: lumen method against a ${TASK_TARGET_LUX} lx task target`],
+  };
 }
 
 function composePhysics(analysis, ctx) {
   const subs = new Set(analysis.subtopics.physics);
-  const paragraphs = [];
+  const lighting = subs.has('illuminance') || subs.has('brightness');
+  const units = [];
   const citations = [];
-  if (subs.has('acoustics') || !(subs.has('illuminance') || subs.has('brightness'))) {
-    paragraphs.push(acousticsParagraph());
+  if (subs.has('acoustics') || !lighting) {
+    units.push(acousticsUnit());
     citations.push(CITE.physics);
   }
-  if (subs.has('illuminance') || subs.has('brightness')) {
-    paragraphs.push(illuminanceParagraph());
+  if (lighting) {
+    units.push(illuminanceUnit());
     citations.push(CITE.lux);
   }
   const live = liveFigures(ctx);
   const subject = live.room ?? live.wall;
   if (subject) {
     const { physics } = subject;
-    paragraphs.push(
-      `Live check on your ${subject.label}: RT60 ${physics.rt60Sec.toFixed(2)} s at 500 Hz, STI ${physics.stiScore.toFixed(2)} (${physics.stiGrade}), average floor ${int(physics.avgFloorLux)} lx (${physics.lightingGrade}).`,
-    );
+    units.push({
+      brief: [
+        `Your ${subject.label}: RT60 ${physics.rt60Sec.toFixed(2)} s at 500 Hz, STI ${physics.stiScore.toFixed(2)} (${physics.stiGrade}), ${int(physics.avgFloorLux)} lx`,
+      ],
+    });
     citations.push(subject.cite);
   }
-  return section(paragraphs, {
+  return section(mergeUnits(units), {
     metrics: subject
       ? [
           { label: 'RT60', value: `${subject.physics.rt60Sec.toFixed(2)} s` },
@@ -1128,53 +1324,95 @@ function composePhysics(analysis, ctx) {
 
 /* Spatial studio */
 
+const LENS_SHORT = Object.freeze({ orbit: 'Orbit', inside: `Inside ${EYE_HEIGHT_CM} cm`, elevation: 'Elevation' });
+const LENS_LIST = `${LENS_SHORT.orbit}, ${LENS_SHORT.inside} and ${LENS_SHORT.elevation}`;
+const MAX_ROOM_LABEL = `${ROOM_WIDTH.max} x ${ROOM_DEPTH.max} x ${ROOM_HEIGHT.max} cm`;
+
 function composeSpatial(analysis) {
   const subs = new Set(analysis.subtopics.spatial);
-  const paragraphs = [];
+  const units = [];
   const actions = [];
   const citations = [CITE.spatial];
   if (subs.has('lenses') || subs.has('planner')) {
-    paragraphs.push(
-      `Open the 3D Spatial Studio and pick a lens in its header: ${CAMERA_MODE_LABELS.orbit} (drag for a full 360-degree orbit, pitch ${CAMERA_PITCH.min} to ${CAMERA_PITCH.max} deg, wheel zoom ${CAMERA_ZOOM.min}x to ${CAMERA_ZOOM.max}x), ${CAMERA_MODE_LABELS.inside} (eye height ${EYE_HEIGHT_CM} cm; walk with W A S D or the arrow keys, and the mouse wheel sets the field of view from ${INSIDE_FOV.min} to ${INSIDE_FOV.max} deg, default ${INSIDE_FOV_DEG} deg) and ${CAMERA_MODE_LABELS.elevation} (square-on view of the active wall). The North / East / South / West switcher picks the active wall.`,
-    );
+    units.push({
+      lead: 'Pick a lens in the 3D Spatial Studio header; the North / East / South / West switcher sets the active wall.',
+      bullets: [
+        `${CAMERA_MODE_LABELS.orbit}: drag a full 360 degrees, pitch ${CAMERA_PITCH.min} to ${CAMERA_PITCH.max} deg, wheel zoom ${CAMERA_ZOOM.min}x to ${CAMERA_ZOOM.max}x`,
+        `${CAMERA_MODE_LABELS.inside}: walk with W A S D, the wheel sets ${INSIDE_FOV.min} to ${INSIDE_FOV.max} deg (default ${INSIDE_FOV_DEG})`,
+        `${CAMERA_MODE_LABELS.elevation}: the active wall, square-on`,
+      ],
+      brief: [`Lenses: ${LENS_LIST}`],
+    });
     actions.push(ACTIONS.inside, ACTIONS.room);
   }
   if (subs.has('gizmo')) {
-    paragraphs.push(
-      `Select a module and drag it in the 3D view: the pointer ray is intersected with the wall plane, so the part slides in true wall centimetres and one release commits one undoable step. The inspector axis lock sets ${Object.values(AXIS_LOCK_LABELS).join(', ')}; press G to grab with the keyboard, the arrow keys to nudge, Enter to commit and Escape to cancel.`,
-    );
+    units.push({
+      lead: 'Select a module and drag it in the 3D view: the pointer ray is solved against the wall plane, in true wall centimetres.',
+      bullets: [
+        'Commit: each release is one undoable step',
+        `Axis lock: ${Object.values(AXIS_LOCK_LABELS).join(', ')}`,
+        'Keys: G grabs, arrows nudge, Enter commits, Escape cancels',
+      ],
+      brief: ['Dragging: parts slide across the wall plane in true wall centimetres'],
+    });
     actions.push(ACTIONS.room);
   }
   if (subs.has('exports')) {
-    paragraphs.push(
-      'Wall Studio > Blueprint opens the 1:20 ISO 5457 / 7200 A3 sheet with its drilling schedule, downloadable as .SVG or AutoCAD R12 .DXF. The 3D Room Planner exports Wavefront .OBJ in cm units, and Capture .PNG renders a 1600 x 1000 studio card with the room specification.',
-    );
+    units.push({
+      lead: 'Both planners export production files.',
+      bullets: [
+        'Blueprint: Wall Studio > Blueprint, the 1:20 ISO 5457 / 7200 A3 sheet as .SVG or AutoCAD R12 .DXF',
+        '3D model: Wavefront .OBJ in cm units from the 3D Room Planner',
+        'Render: Capture .PNG, a 1600 x 1000 studio card with the room specification',
+      ],
+      brief: ['Exports: 1:20 .SVG / .DXF blueprint, .OBJ model and .PNG render card'],
+    });
     citations.push(CITE.cad);
     actions.push(ACTIONS.wall, ACTIONS.room);
   }
   if (subs.has('compare')) {
-    paragraphs.push(
-      `Compare Changes in either planner diffs the live draft against its last saved cloud revision: modules, 24V load, driver, RT60 and illuminance side by side. On Account, Compare Projects diffs any two saved projects. Undo and redo keep ${HISTORY_LIMIT} steps.`,
-    );
+    units.push({
+      lead: 'Compare Changes diffs the live draft against its last saved cloud revision.',
+      bullets: [
+        'Side by side: modules, 24V load, driver, RT60 and illuminance',
+        'Account: Compare Projects diffs any two saved projects',
+        `History: undo and redo keep ${HISTORY_LIMIT} steps`,
+      ],
+      brief: [`Compare Changes: the draft against its last cloud revision; undo keeps ${HISTORY_LIMIT} steps`],
+    });
   }
   if (subs.has('share')) {
-    paragraphs.push(
-      'Share Link copies a ?scene= URL: the wall or room is encoded as Base64URL in the link and rebuilt through the same sanitizers when it opens, so nothing is stored on a server.',
-    );
+    units.push({
+      lead: 'Share Link copies a ?scene= URL that carries the whole wall or room.',
+      bullets: ['Encoding: Base64URL in the link, rebuilt through the same sanitizers when it opens', 'Storage: nothing is stored on a server'],
+      brief: ['Share Link: a ?scene= URL with the layout encoded in it'],
+    });
   }
-  if (subs.has('wallStudio') && paragraphs.length < 3) {
-    paragraphs.push(
-      `The 2D Wall Studio composes one elevation up to ${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm with up to ${MAX_WALL_ITEMS} modules: marquee and shift-click selection, align and distribute, smart guides to the ${EYE_DATUM_CM} cm eye datum, ${GRID_STEP_CM} cm grid snap and live 24V bus routing.`,
-    );
+  if (subs.has('wallStudio') && units.length < 3) {
+    units.push({
+      lead: `The 2D Wall Studio composes one elevation up to ${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm with up to ${MAX_WALL_ITEMS} modules.`,
+      bullets: [
+        'Selection: marquee and Shift + Click, then align and distribute',
+        `Guides: smart guides to the ${EYE_DATUM_CM} cm eye datum on a ${GRID_STEP_CM} cm grid`,
+        'Bus: live 24V routing in Specs mode',
+      ],
+      brief: [`2D Wall Studio: one elevation up to ${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm`],
+    });
     actions.push(ACTIONS.wall);
   }
-  if (paragraphs.length === 0) {
-    paragraphs.push(
-      `The 3D Spatial Studio plans all four walls of a room up to ${ROOM_WIDTH.max} x ${ROOM_DEPTH.max} x ${ROOM_HEIGHT.max} cm, with ${CAMERA_MODE_LABELS.orbit}, ${CAMERA_MODE_LABELS.inside} and ${CAMERA_MODE_LABELS.elevation} lenses, direct wall-plane dragging, conflict checks against furniture, .OBJ and .PNG export. The 2D Wall Studio adds the 1:20 .SVG / .DXF blueprint.`,
-    );
+  if (units.length === 0) {
+    units.push({
+      lead: `The 3D Spatial Studio plans all four walls of a room up to ${MAX_ROOM_LABEL}.`,
+      bullets: [
+        `Lenses: ${LENS_LIST}`,
+        'Editing: direct wall-plane dragging with conflict checks against furniture',
+        'Exports: .OBJ and .PNG; the 2D Wall Studio adds the 1:20 .SVG / .DXF blueprint',
+      ],
+      brief: [`3D Spatial Studio: all four walls up to ${MAX_ROOM_LABEL}`],
+    });
     actions.push(ACTIONS.room, ACTIONS.wall);
   }
-  return section(paragraphs.slice(0, 3), {
+  return section(mergeUnits(units), {
     metrics: [
       { label: 'Eye Height', value: `${EYE_HEIGHT_CM} cm` },
       { label: 'Inside FOV', value: `${INSIDE_FOV.min}-${INSIDE_FOV.max} deg` },
@@ -1187,69 +1425,118 @@ function composeSpatial(analysis) {
 
 /* Commerce */
 
-function promoParagraph() {
-  const codes = PROMOS.map((promo) => `${promo.code} ${promo.pct}% (${promo.label})`).join(', ');
-  return `Promo codes apply at checkout to the net before VAT: ${codes}. TRADE15 is the 15% trade programme discount.`;
+/** Codes the question names come first. */
+function promoUnit(norm = '') {
+  const named = (promo) => (norm.includes(promo.code.toLowerCase()) ? 0 : 1);
+  return {
+    lead: 'Promo codes apply at checkout to the net before VAT.',
+    bullets: [...PROMOS].sort((a, b) => named(a) - named(b)).map((promo) => `${promo.code}: ${promo.pct}% off, ${promo.label.toLowerCase()}`),
+    brief: [`Codes: ${PROMOS.map((promo) => `${promo.code} ${promo.pct}%`).join(', ')} on the net before VAT`],
+  };
 }
 
-function vatParagraph() {
-  return `VAT is ${VAT_RATE_PCT}% on the discounted net. The quote works in integer minor units: discount and VAT are each rounded once, half up, and gross = net - discount + VAT exactly, in USD, EUR and HUF alike. The server re-prices every requisition and refuses a stale total.`;
+function vatUnit() {
+  return {
+    lead: `VAT is ${VAT_RATE_PCT}% on the discounted net, computed in integer minor units.`,
+    bullets: [
+      'Rounding: discount and VAT round once each, half up',
+      'Gross: net - discount + VAT exactly, in USD, EUR and HUF alike',
+      'Server check: every requisition is priced again and a stale total is refused',
+    ],
+    brief: [`VAT: ${VAT_RATE_PCT}% on the discounted net`],
+  };
 }
 
-function fulfilmentParagraph() {
-  return `${FULFILMENT_LABELS.consolidated} ships everything as one wave once the longest-lead part is ready. ${FULFILMENT_LABELS.split} sends Wave 01, Rough-In & In-Stock Dispatch, with the 24V driver and every part with a lead of ${STOCK_MAX_WEEKS} weeks or less (usually 1-2 weeks), so the electrician can rough in the wall; Wave 02, Custom Millwork & Luminaires, follows with the made-to-order parts.`;
+function fulfilmentUnit() {
+  return {
+    lead: `Choose ${FULFILMENT_LABELS.consolidated} or ${FULFILMENT_LABELS.split} at checkout.`,
+    bullets: [
+      `${FULFILMENT_LABELS.consolidated}: one wave once the longest-lead part is ready`,
+      `Wave 01, Rough-In & In-Stock Dispatch: the 24V driver and every part with a lead of ${STOCK_MAX_WEEKS} weeks or less`,
+      'Wave 02, Custom Millwork & Luminaires: the made-to-order parts follow',
+    ],
+    brief: [`Dispatch: ${FULFILMENT_LABELS.consolidated}, or ${FULFILMENT_LABELS.split} in two waves`],
+  };
 }
 
-function cratesParagraph() {
-  const crates = CRATE_TYPES.map((type) => `${type.label} (${type.capacityKg} kg)`).join(', ');
-  return `Parts are packed first-fit decreasing by mass into ${crates}, numbered CRT-01, CRT-02 and on; anything ${LONG_SPAN_CM} cm or longer rides in a long-span tube. Freight class follows gross mass and the longest crate: ${FREIGHT_CLASSES.parcel} under ${PARCEL_MAX_KG} kg and ${PARCEL_MAX_LENGTH_CM} cm, ${FREIGHT_CLASSES.pallet} from ${PALLET_MIN_KG} kg, otherwise ${FREIGHT_CLASSES.van}.`;
+function cratesUnit() {
+  return {
+    lead: 'Parts pack first-fit decreasing by mass into numbered crates, CRT-01 onward.',
+    bullets: [
+      `Crates: ${CRATE_TYPES.map((type) => `${type.label} ${type.capacityKg} kg`).join(', ')}`,
+      `Long spans: ${LONG_SPAN_CM} cm or longer ride in the long-span tube`,
+      `Freight: ${FREIGHT_CLASSES.parcel} under ${PARCEL_MAX_KG} kg and ${PARCEL_MAX_LENGTH_CM} cm, ${FREIGHT_CLASSES.pallet} from ${PALLET_MIN_KG} kg, otherwise ${FREIGHT_CLASSES.van}`,
+    ],
+    brief: ['Packing: first-fit decreasing by mass into numbered crates'],
+  };
 }
 
-function cloudParagraph() {
-  return `Lumen Cloud keeps ${MAX_STORED_PROJECTS} projects, ${MAX_STORED_QUOTES} quotes and ${MAX_STORED_TICKETS} engineering tickets per library: this browser profile when signed out, your account when signed in, and a sign-in moves the profile library into the account. Saves made offline stay on the device and sync when the API is reachable.`;
+function cloudUnit() {
+  return {
+    lead: `Lumen Cloud keeps ${MAX_STORED_PROJECTS} projects, ${MAX_STORED_QUOTES} quotes and ${MAX_STORED_TICKETS} engineering tickets per library.`,
+    bullets: [
+      'Signed out: the library belongs to this browser profile',
+      'Signing in: moves the profile library into your account',
+      'Offline: saves stay on the device and sync when the API is reachable',
+    ],
+    brief: [`Lumen Cloud: ${MAX_STORED_PROJECTS} projects per library, synced on sign-in`],
+  };
 }
 
-function pricingParagraph(currency) {
+function pricingUnit(currency) {
   const rate = (code) => {
     const entry = getCurrency(code);
     return `${code} ${entry.num / entry.den}`;
   };
-  return `List prices are set in USD and converted at fixed ratios: ${rate('EUR')} and ${rate('HUF')} per USD. Your active currency is ${currency.code} (${currency.label}); switch it in the bag or at checkout.`;
+  return {
+    lead: 'List prices are set in USD and converted at fixed ratios.',
+    bullets: [`Rates: ${rate('EUR')} and ${rate('HUF')} per USD`, `Active currency: ${currency.code} (${currency.label}); switch it in the cart or at checkout`],
+    brief: [`Currency: ${currency.code}, converted from USD at fixed ratios`],
+  };
+}
+
+function quoteUnit() {
+  return {
+    lead: 'Checkout builds the quote sheet from the cart, with the sized 24V driver line.',
+    bullets: ['Submit Requisition: Lumen Cloud prices it again from the catalog', 'Reference: an LMN-R number you can track under Account'],
+    brief: ['Requisition: priced again by Lumen Cloud, tracked by its LMN-R reference'],
+  };
 }
 
 function composeCommerce(analysis, ctx) {
   const currency = getCurrency(ctx.currency);
   const subs = new Set(analysis.subtopics.commerce);
-  const paragraphs = [];
+  const units = [];
   const citations = [];
-  const actions = [ACTIONS.checkout];
-  if (subs.has('promo')) paragraphs.push(promoParagraph());
-  if (subs.has('vat')) paragraphs.push(vatParagraph());
+  let actions = [ACTIONS.checkout];
+  if (subs.has('promo')) units.push(promoUnit(analysis.norm));
+  if (subs.has('vat')) units.push(vatUnit());
   if (subs.has('fulfilment') || subs.has('shipping')) {
-    paragraphs.push(fulfilmentParagraph());
+    units.push(fulfilmentUnit());
     citations.push(CITE.logistics);
   }
   if (subs.has('crates') || (subs.has('shipping') && !subs.has('fulfilment'))) {
-    paragraphs.push(cratesParagraph());
+    units.push(cratesUnit());
     citations.push(CITE.logistics);
   }
   if (subs.has('cloud')) {
-    paragraphs.push(cloudParagraph());
+    units.push(cloudUnit());
     citations.push(CITE.cloud);
   }
-  if (subs.has('pricing') && paragraphs.length < 2) paragraphs.push(pricingParagraph(currency));
-  if (subs.has('quote') && paragraphs.length < 2) {
-    paragraphs.push(
-      'Checkout builds the quote sheet from the cart with the sized 24V driver line; Submit Requisition sends it to Lumen Cloud, which prices it again from the catalog and issues an LMN-R reference you can track under Account.',
-    );
-  }
-  if (paragraphs.length === 0) paragraphs.push(pricingParagraph(currency), promoParagraph());
+  if (subs.has('pricing') && units.length < 2) units.push(pricingUnit(currency));
+  if (subs.has('quote') && units.length < 2) units.push(quoteUnit());
+  if (units.length === 0) units.push(pricingUnit(currency), promoUnit());
   if (citations.length === 0) citations.push(CITE.quote);
 
   const metrics = [];
-  if (subs.has('promo') || subs.has('pricing')) {
-    metrics.push(...PROMOS.map((promo) => ({ label: promo.code, value: `${promo.pct}% off` })));
+  const cart = ctx.bagItems.length > 0 ? cartFigures(ctx) : null;
+  const withCart = cart && ['fulfilment', 'shipping', 'crates', 'quote', 'vat'].some((id) => subs.has(id));
+  if (withCart) {
+    units.push({ brief: [cartShippingLine(cart.quote)] });
+    metrics.push(...cartMetrics(cart));
+    citations.push(CITE.cart);
   }
+  if (subs.has('promo') || subs.has('pricing')) metrics.push(...PROMOS.map((promo) => ({ label: promo.code, value: `${promo.pct}% off` })));
   if (subs.has('vat') || subs.has('promo')) metrics.push({ label: 'VAT', value: `${VAT_RATE_PCT}%` });
   if (subs.has('fulfilment') || subs.has('shipping') || subs.has('crates')) {
     metrics.push({ label: 'Wave 01', value: `Stock, <=${STOCK_MAX_WEEKS} wk` }, { label: 'Crate Types', value: String(CRATE_TYPES.length) });
@@ -1260,15 +1547,9 @@ function composeCommerce(analysis, ctx) {
       { label: 'Quotes', value: String(MAX_STORED_QUOTES) },
       { label: 'Tickets', value: String(MAX_STORED_TICKETS) },
     );
-    actions.splice(0, actions.length, ACTIONS.wall, ACTIONS.room);
+    actions = [ACTIONS.wall, ACTIONS.room];
   }
-  const cart = ctx.bagItems.length > 0 ? cartFigures(ctx) : null;
-  if (cart && (subs.has('fulfilment') || subs.has('shipping') || subs.has('crates') || subs.has('quote') || subs.has('vat'))) {
-    paragraphs.push(cartLogisticsLine(cart));
-    metrics.push(...cartMetrics(cart));
-    citations.push(CITE.cart);
-  }
-  return section(paragraphs.slice(0, 4), { metrics, citations: [...citations, CITE.quote], actions });
+  return section(mergeUnits(units), { metrics, citations: [...citations, CITE.quote], actions });
 }
 
 /* Live workspace */
@@ -1324,58 +1605,116 @@ function wallSplit(counts) {
 }
 
 function driverVerdict(summary) {
-  const { psu, loadW } = summary;
-  if (psu.drivers === 0) return 'No lit modules: no driver required.';
+  const { psu } = summary;
+  if (psu.drivers === 0) return 'no driver required';
   const pctUsed = Math.round(psu.utilisation * 100);
   const line = `${psu.label} at ${pctUsed}% utilisation`;
   if (psu.id === 'driver-60' && pctUsed > 100 - DRIVER_HEADROOM_PCT) {
-    return `${line}, above the ${100 - DRIVER_HEADROOM_PCT}% headroom line: specify the Lumen 150W 24V Driver for margin.`;
+    return `${line}, past the ${100 - DRIVER_HEADROOM_PCT}% headroom line: step up to the Lumen 150W 24V Driver`;
   }
-  if (psu.id === 'driver-array') return `${line}: ${loadW} W rated splits across ${psu.drivers} bus runs, one 150W driver each.`;
-  return `${line}, inside the ${DRIVER_HEADROOM_PCT}% headroom rule.`;
+  if (psu.id === 'driver-array') return `${line}, one 150W driver per run`;
+  return line;
 }
 
-function electricalLine(fig) {
-  const { summary, bus } = fig;
-  const drop = `${bus.voltageDropPct.toFixed(2)}% (${bus.voltageDropV.toFixed(2)} V)`;
-  return `Rated 24V load ${wattsLabel(summary.loadW)} (${wattsLabel(summary.activeW)} active at the current DALI-2 levels${summary.dimmed > 0 ? `, ${plural(summary.dimmed, 'channel')} dimmed` : ''}). Driver: ${driverVerdict(summary)} The bus runs ${bus.totalRunM.toFixed(2)} m from the ${bus.origin.kind === 'datum' ? 'utility datum' : bus.origin.kind === 'hub' ? 'DALI-2 hub' : 'track bus'} through ${plural(bus.nodes.length, 'node')}, ${drop} drop, ${bus.withinSpec ? `within the ${DROP_LIMIT_PCT}% limit` : `over the ${DROP_LIMIT_PCT}% limit: add a feed or split the run`} on ${CONDUCTOR_LABEL} copper.`;
+function loadLine({ summary }) {
+  const active = summary.activeW !== summary.loadW ? ` (${wattsLabel(summary.activeW)} active)` : '';
+  const driver = summary.psu.drivers === 0 ? ', no driver required' : ` on ${driverVerdict(summary)}`;
+  return `Rated 24V load ${wattsLabel(summary.loadW)}${active}${driver}`;
 }
 
-function acousticLine(fig) {
-  const { physics } = fig;
-  const delta = physics.acousticDeltaSec < 0 ? `, ${Math.abs(physics.acousticDeltaSec).toFixed(2)} s below the bare-room ${physics.baselineRt60Sec.toFixed(2)} s` : ', no added absorption yet';
-  return `Sabine RT60 is ${physics.rt60Sec.toFixed(2)} s at 500 Hz${delta}; STI ${physics.stiScore.toFixed(2)} (${physics.stiGrade}).`;
+function busLine({ bus }) {
+  const run = `${bus.totalRunM.toFixed(2)} m run, ${bus.voltageDropPct.toFixed(2)}% (${bus.voltageDropV.toFixed(2)} V) drop`;
+  return bus.withinSpec ? run : `${run}, over the ${DROP_LIMIT_PCT}% limit: add a feed or split the run`;
 }
 
-function lightingLine(fig) {
-  const { physics, summary } = fig;
-  return `Average floor illuminance ${int(physics.avgFloorLux)} lx (${physics.lightingGrade}, ${physics.taskCoveragePct}% of the ${TASK_TARGET_LUX} lx task target) from ${int(summary.lumens)} lm of lit output.`;
+function rt60Line({ physics }) {
+  return `Sabine RT60 is ${physics.rt60Sec.toFixed(2)} s at 500 Hz, STI ${physics.stiScore.toFixed(2)} (${physics.stiGrade})`;
 }
 
-function conflictLine(fig) {
-  return fig.conflicts === 0
-    ? 'No placement conflicts.'
-    : `${plural(fig.conflicts, 'module')} in conflict (overlap, out of bounds${fig.kind === 'room' ? ' or furniture clash' : ''}): fix ${fig.conflicts === 1 ? 'it' : 'them'} before quoting.`;
+function luxLine({ physics }) {
+  return `Average floor illuminance ${int(physics.avgFloorLux)} lx (${physics.lightingGrade})`;
 }
 
-function workspaceMetrics(fig) {
-  return [
-    { label: 'Modules', value: String(fig.summary.modules) },
-    { label: 'Rated Load', value: wattsLabel(fig.summary.loadW) },
-    { label: 'Active', value: wattsLabel(fig.summary.activeW) },
-    { label: 'Driver', value: fig.summary.psu.drivers === 0 ? 'None' : fig.summary.psu.id === 'driver-60' ? '60W' : fig.summary.psu.id === 'driver-150' ? '150W' : `${fig.summary.psu.drivers}x 150W` },
-    { label: 'Drop', value: `${fig.bus.voltageDropPct.toFixed(2)}%` },
-    { label: 'RT60', value: `${fig.physics.rt60Sec.toFixed(2)} s` },
-    { label: 'STI', value: fig.physics.stiScore.toFixed(2) },
-    { label: 'Floor Lux', value: `${int(fig.physics.avgFloorLux)} lx` },
-  ];
+function absorptionLine({ physics }) {
+  return physics.acousticDeltaSec < 0
+    ? `Absorption: ${Math.abs(physics.acousticDeltaSec).toFixed(2)} s under the bare-room ${physics.baselineRt60Sec.toFixed(2)} s`
+    : 'Absorption: none yet; an Acoustic Art Frame or Wall Baffle brings RT60 down';
 }
 
-function cartLogisticsLine({ quote, split }) {
+function layoutBullet(fig) {
+  if (fig.conflicts === 0) return 'Layout: No placement conflicts.';
+  const kinds = fig.kind === 'room' ? 'overlap, out of bounds or furniture clash' : 'overlap or out of bounds';
+  return `Layout: ${plural(fig.conflicts, 'module')} in conflict (${kinds}); fix ${fig.conflicts === 1 ? 'it' : 'them'} before quoting`;
+}
+
+const WORKSPACE_FACET_METRICS = Object.freeze({
+  electrical: ['Modules', 'Rated Load', 'Driver', 'Drop'],
+  acoustic: ['RT60', 'STI'],
+  lighting: ['Floor Lux'],
+  conflicts: ['Modules'],
+  cost: ['Modules', 'Rated Load'],
+  logistics: ['Modules'],
+});
+const AUDIT_METRICS = Object.freeze(['Modules', 'Rated Load', 'RT60', 'Floor Lux']);
+
+function workspaceMetrics(fig, facets, all) {
+  const { summary, bus, physics } = fig;
+  const driver = summary.psu.drivers === 0 ? 'None' : summary.psu.id === 'driver-60' ? '60W' : summary.psu.id === 'driver-150' ? '150W' : `${summary.psu.drivers}x 150W`;
+  const values = new Map([
+    ['Modules', String(summary.modules)],
+    ['Rated Load', wattsLabel(summary.loadW)],
+    ['Driver', driver],
+    ['Drop', `${bus.voltageDropPct.toFixed(2)}%`],
+    ['RT60', `${physics.rt60Sec.toFixed(2)} s`],
+    ['STI', physics.stiScore.toFixed(2)],
+    ['Floor Lux', `${int(physics.avgFloorLux)} lx`],
+  ]);
+  const order = all ? AUDIT_METRICS : [...facets.flatMap((facet) => WORKSPACE_FACET_METRICS[facet] ?? []), ...AUDIT_METRICS];
+  return [...new Set(order)].slice(0, REPLY_METRICS).map((label) => ({ label, value: values.get(label) }));
+}
+
+function figureHead(fig) {
+  return fig.kind === 'room'
+    ? `Your 3D room carries ${plural(fig.summary.modules, 'module')}: ${wallSplit(fig.counts)}.`
+    : `Your 2D wall (${fig.envelope}) carries ${plural(fig.summary.modules, 'module')}.`;
+}
+
+const AUDIT_FACETS = Object.freeze(['electrical', 'acoustic', 'lighting', 'conflicts']);
+
+/** One bullet per facet in an audit; a question about a single facet gets two on it. */
+function figureBullets(fig, facets, all, currency) {
+  const asked = all ? AUDIT_FACETS : facets;
+  const focused = !all && asked.length === 1;
+  const bullets = [];
+  for (const facet of asked) {
+    if (facet === 'electrical') {
+      if (focused) bullets.push(`Load: ${loadLine(fig)}`, `Bus: ${busLine(fig)}${fig.bus.withinSpec ? `, inside the ${DROP_LIMIT_PCT}% limit` : ''}`);
+      else bullets.push(`Power: ${loadLine(fig)}; ${busLine(fig)}`);
+    } else if (facet === 'acoustic') {
+      bullets.push(`Acoustics: ${rt60Line(fig)}`, focused ? absorptionLine(fig) : null);
+    } else if (facet === 'lighting') {
+      bullets.push(
+        `Light: ${luxLine(fig)}`,
+        focused ? `Task target: ${fig.physics.taskCoveragePct}% of ${TASK_TARGET_LUX} lx from ${int(fig.summary.lumens)} lm of lit output` : null,
+      );
+    } else if (facet === 'conflicts') {
+      bullets.push(layoutBullet(fig));
+    } else if (facet === 'cost') {
+      bullets.push(`Parts: ${priceLabel(fig.summary.priceUsd, currency)} list, before VAT and driver`, focused ? `Power: ${loadLine(fig)}` : null);
+    }
+  }
+  const lines = bullets.filter(Boolean);
+  return lines.length > 0 ? lines : [`Power: ${loadLine(fig)}; ${busLine(fig)}`, layoutBullet(fig)];
+}
+
+/** One line for a second live workspace that rides under the first. */
+function figureBrief(fig) {
+  return `Your ${fig.label}: ${plural(fig.summary.modules, 'module')}, ${wattsLabel(fig.summary.loadW)} rated, RT60 ${fig.physics.rt60Sec.toFixed(2)} s, ${int(fig.physics.avgFloorLux)} lx`;
+}
+
+function cartShippingLine(quote) {
   const { logistics } = quote;
-  const crates = logistics.crates.map((crate) => `${crate.code} ${crate.label} ${crate.grossWeightKg} kg`).join(', ');
-  const waves = split.waves.map((wave) => `${wave.code} ${wave.label} (${wave.window}, ${plural(wave.itemCount, 'piece')})`).join('; ');
-  return `Your cart ships in ${plural(logistics.crates.length, 'crate')}: ${crates}. Gross ${logistics.grossWeightKg} kg, ${logistics.totalVolumeM3} m3, ${logistics.freightClass}. ${FULFILMENT_LABELS.consolidated}: ${logistics.windowLabel}. ${FULFILMENT_LABELS.split}: ${waves}.`;
+  return `Your cart: ships in ${plural(logistics.crates.length, 'crate')}, ${logistics.grossWeightKg} kg gross, ${logistics.freightClass}`;
 }
 
 function cartMetrics({ quote }) {
@@ -1386,37 +1725,48 @@ function cartMetrics({ quote }) {
   ];
 }
 
-function cartParagraphs(ctx, facets) {
+function cartSection(ctx, facets) {
   const cart = cartFigures(ctx);
-  const { quote } = cart;
-  const pieces = quote.lines.filter((line) => !line.driver).reduce((sum, line) => sum + line.qty, 0);
-  const paragraphs = [
-    `Your cart holds ${plural(pieces, 'part')} on ${plural(quote.lines.filter((line) => !line.driver).length, 'line')}: net ${formatMoney(quote.totals.net, quote.currency)}, ${VAT_RATE_PCT}% VAT ${formatMoney(quote.totals.vat, quote.currency)}, gross ${formatMoney(quote.totals.gross, quote.currency)}. The 24V load is ${wattsLabel(quote.electrical.loadW)}: ${quote.electrical.psu.drivers === 0 ? 'no driver required' : `${quote.electrical.psu.label} is added to the quote`}.`,
-  ];
-  if (facets.length === 0 || facets.includes('logistics') || facets.includes('cost')) paragraphs.push(cartLogisticsLine(cart));
-  return { paragraphs, metrics: cartMetrics(cart), cart };
+  const { quote, split } = cart;
+  const { logistics, totals, electrical } = quote;
+  const parts = quote.lines.filter((line) => !line.driver);
+  const pieces = parts.reduce((sum, line) => sum + line.qty, 0);
+  const money = (minor) => formatMoney(minor, quote.currency);
+  const crates = logistics.crates.map((crate) => `${crate.code} ${crate.label} ${crate.grossWeightKg} kg`).join(', ');
+  const waves = split.waves.map((wave) => `${wave.code} ${wave.window}`).join(', ');
+  const dispatch = `Dispatch: ${FULFILMENT_LABELS.consolidated} ${logistics.windowLabel}, or split into ${waves}`;
+  const driver = electrical.psu.drivers === 0 ? 'no driver required' : `${electrical.psu.label} added to the quote`;
+  const shipping = facets.includes('logistics');
+  const unit = shipping
+    ? {
+        lead: `Your cart ships in ${plural(logistics.crates.length, 'crate')}: ${logistics.grossWeightKg} kg gross, ${logistics.totalVolumeM3} m3, ${logistics.freightClass}.`,
+        bullets: [`Crates: ${crates}`, dispatch, `Totals: gross ${money(totals.gross)} with ${VAT_RATE_PCT}% VAT`],
+      }
+    : {
+        lead: `Your cart holds ${plural(pieces, 'part')} on ${plural(parts.length, 'line')}: ${money(totals.gross)} gross with ${VAT_RATE_PCT}% VAT.`,
+        bullets: [
+          `Totals: net ${money(totals.net)}, VAT ${money(totals.vat)}, gross ${money(totals.gross)}`,
+          `24V load: ${wattsLabel(electrical.loadW)}, ${driver}`,
+          `Shipping: ${plural(logistics.crates.length, 'crate')} (${logistics.crates.map((crate) => crate.code).join(', ')}), ${logistics.grossWeightKg} kg, ${logistics.freightClass}`,
+        ],
+      };
+  return { ...unit, brief: [cartShippingLine(quote)], metrics: cartMetrics(cart) };
 }
 
-function figureParagraph(fig, facets, audit, currency) {
-  const head =
-    fig.kind === 'room'
-      ? `Your 3D room (${fig.envelope}) carries ${plural(fig.summary.modules, 'module')}: ${wallSplit(fig.counts)}.`
-      : `Your 2D wall (${fig.envelope}) carries ${plural(fig.summary.modules, 'module')}.`;
-  const all = audit || facets.length === 0;
-  const lines = [head];
-  if (all || facets.includes('electrical')) lines.push(electricalLine(fig));
-  if (all || facets.includes('acoustic')) lines.push(acousticLine(fig));
-  if (all || facets.includes('lighting')) lines.push(lightingLine(fig));
-  if (all || facets.includes('conflicts')) lines.push(conflictLine(fig));
-  if (facets.includes('cost')) lines.push(`List price of the mounted parts: ${priceLabel(fig.summary.priceUsd, currency)} before VAT and driver.`);
-  return lines.join(' ');
-}
-
-function emptyWorkspaceLine(target) {
-  if (target === 'room') return 'Your 3D room has no modules mounted yet. Open the 3D Spatial Studio, mount parts from the Asset Shelf, then ask again for a live audit.';
-  if (target === 'wall') return 'Your 2D wall is empty. Load a preset or mount parts in the Wall Studio, then ask again for a live audit.';
-  if (target === 'cart') return 'Your cart is empty. Add parts from the Catalog or send a planner layout to the bag, then ask again for crates, waves and totals.';
-  return 'Your 2D wall, 3D room and cart are all empty, so there is nothing live to audit yet. Mount parts in a planner or add them to the cart and ask again.';
+function emptyWorkspace(target) {
+  if (target === 'room') {
+    return { lead: 'Your 3D room has no modules mounted yet.', bullets: ['Next: open the 3D Spatial Studio, mount parts from the Asset Shelf, then ask again for a live audit'] };
+  }
+  if (target === 'wall') {
+    return { lead: 'Your 2D wall is empty.', bullets: ['Next: load a preset or mount parts in the Wall Studio, then ask again for a live audit'] };
+  }
+  if (target === 'cart') {
+    return { lead: 'Your cart is empty.', bullets: ['Next: add parts from the Catalog or sync a planner layout, then ask for crates, waves and totals'] };
+  }
+  return {
+    lead: 'Your 2D wall, 3D room and cart are all empty, so there is nothing live to audit yet.',
+    bullets: ['Next: mount parts in a planner or add them to the cart, then ask again'],
+  };
 }
 
 function resolveTarget(analysis, ctx) {
@@ -1429,55 +1779,49 @@ function resolveTarget(analysis, ctx) {
   return 'auto';
 }
 
+// Asking to audit or review reads every figure; "check my voltage drop" stays on that figure.
+const FULL_AUDIT = /\b(audit|review|analy[sz]e|inspect|diagnose|summari[sz]e|evaluate|assess|report)\b/;
+
 function composeWorkspace(analysis, ctx) {
-  const { facets, audit } = analysis.workspace;
+  const { facets } = analysis.workspace;
   const live = liveFigures(ctx);
   const target = resolveTarget(analysis, ctx);
   const currency = getCurrency(ctx.currency);
-  const paragraphs = [];
-  const citations = [];
-  const actions = [];
-  let metrics = [];
+  const all = facets.length === 0 || FULL_AUDIT.test(analysis.norm);
 
   if (target === 'cart') {
-    if (ctx.bagItems.length === 0) return section([emptyWorkspaceLine('cart')], { citations: [CITE.cart], actions: [ACTIONS.catalog] });
-    const cart = cartParagraphs({ ...ctx, currency: currency.code }, facets);
-    return section(cart.paragraphs, { metrics: cart.metrics, citations: [CITE.cart, CITE.quote, CITE.logistics], actions: [ACTIONS.checkout] });
+    if (ctx.bagItems.length === 0) return section(emptyWorkspace('cart'), { citations: [CITE.cart], actions: [ACTIONS.catalog] });
+    const cart = cartSection({ ...ctx, currency: currency.code }, facets);
+    return section(cart, { metrics: cart.metrics, citations: [CITE.cart, CITE.quote, CITE.logistics], actions: [ACTIONS.checkout] });
   }
 
-  const order = target === 'auto' ? ['room', 'wall'] : [target];
-  for (const kind of order) {
-    const fig = live[kind];
-    if (!fig) continue;
-    paragraphs.push(figureParagraph(fig, facets, audit, currency));
-    citations.push(fig.cite, CITE.bus, CITE.physics);
-    actions.push(fig.action);
-    if (metrics.length === 0) metrics = workspaceMetrics(fig);
-  }
-  if (target === 'auto' && ctx.bagItems.length > 0 && (paragraphs.length === 0 || facets.includes('logistics'))) {
-    const cart = cartParagraphs({ ...ctx, currency: currency.code }, facets);
-    paragraphs.push(...cart.paragraphs);
+  const figs = (target === 'auto' ? ['room', 'wall'] : [target]).map((kind) => live[kind]).filter(Boolean);
+  const units = figs.map((fig) => ({ lead: figureHead(fig), bullets: figureBullets(fig, facets, all, currency), brief: [figureBrief(fig)] }));
+  const citations = figs.flatMap((fig) => [fig.cite, CITE.bus, CITE.physics]);
+  const actions = figs.map((fig) => fig.action);
+  let metrics = figs.length > 0 ? workspaceMetrics(figs[0], facets, all) : [];
+  if (target === 'auto' && ctx.bagItems.length > 0 && (units.length === 0 || facets.includes('logistics'))) {
+    const cart = cartSection({ ...ctx, currency: currency.code }, facets);
+    units.push(cart);
     if (metrics.length === 0) metrics = cart.metrics;
     citations.push(CITE.cart);
     actions.push(ACTIONS.checkout);
   }
-  if (paragraphs.length === 0) {
-    paragraphs.push(emptyWorkspaceLine(target));
-    if (analysis.subtopics.electrical.length > 0) paragraphs.push(driverParagraphs(currency)[1]);
+  if (units.length === 0) {
+    units.push(emptyWorkspace(target));
+    if (analysis.subtopics.electrical.length > 0) units.push(driverUnit(currency));
     actions.push(target === 'wall' ? ACTIONS.wall : ACTIONS.room);
     citations.push(target === 'wall' ? CITE.wall : CITE.room);
   }
-  return section(paragraphs, { metrics, citations, actions });
+  return section(mergeUnits(units), { metrics, citations, actions });
 }
 
 /* Studio guide: how the site, the planners and their controls work */
 
-const LENS_SHORT = Object.freeze({ orbit: 'Orbit', inside: `Inside ${EYE_HEIGHT_CM} cm`, elevation: 'Elevation' });
-const LENS_LIST = `${LENS_SHORT.orbit}, ${LENS_SHORT.inside} and ${LENS_SHORT.elevation}`;
-const MAX_ROOM_LABEL = `${ROOM_WIDTH.max} x ${ROOM_DEPTH.max} x ${ROOM_HEIGHT.max} cm`;
-
-function presetList() {
-  return listLabel(ROOM_SIZE_PRESETS.map((preset) => `${preset.label} ${preset.widthCm} x ${preset.depthCm}`));
+function presetRange() {
+  const first = ROOM_SIZE_PRESETS[0];
+  const last = ROOM_SIZE_PRESETS.at(-1);
+  return `${first.label} ${first.widthCm} x ${first.depthCm} to ${last.label} ${last.widthCm} x ${last.depthCm}`;
 }
 
 function ceilingRange() {
@@ -1489,20 +1833,13 @@ function mentions2d(analysis, ctx) {
   return /\b(2d|wall studio|elevation)\b/.test(analysis.norm) || ctx.route === '/studio-2d';
 }
 
+const OPEN_3D_KEY = 'Open the editor: click Launch 3D Spatial Studio in that section, or use the direct launch button right below this message';
+
 const GUIDE_SECTIONS = Object.freeze({
   open3d(analysis, ctx) {
     const inside = ctx.route === '/room-3d';
     const fault = analysis.guide.troubled || inside;
-    const nav =
-      `Clicking 3D Room in the top navigation bar scrolls to the interactive 3D Spatial Studio preview on the Overview page, so you can preview its four camera and physics acts first: the 360-degree orbit, the ${EYE_HEIGHT_CM} cm eye-level walkthrough, the transform gizmo and the iso-lux field. To enter the full-screen 3D editor (/room-3d), click Launch 3D Spatial Studio in that section, or use the direct launch button right below this message.`;
-    const checks = `three things cover almost every case. The editor draws with WebGL 2, so switch on hardware acceleration in your browser settings or use a current Chrome, Edge, Firefox or Safari; without WebGL the page says so and keeps the scene, inspector and 2D bridge live. The first launch downloads the 3D engine, so give the boot overlay a few seconds on a slow connection. And a reload is always safe: your last room is kept on this device and reopens exactly as you left it.`;
-    const quickStart = `Once inside, pick the active wall (North, East, South or West) in the header, click any part in the left Asset Shelf to mount it there, and switch lenses between ${LENS_LIST}.`;
-    let paragraphs;
-    if (inside) paragraphs = [`You are already in the 3D Spatial Studio (/room-3d). If the viewport stays empty, ${checks}`, nav];
-    else if (fault) paragraphs = [nav, `If the studio still does not open, ${checks}`];
-    else paragraphs = [nav, quickStart];
-    return {
-      paragraphs,
+    const base = {
       metrics: [
         { label: 'Editor', value: '/room-3d' },
         { label: 'Lenses', value: `${LENS_SHORT.orbit} / Inside / ${LENS_SHORT.elevation}` },
@@ -1510,18 +1847,39 @@ const GUIDE_SECTIONS = Object.freeze({
       ],
       actions: [ACTIONS.launch, ACTIONS.walkthrough],
       citations: [CITE.navigation, CITE.spatial, ...(fault ? [CITE.troubleshooting] : [])],
+      brief: ['3D Spatial Studio: Launch 3D Spatial Studio on the Overview, or the launch button below'],
+    };
+    if (inside) {
+      return {
+        ...base,
+        lead: 'You are already in the 3D Spatial Studio (/room-3d). If the viewport stays empty, three checks clear it.',
+        bullets: [
+          'WebGL 2: switch on hardware acceleration in a current Chrome, Edge, Firefox or Safari',
+          'First launch: the 3D engine downloads once, so give the boot overlay a few seconds',
+          'Reload: always safe, your last room is kept on this device and reopens as you left it',
+        ],
+      };
+    }
+    const nav = 'Clicking 3D Room in the top navigation bar scrolls to the interactive 3D Spatial Studio preview on the Overview.';
+    return {
+      ...base,
+      lead: nav,
+      bullets: fault
+        ? [OPEN_3D_KEY, 'Still blank: switch on hardware acceleration for WebGL 2, give the first load a few seconds, or reload; your room is kept']
+        : [OPEN_3D_KEY, 'Once inside: pick the active wall, mount parts from the Asset Shelf and switch lenses in the header'],
     };
   },
 
   wallOpen(analysis) {
-    const paragraphs = [
-      `Wall Studio in the top navigation bar opens the 2D Wall Studio (/studio-2d) directly, with no preview step. It composes one elevation up to ${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm with up to ${MAX_WALL_ITEMS} modules: start from a Wall Preset or click parts under Components, then drag, align and distribute them on the ${GRID_STEP_CM} cm grid. Blueprint in the toolbar opens the 1:20 sheet with its drilling schedule, ready to download as .SVG or AutoCAD .DXF.`,
-    ];
-    if (analysis.guide.troubled) {
-      paragraphs.push('If it does not load, reload the page: the wall is kept on this device. The 2D studio is drawn in plain HTML and SVG, so it needs no WebGL.');
-    }
     return {
-      paragraphs,
+      lead: 'Wall Studio in the top navigation bar opens the 2D Wall Studio (/studio-2d) directly, with no preview step.',
+      bullets: [
+        `Canvas: one elevation up to ${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm with up to ${MAX_WALL_ITEMS} modules`,
+        `Start: a Wall Preset or a part under Components, then drag, align and distribute on the ${GRID_STEP_CM} cm grid`,
+        'Blueprint: the 1:20 sheet with its drilling schedule, as .SVG or AutoCAD .DXF',
+        analysis.guide.troubled ? 'Reload: the wall is kept on this device, and the 2D studio needs no WebGL' : null,
+      ],
+      brief: ['2D Wall Studio: Wall Studio in the top bar opens it directly'],
       metrics: [
         { label: 'Wall Max', value: `${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm` },
         { label: 'Modules', value: String(MAX_WALL_ITEMS) },
@@ -1534,11 +1892,15 @@ const GUIDE_SECTIONS = Object.freeze({
 
   move(analysis, ctx) {
     const [product] = analysis.products;
-    const room = `In the 3D Spatial Studio, choose the active wall (North, East, South or West) in the header, then click any part in the left Asset Shelf: one click mounts it on that wall${product ? `, and the ${product.name} sits there with the other parts` : ''}. Click a mounted module in the 3D view to select it and reveal the X/Y Transform Gizmo, then drag the module or a handle straight across the wall. The pointer ray is solved against the wall plane, so the part slides in true wall centimetres, and each release is one undoable step.`;
-    const keys = `From the keyboard, press G to grab the selected module, nudge it with the arrow keys, then Enter (or G again) to drop it or Escape to cancel. Grid Snap in the header holds moves to 5 cm (switch it off for 1 cm free moves), and the inspector's Transform panel offers ${listLabel(Object.values(AXIS_LOCK_LABELS))}. Overlaps, parts past the wall edge and clashes with the reference furniture are flagged as conflicts.`;
-    const wall = `In the 2D Wall Studio, click a part under Components to mount it, drag modules directly on the elevation, Shift + Click or drag a marquee across empty wall to select several, and use Align & Distribute in the inspector. The arrow keys nudge by one grid step (Shift for ten) and Delete removes the selection.`;
+    const room = `3D: mount ${product ? `the ${product.name}` : 'a part'} from the Asset Shelf, then drag it or its X/Y Transform Gizmo`;
+    const keys = 'Keys: press G to grab, arrows nudge, Enter drops, Escape cancels';
+    const snap = 'Grid Snap: 5 cm steps, or 1 cm free moves';
+    const wall = '2D: Shift + Click or a marquee selects several, then Align & Distribute';
+    const wallFirst = mentions2d(analysis, ctx) && !/\b3d\b/.test(analysis.norm);
     return {
-      paragraphs: mentions2d(analysis, ctx) && !/\b3d\b/.test(analysis.norm) ? [wall, room, keys] : [room, keys, wall],
+      lead: 'Select a module and drag it across its wall; each release is one undo step.',
+      bullets: wallFirst ? [wall, room, keys, snap] : [room, keys, snap, wall],
+      brief: ['Moving: select a module, drag it or press G to grab and nudge with the arrows'],
       metrics: [
         { label: 'Grid Snap', value: '5 cm' },
         { label: 'Free Move', value: '1 cm' },
@@ -1551,30 +1913,50 @@ const GUIDE_SECTIONS = Object.freeze({
 
   navigate(analysis, ctx) {
     const { walk, rotate, resize } = analysis.guide;
-    const lenses = `The 3D Spatial Studio has three camera lenses in its header. ${LENS_SHORT.orbit} is the default: drag to circle the room a full 360 degrees, tilt from ${CAMERA_PITCH.min} to ${CAMERA_PITCH.max} deg and zoom with the mouse wheel (${CAMERA_ZOOM.min}x to ${CAMERA_ZOOM.max}x); the arrow keys step the camera and Home or 0 resets it. ${LENS_SHORT.inside} puts you on your feet at eye height: walk with W A S D or the arrow keys, turn with Q and E, drag to look around, and the mouse wheel or + and - set the field of view from ${INSIDE_FOV.min} to ${INSIDE_FOV.max} deg. ${LENS_SHORT.elevation} shows the active wall square-on.`;
-    const size = `Room size lives in the Envelope & Lighting panel on the left: the Room scale presets set ${presetList()} (ceilings ${ceilingRange()}), and the width, depth and ceiling fields take any size from ${ROOM_WIDTH.min} x ${ROOM_DEPTH.min} x ${ROOM_HEIGHT.min} cm up to ${MAX_ROOM_LABEL}. The 24V bus, RT60 and floor lux recalculate as the envelope changes.`;
-    const wall = `In the 2D Wall Studio, Wall Setup sets the elevation from ${WALL_WIDTH.min} x ${WALL_HEIGHT.min} cm up to ${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm.`;
     const sizeFirst = resize && !walk && !rotate;
-    const paragraphs = sizeFirst ? [size, lenses] : [lenses, size];
-    if (resize && mentions2d(analysis, ctx)) paragraphs.splice(sizeFirst ? 1 : 2, 0, wall);
-    return {
-      paragraphs,
+    const orbit = `Orbit: drag a full 360 degrees, tilt ${CAMERA_PITCH.min} to ${CAMERA_PITCH.max} deg, wheel to zoom`;
+    const inside = `${LENS_SHORT.inside}: W A S D walk, Q and E turn, the wheel sets ${INSIDE_FOV.min} to ${INSIDE_FOV.max} deg`;
+    const presets = `Room size: ${presetRange()}, up to ${MAX_ROOM_LABEL}`;
+    const wall = `2D wall: Wall Setup sets the elevation up to ${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm`;
+    const base = {
       metrics: [
         { label: 'Orbit Pitch', value: `${CAMERA_PITCH.min}-${CAMERA_PITCH.max} deg` },
         { label: 'Inside FOV', value: `${INSIDE_FOV.min}-${INSIDE_FOV.max} deg` },
         { label: 'Eye Height', value: `${EYE_HEIGHT_CM} cm` },
         { label: 'Max Room', value: MAX_ROOM_LABEL },
       ],
-      actions: sizeFirst ? [ACTIONS.launch, ACTIONS.loft] : [ACTIONS.walkthrough, ACTIONS.launch, ACTIONS.loft],
       citations: [CITE.spatial],
+      brief: [`Camera: ${LENS_LIST} lenses in the 3D studio header`],
+    };
+    if (sizeFirst) {
+      return {
+        ...base,
+        lead: 'Room size lives in the Envelope & Lighting panel on the left of the 3D Spatial Studio.',
+        bullets: [
+          `Presets: ${presetRange()}, ceilings ${ceilingRange()}`,
+          `Fields: any width, depth and ceiling up to ${MAX_ROOM_LABEL}`,
+          mentions2d(analysis, ctx) ? wall : 'Recalculation: the 24V bus, RT60 and floor lux follow the envelope',
+        ],
+        actions: [ACTIONS.launch, ACTIONS.loft],
+      };
+    }
+    return {
+      ...base,
+      lead: `Pick ${LENS_SHORT.orbit}, ${LENS_SHORT.inside} or ${LENS_SHORT.elevation} in the 3D studio header.`,
+      bullets: [orbit, inside, resize && mentions2d(analysis, ctx) ? wall : presets],
+      actions: [ACTIONS.walkthrough, ACTIONS.launch, ACTIONS.loft],
     };
   },
 
   remove() {
     return {
-      paragraphs: [
-        `In the 3D Spatial Studio, select the module (click it in the view or in the Modules outliner) and press Remove under Actions in the inspector. In the 2D Wall Studio, select one or more modules and press Delete or Backspace, or use Remove in the inspector. Ctrl+Z (Cmd+Z on a Mac) brings anything back, up to ${HISTORY_LIMIT} steps.`,
+      lead: 'Select the module, then remove it; nothing is lost for good.',
+      bullets: [
+        '3D: click it in the view or the Modules outliner, then Remove under Actions in the inspector',
+        '2D: select one or more modules, then Delete or Backspace',
+        `Undo: Ctrl+Z (Cmd+Z on a Mac) brings it back, up to ${HISTORY_LIMIT} steps`,
       ],
+      brief: ['Removing: select it, then Remove in the inspector or Delete in 2D; Ctrl+Z undoes'],
       metrics: [
         { label: 'Undo', value: 'Ctrl+Z' },
         { label: 'History', value: `${HISTORY_LIMIT} steps` },
@@ -1586,10 +1968,13 @@ const GUIDE_SECTIONS = Object.freeze({
 
   save() {
     return {
-      paragraphs: [
-        `Your working draft is kept on this device automatically after every change. Save to Cloud, in the summary under each planner, adds a named copy to your library: it needs at least one mounted module, and Lumen Cloud keeps ${MAX_STORED_PROJECTS} projects per library, this browser profile while you are signed out and your account once you sign in.`,
-        'Saving under an existing name adds a revision; once the library is full, a new name is refused until you delete a project on the Account page, where every saved project is listed. With the API unreachable, a save stays on this device and syncs when the connection returns.',
+      lead: 'Your working draft is kept on this device automatically after every change.',
+      bullets: [
+        'Save to Cloud: in the summary under each planner, adds a named copy; it needs one mounted module',
+        `Library: ${MAX_STORED_PROJECTS} projects, this browser profile while signed out, your account once signed in`,
+        'Revisions: saving under an existing name adds a revision; offline saves sync later',
       ],
+      brief: ['Saving: drafts stay on this device; Save to Cloud adds a named copy'],
       metrics: [
         { label: 'Projects', value: String(MAX_STORED_PROJECTS) },
         { label: 'Drafts', value: 'Kept on this device' },
@@ -1600,20 +1985,30 @@ const GUIDE_SECTIONS = Object.freeze({
   },
 
   cart(analysis) {
-    const paragraphs = [
-      'Add parts from any Catalog card or product page with Add to Cart once the finish is chosen. From a planner, Sync Room to Cart or Sync Wall to Cart sends every mounted module in one step. Cart, at the top right, opens the drawer with your lines, the 24V load and the subtotal; Configure Quote & Checkout builds the quote sheet with the sized 24V driver, crates and dispatch waves, and Submit Requisition sends it to Lumen Cloud for an LMN-R reference.',
-    ];
-    if (analysis.guide.troubled || /\bempt\w*\b/.test(analysis.norm)) {
-      paragraphs.push('The cart is kept per browser profile, so another browser or a private window starts with an empty cart.');
-    }
-    return { paragraphs, metrics: [{ label: 'VAT', value: `${VAT_RATE_PCT}%` }], actions: [ACTIONS.catalog, ACTIONS.checkout], citations: [CITE.quote] };
+    return {
+      lead: 'Add parts from any Catalog card or product page with Add to Cart once the finish is chosen.',
+      bullets: [
+        'From a planner: Sync Room to Cart or Sync Wall to Cart sends every mounted module',
+        'Cart: top right, with your lines, the 24V load and the subtotal',
+        'Checkout: sizes the 24V driver, crates and waves; Submit Requisition issues an LMN-R reference',
+        analysis.guide.troubled || /\bempt\w*\b/.test(analysis.norm) ? 'Per browser: another browser or a private window starts with an empty cart' : null,
+      ],
+      brief: ['Cart: Add to Cart on any part, or Sync to Cart from a planner'],
+      metrics: [{ label: 'VAT', value: `${VAT_RATE_PCT}%` }],
+      actions: [ACTIONS.catalog, ACTIONS.checkout],
+      citations: [CITE.quote],
+    };
   },
 
   account() {
     return {
-      paragraphs: [
-        `Sign In at the top right opens a dialog: enter your email and a password of at least ${PASSWORD_MIN} characters. There is no separate registration, so the first sign-in with an address opens its account library, and Lumen Cloud moves this browser's saved projects, quotes and tickets into it, ready on any device signed in with the same address. Once signed in, the button reads Account and lists your projects, requisitions and engineering tickets.`,
+      lead: `Sign In at the top right opens a dialog: your email and a password of at least ${PASSWORD_MIN} characters.`,
+      bullets: [
+        'No registration: the first sign-in with an address opens its account library',
+        "Moves in: this browser's saved projects, quotes and tickets join the account",
+        'Signed in: the button reads Account and lists projects, requisitions and tickets',
       ],
+      brief: [`Account: Sign In at the top right, a password of ${PASSWORD_MIN}+ characters`],
       metrics: [{ label: 'Password', value: `${PASSWORD_MIN}+ characters` }],
       actions: [ACTIONS.account],
       citations: [CITE.cloud],
@@ -1622,9 +2017,9 @@ const GUIDE_SECTIONS = Object.freeze({
 
   search() {
     return {
-      paragraphs: [
-        `Search, the first control in the top bar, opens the command palette, and Ctrl+K (Cmd+K on a Mac) opens it from any page. Type a part, a workspace or a command and press Enter to jump straight there. The Catalog lists all ${PRODUCTS.length} parts with their specs and prices.`,
-      ],
+      lead: 'Search, the first control in the top bar, opens the command palette; Ctrl+K (Cmd+K on a Mac) works on any page.',
+      bullets: ['Type: a part, a workspace or a command, then Enter to jump there', `Catalog: all ${PRODUCTS.length} parts with specs and prices`],
+      brief: ['Search: Ctrl+K (Cmd+K on a Mac) opens the command palette'],
       metrics: [{ label: 'Shortcut', value: 'Ctrl+K / Cmd+K' }],
       actions: [ACTIONS.catalog],
       citations: [CITE.controls],
@@ -1633,9 +2028,13 @@ const GUIDE_SECTIONS = Object.freeze({
 
   modes() {
     return {
-      paragraphs: [
-        'Visual and Specs, the switch in the top bar, set how much engineering the whole site shows. Visual is the clean presentation view. Specs reveals the technical layer: the 24V bus wiring in the Wall Studio, dimension guides, rulers, SKU tags and clearance callouts in the planners, module coordinates, the six-band octave RT60 spectrum and the engineering telemetry. Your choice is remembered on this device.',
+      lead: 'Visual and Specs, the switch in the top bar, set how much engineering the whole site shows.',
+      bullets: [
+        'Visual: the clean presentation view',
+        'Specs reveals the technical layer: the 24V bus wiring, dimension guides, SKU tags, coordinates and the octave RT60 spectrum',
+        'Memory: your choice is kept on this device',
       ],
+      brief: ['Modes: Visual for presentation, Specs for the engineering layer'],
       metrics: [
         { label: 'Visual', value: 'Presentation' },
         { label: 'Specs', value: 'Engineering layer' },
@@ -1646,11 +2045,17 @@ const GUIDE_SECTIONS = Object.freeze({
   },
 
   shortcuts(analysis) {
-    const zen = 'Zen, at the right of the 3D studio header, collapses the side docks for a full-viewport view; Docks brings them back.';
-    const keys = `Keyboard shortcuts: Ctrl+K (Cmd+K on a Mac) opens the command palette anywhere, and Ctrl+Z undoes while Ctrl+Y or Ctrl+Shift+Z redoes in both planners (${HISTORY_LIMIT} steps). In the 3D Spatial Studio, G grabs the selected module, the arrow keys nudge it, Enter drops it and Escape cancels; in the ${LENS_SHORT.inside} lens, W A S D walk and Q and E turn. In the 2D Wall Studio, Ctrl+A selects every module, the arrow keys nudge (Shift for ten steps) and Delete removes the selection.`;
+    const zen = 'Zen, at the right of the 3D studio header, hides the docks; Docks brings them back';
+    const history = `History: Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes, ${HISTORY_LIMIT} steps`;
+    const room = '3D studio: G grabs, arrows nudge, Enter drops, Escape cancels';
+    const wall = '2D studio: Ctrl+A selects all, Delete removes the selection';
     const zenFirst = /\b(zen|full ?screen|maximi[sz]e|docks?|hide)\b/.test(analysis.norm) && !/\b(keyboard|shortcuts?|hot ?keys?|ctrl|cmd)\b/.test(analysis.norm);
     return {
-      paragraphs: zenFirst ? [zen, keys] : [`${keys} ${zen}`],
+      lead: zenFirst
+        ? 'Zen gives the 3D Spatial Studio the full viewport.'
+        : 'Ctrl+K (Cmd+K on a Mac) opens the command palette from any page.',
+      bullets: zenFirst ? [zen, history, room] : [history, room, wall, zen],
+      brief: ['Shortcuts: Ctrl+K palette, Ctrl+Z undo, G to grab in 3D'],
       metrics: [
         { label: 'Palette', value: 'Ctrl+K / Cmd+K' },
         { label: 'Undo', value: 'Ctrl+Z' },
@@ -1663,9 +2068,13 @@ const GUIDE_SECTIONS = Object.freeze({
 
   chrome() {
     return {
-      paragraphs: [
-        'The top bar, left to right: the Lumen mark returns to the Overview; Overview, 3D Room (it scrolls to the 3D Spatial Studio preview, whose launch key opens the editor), Catalog and Wall Studio; then Search (Ctrl+K), the Visual / Specs switch, Sign In or Account, and Cart with its live item count. Below 1200 px wide the page links move to a second row.',
+      lead: 'The top bar runs left to right from the Lumen mark, which returns to the Overview.',
+      bullets: [
+        'Pages: Overview, 3D Room (it scrolls to the 3D Spatial Studio preview), Catalog and Wall Studio',
+        'Tools: Search (Ctrl+K), the Visual / Specs switch, Sign In or Account, and Cart with its count',
+        'Narrow screens: below 1200 px the page links move to a second row',
       ],
+      brief: ['Top bar: pages on the left, Search, Visual / Specs, Account and Cart on the right'],
       metrics: [{ label: 'Pages', value: 'Overview / 3D Room / Catalog / Wall Studio' }],
       actions: [ACTIONS.launch, ACTIONS.catalog],
       citations: [CITE.navigation],
@@ -1674,10 +2083,14 @@ const GUIDE_SECTIONS = Object.freeze({
 
   trouble() {
     return {
-      paragraphs: [
-        'A few checks clear most issues. Reload the page: your 2D wall, 3D room and cart are kept on this device, so nothing is lost. Keep hardware acceleration switched on so the 3D Spatial Studio can use WebGL 2. And if Lumen Cloud is unreachable, the planners and this assistant keep working on the device and saves wait there until the connection returns; only requisitions need the connection.',
-        'Tell me which page or button misbehaves, for example "the 3D room will not open" or "I cannot move a shelf", and I will walk you through it.',
+      lead: 'A few checks clear most issues, and a reload never loses your work.',
+      bullets: [
+        'Reload: your 2D wall, 3D room and cart are kept on this device',
+        'WebGL 2: keep hardware acceleration on for the 3D Spatial Studio',
+        'Offline: the planners and this assistant keep working; only requisitions need the connection',
+        'Tell me more: name the page or button, for example "the 3D room will not open"',
       ],
+      brief: ['Troubleshooting: reload, keep hardware acceleration on, and name the page that misbehaves'],
       metrics: [],
       actions: [ACTIONS.launch, ACTIONS.wall],
       citations: [CITE.troubleshooting],
@@ -1688,11 +2101,9 @@ const GUIDE_SECTIONS = Object.freeze({
 function composeGuide(analysis, ctx) {
   const ids = analysis.guide.intents.length > 0 ? analysis.guide.intents.slice(0, 3) : ['trouble'];
   const parts = ids.map((id) => GUIDE_SECTIONS[id](analysis, ctx));
-  // The leading intent keeps its whole answer; the others add their first two paragraphs.
-  const paragraphs = parts.flatMap((part, i) => (i === 0 ? part.paragraphs : part.paragraphs.slice(0, 2))).slice(0, 5);
   const [product] = analysis.products;
-  return section(paragraphs, {
-    metrics: uniqueBy(parts.flatMap((part) => part.metrics), 'label', 4),
+  return section(mergeUnits(parts.map((part) => ({ ...part, bullets: part.bullets.filter(Boolean) }))), {
+    metrics: uniqueBy(parts.flatMap((part) => part.metrics), 'label', REPLY_METRICS),
     citations: parts.flatMap((part) => part.citations),
     actions: [...parts.flatMap((part) => part.actions), ...(product ? [productAction(product)] : [])],
   });
@@ -1700,54 +2111,70 @@ function composeGuide(analysis, ctx) {
 
 /* Unresolved and gatekeeper replies */
 
+const ESCALATION_SHORT = Object.freeze({
+  bespoke: 'bespoke fabrication',
+  structural: 'structural or wet-zone certification',
+  installation: 'onsite installation',
+  freight: 'freight, returns and warranty claims',
+  invoicing: 'custom B2B invoicing',
+});
+
 function composeEngineering(analysis) {
-  const topics = analysis.escalations.map((topic) => topic.label);
-  const lower = (label) => label[0].toLowerCase() + label.slice(1);
-  const lead =
-    topics.length === 1
-      ? `${topics[0]} sits outside what the automated spec engine can settle.`
-      : `This inquiry spans ${topics.slice(0, -1).map(lower).join('; ')}; and ${lower(topics.at(-1))}. These sit outside what the automated spec engine can settle.`;
-  const paragraphs = [`${lead} ${SCOPE_LINE}`];
+  const topics = analysis.escalations.map((topic) => ESCALATION_SHORT[topic.id]);
   const [nearest] = analysis.products;
-  if (nearest) {
-    paragraphs.push(
-      `For reference, the closest catalog part is the ${nearest.name} (${nearest.sku}): ${dimsLabel(nearest)}, ${nearest.weightKg} kg, ${plural(nearest.mountingPoints, 'anchor point')}, ${finishList(nearest).join(' / ')}.`,
-    );
-  }
-  paragraphs.push(ESCALATION_NOTICE);
-  return section(paragraphs, {
-    metrics: [{ label: 'Route', value: 'Studio Engineering' }],
-    citations: nearest ? [productCite(nearest)] : [],
-    actions: nearest ? [productAction(nearest)] : [],
-  });
+  return section(
+    {
+      lead: `Outside automated scope: ${listLabel(topics)}.`,
+      bullets: [
+        nearest
+          ? `Closest part: ${nearest.name} (${nearest.sku}), ${dimsLabel(nearest)}, ${nearest.weightKg} kg, ${plural(nearest.mountingPoints, 'anchor point')}`
+          : SCOPE_LINE,
+      ],
+      tail: [ESCALATION_NOTICE],
+    },
+    {
+      metrics: [{ label: 'Route', value: 'Studio Engineering' }],
+      citations: nearest ? [productCite(nearest)] : [],
+      actions: nearest ? [productAction(nearest)] : [],
+    },
+  );
 }
 
 function composeUnrecognized() {
   return section(
-    [`I could not match this to a Lumen part, the 24V electrical system, acoustics, lighting, the planners or ordering. ${SCOPE_LINE}`, ESCALATION_NOTICE],
+    {
+      lead: 'I could not match this to a Lumen part, the 24V system, acoustics, lighting, the planners or ordering.',
+      bullets: [SCOPE_LINE],
+      tail: [ESCALATION_NOTICE],
+    },
     { metrics: [{ label: 'Route', value: 'Studio Engineering' }] },
   );
 }
 
 function composeGatekeeper() {
-  return section([CONTACT_GATE_REPLY]);
+  return section({ lead: CONTACT_GATE_REPLY });
 }
 
 /** Greetings and "what is Lumen": a short, warm tour of the platform and of what to ask. */
 function composeConcierge(analysis) {
   if (analysis?.thanks) {
-    return section(['You are welcome. Ask whenever you need a spec, a driver size or a hand with either planner.']);
+    return section({ lead: 'You are welcome. Ask whenever you need a spec, a driver size or a hand with either planner.' });
   }
   const overview = Boolean(analysis?.overview);
+  const architecture = overview && ARCHITECTURE.test(analysis.norm);
   return section(
-    [
-      `${overview ? '' : 'Hello, I am Lumen AI, the studio assistant built into this workspace. '}Lumen is a Scandinavian system of architectural lighting, acoustic surfaces and modular furniture: ${PRODUCTS.length} canonical parts on one ${BUS_VOLTAGE}V DC SELV spine, so every shelf, light bar, pendant and sconce plugs into the same low-voltage bus, sized with a 60W or 150W driver and dimmed per module over DALI-2 from ${DIM_RANGE.min} to ${DIM_RANGE.max}%.`,
-      `You plan in two places. The 3D Spatial Studio is a full-screen editor for all four walls of a room up to ${ROOM_WIDTH.max / 100} x ${ROOM_DEPTH.max / 100} m: orbit it 360 degrees, walk it at ${EYE_HEIGHT_CM} cm eye level and drag parts straight across the walls. The 2D Wall Studio composes one elevation and exports a 1:20 blueprint as .SVG or .DXF. Both recalculate the 24V driver and voltage drop, Sabine RT60 and STI across six octaves, and floor lux as you work, and Checkout turns the layout into a server-verified quote with crates and dispatch waves.`,
-      overview && ARCHITECTURE.test(analysis.norm)
-        ? 'Under the hood, every figure comes from the same pure, deterministic engines in your browser and on the Lumen Cloud API: the server re-prices every requisition, and I answer the same way online or offline.'
-        : null,
-      'Ask me anything in plain words: how to open or use a tool, the size or price of a part, driver sizing, acoustics or shipping. Say "audit my room" and I will read your live 2D wall, 3D room and cart.',
-    ],
+    {
+      lead: overview
+        ? 'Lumen is a Scandinavian system of architectural lighting, acoustic surfaces and modular furniture.'
+        : 'Hello, I am Lumen AI: ask me about any part, 24V wiring, acoustics or your live 3D room.',
+      bullets: [
+        `System: ${PRODUCTS.length} canonical parts on one ${BUS_VOLTAGE}V DC SELV spine, dimmed per module over DALI-2`,
+        'Planners: the 3D Spatial Studio for whole rooms, the 2D Wall Studio for 1:20 elevations',
+        architecture
+          ? 'Engineering: pure, deterministic engines shared by your browser and the Lumen Cloud API'
+          : 'Live audit: say "audit my room" and I read your wall, room and cart',
+      ],
+    },
     {
       metrics: [
         { label: 'Parts', value: String(PRODUCTS.length) },
@@ -1788,10 +2215,17 @@ function uniqueBy(list, key, max) {
   return out;
 }
 
-function assemble(text, verdict, sections, { gateNote = false } = {}) {
-  const paragraphs = sections.flatMap((entry) => entry.paragraphs);
-  if (gateNote) paragraphs.push(GATE_NOTE);
-  let answer = paragraphs.join('\n\n');
+/**
+ * Writes the answer: the lead, a blank-line-free run of "- " bullets under
+ * it, then any closing paragraphs. A second topic contributes its brief.
+ */
+function assemble(text, verdict, sections, { gateNote = false, maxBullets = MAX_BULLETS } = {}) {
+  const [main, ...extra] = sections;
+  const riders = extra.flatMap((entry) => entry.brief ?? (entry.lead ? [withoutStop(entry.lead)] : []));
+  const room = Math.max(1, maxBullets - riders.length);
+  const bullets = [...new Set([...main.bullets.slice(0, room), ...riders])].slice(0, maxBullets);
+  const body = [main.lead, ...bullets.map((line) => `- ${line}`)].filter(Boolean).join('\n');
+  let answer = [body, ...main.tail, gateNote ? GATE_NOTE : null].filter(Boolean).join('\n\n');
   if (answer.length > ANSWER_MAX) answer = `${answer.slice(0, ANSWER_MAX - 3).trimEnd()}...`;
   return {
     id: replyId(text, answer),
@@ -1802,7 +2236,7 @@ function assemble(text, verdict, sections, { gateNote = false } = {}) {
     resolved: verdict.resolved,
     citations: uniqueBy(sections.flatMap((entry) => entry.citations), 'id', MAX_CITATIONS),
     suggestedActions: uniqueBy(sections.flatMap((entry) => entry.actions), 'to', MAX_ACTIONS),
-    metrics: uniqueBy(sections.flatMap((entry) => entry.metrics), 'label', MAX_METRICS),
+    metrics: uniqueBy(sections.flatMap((entry) => entry.metrics), 'label', REPLY_METRICS),
   };
 }
 
@@ -1837,17 +2271,16 @@ export function canMarkUnhelpful(reply) {
 
 /* Deeper follow-up after "Did not resolve my issue" */
 
-function busTable(fig) {
-  const rows = fig.bus.nodes.slice(0, 6).map((node) => {
+function busRows(fig) {
+  return fig.bus.nodes.slice(0, 3).map((node) => {
     const product = getProduct(node.productId);
-    return `- ${node.label} ${product ? product.name : node.productId}: hop ${node.hopM.toFixed(2)} m, ${wattsLabel(node.watts)}, cumulative drop ${node.dropV.toFixed(3)} V`;
+    return `${node.label} ${product ? product.name : node.productId}: hop ${node.hopM.toFixed(2)} m, ${wattsLabel(node.watts)}, cumulative drop ${node.dropV.toFixed(3)} V`;
   });
-  return rows.length > 0 ? `Hop-by-hop bus schedule for your ${fig.label}:\n${rows.join('\n')}` : null;
 }
 
-function octaveTable(fig) {
+function octaveRow(fig) {
   const bands = OCTAVE_BANDS.map((hz, k) => `${OCTAVE_LABELS[k]} ${fig.physics.octaveRt60[hz].toFixed(2)} s`).join(', ');
-  return `Octave RT60 for your ${fig.label}: ${bands}.`;
+  return `Octave RT60 for your ${fig.label}: ${bands}`;
 }
 
 function deeperDetail(analysis, verdict, ctx) {
@@ -1857,37 +2290,46 @@ function deeperDetail(analysis, verdict, ctx) {
   switch (verdict.category) {
     case 'catalog': {
       const products = analysis.products.length > 0 ? analysis.products : [routeProduct(ctx.route)].filter(Boolean);
-      if (products.length === 0) return ['Every part has a full datasheet on its Catalog page: dimensions, mass, anchors, finishes, lead time and the 1:20 elevation drawing.'];
-      return products.flatMap((product) => productSheet(product, [], currency));
+      if (products.length === 0) {
+        return ['Datasheets: every Catalog page lists dimensions, mass, anchors, finishes, lead time and the 1:20 elevation drawing'];
+      }
+      return products.flatMap((product) => [
+        `${product.name} (${product.sku}): ${product.summary}`,
+        ...['size', 'light', 'mounting', 'finishes'].map((group) => sheetBullet(product, group, [], currency)),
+      ]);
     }
     case 'electrical':
       return [
-        `Engineering detail: dV = I x R x L per hop, with I = P / ${BUS_VOLTAGE} V and R = 2 x 0.0172 / 2.5 = ${LOOP_OHM_PER_M.toFixed(4)} ohm per metre (both conductors). Each hop carries every downstream node's current; the limit is ${DROP_LIMIT_PCT}% = ${((DROP_LIMIT_PCT / 100) * BUS_VOLTAGE).toFixed(2)} V at the last node.`,
-        fig ? busTable(fig) : null,
-      ].filter(Boolean);
+        `Formula: dV = I x R x L per hop, with I = P / ${BUS_VOLTAGE} V and R = 2 x 0.0172 / 2.5 = ${LOOP_OHM_PER_M.toFixed(4)} ohm per metre`,
+        `Limit: ${DROP_LIMIT_PCT}% = ${((DROP_LIMIT_PCT / 100) * BUS_VOLTAGE).toFixed(2)} V at the last node; each hop carries every downstream node's current`,
+        ...(fig ? busRows(fig) : []),
+      ];
     case 'physics':
       return [
-        'Engineering detail: RT60 = 0.161 V / (A + 4mV) per octave band, where A sums each surface area times its band coefficient (timber floor 0.10, plasterboard ceiling 0.05, painted plaster 0.03 at 500 Hz) plus furniture sabins, and 4mV is the air term above 500 Hz. STI maps m(F) = 1 / sqrt(1 + (2 pi F T / 13.8)^2) over 14 modulation frequencies to an apparent SNR clipped at +/-15 dB.',
-        fig ? octaveTable(fig) : null,
-      ].filter(Boolean);
+        'RT60: 0.161 V / (A + 4mV) per octave band, where A sums each surface area times its band coefficient (timber floor 0.10, plasterboard ceiling 0.05, painted plaster 0.03 at 500 Hz) plus furniture sabins',
+        'STI: m(F) = 1 / sqrt(1 + (2 pi F T / 13.8)^2) over 14 modulation frequencies, apparent SNR clipped at +/-15 dB',
+        fig ? octaveRow(fig) : null,
+      ];
     case 'workspace': {
       const target = resolveTarget(analysis, ctx);
       const subject = target === 'wall' ? live.wall : target === 'room' ? live.room : fig;
-      if (!subject) return ['There is no live module data to break down further yet.'];
-      return [busTable(subject), octaveTable(subject)].filter(Boolean);
+      if (!subject) return ['Live data: there is no mounted module to break down further yet'];
+      return [...busRows(subject), octaveRow(subject)];
     }
     case 'spatial':
       return [
-        'Keyboard map: G grabs the selected module, the arrow keys nudge it, Enter commits and Escape cancels; Home or 0 resets the orbit camera; in the Inside Room lens W A S D or the arrows walk and the wheel sets the field of view.',
+        'Keyboard map: G grabs, arrows nudge, Enter commits, Escape cancels; Home or 0 resets the orbit camera',
+        'Inside Room lens: W A S D or the arrows walk, and the wheel sets the field of view',
       ];
     case 'guide':
       return [
-        `Full keyboard map: Ctrl+K or Cmd+K opens the command palette; Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes (${HISTORY_LIMIT} steps). 3D Spatial Studio: G grabs, the arrow keys nudge, Enter drops, Escape cancels, Home or 0 resets the orbit; in the ${LENS_SHORT.inside} lens W A S D walk, Q and E turn, + and - set the lens. 2D Wall Studio: Ctrl+A selects all, the arrow keys nudge (Shift for ten), Delete removes.`,
-        'Troubleshooting checklist: reload the page (drafts and the cart are kept on this device); switch on hardware acceleration so WebGL 2 can run the 3D Spatial Studio; allow site data for this address so drafts survive between visits, since a private window starts with an empty workspace; and when Lumen Cloud is unreachable, saves stay on the device and sync later.',
+        `Full keyboard map: Ctrl+K or Cmd+K opens the palette; Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes (${HISTORY_LIMIT} steps); in 3D G grabs, arrows nudge, Enter drops, Escape cancels, Home or 0 resets; inside, W A S D walk, Q and E turn`,
+        'Troubleshooting checklist: reload the page, since drafts and the cart are kept on this device; switch on hardware acceleration for WebGL 2; allow site data so drafts survive between visits; a private window starts with an empty workspace',
       ];
     case 'commerce':
       return [
-        'Engineering detail: unit prices convert as round(USD x minor units x rate) per line; discount and VAT are rounded once each, half up, on the totals. Crates pack first-fit decreasing by mass with an 18% tare (0.8 kg minimum), split across crates by largest remainder so net + tare = gross exactly.',
+        'Pricing: unit prices convert as round(USD x minor units x rate) per line; discount and VAT round once each, half up',
+        'Crates: first-fit decreasing by mass with an 18% tare (0.8 kg minimum), split by largest remainder so net + tare = gross exactly',
       ];
     default:
       return [];
@@ -1904,11 +2346,18 @@ export function composeFollowUp(question, workspaceContext) {
   const ctx = sanitizeWorkspaceContext(workspaceContext);
   const analysis = analyze(text);
   const verdict = classify(analysis);
-  const detail = deeperDetail(analysis, verdict, ctx);
-  const paragraphs = ['Understood - that answer did not settle your case. Here is the deeper technical detail I hold for it.', ...detail, FOLLOW_UP_NOTICE];
-  return assemble(text, { category: verdict.category, resolved: true, confidence: verdict.confidence }, [
-    section(paragraphs, { actions: [] }),
-  ]);
+  return assemble(
+    text,
+    { category: verdict.category, resolved: true, confidence: verdict.confidence },
+    [
+      section({
+        lead: 'Understood - that answer did not settle your case. Here is the deeper technical detail I hold for it.',
+        bullets: deeperDetail(analysis, verdict, ctx).filter(Boolean),
+        tail: [FOLLOW_UP_NOTICE],
+      }),
+    ],
+    { maxBullets: FOLLOW_UP_BULLETS },
+  );
 }
 
 /* Reply boundary (client side) */

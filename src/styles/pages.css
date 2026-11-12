@@ -287,19 +287,3 @@
     border-top: 1px solid var(--border-strong);
   }
 }
-
-/* Page atmosphere: a fixed oak-amber wash from the top right, painted under
-   the page content and over the basalt canvas. */
-
-.page-atmosphere {
-  position: relative;
-}
-
-.page-atmosphere::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background: var(--glow-oak);
-  pointer-events: none;
-}

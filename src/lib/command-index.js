@@ -41,6 +41,7 @@ export function buildCommandIndex({ mode, currency, signedIn }) {
   const modules = PRODUCTS.map((product) => ({
     id: `module-${product.id}`,
     group: 'modules',
+    productId: product.id,
     label: product.name,
     detail: product.sku,
     meta: `${product.watts} W / ${formatUsd(product.priceUsd)}`,

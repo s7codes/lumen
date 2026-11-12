@@ -129,9 +129,6 @@
   --nav-font-weight: 500;
   --nav-tracking: -0.01em;
 
-  /* Page atmosphere: a faint oak-amber light falling in from the top right */
-  --glow-oak: radial-gradient(circle at top right, rgba(232, 146, 58, 0.05), transparent 40%);
-
   /* Chrome */
   --nav-height: 56px;
   --z-grid: 0;

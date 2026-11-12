@@ -1,5 +1,5 @@
 /* Lumen AI: a bottom-right dock holding the trigger pill and the non-modal
-   panel. Stealth basalt glass, hairline edges and one champagne accent;
+   chat panel. Stealth basalt glass, hairline edges and one champagne accent;
    depth from zero-blur plinths only, never a glow. */
 
 /* Anything scrolled into view from below (keyboard focus, find in page, an
@@ -13,7 +13,8 @@
   --concierge-glass: rgba(20, 19, 17, 0.92);
   --concierge-surface: rgba(22, 21, 19, 0.96);
   --concierge-raised: rgba(255, 255, 255, 0.025);
-  --concierge-graphite: #23211e;
+  --concierge-bubble: #2a2621;
+  --concierge-well: #181715;
   --concierge-ink: #f4f1ea;
   --concierge-body: #e6e2da;
   --concierge-soft: #b9b2a6;
@@ -84,7 +85,9 @@ body:has(.camera-settings[data-open]) .concierge-dock {
 }
 
 .concierge-trigger__mark [data-part='aperture'],
-.concierge-panel__mark [data-part='aperture'] {
+.concierge-panel__mark [data-part='aperture'],
+.concierge-avatar [data-part='aperture'],
+.concierge-welcome__mark [data-part='aperture'] {
   fill: var(--concierge-champagne);
 }
 
@@ -113,7 +116,9 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   }
 }
 
-/* Panel */
+/* Panel: a fixed-height chat column. Header, then the thread (or the welcome
+   hero), then the dock of chips and the composer, so the conversation owns
+   the height between them. */
 
 .concierge-panel {
   position: fixed;
@@ -121,12 +126,12 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   bottom: 72px;
   display: flex;
   flex-direction: column;
-  width: min(420px, calc(100vw - 32px));
-  max-height: min(640px, calc(100vh - 96px));
-  max-height: min(640px, calc(100dvh - 96px));
+  width: min(400px, calc(100vw - 32px));
+  height: min(700px, calc(100vh - 96px));
+  height: min(700px, calc(100dvh - 96px));
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--concierge-surface);
   -webkit-backdrop-filter: blur(20px) saturate(1.25);
   backdrop-filter: blur(20px) saturate(1.25);
@@ -152,6 +157,7 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   flex-direction: row;
   align-items: center;
   gap: 12px;
+  height: auto;
   padding: 16px;
 }
 
@@ -160,12 +166,16 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   color: var(--concierge-soft);
 }
 
+/* Header: the mark, the title with its badge, the live route pill, then the
+   New chat and close keys. */
+
 .concierge-panel__head {
   display: grid;
+  flex: none;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  padding: 14px 14px 13px 16px;
+  gap: 10px;
+  padding: 7px 8px 7px 12px;
   border-bottom: 1px solid var(--concierge-hairline);
 }
 
@@ -173,23 +183,27 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   display: grid;
   flex: none;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border: 1px solid var(--concierge-hairline);
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.03);
   color: var(--concierge-ink);
 }
 
+.concierge-panel__heading {
+  min-width: 0;
+}
+
 .concierge-panel__title-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 10px;
+  gap: 4px 8px;
 }
 
 .concierge-panel__title {
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.2;
   letter-spacing: -0.01em;
@@ -199,25 +213,54 @@ body:has(.camera-settings[data-open]) .concierge-dock {
 .concierge-panel__badge {
   display: inline-flex;
   align-items: center;
-  height: 20px;
-  padding: 0 8px;
+  height: 18px;
+  padding: 0 7px;
   border: 1px solid rgba(229, 199, 153, 0.3);
   border-radius: 999px;
   background: rgba(229, 199, 153, 0.06);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--concierge-champagne);
   white-space: nowrap;
 }
 
+/* The route the visitor asks from, as a quiet pill with a flat champagne tick. */
 .concierge-panel__context {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  height: 17px;
   margin-top: 3px;
-  font-size: 11.5px;
-  color: var(--concierge-muted);
+  padding: 0 8px;
+  overflow: hidden;
+  border: 1px solid var(--concierge-hairline);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--concierge-soft);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.concierge-panel__close {
+.concierge-panel__context::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 2px;
+  background: var(--concierge-champagne);
+}
+
+.concierge-panel__keys {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.concierge-panel__key {
   display: grid;
   place-items: center;
   width: 30px;
@@ -227,66 +270,92 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   color: var(--concierge-soft);
   transition:
     border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out);
 }
 
-.concierge-panel__close:hover {
+.concierge-panel__key:hover {
   border-color: var(--concierge-hairline);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--concierge-ink);
 }
 
-.concierge-panel__close:focus-visible {
+.concierge-panel__key:focus-visible {
   outline: 1px solid var(--concierge-champagne);
   outline-offset: 1px;
 }
 
-/* The body is the offset parent of every message, for scroll anchoring. */
+/* The body scrolls the thread and is the offset parent of every message, for
+   scroll anchoring. The welcome hero centres itself with auto margins, so a
+   short window scrolls it instead of clipping its top. */
 .concierge-panel__body {
   position: relative;
+  display: flex;
   flex: 1 1 auto;
-  min-height: 120px;
+  flex-direction: column;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 16px;
+  padding: 18px 16px;
+  border-bottom: 1px solid var(--concierge-hairline);
   scrollbar-width: thin;
   scrollbar-color: rgba(229, 199, 153, 0.25) transparent;
 }
 
-/* Quick prompts */
+/* Welcome: the mark, one question, one line and four prompt cards. */
 
-.concierge-intro__lede {
-  margin-bottom: 12px;
-  font-size: 13.5px;
-  line-height: 1.6;
-  color: var(--concierge-body);
+.concierge-welcome {
+  display: grid;
+  justify-items: center;
+  margin-block: auto;
+  padding: 4px 2px;
+  text-align: center;
 }
 
-.concierge-prompts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.concierge-welcome__mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 14px;
+  border: 1px solid rgba(229, 199, 153, 0.3);
+  border-radius: 13px;
+  background:
+    radial-gradient(90% 90% at 50% 100%, rgba(229, 199, 153, 0.12), rgba(229, 199, 153, 0) 70%),
+    rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--concierge-ink);
 }
+
+.concierge-welcome__title {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: var(--concierge-ink);
+  text-wrap: balance;
+}
+
+.concierge-welcome__lede {
+  max-width: 32ch;
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--concierge-soft);
+  text-wrap: balance;
+}
+
+/* Quick prompts: cards in the welcome, a single scrolling chip row once the
+   thread starts. Both share the button; the layout decides the shape. */
 
 .concierge-prompt {
-  min-height: 30px;
-  padding: 6px 11px;
-  border: 1px solid var(--concierge-hairline);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--concierge-soft);
-  font-size: 12px;
-  line-height: 1.3;
+  color: var(--concierge-body);
+  font-family: var(--font-sans);
   text-align: left;
   transition:
     border-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out),
     background-color var(--duration-fast) var(--ease-out);
-}
-
-.concierge-prompt:hover:not(:disabled) {
-  border-color: rgba(229, 199, 153, 0.35);
-  background: rgba(229, 199, 153, 0.05);
-  color: var(--concierge-ink);
 }
 
 .concierge-prompt:focus-visible {
@@ -299,12 +368,91 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   opacity: 0.5;
 }
 
+.concierge-prompts--cards {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  margin-top: 20px;
+}
+
+.concierge-prompts--cards .concierge-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--concierge-hairline);
+  border-radius: 12px;
+  background: var(--concierge-raised);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.concierge-prompt__arrow {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--concierge-muted);
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
+}
+
+.concierge-prompts--cards .concierge-prompt:hover:not(:disabled) {
+  border-color: rgba(229, 199, 153, 0.35);
+  background: rgba(229, 199, 153, 0.05);
+  color: var(--concierge-ink);
+}
+
+.concierge-prompts--cards .concierge-prompt:hover:not(:disabled) .concierge-prompt__arrow {
+  color: var(--concierge-champagne);
+  transform: translateX(2px);
+}
+
+.concierge-prompts--chips {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  max-height: 34px;
+  padding: 0 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 28px), transparent 100%);
+}
+
+.concierge-prompts--chips::-webkit-scrollbar {
+  display: none;
+}
+
+.concierge-prompts--chips .concierge-prompt {
+  flex: none;
+  height: 24px;
+  padding: 0 11px;
+  border: 1px solid var(--concierge-hairline);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--concierge-soft);
+  font-size: 11.5px;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.concierge-prompts--chips .concierge-prompt:hover:not(:disabled) {
+  border-color: rgba(229, 199, 153, 0.35);
+  color: var(--concierge-ink);
+}
+
 /* Conversation */
 
 .concierge-messages {
   display: grid;
-  gap: 14px;
-  margin-top: 16px;
+  gap: 20px;
 }
 
 .concierge-messages:empty {
@@ -318,32 +466,41 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   overflow-wrap: anywhere;
 }
 
+/* Questions: a warm charcoal-bronze bubble on the right, tail at the bottom right. */
 .concierge-msg--user {
   justify-self: end;
-  max-width: 86%;
-  padding: 9px 13px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px 12px 2px 12px;
-  background: var(--concierge-graphite);
+  max-width: 82%;
+  padding: 9px 14px;
+  border: 1px solid rgba(229, 199, 153, 0.22);
+  border-radius: 18px 18px 4px 18px;
+  background: var(--concierge-bubble);
   color: var(--concierge-ink);
 }
 
-.concierge-msg--ai {
+/* Answers: the avatar column and the reply itself, straight on the glass. */
+.concierge-msg--ai,
+.concierge-msg--pending {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: start;
+}
+
+.concierge-avatar {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(229, 199, 153, 0.3);
+  border-radius: 7px;
+  background: #1d1b18;
+  color: var(--concierge-ink);
+}
+
+.concierge-msg__content {
   display: grid;
   gap: 10px;
-  padding: 13px 14px 12px;
-  border: 1px solid var(--concierge-hairline);
-  border-radius: 2px 12px 12px 12px;
-  background: var(--concierge-raised);
-  color: var(--concierge-body);
-}
-
-.concierge-msg--ai[data-resolved='false'] {
-  border-color: rgba(232, 146, 58, 0.32);
-}
-
-.concierge-msg--ai[data-kind='followup'] {
-  border-style: dashed;
+  min-width: 0;
 }
 
 .concierge-msg__meta {
@@ -351,7 +508,8 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 4px 12px;
+  gap: 2px 12px;
+  min-height: 22px;
   font-size: 11px;
   line-height: 1.3;
   color: var(--concierge-muted);
@@ -373,6 +531,14 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   background: var(--concierge-champagne);
 }
 
+.concierge-msg--ai[data-resolved='false'] .concierge-msg__category {
+  color: var(--lumen-amber-soft);
+}
+
+.concierge-msg--ai[data-resolved='false'] .concierge-msg__category::before {
+  background: var(--lumen-amber);
+}
+
 .concierge-msg__confidence {
   font-size: 10px;
   letter-spacing: 0.04em;
@@ -392,16 +558,47 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   color: var(--concierge-body);
 }
 
-.concierge-msg__list {
-  display: grid;
-  gap: 3px;
-  padding-left: 14px;
-  list-style: square;
-  color: var(--concierge-body);
+/* The lead: one sentence that carries the answer. */
+.concierge-msg__lead {
+  font-weight: 500;
+  color: var(--concierge-ink);
 }
 
-.concierge-msg__list li::marker {
-  color: var(--concierge-champagne);
+.concierge-msg__list {
+  display: grid;
+  gap: 5px;
+}
+
+.concierge-msg__list li {
+  position: relative;
+  padding-left: 15px;
+}
+
+/* A flat champagne dash for each point. */
+.concierge-msg__list li::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: 1px;
+  width: 6px;
+  height: 2px;
+  background: var(--concierge-champagne);
+}
+
+.concierge-msg__label {
+  font-weight: 600;
+  color: var(--concierge-ink);
+}
+
+/* Closing notices (the escalation hand-off, the gate hint) as a quiet callout. */
+.concierge-msg__note {
+  padding: 8px 11px;
+  border-left: 2px solid rgba(229, 199, 153, 0.55);
+  border-radius: 0 8px 8px 0;
+  background: rgba(229, 199, 153, 0.05);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--concierge-soft);
 }
 
 /* Smooth reveal: a fresh reply streams in top to bottom under a soft edge,
@@ -424,6 +621,7 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   animation: concierge-settle 320ms var(--ease-out) 420ms both;
 }
 
+/* Up to four key figures as compact pills. */
 .concierge-metrics {
   display: flex;
   flex-wrap: wrap;
@@ -434,12 +632,12 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
-  height: 24px;
+  height: 22px;
   padding: 0 9px;
   border: 1px solid var(--concierge-hairline);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.025);
-  line-height: 22px;
+  line-height: 20px;
   white-space: nowrap;
 }
 
@@ -451,10 +649,11 @@ body:has(.camera-settings[data-open]) .concierge-dock {
 
 .concierge-metric dd {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--concierge-ink);
 }
 
+/* Next steps: pill links, the first one a champagne cap. */
 .concierge-actions {
   display: flex;
   flex-wrap: wrap;
@@ -465,13 +664,13 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 32px;
-  padding: 6px 12px;
+  min-height: 30px;
+  padding: 5px 13px;
   border: 1px solid rgba(229, 199, 153, 0.32);
-  border-radius: 8px;
+  border-radius: 999px;
   background: rgba(229, 199, 153, 0.04);
   color: var(--concierge-champagne);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1.2;
   text-decoration: none;
@@ -487,7 +686,6 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   color: var(--concierge-champagne-hi);
 }
 
-/* The first next step is the direct key: a champagne cap with espresso ink. */
 .concierge-action[data-primary] {
   border-color: var(--concierge-champagne);
   background: var(--concierge-champagne);
@@ -526,7 +724,6 @@ body:has(.camera-settings[data-open]) .concierge-dock {
 /* A polite footer link under a resolved answer, never a button-shaped alarm. */
 .concierge-msg__unhelpful {
   justify-self: start;
-  margin-top: 2px;
   padding: 2px 0;
   border: 0;
   background: none;
@@ -554,14 +751,13 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   color: var(--concierge-soft);
 }
 
-.concierge-msg--pending {
+/* Pending: the avatar and a scanning hairline while the answer is composed. */
+.concierge-pending {
   display: grid;
-  gap: 9px;
-  padding: 12px 14px;
-  border: 1px solid var(--concierge-hairline);
-  border-radius: 2px 12px 12px 12px;
-  background: var(--concierge-raised);
+  gap: 8px;
+  padding-top: 4px;
   font-size: 12px;
+  line-height: 1.5;
   color: var(--concierge-muted);
 }
 
@@ -588,11 +784,11 @@ body:has(.camera-settings[data-open]) .concierge-dock {
 }
 
 /* Gatekeeper: silent while locked (a screen-reader status only), a calm
-   champagne line between the stream and the composer once contact unlocks. */
+   champagne line over the chips and composer once contact unlocks. */
 
 .concierge-gate {
-  padding: 9px 16px;
-  border-top: 1px solid var(--concierge-hairline);
+  flex: none;
+  padding: 8px 16px 0;
   font-size: 11.5px;
   line-height: 1.45;
   color: var(--concierge-champagne);
@@ -616,10 +812,10 @@ body:has(.camera-settings[data-open]) .concierge-dock {
 .concierge-confirm {
   display: grid;
   gap: 12px;
-  margin-top: 16px;
+  margin-top: 18px;
   padding: 14px;
   border: 1px solid rgba(229, 199, 153, 0.25);
-  border-radius: 12px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.03);
 }
 
@@ -705,7 +901,7 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   min-height: 40px;
   padding: 0 16px;
   border: 1px solid var(--concierge-champagne);
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--concierge-champagne);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
   color: var(--concierge-espresso);
@@ -760,41 +956,41 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   justify-self: start;
 }
 
-/* Composer: one rounded field with the send key inside it. */
+/* Composer: one pill with the circular send key inside it. */
 
 .concierge-composer {
-  padding: 12px;
-  border-top: 1px solid var(--concierge-hairline);
+  flex: none;
+  padding: 2px 12px 8px;
 }
 
-/* The unlocked gate line already draws the divider. */
-.concierge-gate:not(.visually-hidden) + .concierge-composer {
-  padding-top: 2px;
-  border-top: 0;
+/* Before the first message nothing sits between the body and the composer. */
+.concierge-panel[data-thread='welcome'] .concierge-composer {
+  padding-top: 8px;
 }
 
 .concierge-composer__field {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 4px 4px 13px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.035);
+  padding: 3px 3px 3px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: var(--concierge-well);
   transition:
     border-color var(--duration-fast) var(--ease-out),
     box-shadow var(--duration-fast) var(--ease-out);
 }
 
+/* A crisp zero-blur ring, never a glow. */
 .concierge-composer__field:focus-within {
   border-color: rgba(229, 199, 153, 0.5);
-  box-shadow: 0 0 0 1px rgba(229, 199, 153, 0.2);
+  box-shadow: 0 0 0 3px rgba(229, 199, 153, 0.1);
 }
 
 .concierge-composer__input {
   flex: 1 1 auto;
   min-width: 0;
-  height: 34px;
+  height: 32px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -815,10 +1011,10 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   display: grid;
   flex: none;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--concierge-champagne);
-  border-radius: 9px;
+  border-radius: 999px;
   background: var(--concierge-champagne);
   color: var(--concierge-espresso);
   transition:
@@ -899,7 +1095,8 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   }
 
   .concierge-trigger,
-  .concierge-action__arrow {
+  .concierge-action__arrow,
+  .concierge-prompt__arrow {
     transition: none;
   }
 }

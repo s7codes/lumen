@@ -3,6 +3,7 @@ import { dimFactor, sanitizeDimPct } from '../../lib/dimming.js';
 import { formatInt, formatUsd, formatWatts } from '../../lib/format.js';
 import { anchorPoints, boundsOf, itemRect, snapToWall } from '../../lib/wall-studio.js';
 import '../../styles/product.css';
+import { ProductThumbGlyph } from '../ProductThumbGlyph.jsx';
 import { DimmingSlider, FinishPicker, NumberField, PanelSection, Switch } from './controls.jsx';
 
 function conflictText(conflict, items) {
@@ -39,10 +40,12 @@ function ModuleList({ items, conflicts, onSelect }) {
                   data-conflict={conflict || undefined}
                   onClick={() => onSelect(item.uid)}
                 >
-                  <span
-                    className="module-list__swatch"
-                    style={{ '--swatch': finish.hex, '--swatch-hi': finish.highlight, '--swatch-lo': finish.shade }}
-                    aria-hidden="true"
+                  <ProductThumbGlyph
+                    product={product}
+                    finish={item.finish}
+                    lit={item.led !== false}
+                    size="sm"
+                    className="module-list__glyph"
                   />
                   <span className="module-list__name">{product.name}</span>
                   <span className="module-list__meta">

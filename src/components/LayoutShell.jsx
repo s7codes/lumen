@@ -1,4 +1,4 @@
-import { Outlet, ScrollRestoration } from 'react-router-dom';
+import { Outlet, ScrollRestoration, useLocation } from 'react-router-dom';
 import { AuthProvider } from '../contexts/AuthContext.jsx';
 import { ToastProvider } from '../contexts/ToastContext.jsx';
 import { useMagneticField } from '../hooks/useMagneticField.js';
@@ -26,6 +26,22 @@ function StructuralGrid() {
   );
 }
 
+function atmosphereFor(pathname) {
+  if (pathname === '/') return 'home';
+  const [, section] = pathname.split('/');
+  return ['room-3d', 'studio-2d', 'catalog', 'checkout', 'account'].includes(section) ? section : 'default';
+}
+
+/**
+ * The page atmosphere: warm basalt depth, a tungsten wash falling on the
+ * stage from above and drafting lines at the edges, fixed behind every
+ * route. It sits under the structural grid, so Specs mode still draws over it.
+ */
+function AmbientBackdrop() {
+  const { pathname } = useLocation();
+  return <div className="ambient-backdrop" data-testid="ambient-backdrop" data-atmosphere={atmosphereFor(pathname)} aria-hidden="true" />;
+}
+
 // Focus moves to the landmark itself; a bare fragment jump only moves the caret start point.
 function focusMain(event) {
   const main = document.getElementById('main-content');
@@ -46,6 +62,7 @@ export function LayoutShell() {
             <a href="#main-content" className="skip-link" data-testid="skip-to-main" onClick={focusMain}>
               Skip to main content
             </a>
+            <AmbientBackdrop />
             <StructuralGrid />
             <div className="shell">
               <Navbar />

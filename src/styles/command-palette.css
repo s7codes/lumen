@@ -255,6 +255,16 @@
   color: var(--text-primary);
 }
 
+/* Module rows show the part itself: the drawing brings its own tile and edge. */
+.palette__glyph--product {
+  border: 0;
+}
+
+.palette__glyph--product svg {
+  width: 28px;
+  height: 28px;
+}
+
 .palette__text {
   display: flex;
   flex-direction: column;

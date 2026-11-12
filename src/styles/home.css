@@ -238,6 +238,58 @@
   }
 }
 
+/* Below the hero: one continuous atmosphere that scrolls with the sections.
+   The base picks up the hero's own floor tone (its wash ends in
+   rgba(11, 11, 10, 0.85)) and rises into warm basalt; soft tungsten and
+   bronze washes sit behind the lab, the 3D studio, the core modules and the
+   workspaces; drafting lines run the full height, stronger toward the edges;
+   a champagne hairline marks the start of each section. */
+
+.home-atmosphere {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+}
+
+.home-atmosphere::before,
+.home-atmosphere::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.home-atmosphere::before {
+  background:
+    radial-gradient(ellipse 75% 50% at 18% 28%, rgba(232, 146, 58, 0.065), rgba(232, 146, 58, 0) 70%),
+    radial-gradient(ellipse 70% 55% at 82% 62%, rgba(216, 178, 124, 0.055), rgba(216, 178, 124, 0) 72%),
+    radial-gradient(ellipse 55% 14% at 50% 44%, rgba(232, 168, 92, 0.05), rgba(232, 168, 92, 0) 70%),
+    radial-gradient(ellipse 60% 16% at 22% 90%, rgba(229, 199, 153, 0.045), rgba(229, 199, 153, 0) 72%),
+    linear-gradient(180deg, #0a0a09 0, #0c0b0a 640px, #100e0c 42%, #0e0c0b 78%, #090808 100%);
+}
+
+.home-atmosphere::after {
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, rgba(255, 255, 255, 0) 1px);
+  background-position: 50% 0;
+  background-size: 120px 100%;
+  -webkit-mask-image:
+    linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.3) 28%, rgba(0, 0, 0, 0.3) 72%, #000 100%),
+    linear-gradient(180deg, transparent 0, #000 8%, #000 92%, transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.3) 28%, rgba(0, 0, 0, 0.3) 72%, #000 100%),
+    linear-gradient(180deg, transparent 0, #000 8%, #000 92%, transparent 100%);
+  mask-composite: intersect;
+}
+
+.home-atmosphere > :is(.lab, .showcase3d, .modules, .entries) {
+  background-image: linear-gradient(90deg, rgba(229, 199, 153, 0), rgba(229, 199, 153, 0.16) 50%, rgba(229, 199, 153, 0));
+  background-position: 50% calc(var(--section-space) * 0.45);
+  background-repeat: no-repeat;
+  background-size: calc(100% - 2 * var(--grid-margin)) 1px;
+}
+
 /* Specification strip */
 
 .spec-strip__grid {

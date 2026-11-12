@@ -133,104 +133,108 @@ export default function HomePage() {
     <>
       <AmbientHero />
 
-      <section className="spec-strip" aria-label="System specification">
-        <dl className="spec-strip__grid container reveal-stagger">
-          {SPECS.map((spec, i) => (
-            <div key={spec.value} ref={reveal} className="spec-strip__item bento reveal-up">
-              <dt className="index-label">
-                <span className="index-label__num">Spec</span> {String(i + 1).padStart(2, '0')}
-              </dt>
-              <dd className="spec-strip__value">{spec.value}</dd>
-              <dd className="spec-strip__detail mono">{spec.detail}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+      {/* Below the hero the overview scrolls through one continuous atmosphere:
+          warm washes behind each section, drafting lines and hairline dividers. */}
+      <div className="home-atmosphere" data-testid="home-atmosphere">
+        <section className="spec-strip" aria-label="System specification">
+          <dl className="spec-strip__grid container reveal-stagger">
+            {SPECS.map((spec, i) => (
+              <div key={spec.value} ref={reveal} className="spec-strip__item bento reveal-up">
+                <dt className="index-label">
+                  <span className="index-label__num">Spec</span> {String(i + 1).padStart(2, '0')}
+                </dt>
+                <dd className="spec-strip__value">{spec.value}</dd>
+                <dd className="spec-strip__detail mono">{spec.detail}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
 
-      <section className="lab container" aria-labelledby="lab-title" data-testid="surface-lab">
-        <SectionHead
-          index="02"
-          section="Surface & Dimming Lab"
-          titleId="lab-title"
-          title="Read a finish under real light before it is specified."
-          lede="One LED channel on the 24V bus, a dimmer, three colour temperatures and four production finishes. Load, output and reflected light are calculated from fixture data as you adjust them."
-        />
-        <div ref={reveal} className="reveal-cinematic">
-          <SurfaceLab />
-        </div>
-      </section>
+        <section className="lab container" aria-labelledby="lab-title" data-testid="surface-lab">
+          <SectionHead
+            index="02"
+            section="Surface & Dimming Lab"
+            titleId="lab-title"
+            title="Read a finish under real light before it is specified."
+            lede="One LED channel on the 24V bus, a dimmer, three colour temperatures and four production finishes. Load, output and reflected light are calculated from fixture data as you adjust them."
+          />
+          <div ref={reveal} className="reveal-cinematic">
+            <SurfaceLab />
+          </div>
+        </section>
 
-      <SpatialShowcase />
+        <SpatialShowcase />
 
-      <section
-        ref={modulesRef}
-        id={CORE_MODULES_ID}
-        className="modules container"
-        aria-labelledby="modules-title"
-        data-testid="core-modules"
-      >
-        <SectionHead
-          index="04"
-          section="Core Modules"
-          titleId="modules-title"
-          title="Three modules that anchor most walls."
-          lede="A lit shelf, a corner column and an acoustic frame. Each mounts to the same bus and ships in the same four finishes."
-        />
-        <ul className="modules__grid reveal-stagger">
-          {FLAGSHIPS.map(({ product, index }) => (
-            <li key={product.id} className="modules__cell">
-              <ProductCard product={product} index={index} />
-            </li>
-          ))}
-        </ul>
-        <div ref={reveal} className="modules__foot bento reveal-up">
-          <p className="modules__count mono">
-            {padIndex(PRODUCTS.length)} modules / {padIndex(CATEGORIES.length)} families / one 24V bus
-          </p>
-          <Link to="/catalog" className="button">
-            Explore Full Catalog
-            <ArrowRight />
-          </Link>
-        </div>
-      </section>
+        <section
+          ref={modulesRef}
+          id={CORE_MODULES_ID}
+          className="modules container"
+          aria-labelledby="modules-title"
+          data-testid="core-modules"
+        >
+          <SectionHead
+            index="04"
+            section="Core Modules"
+            titleId="modules-title"
+            title="Three modules that anchor most walls."
+            lede="A lit shelf, a corner column and an acoustic frame. Each mounts to the same bus and ships in the same four finishes."
+          />
+          <ul className="modules__grid reveal-stagger">
+            {FLAGSHIPS.map(({ product, index }) => (
+              <li key={product.id} className="modules__cell">
+                <ProductCard product={product} index={index} />
+              </li>
+            ))}
+          </ul>
+          <div ref={reveal} className="modules__foot bento reveal-up">
+            <p className="modules__count mono">
+              {padIndex(PRODUCTS.length)} modules / {padIndex(CATEGORIES.length)} families / one 24V bus
+            </p>
+            <Link to="/catalog" className="button">
+              Explore Full Catalog
+              <ArrowRight />
+            </Link>
+          </div>
+        </section>
 
-      <section
-        ref={workspacesRef}
-        id={WORKSPACES_ID}
-        className="entries container"
-        aria-labelledby="entries-title"
-        data-testid="workspaces"
-      >
-        <header ref={reveal} className="entries__head reveal-up">
-          <p className="index-label">
-            <span className="index-label__num">05</span> / Workspaces
-          </p>
-          <h2 id="entries-title" className="entries__title">
-            Start from a room, a part or a wall.
-          </h2>
-        </header>
+        <section
+          ref={workspacesRef}
+          id={WORKSPACES_ID}
+          className="entries container"
+          aria-labelledby="entries-title"
+          data-testid="workspaces"
+        >
+          <header ref={reveal} className="entries__head reveal-up">
+            <p className="index-label">
+              <span className="index-label__num">05</span> / Workspaces
+            </p>
+            <h2 id="entries-title" className="entries__title">
+              Start from a room, a part or a wall.
+            </h2>
+          </header>
 
-        <ul className="entries__grid reveal-stagger">
-          {ENTRIES.map(({ to, index, section, title, body, Glyph }) => (
-            <li key={to} ref={reveal} className="reveal-up">
-              <Link to={to} className="entry-card bento">
-                <span className="index-label">
-                  <span className="index-label__num">{index}</span> / {section}
-                </span>
-                <span className="entry-card__glyph">
-                  <Glyph />
-                </span>
-                <span className="entry-card__title">{title}</span>
-                <span className="entry-card__body">{body}</span>
-                <span className="entry-card__cta mono">
-                  Enter
-                  <ArrowRight />
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
+          <ul className="entries__grid reveal-stagger">
+            {ENTRIES.map(({ to, index, section, title, body, Glyph }) => (
+              <li key={to} ref={reveal} className="reveal-up">
+                <Link to={to} className="entry-card bento">
+                  <span className="index-label">
+                    <span className="index-label__num">{index}</span> / {section}
+                  </span>
+                  <span className="entry-card__glyph">
+                    <Glyph />
+                  </span>
+                  <span className="entry-card__title">{title}</span>
+                  <span className="entry-card__body">{body}</span>
+                  <span className="entry-card__cta mono">
+                    Enter
+                    <ArrowRight />
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
     </>
   );
 }

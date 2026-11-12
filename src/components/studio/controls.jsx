@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { getFinish } from '../../data/products.js';
 import { DIM_RANGE } from '../../lib/dimming.js';
 import { ChevronGlyph } from '../icons.jsx';
+import { ProductThumbGlyph } from '../ProductThumbGlyph.jsx';
 
 /**
  * DALI-2 arc level, 10 to 100% in 5% steps. While the thumb moves, the
@@ -223,11 +224,11 @@ export function PanelSection({ title, hint, children, className = '' }) {
 }
 
 /**
- * One part in a components palette: finish swatch, name, a plain size and
- * power line, and the price (or why it cannot be mounted).
+ * One part in a components palette: a drawing of the part in its default
+ * finish, name, a plain size and power line, and the price (or why it
+ * cannot be mounted).
  */
 export function PaletteItem({ product, note, disabled, withDepth = false, onMount }) {
-  const finish = getFinish(product.defaultFinish);
   const { w, h, d } = product.dimsCm;
   const size = withDepth ? `${w} x ${h} x ${d} cm` : `${w} x ${h} cm`;
   const power = product.watts > 0 ? `${product.watts} W` : 'passive';
@@ -240,11 +241,7 @@ export function PaletteItem({ product, note, disabled, withDepth = false, onMoun
       aria-label={`Mount ${product.name}`}
       onClick={() => onMount(product.id)}
     >
-      <span
-        className="palette-item__swatch"
-        style={{ '--swatch': finish.hex, '--swatch-hi': finish.highlight, '--swatch-lo': finish.shade }}
-        aria-hidden="true"
-      />
+      <ProductThumbGlyph product={product} finish={product.defaultFinish} className="palette-item__glyph" />
       <span className="palette-item__body">
         <span className="palette-item__name">{product.name}</span>
         <span className="palette-item__meta">

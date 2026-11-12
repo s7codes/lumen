@@ -97,6 +97,48 @@ input[type='number']::-webkit-outer-spin-button {
   padding-inline: var(--grid-margin);
 }
 
+/* Page atmosphere, fixed under every route (LayoutShell). It is positioned at
+   the structural grid's level and precedes it, so it covers the canvas while
+   the grid and the shell paint over it. Warm basalt depth, a tungsten wash
+   falling on the stage from above, an oak glow from the top right and a
+   bronze lift from the lower left. */
+.ambient-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-grid);
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 72% 54% at 50% -8%, rgba(232, 168, 92, 0.1), rgba(232, 168, 92, 0.03) 48%, rgba(232, 168, 92, 0) 78%),
+    radial-gradient(circle at 100% 0%, rgba(232, 146, 58, 0.05), rgba(232, 146, 58, 0) 40%),
+    radial-gradient(ellipse 60% 50% at 0% 100%, rgba(216, 178, 124, 0.04), rgba(216, 178, 124, 0) 70%),
+    linear-gradient(180deg, #0d0c0b 0%, #141210 48%, #0b0a09 100%);
+}
+
+/* Drafting lines at the periphery: a 96 px lattice that clears toward the
+   middle of the page, where the content sits. */
+.ambient-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px);
+  background-position: center top;
+  background-size: 96px 96px;
+  -webkit-mask-image: radial-gradient(ellipse 78% 74% at 50% 44%, transparent 54%, #000 100%);
+  mask-image: radial-gradient(ellipse 78% 74% at 50% 44%, transparent 54%, #000 100%);
+}
+
+/* The overview's hero owns the top of the page and the home flow scrolls its
+   own lit zones, so its backdrop stays a calm basalt. */
+.ambient-backdrop[data-atmosphere='home'] {
+  background: linear-gradient(180deg, #070706 0%, #0b0a09 60%, #090807 100%);
+}
+
+.ambient-backdrop[data-atmosphere='home']::after {
+  content: none;
+}
+
 /* Bento: a frosted, hairline-edged tile for major layout blocks. */
 .bento {
   position: relative;

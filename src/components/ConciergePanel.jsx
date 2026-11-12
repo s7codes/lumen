@@ -33,7 +33,34 @@ function SendGlyph() {
   );
 }
 
-/** Answer text: blank lines split blocks, and lines that start with "- " become a list. */
+// A pencil over a square: start a new conversation.
+function NewChatGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true" focusable="false">
+      <path d="M7 2.75H3.25a.5.5 0 0 0-.5.5v9.5a.5.5 0 0 0 .5.5h9.5a.5.5 0 0 0 .5-.5V9" stroke="currentColor" strokeWidth="1.25" />
+      <path d="M11.6 2.4 13.6 4.4 8.4 9.6 6 10l.4-2.4z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Up to 48 characters before the first ": " read as the bullet's label.
+const BULLET_LABEL = /^([^:]{1,48}): (.+)$/;
+const MAX_PILLS = 4;
+
+function Bullet({ text }) {
+  const match = BULLET_LABEL.exec(text);
+  if (!match) return <li>{text}</li>;
+  return (
+    <li>
+      <strong className="concierge-msg__label">{match[1]}</strong>: {match[2]}
+    </li>
+  );
+}
+
+/**
+ * Answer text: the first line is the lead, lines that start with "- " become
+ * a list with bold labels, and later blank-line blocks read as notes.
+ */
 function AnswerBody({ text }) {
   return text.split('\n\n').map((block, b) => {
     const nodes = [];
@@ -43,7 +70,7 @@ function AnswerBody({ text }) {
       nodes.push(
         <ul key={`l${nodes.length}`} className="concierge-msg__list">
           {items.map((item, i) => (
-            <li key={i}>{item}</li>
+            <Bullet key={i} text={item} />
           ))}
         </ul>,
       );
@@ -54,7 +81,12 @@ function AnswerBody({ text }) {
         items.push(line.slice(2));
       } else {
         flush();
-        nodes.push(<p key={`p${nodes.length}`}>{line}</p>);
+        const role = b > 0 ? 'concierge-msg__note' : nodes.length === 0 ? 'concierge-msg__lead' : undefined;
+        nodes.push(
+          <p key={`p${nodes.length}`} className={role}>
+            {line}
+          </p>,
+        );
       }
     }
     flush();
@@ -89,72 +121,121 @@ function ReplyTurn({ turn, pathname, onUnhelpful, onNavigate, latestRef }) {
       data-marked-unhelpful={markedUnhelpful || undefined}
       onAnimationEnd={markRevealed}
     >
-      <p className="concierge-msg__meta">
-        <span className="concierge-msg__category">
-          {kind === 'followup' ? 'Engineering Follow-Up' : CONCIERGE_CATEGORIES[reply.category]}
-        </span>
-        {kind === 'answer' && (
-          <span
-            className="concierge-msg__confidence tech-only mono"
-            data-testid="concierge-confidence"
-            data-resolved={String(reply.resolved)}
-          >
-            {reply.resolved ? 'Resolved' : 'Needs Engineer'} {pct}%
+      <span className="concierge-avatar" aria-hidden="true" data-testid="concierge-avatar">
+        <LumenMark size={12} />
+      </span>
+      <div className="concierge-msg__content">
+        <p className="concierge-msg__meta">
+          <span className="concierge-msg__category">
+            {kind === 'followup' ? 'Engineering Follow-Up' : CONCIERGE_CATEGORIES[reply.category]}
           </span>
-        )}
-      </p>
-      <div className="concierge-msg__body">
-        <AnswerBody text={reply.answer} />
-      </div>
-      {reply.metrics.length > 0 && (
-        <dl className="concierge-metrics" data-testid="concierge-metrics">
-          {reply.metrics.map((metric) => (
-            <div key={metric.label} className="concierge-metric">
-              <dt>{metric.label}</dt>
-              <dd>{metric.value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-      {actions.length > 0 && (
-        <nav className="concierge-actions" aria-label="Suggested next steps">
-          {actions.map((action, i) => (
-            <Link
-              key={action.to}
-              to={action.to}
-              className="concierge-action"
-              data-primary={i === 0 || undefined}
-              data-testid="concierge-action"
-              onClick={onNavigate}
+          {kind === 'answer' && (
+            <span
+              className="concierge-msg__confidence tech-only mono"
+              data-testid="concierge-confidence"
+              data-resolved={String(reply.resolved)}
             >
-              {action.label}
-              <ArrowRight className="concierge-action__arrow" />
-            </Link>
-          ))}
-        </nav>
-      )}
-      {reply.citations.length > 0 && (
-        <p className="concierge-cites tech-only mono" data-testid="concierge-citations">
-          Sources: {reply.citations.map((citation) => citation.label).join(' / ')}
+              {reply.resolved ? 'Resolved' : 'Needs Engineer'} {pct}%
+            </span>
+          )}
         </p>
-      )}
-      {kind === 'answer' &&
-        canMarkUnhelpful(reply) &&
-        (markedUnhelpful ? (
-          <p className="concierge-msg__flag" data-testid="concierge-marked-unhelpful">
-            Marked as not resolving your issue
+        <div className="concierge-msg__body">
+          <AnswerBody text={reply.answer} />
+        </div>
+        {reply.metrics.length > 0 && (
+          <dl className="concierge-metrics" data-testid="concierge-metrics">
+            {reply.metrics.slice(0, MAX_PILLS).map((metric) => (
+              <div key={metric.label} className="concierge-metric">
+                <dt>{metric.label}</dt>
+                <dd>{metric.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {actions.length > 0 && (
+          <nav className="concierge-actions" aria-label="Suggested next steps">
+            {actions.map((action, i) => (
+              <Link
+                key={action.to}
+                to={action.to}
+                className="concierge-action"
+                data-primary={i === 0 || undefined}
+                data-testid="concierge-action"
+                onClick={onNavigate}
+              >
+                {action.label}
+                <ArrowRight className="concierge-action__arrow" />
+              </Link>
+            ))}
+          </nav>
+        )}
+        {reply.citations.length > 0 && (
+          <p className="concierge-cites tech-only mono" data-testid="concierge-citations">
+            Sources: {reply.citations.map((citation) => citation.label).join(' / ')}
           </p>
-        ) : (
-          <button
-            type="button"
-            className="concierge-msg__unhelpful"
-            data-testid="concierge-mark-unhelpful"
-            onClick={() => onUnhelpful(turn.id)}
-          >
-            {UNHELPFUL_COPY}
-          </button>
-        ))}
+        )}
+        {kind === 'answer' &&
+          canMarkUnhelpful(reply) &&
+          (markedUnhelpful ? (
+            <p className="concierge-msg__flag" data-testid="concierge-marked-unhelpful">
+              Marked as not resolving your issue
+            </p>
+          ) : (
+            <button
+              type="button"
+              className="concierge-msg__unhelpful"
+              data-testid="concierge-mark-unhelpful"
+              onClick={() => onUnhelpful(turn.id)}
+            >
+              {UNHELPFUL_COPY}
+            </button>
+          ))}
+      </div>
     </li>
+  );
+}
+
+/**
+ * Starter questions. Before the first message they are the welcome cards;
+ * once the thread starts they fold into one scrolling row of chips docked
+ * over the composer, so the conversation keeps the panel.
+ */
+function QuickPrompts({ prompts, layout, disabled, onAsk }) {
+  return (
+    <div
+      className={`concierge-prompts concierge-prompts--${layout}`}
+      data-testid="concierge-quick-prompts"
+      data-layout={layout}
+      role="group"
+      aria-label="Suggested questions"
+    >
+      {prompts.map((prompt) => (
+        <button
+          key={prompt}
+          type="button"
+          className="concierge-prompt"
+          data-testid="concierge-quick-prompt"
+          disabled={disabled}
+          onClick={() => onAsk(prompt)}
+        >
+          <span className="concierge-prompt__text">{prompt}</span>
+          {layout === 'cards' && <ArrowRight className="concierge-prompt__arrow" />}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Welcome({ prompts, disabled, onAsk }) {
+  return (
+    <div className="concierge-welcome" data-testid="concierge-welcome">
+      <span className="concierge-welcome__mark" aria-hidden="true">
+        <LumenMark size={20} />
+      </span>
+      <h3 className="concierge-welcome__title">How can I help with your space?</h3>
+      <p className="concierge-welcome__lede">Ask about any part, 24V wiring, or audit your live 3D room.</p>
+      <QuickPrompts prompts={prompts} layout="cards" disabled={disabled} onAsk={onAsk} />
+    </div>
   );
 }
 
@@ -409,7 +490,15 @@ export default function ConciergePanel({ open, onClose, panelId }) {
     onClose();
   };
 
+  const newChat = () => {
+    concierge.reset();
+    setDraft('');
+    setSentTo('');
+    inputRef.current?.focus();
+  };
+
   const lastAssistant = turns.findLastIndex((turn) => turn.role === 'assistant');
+  const active = turns.length > 0;
 
   return (
     <section
@@ -421,13 +510,14 @@ export default function ConciergePanel({ open, onClose, panelId }) {
       data-escalation={concierge.escalation}
       data-escalation-reason={concierge.escalationReason ?? undefined}
       data-state={pending ? 'pending' : 'idle'}
+      data-thread={active ? 'active' : 'welcome'}
       data-turns={turns.length}
       hidden={!open}
       onKeyDown={onPanelKeyDown}
     >
       <header className="concierge-panel__head">
         <span className="concierge-panel__mark" aria-hidden="true">
-          <LumenMark size={16} />
+          <LumenMark size={14} />
         </span>
         <div className="concierge-panel__heading">
           <div className="concierge-panel__title-row">
@@ -437,37 +527,37 @@ export default function ConciergePanel({ open, onClose, panelId }) {
             </span>
           </div>
           <p className="concierge-panel__context" data-testid="concierge-context">
-            Context: {routeLabel(pathname)}
+            <span className="visually-hidden">Context: </span>
+            {routeLabel(pathname)}
           </p>
         </div>
-        <button type="button" className="concierge-panel__close" aria-label="Close Studio AI" data-testid="concierge-close" onClick={onClose}>
-          <DismissGlyph />
-        </button>
+        <div className="concierge-panel__keys">
+          {active && (
+            <button
+              type="button"
+              className="concierge-panel__key"
+              aria-label="New chat"
+              title="New chat"
+              data-testid="concierge-reset"
+              onClick={newChat}
+            >
+              <NewChatGlyph />
+            </button>
+          )}
+          <button
+            type="button"
+            className="concierge-panel__key"
+            aria-label="Close Studio AI"
+            data-testid="concierge-close"
+            onClick={onClose}
+          >
+            <DismissGlyph />
+          </button>
+        </div>
       </header>
 
       <div ref={bodyRef} className="concierge-panel__body">
-        <div className="concierge-intro" data-testid="concierge-quick-prompts">
-          {turns.length === 0 && (
-            <p className="concierge-intro__lede">
-              Ask me anything about Lumen: how a tool works, the specs of a part, 24V sizing or acoustics. I also read your
-              live 2D wall, 3D room and cart.
-            </p>
-          )}
-          <div className="concierge-prompts" role="group" aria-label="Suggested questions">
-            {concierge.quickPrompts.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                className="concierge-prompt"
-                data-testid="concierge-quick-prompt"
-                disabled={pending}
-                onClick={() => send(prompt)}
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
-        </div>
+        {!active && <Welcome prompts={concierge.quickPrompts} disabled={pending} onAsk={send} />}
 
         <ol className="concierge-messages" data-testid="concierge-messages" role="log" aria-live="polite" aria-label="Conversation">
           {turns.map((turn, i) =>
@@ -488,8 +578,13 @@ export default function ConciergePanel({ open, onClose, panelId }) {
           )}
           {pending && (
             <li className="concierge-msg concierge-msg--pending" data-testid="concierge-pending">
-              <span className="concierge-pending__bar" aria-hidden="true" />
-              <p>Consulting the catalog and your live workspace...</p>
+              <span className="concierge-avatar" aria-hidden="true">
+                <LumenMark size={12} />
+              </span>
+              <div className="concierge-pending">
+                <span className="concierge-pending__bar" aria-hidden="true" />
+                <p>Consulting the catalog and your live workspace...</p>
+              </div>
             </li>
           )}
         </ol>
@@ -519,6 +614,8 @@ export default function ConciergePanel({ open, onClose, panelId }) {
         <p>{unlocked ? UNLOCKED_COPY[concierge.escalationReason] : LOCKED_COPY}</p>
       </div>
 
+      {active && <QuickPrompts prompts={concierge.quickPrompts} layout="chips" disabled={pending} onAsk={send} />}
+
       <form className="concierge-composer" onSubmit={onSubmit}>
         <div className="concierge-composer__field">
           <label className="visually-hidden" htmlFor={`${panelId}-input`}>
@@ -531,7 +628,7 @@ export default function ConciergePanel({ open, onClose, panelId }) {
             type="text"
             autoComplete="off"
             maxLength={QUESTION_MAX}
-            placeholder="Ask anything about Lumen, a part or your room"
+            placeholder="Ask about any part or your room"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             data-testid="concierge-input"

@@ -12,7 +12,9 @@ import { MODE_LABELS } from '../lib/display-mode.js';
 import { padIndex } from '../lib/format.js';
 import { getCurrency } from '../lib/quote.js';
 import { prefetchRoute } from '../lib/route-manifest.js';
+import { getProduct } from '../data/products.js';
 import { CommandGlyph, ModuleGlyph, SearchGlyph, WorkspaceGlyph } from './icons.jsx';
+import { ProductThumbGlyph } from './ProductThumbGlyph.jsx';
 import '../styles/command-palette.css';
 
 const GROUP_GLYPHS = { workspaces: WorkspaceGlyph, modules: ModuleGlyph, commands: CommandGlyph };
@@ -189,6 +191,7 @@ function PaletteDialog({ returnFocus, onClose, onSignIn }) {
                 {group.entries.map((entry) => {
                   const i = position.get(entry.id);
                   const selected = i === activeIndex;
+                  const product = entry.productId ? getProduct(entry.productId) : null;
                   return (
                     <div
                       key={entry.id}
@@ -205,9 +208,15 @@ function PaletteDialog({ returnFocus, onClose, onSignIn }) {
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => run(entry)}
                     >
-                      <span className="palette__glyph">
-                        <Glyph />
-                      </span>
+                      {product ? (
+                        <span className="palette__glyph palette__glyph--product">
+                          <ProductThumbGlyph product={product} finish={product.defaultFinish} size="sm" />
+                        </span>
+                      ) : (
+                        <span className="palette__glyph">
+                          <Glyph />
+                        </span>
+                      )}
                       <span className="palette__text">
                         <span className="palette__label">{entry.label}</span>
                         <span className="palette__detail">{entry.detail}</span>

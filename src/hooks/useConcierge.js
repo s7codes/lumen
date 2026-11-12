@@ -41,25 +41,38 @@ export function useConcierge(route) {
   stateRef.current = state;
   const routeRef = useRef(route);
   routeRef.current = route;
+  // Bumped by a new chat: a reply still in flight from the old thread is dropped,
+  // never accepted as the answer to the next question.
+  const generationRef = useRef(0);
 
   const ask = useCallback(async (question) => {
     const text = sanitizeQuestion(question);
     if (!text || stateRef.current.pending) return false;
+    const generation = generationRef.current;
+    const current = (action) => {
+      if (generation === generationRef.current) dispatch(action);
+    };
     dispatch({ type: 'ask', question: text });
     const context = readWorkspaceContext(routeRef.current);
     try {
       const { reply, transport } = await askConcierge(text, context);
-      dispatch({ type: 'reply', reply, transport });
+      current({ type: 'reply', reply, transport });
     } catch {
       // askConcierge already answers locally on every transport fault; this is
       // the last net, and a server message never reaches the conversation.
       try {
-        dispatch({ type: 'reply', reply: evaluateConciergeQuery(text, context), transport: 'local' });
+        current({ type: 'reply', reply: evaluateConciergeQuery(text, context), transport: 'local' });
       } catch {
-        dispatch({ type: 'fail', message: 'The concierge could not answer. Ask again.' });
+        current({ type: 'fail', message: 'The concierge could not answer. Ask again.' });
       }
     }
     return true;
+  }, []);
+
+  /** New chat: a fresh session with the gatekeeper locked again. */
+  const reset = useCallback(() => {
+    generationRef.current += 1;
+    dispatch({ type: 'reset' });
   }, []);
 
   const markUnhelpful = useCallback((turnId) => {
@@ -104,6 +117,7 @@ export function useConcierge(route) {
     workspaceSummary,
     quickPrompts,
     ask,
+    reset,
     markUnhelpful,
     submitTicket,
   };
