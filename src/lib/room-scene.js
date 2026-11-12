@@ -2,7 +2,17 @@ import { getFinish, getProduct } from '../data/products.js';
 import { dimFactor } from './dimming.js';
 import { kelvinToRgb } from './photometry.js';
 import { CAMERA_ZOOM, clearanceCallouts, furnitureLayout, moduleBox } from './room-3d.js';
-import { DEFAULT_ROOM_WALL, sanitizeWallId, WALL_HEADING, WALL_ROT_Y, wallOf, wallToRoom } from './room-walls.js';
+import {
+  boxToRoom,
+  DEFAULT_ROOM_WALL,
+  ROOM_WALLS,
+  sanitizeWallId,
+  WALL_HEADING,
+  WALL_ROT_Y,
+  wallOf,
+  wallSpanCm,
+  wallToRoom,
+} from './room-walls.js';
 
 /*
  * Scene description for the WebGL room viewport. Converts the room state
@@ -24,6 +34,11 @@ const GRID_CM = 50;
 const AXIS_OVERRUN_CM = 26;
 const TICK_CM = 5;
 const TRIM_LIFT_M = 0.003;
+const BASEBOARD_H_CM = 8;
+const BASEBOARD_D_CM = 1.6;
+const PLANK_CM = 18;
+const SCALE_TICK_CM = 50;
+const CREASE_INSET_CM = 0.4;
 // The orbit centre leans 6% of the room toward the wall in view.
 const TARGET_LEAN = 0.06;
 
@@ -58,6 +73,10 @@ export const LIGHTING_RIGS = Object.freeze({
     },
     grid: { color: '#f2eee7', opacity: 0.1 },
     trim: { color: '#7d756a', opacity: 0.95 },
+    baseboard: '#bcb5a9',
+    ceiling: { color: '#c6c0b6', glow: '#1f1d1a' },
+    plank: { color: '#d8b48a', opacity: 0.07 },
+    crease: { color: '#0b0a09', opacity: 0.28 },
   },
   daylight: {
     ambient: { color: '#fff6ea', intensity: 0.85 },
@@ -75,6 +94,10 @@ export const LIGHTING_RIGS = Object.freeze({
     },
     grid: { color: '#0b0b0a', opacity: 0.09 },
     trim: { color: '#6f685e', opacity: 0.9 },
+    baseboard: '#e6e1d8',
+    ceiling: { color: '#e4dfd6', glow: null },
+    plank: { color: '#6b5a44', opacity: 0.08 },
+    crease: { color: '#5d574e', opacity: 0.32 },
   },
 });
 
@@ -240,6 +263,72 @@ function buildShell(room, rig) {
       { ...slab('left', tone.poche, { x0: -T, x1: -0.2, y0: 0, y1: H, z0: 0, z1: D }), cull: wallCull(room, 'west') },
     ],
   };
+}
+
+/**
+ * Architectural envelope details. The ceiling is a single-sided plane facing
+ * down, so seen from above it culls itself; the viewport also drops it in the
+ * orbit cutaway. Baseboards run along the foot of every wall and hide with
+ * their wall's section cut, as do the corner creases, which need both walls.
+ */
+function buildEnvelope(room, rig) {
+  const { widthCm: W, depthCm: D, heightCm: H } = room;
+  const ceiling = {
+    id: 'ceiling',
+    color: rig.ceiling.color,
+    glow: rig.ceiling.glow,
+    size: [m(W), m(D)],
+    position: [m(W / 2), m(H), m(D / 2)],
+    rotation: [Math.PI / 2, 0, 0],
+  };
+  const baseboards = ROOM_WALLS.map((wall) => ({
+    ...slab(`baseboard-${wall}`, rig.baseboard, boxToRoom(room, wall, {
+      x0: 0,
+      x1: wallSpanCm(room, wall),
+      y0: 0,
+      y1: BASEBOARD_H_CM,
+      z0: 0,
+      z1: BASEBOARD_D_CM,
+    })),
+    wall,
+    cull: wallCull(room, wall),
+  }));
+  const i = CREASE_INSET_CM;
+  const creases = [
+    { id: 'north-west', walls: ['north', 'west'], at: [i, i] },
+    { id: 'north-east', walls: ['north', 'east'], at: [W - i, i] },
+    { id: 'south-east', walls: ['south', 'east'], at: [W - i, D - i] },
+    { id: 'south-west', walls: ['south', 'west'], at: [i, D - i] },
+  ].map((corner) => ({
+    id: corner.id,
+    walls: corner.walls,
+    culls: corner.walls.map((wall) => wallCull(room, wall)),
+    points: [v3([corner.at[0], 0, corner.at[1]]), v3([corner.at[0], H, corner.at[1]])],
+  }));
+  return { ceiling, baseboards, creases };
+}
+
+/** Warm plank seams along the room width, and a 50 cm scale tick row inside the floor perimeter. */
+function buildPlanks(room) {
+  const { widthCm: W, depthCm: D } = room;
+  const points = [];
+  for (let z = PLANK_CM; z < D; z += PLANK_CM) points.push([0, 0.0015, m(z)], [m(W), 0.0015, m(z)]);
+  return points;
+}
+
+function buildScaleTicks(room) {
+  const { widthCm: W, depthCm: D } = room;
+  const y = 0.0025;
+  const points = [];
+  for (let x = SCALE_TICK_CM; x < W; x += SCALE_TICK_CM) {
+    const len = x % 100 === 0 ? 9 : 5;
+    points.push([m(x), y, m(BASEBOARD_D_CM)], [m(x), y, m(BASEBOARD_D_CM + len)]);
+  }
+  for (let z = SCALE_TICK_CM; z < D; z += SCALE_TICK_CM) {
+    const len = z % 100 === 0 ? 9 : 5;
+    points.push([m(BASEBOARD_D_CM), y, m(z)], [m(BASEBOARD_D_CM + len), y, m(z)]);
+  }
+  return points;
 }
 
 function buildGrid(room) {
@@ -516,11 +605,14 @@ export function buildScene({ state, conflicts = new Map(), selectedUid = null, t
   const rig = fillRig(base, lights.length === 0);
   const furniture = furnitureRecords(room);
   const shell = buildShell(room, rig);
+  const envelope = buildEnvelope(room, rig);
   const edges = technical || wireframe;
 
   const meshes =
     shell.surfaces.length +
     shell.poche.length +
+    envelope.baseboards.length +
+    1 +
     furniture.length +
     modules.reduce((sum, module) => sum + 1 + module.emitters.length + (module.felt ? 1 : 0), 0);
 
@@ -531,6 +623,9 @@ export function buildScene({ state, conflicts = new Map(), selectedUid = null, t
     shell,
     grid: buildGrid(room),
     trim: buildTrim(room),
+    envelope,
+    planks: buildPlanks(room),
+    scaleTicks: buildScaleTicks(room),
     modules,
     furniture,
     lights,

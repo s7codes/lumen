@@ -178,6 +178,25 @@ export function floorPointLux(sources, xCm, planYCm) {
   return total;
 }
 
+/** Direct lux on a plane through `point` (room cm) with unit `normal`, e.g. the vertical illuminance at an eye. */
+export function planePointLux(sources, point, normal) {
+  const [px, py, pz] = point;
+  const [nx, ny, nz] = normal;
+  let total = 0;
+  for (const s of sources) {
+    const dx = (px - s.x) / 100;
+    const dy = (py - s.y) / 100;
+    const dz = (pz - s.z) / 100;
+    const r = Math.max(MIN_R_M, Math.hypot(dx, dy, dz));
+    const cosTheta = (dx * s.ax + dy * s.ay + dz * s.az) / r;
+    if (cosTheta <= 0) continue;
+    const cosPhi = -(dx * nx + dy * ny + dz * nz) / r;
+    if (cosPhi <= 0) continue;
+    total += (s.cd * cosTheta ** s.m * cosPhi) / (r * r);
+  }
+  return total;
+}
+
 function wallEnvelope(subject) {
   if (isRecord(subject.room)) {
     return { widthCm: subject.room.widthCm, heightCm: subject.room.heightCm, slope: false };

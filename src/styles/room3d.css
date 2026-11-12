@@ -1,7 +1,7 @@
 /* 3D Room Planner. The viewport is a transparent React Three Fiber canvas
    fed by src/lib/room-scene.js over a warm horizon backdrop. Four walls,
-   one active at a time, picked from the wall switcher above the stage.
-   Panels reuse the Wall Studio classes. */
+   one active at a time, picked from the wall switcher in the workstation
+   header. Panels reuse the Wall Studio classes. */
 
 .room3d-layout {
   display: grid;
@@ -618,5 +618,1132 @@
 @media (max-width: 599px) {
   .studio-summary__cell--floor-lux {
     grid-column: 1 / -1;
+  }
+}
+
+/* ------------------------------------------------------------------------
+   Spatial workstation (v5). The planner runs edge to edge: a header bar,
+   a left dock, the dominant stage, a right dock and a bottom dock, all on
+   a basalt frame with 1px dock seams. The docks scroll on their own beside
+   the stage; zen collapses them so the viewport takes the full width.
+   ------------------------------------------------------------------------ */
+
+.room3d-workstation {
+  --ws-bg: #0c0c0e;
+  --ws-seam: #242220;
+  --ws-left: 260px;
+  --ws-right: 288px;
+  --ws-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --gizmo-x: #ff6a3d;
+  --gizmo-y: #3ee0a8;
+  --laser: #ffb067;
+  position: relative;
+  width: 100%;
+  border-bottom: 1px solid var(--ws-seam);
+  background: var(--ws-bg);
+}
+
+/* Header bar */
+
+.room3d-workstation__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--ws-seam);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.008) 100%);
+}
+
+.room3d-workstation__title {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.room3d-workstation__crumb {
+  margin: 0 0 2px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.room3d-workstation__heading {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: #ffffff;
+}
+
+.room3d-workstation__envelope {
+  margin: 2px 0 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #a1a1aa;
+}
+
+.room3d-workstation__header .room3d-walls {
+  flex: 0 1 600px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.room3d-workstation__header .room3d-walls__tab {
+  height: 34px;
+}
+
+@media (min-width: 768px) {
+  .room3d-workstation__header .room3d-walls {
+    min-width: 560px;
+  }
+}
+
+.room3d-workstation__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-left: auto;
+}
+
+.room3d-workstation__snap .studio-switch {
+  width: auto;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* Lens switcher and zen key: flat surface inversion for the pressed state */
+
+.room3d-lens {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--cluster-edge);
+  border-radius: var(--cluster-radius);
+  background: var(--cluster-surface);
+}
+
+.room3d-lens__option,
+.room3d-zen {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 30px;
+  padding-inline: 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    translate var(--duration-base) var(--ease-out);
+}
+
+.room3d-zen {
+  height: 36px;
+  border-color: var(--cluster-edge);
+  background: var(--cluster-surface);
+}
+
+.room3d-lens__option svg,
+.room3d-zen svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+
+.room3d-lens__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room3d-lens__option:hover:not([aria-pressed='true']),
+.room3d-zen:hover:not([aria-pressed='true']) {
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  translate: 0 -1px;
+}
+
+.room3d-lens__option[aria-pressed='true'],
+.room3d-zen[aria-pressed='true'] {
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+  color: var(--text-inverse);
+}
+
+/* Body: docks and stage */
+
+.room3d-workstation .room3d-layout {
+  grid-template-columns: var(--ws-left) minmax(0, 1fr) var(--ws-right);
+  grid-template-rows: auto;
+  grid-template-areas: 'controls main inspector';
+  gap: 0;
+  align-items: stretch;
+}
+
+/* Only the zen fold animates; a breakpoint change lays out at once. */
+@media (min-width: 1280px) {
+  .room3d-workstation .room3d-layout {
+    transition: grid-template-columns 560ms var(--ws-ease);
+  }
+}
+
+.room3d-workstation .room3d-layout__main {
+  gap: 0;
+}
+
+.room3d-workstation .room3d-layout__controls,
+.room3d-workstation .room3d-layout__inspector {
+  position: relative;
+  top: auto;
+  min-height: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+.room3d-workstation .room3d-layout__controls {
+  border-right: 1px solid var(--ws-seam);
+}
+
+.room3d-workstation .room3d-layout__inspector {
+  border-left: 1px solid var(--ws-seam);
+}
+
+.room3d-workstation :is(.room3d-layout__controls, .room3d-layout__inspector) > .studio-panel {
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* Beside the stage, each dock fills the row the stage sets and scrolls on its own. */
+@media (min-width: 1280px) {
+  .room3d-workstation .room3d-layout__controls > .studio-panel,
+  .room3d-workstation .room3d-layout__inspector > .studio-panel {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .room3d-workstation .room3d-layout__controls > .studio-panel {
+    left: 0;
+    width: var(--ws-left);
+  }
+
+  .room3d-workstation .room3d-layout__inspector > .studio-panel {
+    right: 0;
+    width: var(--ws-right);
+  }
+}
+
+@media (min-width: 960px) and (max-width: 1279px) {
+  .room3d-workstation {
+    --ws-left: 248px;
+  }
+
+  .room3d-workstation .room3d-layout {
+    grid-template-columns: var(--ws-left) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      'controls main'
+      'controls inspector';
+  }
+
+  .room3d-workstation .room3d-layout__controls > .studio-panel {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--ws-left);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .room3d-workstation .room3d-layout__inspector {
+    border-top: 1px solid var(--ws-seam);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 959px) {
+  .room3d-workstation .room3d-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas:
+      'main'
+      'inspector'
+      'controls';
+  }
+
+  .room3d-workstation .room3d-layout__controls,
+  .room3d-workstation .room3d-layout__inspector {
+    border: 0;
+    border-top: 1px solid var(--ws-seam);
+  }
+}
+
+/* Zen: the docks fold away and the stage takes the width. */
+
+.room3d-workstation[data-zen] .room3d-layout {
+  grid-template-columns: 0px minmax(0, 1fr) 0px;
+}
+
+.room3d-workstation[data-zen] :is(.room3d-layout__controls, .room3d-layout__inspector) {
+  border-color: transparent;
+  visibility: hidden;
+  transition: visibility 0s linear 560ms;
+}
+
+@media (min-width: 960px) and (max-width: 1279px) {
+  .room3d-workstation[data-zen] .room3d-layout {
+    grid-template-columns: 0px minmax(0, 1fr);
+  }
+
+  .room3d-workstation[data-zen] .room3d-layout__inspector {
+    display: none;
+  }
+}
+
+@media (max-width: 959px) {
+  .room3d-workstation[data-zen] .room3d-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .room3d-workstation[data-zen] :is(.room3d-layout__controls, .room3d-layout__inspector) {
+    display: none;
+  }
+}
+
+/* Stage: square, flush and tall */
+
+.room3d-workstation .room3d-stage {
+  border: 0;
+  border-radius: 0;
+  background: #0a0a0b;
+}
+
+@media (min-width: 768px) {
+  .room3d-workstation .room3d-stage__canvas {
+    height: clamp(420px, 72vh, 1080px);
+  }
+
+  .room3d-workstation[data-zen] .room3d-stage__canvas {
+    height: clamp(460px, calc(100vh - var(--nav-height) - 190px), 1400px);
+  }
+}
+
+.room3d-stage__canvas[data-camera-mode='inside'] {
+  cursor: move;
+}
+
+.room3d-stage[data-dragging] .room3d-stage__canvas {
+  cursor: grabbing;
+}
+
+.room3d-stage__lens {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.room3d-stage__replay {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  color: var(--text-muted);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.room3d-stage__replay:hover {
+  color: var(--text-primary);
+}
+
+/* Bottom dock */
+
+.room3d-workstation__dock {
+  padding: var(--space-5);
+  border-top: 1px solid var(--ws-seam);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+.room3d-workstation__dock .studio-summary {
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+
+/* While a module is in hand or the eye is turning, the docks step back. */
+.room3d-workstation:has(.room3d-stage[data-dragging], .room3d-stage[data-orbiting])
+  :is(.room3d-layout__controls, .room3d-layout__inspector, .room3d-workstation__dock .studio-summary) {
+  opacity: 0.28;
+}
+
+.room3d-workstation:has(.room3d-stage[data-dragging]) .room3d-hud {
+  opacity: 0.28;
+}
+
+/* HUD aside: camera settings above the orientation compass */
+
+.room3d-hud {
+  padding-right: 116px;
+}
+
+.room3d-hud > .room3d-hud__aside {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.room3d-hud__aside > * {
+  pointer-events: auto;
+}
+
+.room3d-hud__aside .camera-settings {
+  margin-left: 0;
+}
+
+.room3d-compass {
+  --bearing: 0deg;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  width: 104px;
+  padding: 8px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--glass-hud);
+  -webkit-backdrop-filter: blur(16px) saturate(1.1);
+  backdrop-filter: blur(16px) saturate(1.1);
+  color: var(--text-secondary);
+}
+
+.room3d-compass__dial {
+  position: relative;
+  width: 84px;
+  height: 84px;
+}
+
+.room3d-compass__ring,
+.room3d-compass__cone {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.room3d-compass__ring {
+  transform: rotate(calc(var(--bearing) * -1));
+}
+
+.room3d-compass__cone {
+  color: var(--lumen-amber);
+}
+
+.room3d-compass__node {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  padding: 0;
+  border: 1px solid var(--border-hairline);
+  border-radius: 5px;
+  background: rgba(11, 11, 10, 0.88);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-primary);
+  transform: rotate(calc(var(--at) - var(--bearing))) translateY(-34px) rotate(calc(var(--bearing) - var(--at)));
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.room3d-compass__node[data-node='north'] {
+  color: var(--lumen-amber);
+}
+
+.room3d-compass__node:hover {
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+  color: var(--text-inverse);
+}
+
+.room3d-compass__readout {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.room3d-compass__quick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  width: 100%;
+}
+
+.room3d-compass__key {
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-hairline);
+  border-radius: 6px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.room3d-compass__key:hover:not([aria-pressed='true']) {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.room3d-compass__key[aria-pressed='true'] {
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+  color: var(--text-inverse);
+}
+
+/* Walk pad, bottom right at eye level */
+
+.room3d-walk {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+}
+
+.room3d-walk__pad {
+  display: grid;
+  grid-template-columns: repeat(3, 34px);
+  gap: 4px;
+}
+
+.room3d-walk__key {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+
+.room3d-walk__key svg {
+  width: 15px;
+  height: 15px;
+}
+
+.room3d-walk__reset {
+  height: 28px;
+  font-size: 11px;
+}
+
+/* Transform gizmo: X along the wall, Y up it, a planar square between */
+
+.room3d-gizmo {
+  --u-angle: 0rad;
+  --v-angle: -1.5708rad;
+  --p-x: 22px;
+  --p-y: -22px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.room3d-gizmo[data-projected='false'] {
+  visibility: hidden;
+}
+
+.room3d-gizmo__origin {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid #ffffff;
+  background: rgba(11, 11, 10, 0.6);
+  transform: rotate(45deg);
+}
+
+.room3d-gizmo[data-grab] .room3d-gizmo__origin {
+  border-color: var(--lumen-amber);
+  background: var(--lumen-amber);
+}
+
+.room3d-gizmo[data-collides='true'] .room3d-gizmo__origin {
+  border-color: var(--signal-fault-soft);
+  background: var(--signal-fault);
+}
+
+.room3d-gizmo__axis {
+  position: absolute;
+  top: -9px;
+  left: 0;
+  width: 56px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--gizmo-x);
+  transform-origin: 0 50%;
+  transform: rotate(var(--u-angle)) translateX(9px);
+  pointer-events: auto;
+  cursor: grab;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.room3d-gizmo__axis--y {
+  color: var(--gizmo-y);
+  transform: rotate(var(--v-angle)) translateX(9px);
+}
+
+.room3d-gizmo__shaft {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  left: 0;
+  height: 2px;
+  background: currentColor;
+  transition:
+    top var(--duration-fast) var(--ease-out),
+    height var(--duration-fast) var(--ease-out);
+}
+
+.room3d-gizmo__head {
+  position: absolute;
+  top: 3px;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+.room3d-gizmo__tag {
+  position: absolute;
+  top: 2px;
+  right: -14px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+  color: currentColor;
+  transform: rotate(calc(var(--u-angle) * -1));
+  pointer-events: none;
+}
+
+.room3d-gizmo__axis--y .room3d-gizmo__tag {
+  transform: rotate(calc(var(--v-angle) * -1));
+}
+
+.room3d-gizmo__axis:hover .room3d-gizmo__shaft,
+.room3d-gizmo__axis:focus-visible .room3d-gizmo__shaft,
+.room3d-gizmo[data-dragging][data-axis-lock='x'] .room3d-gizmo__axis--x .room3d-gizmo__shaft,
+.room3d-gizmo[data-dragging][data-axis-lock='y'] .room3d-gizmo__axis--y .room3d-gizmo__shaft {
+  top: 7px;
+  height: 4px;
+}
+
+.room3d-gizmo__axis:focus-visible,
+.room3d-gizmo__plane:focus-visible {
+  outline: 1px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.room3d-gizmo[data-axis-lock='x'] .room3d-gizmo__axis--y,
+.room3d-gizmo[data-axis-lock='y'] .room3d-gizmo__axis--x {
+  opacity: 0.32;
+}
+
+.room3d-gizmo__plane {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1.5px solid rgba(255, 255, 255, 0.92);
+  border-radius: 2px;
+  background: rgba(232, 146, 58, 0.3);
+  transform: translate(var(--p-x), var(--p-y));
+  pointer-events: auto;
+  cursor: move;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.room3d-gizmo__plane:hover,
+.room3d-gizmo[data-dragging][data-axis-lock='free'] .room3d-gizmo__plane {
+  background: rgba(232, 146, 58, 0.62);
+}
+
+.room3d-gizmo[data-dragging] :is(.room3d-gizmo__axis, .room3d-gizmo__plane) {
+  cursor: grabbing;
+}
+
+/* Live laser dimensions */
+
+.room3d-dims {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.room3d-dims[data-projected='false'] {
+  visibility: hidden;
+}
+
+.room3d-dims__lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.room3d-dims__lines line {
+  stroke: var(--laser);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  stroke-opacity: 0.85;
+}
+
+.room3d-dims__label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 176, 103, 0.45);
+  border-radius: 2px;
+  background: rgba(8, 8, 7, 0.86);
+  font-size: 10px;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #ffd9b3;
+}
+
+.room3d-dims__label[data-visible='false'] {
+  visibility: hidden;
+}
+
+/* Engine boot */
+
+.studio-boot {
+  position: absolute;
+  inset: 0;
+  z-index: calc(var(--z-hud) + 2);
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at 50% 42%, #17150f 0%, #0b0a09 62%, #070706 100%);
+  pointer-events: none;
+  transition:
+    opacity 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s linear 0s;
+}
+
+.studio-boot[data-state='done'] {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s linear 420ms;
+}
+
+.studio-boot__panel {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  width: min(84%, 360px);
+  animation: studio-boot-focus 1000ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes studio-boot-focus {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    transform: scale(1.05);
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
+}
+
+.studio-boot__mark {
+  width: 44px;
+  height: 44px;
+  color: #ffffff;
+}
+
+.studio-boot__aperture {
+  fill: var(--lumen-amber);
+  animation: studio-boot-aperture 1400ms ease-in-out infinite alternate;
+}
+
+@keyframes studio-boot-aperture {
+  from {
+    opacity: 0.35;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.studio-boot__title {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: #ffffff;
+}
+
+.studio-boot__meter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.studio-boot__bar {
+  height: 2px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.studio-boot__fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #f2eee7 0%, var(--lumen-amber) 100%);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+}
+
+.studio-boot__pct {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: #a1a1aa;
+}
+
+.studio-boot__steps {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: #5f5f66;
+}
+
+.studio-boot__step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: color 300ms ease;
+}
+
+.studio-boot__tick {
+  flex: none;
+  width: 12px;
+  height: 2px;
+  background: currentColor;
+  transition: background-color 300ms ease;
+}
+
+.studio-boot__step[data-state='active'] {
+  color: #ffffff;
+}
+
+.studio-boot__step[data-state='done'] {
+  color: #b8b8b8;
+}
+
+.studio-boot__step[data-state='done'] .studio-boot__tick {
+  background: var(--lumen-amber);
+}
+
+.studio-boot__skip {
+  position: absolute;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  height: 30px;
+  padding-inline: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: rgba(11, 11, 10, 0.6);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  pointer-events: auto;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    translate var(--duration-base) var(--ease-out);
+}
+
+.studio-boot__skip:hover {
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  translate: 0 -1px;
+}
+
+.studio-boot[data-state='done'] .studio-boot__skip {
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-boot,
+  .studio-boot__panel,
+  .studio-boot__aperture,
+  .room3d-workstation .room3d-layout {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Scene outliner */
+
+.room3d-outliner {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.room3d-outliner__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text-secondary);
+}
+
+.room3d-outliner__group[data-active] .room3d-outliner__wall {
+  color: #ffffff;
+}
+
+.room3d-outliner__badge {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--text-primary);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-inverse);
+}
+
+.room3d-outliner__count {
+  margin-left: auto;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.room3d-outliner__empty {
+  margin: 0;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.room3d-outliner__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.room3d-outliner__row .module-list__item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.room3d-outliner__focus {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-muted);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    translate var(--duration-base) var(--ease-out);
+}
+
+.room3d-outliner__focus:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  translate: 0 -1px;
+}
+
+.room3d-outliner__focus svg,
+.room3d-inspector__focus svg {
+  width: 14px;
+  height: 14px;
+}
+
+.room3d-inspector__focus {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/* Transform: axis lock and nudge pad */
+
+.room3d-lock__track {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.room3d-nudge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.room3d-nudge__caption {
+  margin: 0;
+}
+
+.room3d-nudge__pad {
+  display: grid;
+  grid-template-columns: repeat(3, 30px);
+  grid-template-areas:
+    '. up .'
+    'left down right';
+  gap: 3px;
+}
+
+.room3d-nudge__key {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 26px;
+  padding: 0;
+}
+
+.room3d-nudge__key[data-dir='up'] {
+  grid-area: up;
+}
+
+.room3d-nudge__key[data-dir='left'] {
+  grid-area: left;
+}
+
+.room3d-nudge__key[data-dir='down'] {
+  grid-area: down;
+}
+
+.room3d-nudge__key[data-dir='right'] {
+  grid-area: right;
+}
+
+.room3d-nudge__key svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Phone: the header stacks, the HUD docks above the stage */
+
+@media (max-width: 767px) {
+  .room3d-workstation__header {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .room3d-workstation__tools {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .room3d-lens {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .room3d-lens__option {
+    padding-inline: 6px;
+    font-size: 11.5px;
+  }
+
+  .room3d-lens__option svg {
+    display: none;
+  }
+
+  .room3d-workstation__dock {
+    padding: var(--space-4);
+  }
+
+  .room3d-hud {
+    padding-right: var(--space-3);
+  }
+
+  .room3d-hud > .room3d-hud__aside {
+    position: static;
+    flex-direction: row;
+    margin-left: auto;
+    pointer-events: auto;
+  }
+
+  .room3d-compass,
+  .room3d-stage__lens {
+    display: none;
+  }
+
+  .room3d-walk {
+    position: static;
+    margin-left: auto;
   }
 }

@@ -1,15 +1,45 @@
-import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getProduct } from '../../data/products.js';
-import { activePreset, DEFAULT_CAMERA, sanitizeCamera, WALL_HEADING, WALL_LABELS } from '../../lib/room-3d.js';
-import { buildScene } from '../../lib/room-scene.js';
+import {
+  activePreset,
+  DEFAULT_CAMERA,
+  ROOM_WALLS,
+  sanitizeCamera,
+  WALL_HEADING,
+  WALL_LABELS,
+} from '../../lib/room-3d.js';
+import { buildScene, cameraFrame, cameraPosition, wallCull } from '../../lib/room-scene.js';
+import {
+  CAMERA_MODE_LABELS,
+  elevationCamera,
+  EYE_HEIGHT_CM,
+  facingWall,
+  normalizeHeading,
+  TURN_STEP_DEG,
+  WALL_LOOK_HEADING,
+} from '../../lib/room-walkthrough.js';
 import { CameraSettings } from './CameraSettings.jsx';
-import { WallSwitcher } from './WallSwitcher.jsx';
+import { StudioBootOverlay } from './StudioBootOverlay.jsx';
+import { TransformGizmo } from './TransformGizmo.jsx';
+import { ViewportCompass } from './ViewportCompass.jsx';
+import { WalkControls } from './WalkControls.jsx';
 
 const RoomCanvas = lazy(() => import('./RoomCanvas.jsx'));
 
 const KEY_YAW = 5;
 const KEY_PITCH = 4;
 const KEY_ZOOM = 0.1;
+
+const GRAB_STEPS = Object.freeze({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] });
+const WALK_STEPS = Object.freeze({
+  w: { forward: 1 },
+  arrowup: { forward: 1 },
+  s: { forward: -1 },
+  arrowdown: { forward: -1 },
+  a: { strafe: -1 },
+  d: { strafe: 1 },
+});
+const WALK_TURNS = Object.freeze({ q: -TURN_STEP_DEG, arrowleft: -TURN_STEP_DEG, e: TURN_STEP_DEG, arrowright: TURN_STEP_DEG });
 
 let webglSupport = null;
 
@@ -60,13 +90,32 @@ const UNAVAILABLE = (
   </RendererNotice>
 );
 
+function inSectionAt(cull, eye) {
+  const value = eye[cull.axis];
+  return cull.below !== undefined ? value > cull.below : value < cull.above;
+}
+
+/**
+ * Which wall planes face the eye for the committed view, so the mirror reads
+ * right without a canvas. With WebGL the canvas overwrites it every frame.
+ */
+function staticWallVisibility(room, activeWall, camera, cameraMode) {
+  if (cameraMode === 'inside') return Object.fromEntries(ROOM_WALLS.map((wall) => [wall, true]));
+  const eye =
+    cameraMode === 'elevation'
+      ? elevationCamera(room, activeWall).position.map((c) => c * 0.01)
+      : cameraPosition(cameraFrame(room, 1.6, activeWall), camera);
+  return Object.fromEntries(ROOM_WALLS.map((wall) => [wall, inSectionAt(wallCull(room, wall), eye)]));
+}
+
 /**
  * Hidden mirror of the rendered scene graph: one node per mesh group, light
- * and annotation, carrying the same data the WebGL layer draws. It keeps the
+ * and annotation, carrying the same data the WebGL layer draws, plus the
+ * camera lens, the walk stance and which planes are in view. It keeps the
  * scene inspectable without reading pixels, and it is the whole viewport
  * when WebGL is unavailable.
  */
-function SceneManifest({ scene, floorLux, renderer, heading, manifestRef }) {
+function SceneManifest({ scene, floorLux, renderer, heading, manifestRef, walls, cameraMode, walk, facing, eyeLux, walkRef }) {
   const selected = scene.modules.find((module) => module.selected);
   return (
     <div
@@ -113,6 +162,25 @@ function SceneManifest({ scene, floorLux, renderer, heading, manifestRef }) {
       {scene.furniture.map((part) => (
         <span key={part.part} data-testid="room-furniture" data-part={part.part} data-color={part.color} />
       ))}
+      {ROOM_WALLS.map((wall) => (
+        <span key={wall} data-testid="room-wall" data-wall={wall} data-visible={walls[wall]} />
+      ))}
+      <span data-testid="room-ceiling" data-visible={cameraMode === 'inside'} />
+      {scene.envelope.baseboards.map((board) => (
+        <span key={board.id} data-testid="room-baseboard" data-wall={board.wall} data-height-cm={Math.round(board.size[1] * 100)} />
+      ))}
+      <span
+        ref={walkRef}
+        data-testid="room-walkthrough-state"
+        data-camera-mode={cameraMode}
+        data-x-cm={Math.round(walk.xCm)}
+        data-z-cm={Math.round(walk.zCm)}
+        data-eye-cm={EYE_HEIGHT_CM}
+        data-heading-deg={walk.headingDeg}
+        data-pitch-deg={walk.pitchDeg}
+        data-facing-wall={facing}
+        data-eye-lux={eyeLux}
+      />
       {floorLux && (
         <span
           data-testid="room-floor-lux"
@@ -166,21 +234,39 @@ function SceneManifest({ scene, floorLux, renderer, heading, manifestRef }) {
   );
 }
 
+function lensReadout(cameraMode, walk, eyeLux, activeWall, facing) {
+  if (cameraMode === 'inside') {
+    return `Eye ${EYE_HEIGHT_CM} cm / X ${Math.round(walk.xCm)} Z ${Math.round(walk.zCm)} / ${WALL_LABELS[facing]} / ${eyeLux} lx`;
+  }
+  if (cameraMode === 'elevation') return `${CAMERA_MODE_LABELS.elevation} / ${WALL_LABELS[activeWall]}`;
+  return CAMERA_MODE_LABELS.orbit;
+}
+
 export function RoomViewport({
   state,
   activeWall,
   counts,
-  onWall,
   conflicts,
   selectedUid,
   technical,
   wireframe,
   floorLux,
   toolbar,
+  cameraMode,
+  walk,
+  eyeLux,
+  drag,
+  axisLock,
   onSelect,
   onCameraCommit,
   onWireframe,
   onFloorLux,
+  onWall,
+  onCameraMode,
+  onWalkStep,
+  onWalkTurn,
+  onWalkReset,
+  onWalkLook,
 }) {
   const { room, items, camera } = state;
   const hostRef = useRef(null);
@@ -189,10 +275,13 @@ export function RoomViewport({
   const [renderer, setRenderer] = useState(supported ? 'loading' : 'unavailable');
   const [view, setView] = useState(camera);
   const [orbiting, setOrbiting] = useState(false);
+  const [bootReplay, setBootReplay] = useState(0);
   const viewRef = useRef(camera);
   const liveRef = useRef(false);
   const commitRef = useRef(onCameraCommit);
   commitRef.current = onCameraCommit;
+  const lookRef = useRef(onWalkLook);
+  lookRef.current = onWalkLook;
 
   const api = useMemo(() => {
     const showView = (next) => {
@@ -209,8 +298,28 @@ export function RoomViewport({
         showView(next);
         commitRef.current(next);
       },
+      drag,
+      hud: { compass: null },
+      walkMirror: { current: null },
+      commitWalk: (patch) => lookRef.current(patch),
     };
-  }, []);
+  }, [drag]);
+
+  const stageRef = useCallback(
+    (el) => {
+      drag.refs.stage = el;
+    },
+    [drag],
+  );
+
+  useLayoutEffect(() => {
+    drag.refs.manifest = manifestRef.current;
+  }, [drag]);
+
+  // A lens change or a lost selection drops whatever is in hand.
+  useEffect(() => {
+    drag.end(false);
+  }, [cameraMode, drag]);
 
   // Without a live canvas there is no glide: the readout follows the commit.
   useEffect(() => {
@@ -221,6 +330,12 @@ export function RoomViewport({
     () => buildScene({ state, conflicts, selectedUid, technical, wireframe }),
     [state, conflicts, selectedUid, technical, wireframe],
   );
+
+  const walls = useMemo(
+    () => staticWallVisibility(room, activeWall, camera, cameraMode),
+    [room, activeWall, camera, cameraMode],
+  );
+  const facing = facingWall(walk, room);
 
   const onHover = useCallback((on) => {
     const host = hostRef.current;
@@ -239,7 +354,48 @@ export function RoomViewport({
     setRenderer('unavailable');
   }, []);
 
+  const selected = items.find((item) => item.uid === selectedUid) ?? null;
+
   const onKeyDown = (event) => {
+    const { key } = event;
+    const lower = key.toLowerCase();
+    if (drag.isGrabbing()) {
+      if (GRAB_STEPS[key]) {
+        event.preventDefault();
+        drag.nudge(...GRAB_STEPS[key]);
+      } else if (key === 'Enter' || lower === 'g') {
+        event.preventDefault();
+        drag.end(true);
+      } else if (key === 'Escape') {
+        event.preventDefault();
+        drag.end(false);
+      }
+      return;
+    }
+    if (lower === 'g' && selected && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      drag.grab();
+      return;
+    }
+    if (key === 'Escape') {
+      onSelect(null);
+      return;
+    }
+    if (cameraMode === 'inside') {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (WALK_STEPS[lower]) {
+        event.preventDefault();
+        onWalkStep(WALK_STEPS[lower]);
+      } else if (WALK_TURNS[lower]) {
+        event.preventDefault();
+        onWalkTurn(WALK_TURNS[lower]);
+      } else if (key === 'Home') {
+        event.preventDefault();
+        onWalkReset();
+      }
+      return;
+    }
+    if (cameraMode !== 'orbit') return;
     // Mid-glide, a key steps from where the camera is heading, not from the
     // in-between frame, so repeated presses land on whole steps.
     const current = api.gliding.current ? camera : sanitizeCamera(viewRef.current);
@@ -253,27 +409,36 @@ export function RoomViewport({
       '-': { zoom: current.zoom - KEY_ZOOM },
       _: { zoom: current.zoom - KEY_ZOOM },
     };
-    if (moves[event.key]) {
+    if (moves[key]) {
       event.preventDefault();
-      commitRef.current(sanitizeCamera({ ...current, ...moves[event.key] }));
-    } else if (event.key === 'Home' || event.key === '0') {
+      commitRef.current(sanitizeCamera({ ...current, ...moves[key] }));
+    } else if (key === 'Home' || key === '0') {
       event.preventDefault();
       commitRef.current(DEFAULT_CAMERA);
-    } else if (event.key === 'Escape') {
-      onSelect(null);
     }
   };
 
-  const selected = items.find((item) => item.uid === selectedUid) ?? null;
   const conflictCount = conflicts.size;
   const preset = activePreset(camera);
+  const bearing =
+    cameraMode === 'inside'
+      ? walk.headingDeg
+      : cameraMode === 'elevation'
+        ? WALL_LOOK_HEADING[activeWall]
+        : normalizeHeading(-(WALL_HEADING[activeWall] + view.yaw));
+  const ariaHelp =
+    cameraMode === 'inside'
+      ? 'Room viewport, inside at 165 cm. Drag to look around, W A S D to walk, Q and E to turn, Home to reset.'
+      : 'Room viewport. Drag or use the arrow keys to orbit, scroll, plus and minus to zoom, Home to reset. G grabs the selected module.';
 
   return (
     <section
+      ref={stageRef}
       className="workspace-frame room3d-stage"
       aria-label="Room viewport"
       data-active={selected ? true : undefined}
       data-orbiting={orbiting || undefined}
+      data-camera-mode={cameraMode}
     >
       <div className="workspace-frame__bar mono">
         <span data-testid="room-label">
@@ -287,8 +452,6 @@ export function RoomViewport({
           {conflictCount} {conflictCount === 1 ? 'conflict' : 'conflicts'}
         </span>
       </div>
-
-      <WallSwitcher active={activeWall} counts={counts} onChange={onWall} />
 
       <div className="workspace-frame__viewport room3d-stage__viewport">
         <div
@@ -305,6 +468,7 @@ export function RoomViewport({
           data-camera-pitch={camera.pitch}
           data-camera-zoom={camera.zoom}
           data-camera-heading={WALL_HEADING[activeWall]}
+          data-camera-mode={cameraMode}
           data-active-wall={activeWall}
           data-preset={preset ?? 'custom'}
           data-technical={technical || undefined}
@@ -312,7 +476,7 @@ export function RoomViewport({
           data-floor-lux={floorLux ? true : undefined}
           role="application"
           aria-roledescription="3D viewport"
-          aria-label="Room viewport. Drag or use the arrow keys to orbit, scroll, plus and minus to zoom, Home to reset."
+          aria-label={ariaHelp}
           tabIndex={0}
           onPointerDown={() => {
             api.pointerDown.current = true;
@@ -334,7 +498,10 @@ export function RoomViewport({
                   room={room}
                   wall={activeWall}
                   camera={camera}
+                  cameraMode={cameraMode}
+                  walk={walk}
                   api={api}
+                  drag={drag}
                   manifestRef={manifestRef}
                   onSelect={onSelect}
                   onHover={onHover}
@@ -352,9 +519,17 @@ export function RoomViewport({
             renderer={renderer}
             heading={WALL_HEADING[activeWall]}
             manifestRef={manifestRef}
+            walls={walls}
+            cameraMode={cameraMode}
+            walk={walk}
+            facing={facing}
+            eyeLux={eyeLux}
+            walkRef={api.walkMirror}
           />
 
-          {(counts[activeWall] ?? 0) === 0 && (
+          {selected && <TransformGizmo key={selected.uid} drag={drag} item={selected} room={room} axisLock={axisLock} />}
+
+          {(counts[activeWall] ?? 0) === 0 && cameraMode !== 'inside' && (
             <p className="room3d-stage__empty">
               {items.length === 0
                 ? `Empty room. Mount a component on the ${WALL_LABELS[activeWall]}, or load the 2D Wall Studio composition.`
@@ -363,18 +538,34 @@ export function RoomViewport({
           )}
         </div>
 
-        <div className="room3d-hud">
+        <div className="room3d-hud" data-camera-mode={cameraMode}>
           {toolbar}
-          <CameraSettings
-            camera={camera}
-            view={view}
-            wireframe={wireframe}
-            floorLux={Boolean(floorLux)}
-            onCamera={onCameraCommit}
-            onWireframe={onWireframe}
-            onFloorLux={onFloorLux}
-          />
+          <div className="room3d-hud__aside">
+            <CameraSettings
+              camera={camera}
+              view={view}
+              wireframe={wireframe}
+              floorLux={Boolean(floorLux)}
+              onCamera={onCameraCommit}
+              onWireframe={onWireframe}
+              onFloorLux={onFloorLux}
+            />
+            <ViewportCompass
+              api={api}
+              bearing={bearing}
+              cameraMode={cameraMode}
+              onWall={onWall}
+              onIso={() => {
+                onCameraMode('orbit');
+                onCameraCommit({ yaw: 45, pitch: 35.3, zoom: 0.95 });
+              }}
+              onEye={() => onCameraMode('inside')}
+            />
+          </div>
+          {cameraMode === 'inside' && <WalkControls onStep={onWalkStep} onTurn={onWalkTurn} onReset={onWalkReset} />}
         </div>
+
+        <StudioBootOverlay ready={renderer !== 'loading'} replay={bootReplay} />
 
         <span className="workspace-frame__corner workspace-frame__corner--tl" aria-hidden="true" />
         <span className="workspace-frame__corner workspace-frame__corner--tr" aria-hidden="true" />
@@ -386,11 +577,23 @@ export function RoomViewport({
         <span data-testid="room-item-readout">
           {selected
             ? `${getProduct(selected.productId).name} / X ${selected.xCm} / Y ${selected.yCm} cm`
-            : `Facing the ${WALL_LABELS[activeWall]}`}
+            : `Facing the ${WALL_LABELS[cameraMode === 'inside' ? facing : activeWall]}`}
+        </span>
+        <span className="room3d-stage__lens" data-testid="room-lens-readout">
+          {lensReadout(cameraMode, walk, eyeLux, activeWall, facing)}
         </span>
         <span className="tech-only" data-testid="room-polygons">
           {scene.stats.meshes} meshes / {scene.stats.lights} lights
         </span>
+        <button
+          type="button"
+          className="room3d-stage__replay"
+          data-testid="replay-studio-boot"
+          title="Replay the Lumen Spatial Engine boot sequence"
+          onClick={() => setBootReplay((count) => count + 1)}
+        >
+          Replay Engine Boot
+        </button>
       </div>
     </section>
   );

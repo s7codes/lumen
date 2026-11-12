@@ -33,7 +33,7 @@ function Segment({ legend, name, options, value, onChange, columns = 2 }) {
 
 function RoomSettings({ room, onRoom }) {
   return (
-    <PanelSection title="Room Setup">
+    <PanelSection title="Envelope & Lighting">
       <Disclosure
         label="Dimensions"
         summary={`${room.widthCm} x ${room.depthCm} x ${room.heightCm} cm`}
@@ -94,7 +94,7 @@ function RoomSettings({ room, onRoom }) {
 
 function ComponentList({ full, wallLabel, onMount }) {
   return (
-    <PanelSection title="Components" hint={`Click a part to mount it on the ${wallLabel}.`}>
+    <PanelSection title="Asset Shelf" hint={`One click mounts a part on the ${wallLabel}.`}>
       <ul className="palette-list" data-testid="room-palette" data-target-wall={wallLabel}>
         {PRODUCTS.map((product) => (
           <li key={product.id}>

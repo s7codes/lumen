@@ -25,6 +25,15 @@ function StructuralGrid() {
   );
 }
 
+// Focus moves to the landmark itself; a bare fragment jump only moves the caret start point.
+function focusMain(event) {
+  const main = document.getElementById('main-content');
+  if (!main) return;
+  event.preventDefault();
+  main.focus();
+  main.scrollIntoView({ block: 'start' });
+}
+
 export function LayoutShell() {
   useMagneticField();
 
@@ -33,13 +42,13 @@ export function LayoutShell() {
       <ToastProvider>
         <BagProvider>
           <CommandPaletteProvider>
-            <a href="#main" className="skip-link">
-              Skip to content
+            <a href="#main-content" className="skip-link" data-testid="skip-to-main" onClick={focusMain}>
+              Skip to main content
             </a>
             <StructuralGrid />
             <div className="shell">
               <Navbar />
-              <main id="main" className="shell__main" tabIndex={-1}>
+              <main id="main-content" className="shell__main" tabIndex={-1}>
                 <Outlet />
               </main>
               <Footer />

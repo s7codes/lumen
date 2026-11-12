@@ -7,12 +7,13 @@ const ZOOM_STEP = 0.1;
 
 /**
  * Floating HUD over the room viewport in clean clusters: view presets and
- * zoom on the first row; edit (undo, redo, clear the active wall) and DALI-2
+ * zoom on the first row (orbit lens only, the other lenses frame themselves); edit (undo, redo, clear the active wall) and DALI-2
  * scene recall on the second; a transient status line along the bottom edge.
  * Rendered as siblings inside .room3d-hud so the viewport can lay them out.
  */
 export function RoomToolbar({
   camera,
+  cameraMode = 'orbit',
   notice,
   onCamera,
   activeScene = null,
@@ -31,60 +32,66 @@ export function RoomToolbar({
   const atDefault = sameCamera(camera, DEFAULT_CAMERA);
   const zoomBy = (delta) => onCamera({ ...camera, zoom: camera.zoom + delta });
 
+  const orbit = cameraMode === 'orbit';
+
   return (
     <>
-      <div className="studio-toolbar__group room3d-hud__pill room3d-hud__presets" role="group" aria-label="Camera presets">
-        <span className="studio-toolbar__caption" aria-hidden="true">
-          View
-        </span>
-        {CAMERA_PRESETS.map((entry) => (
+      {orbit && (
+        <div className="studio-toolbar__group room3d-hud__pill room3d-hud__presets" role="group" aria-label="Camera presets">
+          <span className="studio-toolbar__caption" aria-hidden="true">
+            View
+          </span>
+          {CAMERA_PRESETS.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className="tool-button"
+              aria-pressed={preset === entry.id}
+              data-testid={`camera-preset-${entry.id}`}
+              onClick={() => onCamera(entry.camera)}
+            >
+              {entry.label}
+            </button>
+          ))}
           <button
-            key={entry.id}
             type="button"
-            className="tool-button"
-            aria-pressed={preset === entry.id}
-            data-testid={`camera-preset-${entry.id}`}
-            onClick={() => onCamera(entry.camera)}
+            className="tool-button room3d-hud__icon"
+            data-testid="camera-reset"
+            aria-label="Reset Camera"
+            title="Reset camera"
+            disabled={atDefault}
+            onClick={() => onCamera(DEFAULT_CAMERA)}
           >
-            {entry.label}
+            <ResetGlyph />
           </button>
-        ))}
-        <button
-          type="button"
-          className="tool-button room3d-hud__icon"
-          data-testid="camera-reset"
-          aria-label="Reset Camera"
-          title="Reset camera"
-          disabled={atDefault}
-          onClick={() => onCamera(DEFAULT_CAMERA)}
-        >
-          <ResetGlyph />
-        </button>
-      </div>
+        </div>
+      )}
 
-      <div className="studio-toolbar__group room3d-hud__pill room3d-zoom" role="group" aria-label="Zoom">
-        <button
-          type="button"
-          className="tool-button room3d-zoom__step"
-          aria-label="Zoom out"
-          disabled={camera.zoom <= CAMERA_ZOOM.min}
-          onClick={() => zoomBy(-ZOOM_STEP)}
-        >
-          -
-        </button>
-        <output className="room3d-zoom__value mono" data-testid="camera-zoom" aria-live="off">
-          {camera.zoom.toFixed(2)}x
-        </output>
-        <button
-          type="button"
-          className="tool-button room3d-zoom__step"
-          aria-label="Zoom in"
-          disabled={camera.zoom >= CAMERA_ZOOM.max}
-          onClick={() => zoomBy(ZOOM_STEP)}
-        >
-          +
-        </button>
-      </div>
+      {orbit && (
+        <div className="studio-toolbar__group room3d-hud__pill room3d-zoom" role="group" aria-label="Zoom">
+          <button
+            type="button"
+            className="tool-button room3d-zoom__step"
+            aria-label="Zoom out"
+            disabled={camera.zoom <= CAMERA_ZOOM.min}
+            onClick={() => zoomBy(-ZOOM_STEP)}
+          >
+            -
+          </button>
+          <output className="room3d-zoom__value mono" data-testid="camera-zoom" aria-live="off">
+            {camera.zoom.toFixed(2)}x
+          </output>
+          <button
+            type="button"
+            className="tool-button room3d-zoom__step"
+            aria-label="Zoom in"
+            disabled={camera.zoom >= CAMERA_ZOOM.max}
+            onClick={() => zoomBy(ZOOM_STEP)}
+          >
+            +
+          </button>
+        </div>
+      )}
 
       <div className="room3d-hud__row">
         <div className="studio-toolbar__group room3d-hud__pill" role="group" aria-label="History and edit">

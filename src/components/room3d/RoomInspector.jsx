@@ -3,6 +3,7 @@ import { getFinish, getProduct } from '../../data/products.js';
 import { dimFactor, sanitizeDimPct } from '../../lib/dimming.js';
 import { formatInt, formatUsd, formatWatts } from '../../lib/format.js';
 import { getFurniture, ROOM_WALLS, roomWall, WALL_LABELS, wallOf, wallSpanCm } from '../../lib/room-3d.js';
+import { AXIS_LOCK_LABELS, AXIS_LOCKS } from '../../lib/room-raycast.js';
 import { clampToWall } from '../../lib/wall-studio.js';
 import '../../styles/product.css';
 import { DimmingSlider, FinishPicker, NumberField, PanelSection, Switch } from '../studio/controls.jsx';
@@ -22,45 +23,151 @@ function conflictText(conflict, items, room) {
   return parts.join(' / ');
 }
 
-function ModuleList({ items, activeWall, conflicts, onSelect }) {
+function FocusGlyph() {
   return (
-    <PanelSection title="Modules">
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
+      <path d="M6 6h4v4H6z" stroke="currentColor" strokeWidth="1.25" />
+    </svg>
+  );
+}
+
+/** Scene outliner: modules grouped by wall, each with a Focus in 3D key that swings the view to its wall. */
+function ModuleList({ items, activeWall, conflicts, onSelect, onFocus }) {
+  return (
+    <PanelSection title="Modules" hint={items.length > 0 ? 'Scene outliner, grouped by wall.' : undefined}>
       {items.length === 0 ? (
         <p className="studio-panel__empty">No modules in the room yet. Pick a wall, then mount a component or load the 2D wall.</p>
       ) : (
-        <ul className="module-list" data-testid="room-module-list">
-          {items.map((item) => {
-            const product = getProduct(item.productId);
-            const finish = getFinish(item.finish);
-            const wall = wallOf(item);
+        <div className="room3d-outliner" data-testid="room-module-list">
+          {ROOM_WALLS.map((wall) => {
+            const onWall = items.filter((item) => wallOf(item) === wall);
+            const active = wall === activeWall;
             return (
-              <li key={item.uid}>
-                <button
-                  type="button"
-                  className="module-list__item"
-                  data-uid={item.uid}
-                  data-wall={wall}
-                  data-active-wall={wall === activeWall || undefined}
-                  data-conflict={conflicts.has(item.uid) || undefined}
-                  onClick={() => onSelect(item.uid)}
-                >
-                  <span
-                    className="module-list__swatch"
-                    style={{ '--swatch': finish.hex, '--swatch-hi': finish.highlight, '--swatch-lo': finish.shade }}
-                    aria-hidden="true"
-                  />
-                  <span className="module-list__name">{product.name}</span>
-                  <span className="module-list__meta">
-                    {WALL_LABELS[wall]} / {finish.label}
-                    <span className="module-list__coords mono"> / {item.xCm}, {item.yCm}</span>
-                  </span>
-                </button>
-              </li>
+              <section
+                key={wall}
+                className="room3d-outliner__group"
+                data-testid={`outliner-${wall}`}
+                data-wall={wall}
+                data-count={onWall.length}
+                data-active={active || undefined}
+                aria-label={`${WALL_LABELS[wall]}, ${onWall.length} ${onWall.length === 1 ? 'module' : 'modules'}`}
+              >
+                <h3 className="room3d-outliner__heading">
+                  <span className="room3d-outliner__wall">{WALL_LABELS[wall]}</span>
+                  {active && <span className="room3d-outliner__badge mono">Active</span>}
+                  <span className="room3d-outliner__count mono">{String(onWall.length).padStart(2, '0')}</span>
+                </h3>
+                {onWall.length === 0 ? (
+                  <p className="room3d-outliner__empty mono">Empty</p>
+                ) : (
+                  <ul className="module-list room3d-outliner__list">
+                    {onWall.map((item) => {
+                      const product = getProduct(item.productId);
+                      const finish = getFinish(item.finish);
+                      return (
+                        <li key={item.uid} className="room3d-outliner__row">
+                          <button
+                            type="button"
+                            className="module-list__item"
+                            data-uid={item.uid}
+                            data-wall={wall}
+                            data-active-wall={active || undefined}
+                            data-conflict={conflicts.has(item.uid) || undefined}
+                            onClick={() => onSelect(item.uid)}
+                          >
+                            <span
+                              className="module-list__swatch"
+                              style={{ '--swatch': finish.hex, '--swatch-hi': finish.highlight, '--swatch-lo': finish.shade }}
+                              aria-hidden="true"
+                            />
+                            <span className="module-list__name">{product.name}</span>
+                            <span className="module-list__meta">
+                              {WALL_LABELS[wall]} / {finish.label}
+                              <span className="module-list__coords mono"> / {item.xCm}, {item.yCm}</span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="room3d-outliner__focus"
+                            data-focus-uid={item.uid}
+                            data-testid="outliner-focus"
+                            aria-label="Focus in 3D"
+                            title={`Focus ${product.name} in 3D`}
+                            onClick={() => onFocus(item.uid)}
+                          >
+                            <FocusGlyph />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
             );
           })}
-        </ul>
+        </div>
       )}
     </PanelSection>
+  );
+}
+
+const LOCK_SHORT = Object.freeze({ free: 'Free XY', x: 'Lock X', y: 'Lock Y' });
+
+function AxisLockSelect({ value, onChange }) {
+  const id = useId();
+  return (
+    <fieldset className="studio-segment room3d-lock" data-testid="gizmo-lock-mode" data-value={value}>
+      <legend className="field__label">Axis Gizmo Lock</legend>
+      <div className="studio-segment__track room3d-lock__track">
+        {AXIS_LOCKS.map((lock) => (
+          <label key={lock} className="studio-segment__option" title={AXIS_LOCK_LABELS[lock]}>
+            <input
+              type="radio"
+              name={`${id}-lock`}
+              value={lock}
+              checked={value === lock}
+              aria-label={AXIS_LOCK_LABELS[lock]}
+              data-testid={`gizmo-lock-${lock}`}
+              onChange={() => onChange(lock)}
+            />
+            <span>{LOCK_SHORT[lock]}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+const NUDGES = Object.freeze([
+  { id: 'up', label: 'up', steps: [0, 1], path: 'M8 12V4M4.5 7.5 8 4l3.5 3.5' },
+  { id: 'left', label: 'left', steps: [-1, 0], path: 'M12 8H4M7.5 4.5 4 8l3.5 3.5' },
+  { id: 'down', label: 'down', steps: [0, -1], path: 'M8 4v8M4.5 8.5 8 12l3.5-3.5' },
+  { id: 'right', label: 'right', steps: [1, 0], path: 'M4 8h8M8.5 4.5 12 8l-3.5 3.5' },
+]);
+
+function NudgePad({ snapCm, onNudge }) {
+  return (
+    <div className="room3d-nudge" role="group" aria-label={`Nudge ${snapCm} cm`}>
+      <span className="room3d-nudge__caption field__label">Nudge {snapCm} cm</span>
+      <div className="room3d-nudge__pad">
+        {NUDGES.map((nudge) => (
+          <button
+            key={nudge.id}
+            type="button"
+            className="tool-button room3d-nudge__key"
+            data-dir={nudge.id}
+            data-testid={`gizmo-nudge-${nudge.id}`}
+            aria-label={`Nudge ${nudge.label} ${snapCm} cm`}
+            onClick={() => onNudge(nudge.steps[0], nudge.steps[1])}
+          >
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+              <path d={nudge.path} stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
+            </svg>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -88,7 +195,7 @@ function WallSelect({ value, onChange }) {
   );
 }
 
-function ModuleDetail({ item, state, conflict, actions }) {
+function ModuleDetail({ item, state, conflict, actions, axisLock, snapCm, onAxisLock, onNudge }) {
   const product = getProduct(item.productId);
   const { room, items } = state;
   const wallId = wallOf(item);
@@ -117,6 +224,16 @@ function ModuleDetail({ item, state, conflict, actions }) {
         >
           {conflictText(conflict, items, room)}
         </p>
+        <button
+          type="button"
+          className="tool-button room3d-inspector__focus"
+          data-testid="inspector-focus"
+          title={`Turn the view to the ${WALL_LABELS[wallId]}`}
+          onClick={() => actions.focus(item.uid)}
+        >
+          <FocusGlyph />
+          Focus in 3D
+        </button>
       </PanelSection>
 
       <PanelSection title="Finish & Light">
@@ -143,7 +260,7 @@ function ModuleDetail({ item, state, conflict, actions }) {
         </p>
       </PanelSection>
 
-      <PanelSection title="Wall & Position" className="studio-inspector__position">
+      <PanelSection title="Transform" className="studio-inspector__position">
         <WallSelect value={wallId} onChange={(next) => actions.update(item.uid, { wall: next })} />
         <div className="studio-fields">
           <NumberField
@@ -183,6 +300,8 @@ function ModuleDetail({ item, state, conflict, actions }) {
             <dd>0 - {d}</dd>
           </div>
         </dl>
+        <AxisLockSelect value={axisLock} onChange={onAxisLock} />
+        <NudgePad snapCm={snapCm} onNudge={onNudge} />
       </PanelSection>
 
       <PanelSection title="Actions">
@@ -205,13 +324,38 @@ function ModuleDetail({ item, state, conflict, actions }) {
   );
 }
 
-export function RoomInspector({ state, item, activeWall, conflicts, actions }) {
+export function RoomInspector({
+  state,
+  item,
+  activeWall,
+  conflicts,
+  actions,
+  axisLock = 'free',
+  snapCm = 5,
+  onAxisLock = () => {},
+  onNudge = () => {},
+}) {
   return (
     <aside className="studio-panel studio-inspector" aria-label="Room inspector" data-testid="room-inspector">
       {item ? (
-        <ModuleDetail item={item} state={state} conflict={conflicts.get(item.uid)} actions={actions} />
+        <ModuleDetail
+          item={item}
+          state={state}
+          conflict={conflicts.get(item.uid)}
+          actions={actions}
+          axisLock={axisLock}
+          snapCm={snapCm}
+          onAxisLock={onAxisLock}
+          onNudge={onNudge}
+        />
       ) : (
-        <ModuleList items={state.items} activeWall={activeWall} conflicts={conflicts} onSelect={actions.select} />
+        <ModuleList
+          items={state.items}
+          activeWall={activeWall}
+          conflicts={conflicts}
+          onSelect={actions.select}
+          onFocus={actions.focus}
+        />
       )}
     </aside>
   );

@@ -117,6 +117,26 @@ function roomReducer(store, action) {
       );
     }
 
+    // One direct-manipulation commit (3D drag, keyboard grab or nudge): one history step.
+    case 'move': {
+      const next = updateRoomItem(state, action.uid, { xCm: action.xCm, yCm: action.yCm });
+      if (next === state) return store;
+      const after = next.items.find((item) => item.uid === action.uid);
+      return withNotice(
+        withState(store, next),
+        `Moved ${getProduct(after.productId).name} to X ${after.xCm} / Y ${after.yCm} cm${onWallText(wallOf(after))}.`,
+      );
+    }
+
+    // Focus in 3D: select the module and turn the view to its wall.
+    case 'focus': {
+      const item = state.items.find((entry) => entry.uid === action.uid);
+      if (!item) return store;
+      const wall = wallOf(item);
+      if (store.selectedUid === item.uid && store.activeWall === wall) return store;
+      return { ...store, selectedUid: item.uid, activeWall: wall };
+    }
+
     case 'remove': {
       const item = state.items.find((entry) => entry.uid === action.uid);
       const next = removeRoomItem(state, action.uid);
@@ -185,6 +205,8 @@ export function useRoom3d() {
       setCamera: (camera) => dispatch({ type: 'camera', camera }),
       mount: (productId) => dispatch({ type: 'mount', productId }),
       update: (uid, patch) => dispatch({ type: 'update', uid, patch }),
+      move: (uid, { xCm, yCm }) => dispatch({ type: 'move', uid, xCm, yCm }),
+      focus: (uid) => dispatch({ type: 'focus', uid }),
       remove: (uid) => dispatch({ type: 'remove', uid }),
       clearWall: () => dispatch({ type: 'clear-wall' }),
       importWall: () => dispatch({ type: 'import' }),
