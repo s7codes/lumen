@@ -9,7 +9,8 @@ on:
 permissions:
   contents: read
 
-# Every JavaScript action runs on Node 24, so the runner raises no Node 20 deprecation notices.
+# The pinned majors declare Node 24 themselves; the flag keeps any action that still
+# declares Node 20 on Node 24 as well.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
@@ -27,10 +28,10 @@ jobs:
 
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -51,7 +52,7 @@ jobs:
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-report
           path: playwright-report/

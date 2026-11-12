@@ -1282,8 +1282,10 @@ store can stay up during a test run.
 `npx playwright test` against the built bundle. The HTML report is kept as an artifact.
 `ubuntu-latest` already carries Chromium's shared libraries and every font is
 self-hosted, so the job installs no apt packages and does not depend on Ubuntu mirrors.
-`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` is set for the whole workflow, so every JavaScript
-action runs on Node 24 and the runner emits no Node 20 deprecation notices.
+Every action is pinned to a major that declares Node 24 (`actions/checkout@v5`,
+`actions/setup-node@v5`, `actions/upload-artifact@v6`), and
+`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` is set for the whole workflow as a safeguard, so the
+runner raises no Node 20 deprecation warning.
 Releases push `develop` and `main` at the same SHA; triggering pushes on `main` only, with
 `concurrency` grouped by ref and `cancel-in-progress`, yields one run per release. Every
 push is followed by a check of the run on the GitHub Actions API until it completes green.
