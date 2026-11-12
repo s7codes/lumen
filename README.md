@@ -1,14 +1,41 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v6.0.0-e8923a)
+![Release](https://img.shields.io/badge/release-v6.1.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v6.0.0**. The **Lumen Studio AI Concierge** sits bottom-right on every
+Current release: **v6.1.0**. Lumen AI, the studio assistant behind the **Ask Studio AI**
+pill, now knows how the site itself works. Plain questions such as "Why cant I open 3D
+room designer", "how do I move furniture in 3D", "how do I walk around inside the room"
+or "what is Visual vs Specs mode" get a resolved, accurate walkthrough of the navbar, both
+planners, their lenses, gizmo, room presets, keyboard shortcuts and fault checks, with
+direct keys such as **Launch 3D Spatial Studio** (`/room-3d`) and **Launch 165 cm
+Walkthrough** (`/room-3d?lens=inside`). Contractions with or without the apostrophe,
+typos and the many names visitors give the planners are folded before matching, and
+greetings or "what is Lumen" get a short tour of the platform. Transport never fails the
+conversation: whenever `POST /api/concierge/ask` cannot answer (unreachable, a 404 from a
+dev server started on an older checkout, a 5xx or an unreadable reply), the same
+deterministic engine answers on the device with the same reply id. In development the API
+itself loads through Vite's SSR module graph, so an edit under `server/` or `src/lib/`
+takes effect on the next request without restarting the dev server.
+
+The panel is redrawn as stealth basalt glass: the Lumen mark on a dark pill, a **Lumen
+AI** header with a **Workspace Aware** badge, graphite question bubbles, quiet answer cards
+that stream in once, compact metric pills, a champagne primary next step and an
+understated **Did not resolve my issue - request engineer** link. Confidence and sources
+are Specs-mode detail. The gatekeeper is silent while locked: its status is spoken to
+assistive technology and never painted, and it surfaces only once contact unlocks. The
+navbar **Cart** pill gains a bag glyph that pairs with **Search**, and the showcase's
+launch box becomes one launch bar under the theatre and its cards (headline, three
+quick-launch pills and the champagne key, 96 px tall on a desktop) whose keys stay
+anchored on hover: no lift, no plinth, no magnetic drift; the cap brightens and only the
+arrow travels 3 px.
+
+v6.0.0 added the **Lumen Studio AI Concierge**, bottom-right on every
 route. The **Ask Studio AI** pill opens a spec concierge that answers from the 12-part
 catalog, the 24V SELV driver schedule and voltage-drop model, DALI-2 dimming and scenes,
 Sabine acoustics and illuminance, both planners, the CAD exports, pricing, VAT,
@@ -283,6 +310,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v6.1.0  | Lumen AI understands the site itself: navigation, both planners, lenses, gizmo, room presets, modes, shortcuts and fault checks, with direct launch keys; phrasing normalisation; a local answer on any API fault (404, 5xx, unreachable, unreadable); dev API hot-reloaded through Vite's SSR module graph; stealth basalt panel with a silent locked gatekeeper; navbar Cart glyph; slim showcase launch bar with anchored keys |
 | v6.0.0  | Lumen Studio AI Concierge on every route with live-workspace retrieval over the catalog, 24V bus, DALI-2, acoustics, planners, CAD exports, pricing and fulfilment; strict support escalation gatekeeper with server-replayed transcripts; `POST /api/concierge/ask`, `POST /api/concierge/escalate`, `GET /api/tickets`; Studio Engineering Tickets on `/account` with an offline outbox; four-worker CI with a cached Playwright browser |
 | v5.3.0  | Navbar and overview in one left-to-right order with a sequential scroll-spy; calm 20 deg/s turntable with 7 s acts; lighter capability cards with spec pills; champagne launch key with a perimeter beam; drafting-room Wall Studio backdrop; Web Audio RT60 audition in both planners; 1600 x 1000 `.png` studio render card |
 | v5.2.0  | Scroll-spy navbar underline on the overview; canvas 2D showcase theatre with four autonomous acts, act keys, card previews, cursor parallax and a lux probe; 3D Studio Launchpad with `?lens=` and `?scale=` quick-launch presets |
@@ -330,7 +358,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 ```
 index.html              CSP meta policy, favicon, entry point
-vite.config.js          build config, dev-only CSP relaxation for HMR
+vite.config.js          build config, dev-only CSP relaxation for HMR, hot-reloaded dev API
 .github/workflows/      ci.yml: install, Chromium, build, Playwright on main pushes and PRs
 src/
   main.jsx              boot: fonts, tokens, persisted display mode, router
@@ -412,7 +440,7 @@ tests/                  Playwright specs, named by architectural domain
 
 | Path         | View          | Role                                                      |
 | ------------ | ------------- | --------------------------------------------------------- |
-| `/`          | Overview      | Pendant hero, surface and dimming lab, 3D Spatial Studio theatre and launchpad (`#spatial-studio-3d`), core modules (`#core-modules`), workspaces (`#workspaces`) |
+| `/`          | Overview      | Pendant hero, surface and dimming lab, 3D Spatial Studio theatre and launch bar (`#spatial-studio-3d`), core modules (`#core-modules`), workspaces (`#workspaces`) |
 | `/catalog`   | Catalog       | Category, search and sort over 12 parts, finish swatch    |
 | `/catalog/:id` | Spec sheet  | Orthographic set, exploded assembly, photometry or bus curve, launchers |
 | `/checkout`  | Project Quote | BOM, driver, freight, currency, trade code, print, export, submit |
@@ -431,7 +459,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '6.0.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '6.1.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -716,7 +744,10 @@ custom properties, so React never re-renders on pointer movement.
   offset `box-shadow`. `useMagneticField` is one delegated pointer listener that pulls
   the hovered key toward a fine pointer by at most 4 x 3 px; the plinth stays where the
   key rests, so it trails the cap. Arrows slide 4px, the add glyph turns a quarter.
-  Nothing glows: the plinth has no blur, and the glow guard in the E2E suite holds.
+  Nothing glows: the plinth has no blur, and the glow guard in the E2E suite holds. A key
+  opts out with `data-magnet="off"`: the overview's **Launch 3D Spatial Studio** key stays
+  anchored (no lift, no plinth, no pull), brightens its champagne cap in place and slides
+  only its arrow 3px, with the perimeter beam still running.
 - Showcase theatre: `useShowcaseTheatre` runs one rAF loop per overview visit, only while
   the stage is on screen. It is paced as an architectural turntable (`showcase-scene.js`):
   7 s acts (`ACT_SECONDS`, `ACT_DURATION_MS`), a 20 deg/s orbit (`ORBIT_DEG_PER_S`), a
@@ -748,7 +779,10 @@ custom properties, so React never re-renders on pointer movement.
 - Each catalog card draws a front elevation at the largest standard scale that fits
   (1:2 to 1:50). Architectural mode shows finish and editorial copy; technical mode adds
   dimension lines, anchor points and the telemetry grid (SKU, load, lm, lm/W, CRI).
-- The navbar **Cart (n)** pill opens the cart drawer. Every visible label says cart:
+- The navbar **Cart (n)** pill opens the cart drawer. It carries a 14 px bag glyph on the
+  same 16-unit grid and 1.25 stroke as the **Search** glyph, so the two keys read as a
+  pair; below 420 px it folds to the glyph and count while its accessible name stays
+  **Cart (n)**. Every visible label says cart:
   **Add to Cart**, **Clear cart**, **Sync Wall to Cart**, **Sync Room to Cart** and the toasts.
   Internally the store, hook, CSS classes, test ids and storage key keep the `bag` name.
 - The cart is stored under `lumen_bag_v1` through `safeStorage`. Every read is rebuilt line
@@ -879,7 +913,7 @@ custom properties, so React never re-renders on pointer movement.
 - The **Lumen Spatial Engine** boot (`studio-boot-overlay`) is portaled to the body as
   a fixed 100vw x 100vh plate (`z-index: 9999`, `#080809`) over the navbar and every
   dock while the WebGL chunk loads: a 56 px monogram with a breathing tungsten aperture,
-  `LUMEN SPATIAL ENGINE v6.0`, a 240 px bar from `000%` and `01 / WebGL2 Shader
+  `LUMEN SPATIAL ENGINE v6.1`, a 240 px bar from `000%` and `01 / WebGL2 Shader
   Pipeline`, `02 / 4-Wall Raycast & Gizmo Solver`, `03 / 24V Photometric Kernel`. It
   holds 950 ms after the canvas reports ready, then lifts over 550 ms on
   `cubic-bezier(0.16, 1, 0.3, 1)` (opacity to 0, scale to 1.025, blur to 10px) while the
@@ -1226,10 +1260,12 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
 conversation survives every route change and never enters the page's tab sequence early.
 
 - **Dock.** A 40 px **Ask Studio AI** pill fixed 20 px from the bottom-right corner
-  (`z-index: 90`): basalt `#141311`, a 1 px `rgba(229, 199, 153, 0.28)` edge, a six-blade
-  aperture glyph and a zero-blur plinth. Engaged, it inverts flat to champagne. Under
-  560 px it compacts to a 40 x 40 key with the same accessible name. The panel chunk (and
-  the engine behind it) loads on pointer or focus intent, never with the entry.
+  (`z-index: 90`) in the navbar's dark glass: `rgba(20, 19, 17, 0.92)` on a 16 px backdrop
+  blur, a 1 px `rgba(255, 255, 255, 0.12)` edge, `#f4f1ea` text and the Lumen mark with
+  its aperture in champagne. Hovered or open, the edge warms to `rgba(229, 199, 153,
+  0.45)`. Under 560 px it compacts to a 40 x 40 key with the same accessible name. The
+  panel chunk (and the engine behind it) loads on pointer or focus intent, never with the
+  entry.
 - **Layout guard.** While any `aria-modal` dialog is open (sign-in, cart, palette,
   blueprint, compare) or the 3D camera popover is open, the dock steps aside
   (`visibility: hidden`) and returns with its session intact. `scroll-padding-bottom:
@@ -1237,12 +1273,17 @@ conversation survives every route change and never enters the page's tab sequenc
   page, end-aligned anchors) clear of the pill.
 - **Panel.** A non-modal dialog (`aria-label="Lumen Studio AI Concierge"`,
   `data-escalation="locked" | "unlocked"`), `min(420px, 100vw - 32px)` wide and at most
-  `min(640px, 100vh - 96px)` tall: a header (`LUMEN SPEC CONCIERGE // LIVE WORKSPACE RAG`,
-  the route context, close), four route-aware quick prompts, the conversation, the
-  gatekeeper bar and the composer. Escape from inside closes it and focus returns to the
-  pill. Each reply shows its category, a resolved or needs-engineer confidence, metric
-  badges, suggested navigation chips, its sources and, on resolved answers,
-  **Did not resolve my issue**.
+  `min(640px, 100vh - 96px)` tall, in dark glass: a header (the Lumen mark, **Lumen AI**,
+  a **Workspace Aware** badge, the route context, close), four route-aware quick prompts,
+  the conversation and a rounded composer with its send key inside. Escape from inside
+  closes it and focus returns to the pill. Questions sit in graphite bubbles (`#23211e`);
+  each answer is a quiet card (`rgba(255, 255, 255, 0.025)`, 13.5 px Inter Tight at 1.6)
+  with its category, compact metric pills, next-step keys (the first a champagne cap)
+  and, on resolved answers, an understated **Did not resolve my issue - request
+  engineer** link. Confidence and sources show in Specs mode only. A fresh answer streams
+  in once, top to bottom under a soft mask edge, and marks itself `data-revealed` on the
+  element (never through React state), so a reopened panel never replays it; reduced
+  motion shows it at once.
 - **Engine.** `evaluateConciergeQuery(question, workspaceContext)` caps the question at
   500 characters and rebuilds the context (`route`, `currency`, `wallDraft`, `roomDraft`,
   `bagItems`) through `sanitizeLayout`, `sanitizeRoomState` and `sanitizeBagItems`. It
@@ -1254,13 +1295,35 @@ conversation survives every route change and never enters the page's tab sequenc
   live drafts (`lumen_wall_studio_v1`, `lumen_room_3d_v1`, `lumen_bag_v1`) at question
   time. Every reply is `{ id, question, answer, confidence, category, resolved,
   citations, suggestedActions, metrics }`; resolved replies score 0.65 and above.
+- **Studio guide.** Before matching, the question is folded: contractions with or
+  without the apostrophe (`cant`, `can't`, `won't`), common typos and the many names of
+  the planners (`3D room designer`, `3D modeler`, `room planner`, `wall studio`). How-to,
+  navigation and fault questions about the app itself answer in the `guide` category
+  ahead of the topic words they mention: opening the 3D Spatial Studio (and why it may
+  not open), moving and placing modules in 3D and 2D, the three lenses and room size,
+  Visual and Specs, the top bar, keyboard shortcuts and Zen, the Wall Studio, the cart,
+  saving, signing in, search and removing a module. Opening the 3D studio always carries
+  **Launch 3D Spatial Studio** (`/room-3d`) and **Launch 165 cm Walkthrough**
+  (`/room-3d?lens=inside`). Greetings and "what is Lumen" get a short tour of the
+  platform. Escalation topics still win first, and software faults ("the 3D designer is
+  broken") or planner sizes ("a custom size for my room") never read as freight damage
+  or bespoke work.
+- **Transport.** `askConcierge` answers with the server's reply when it gets a sound one;
+  on any other outcome (unreachable, a 404 from an older dev server, a 5xx, a refused or
+  unreadable reply) the same engine answers on the device with the same reply id, and
+  only an unreachable API moves the cloud indicator offline. No server message ever
+  reaches the conversation.
 - **Gatekeeper.** Bespoke fabrication outside the catalog, structural, masonry or
   wet-zone certification, onsite crew booking, freight damage and claims, B2B invoicing
   and off-topic requests resolve `false` under 0.45 and unlock contact with reason
   `unresolved_query`. **Did not resolve my issue** adds a deeper engineering follow-up and
   unlocks with `marked_unhelpful`. A request for a human alone gets the gatekeeper reply
   and stays locked. Resolution depends on the question text only, so the server's replay
-  agrees with what the visitor saw.
+  agrees with what the visitor saw. The gatekeeper is silent while locked: its status
+  (`concierge-gatekeeper-status`, `role="status"`) stays in the DOM as a visually hidden
+  live region, so screen readers hear it and the unlock is announced as a change, but no
+  padlock or lock line is ever painted; once contact unlocks it shows as a calm champagne
+  line above the composer.
 - **Tickets.** The unlocked **Contact Studio Engineering** form takes Email (pre-filled
   when signed in), Subject (2 to 120 characters, pre-filled from the inquiry) and an
   Engineering Brief (10 to 2000), and attaches the transcript and a 600-character
@@ -1359,8 +1422,15 @@ npm run server                    # API only, http://127.0.0.1:8787/api
 npx playwright test               # builds, serves preview, runs the E2E suite
 ```
 
-`npm run dev` and `npm run preview` serve the API on `/api` in the same process. The
-standalone server reads `HOST`, `PORT`, `LUMEN_DATA_FILE`, `LUMEN_STORAGE`,
+`npm run dev` and `npm run preview` serve the API on `/api` in the same process.
+`vite.config.js` never imports the server modules statically (a config dependency would
+make Vite restart the whole dev server on every edit, and a restart that fails half way
+through a branch switch leaves the old route table running). Under `npm run dev` the API
+loads through the dev server's SSR module graph on each request, so an edit under
+`server/` or `src/lib/` reaches the next call with no restart (logged as `lumen cloud api
+reloaded`), the store flushes before the new one opens, and a per-process session key
+keeps every session valid across reloads. `npm run preview` serves a fixed build with one
+cloud per process. The standalone server reads `HOST`, `PORT`, `LUMEN_DATA_FILE`, `LUMEN_STORAGE`,
 `LUMEN_SESSION_SECRET` and `LUMEN_TEST_RESET`. Run one process per data file. The E2E
 web server writes `server/.data/lumen-cloud.test.json`, so a dev server on the default
 store can stay up during a test run.
