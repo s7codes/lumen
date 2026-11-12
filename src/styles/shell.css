@@ -140,20 +140,25 @@
   height: 2px;
   background: var(--lumen-amber);
   transform: scaleX(0);
-  transform-origin: left;
-  transition: transform var(--duration-base) var(--ease-out);
+  /* The underline hands over left to right: the outgoing bar retracts toward
+     its right end while the incoming one draws in from its left. */
+  transform-origin: right;
+  transition: transform var(--duration-slow) var(--ease-cinematic);
 }
 
 .navbar__link:hover {
   color: var(--text-primary);
 }
 
-.navbar__link[aria-current='page'] {
+.navbar__link.active,
+.navbar__link[aria-current] {
   color: var(--text-primary);
 }
 
-.navbar__link[aria-current='page']::after {
+.navbar__link.active::after,
+.navbar__link[aria-current]::after {
   transform: scaleX(1);
+  transform-origin: left;
 }
 
 /* Controls: three glass pills on one 32px baseline, flush right. */

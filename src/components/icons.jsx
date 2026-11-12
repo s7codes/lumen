@@ -161,3 +161,55 @@ export function PlanWallGlyph({ wall }) {
     </svg>
   );
 }
+
+/** Wireframe cube for the studio launch key: near edges solid, hidden edges dashed. */
+export function CubeGlyph({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+      <g stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
+        <path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z" />
+        <path d="M4 7.5 12 12l8-4.5M12 12v9" />
+        <path d="M12 3v9" strokeDasharray="1.5 1.8" strokeOpacity="0.55" />
+      </g>
+    </svg>
+  );
+}
+
+export function PresetOrbitGlyph() {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
+      <g stroke="currentColor" strokeWidth="1.1">
+        <path d="M16 10.5 22 13.5v6L16 22.5l-6-3v-6l6-3Z" />
+        <path d="M10 13.5 16 16.5l6-3M16 16.5v6" strokeOpacity="0.5" />
+        <ellipse cx="16" cy="17" rx="13" ry="5.5" strokeDasharray="2 2.4" strokeOpacity="0.7" />
+      </g>
+      <path d="m26.5 12.4 2.6.6-1.6 2.1" stroke="var(--lumen-amber)" strokeWidth="1.1" />
+    </svg>
+  );
+}
+
+export function PresetEyeGlyph() {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
+      <g stroke="currentColor" strokeWidth="1.1">
+        <path d="M3 26h26" strokeOpacity="0.5" />
+        <path d="M8 26V12.5" strokeDasharray="1.5 2" strokeOpacity="0.6" />
+        <path d="M8 12.5 28 5M8 12.5 28 20" strokeOpacity="0.8" />
+        <path d="M28 5v15" strokeDasharray="2 2" />
+      </g>
+      <path d="M5 12.5h6M8 9.5v6" stroke="var(--lumen-amber)" strokeWidth="1.25" />
+    </svg>
+  );
+}
+
+export function PresetLoftGlyph() {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
+      <g stroke="currentColor" strokeWidth="1.1">
+        <path d="M3 11 17 5l12 5v12l-14 6-12-6V11Z" />
+        <path d="M3 11l12 5 14-6M15 16v12" strokeOpacity="0.5" />
+      </g>
+      <path d="M3 30.5h12M15 30.5l14-6" stroke="var(--lumen-amber)" strokeWidth="1.1" strokeDasharray="1.6 1.6" />
+    </svg>
+  );
+}

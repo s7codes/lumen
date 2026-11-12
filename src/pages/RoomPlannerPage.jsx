@@ -15,6 +15,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { useDraftDiff } from '../hooks/useDraftDiff.js';
 import { useHistoryShortcuts } from '../hooks/useHistoryShortcuts.js';
 import { useLaunchedModule } from '../hooks/useLaunchedModule.js';
+import { useLaunchPreset } from '../hooks/useLaunchPreset.js';
 import { useProjectName } from '../hooks/useProjectName.js';
 import { useRoom3d } from '../hooks/useRoom3d.js';
 import { useSharedSceneLoader, useShareLink } from '../hooks/useSceneShare.js';
@@ -26,10 +27,18 @@ import { matchLightingScene, roomSurface } from '../lib/lighting-scenes.js';
 import { computeEnvironmentalPhysics } from '../lib/room-physics.js';
 import { downloadText } from '../lib/download.js';
 import { buildRoomObj, countObjObjects, OBJ_MIME, objFilename } from '../lib/obj-export.js';
-import { DEFAULT_ROOM_WALL, exportToWallStudio, findRoomConflicts, unrolledRoom, WALL_LABELS } from '../lib/room-3d.js';
+import {
+  DEFAULT_ROOM_WALL,
+  exportToWallStudio,
+  findRoomConflicts,
+  ROOM_SIZE_PRESETS,
+  unrolledRoom,
+  WALL_LABELS,
+} from '../lib/room-3d.js';
 import { FREE_SNAP_CM, GRID_SNAP_CM, sanitizeAxisLock } from '../lib/room-raycast.js';
 import {
   CAMERA_MODE_LABELS,
+  CAMERA_MODES,
   defaultStance,
   DEFAULT_CAMERA_MODE,
   eyeIlluminance,
@@ -51,6 +60,8 @@ import '../styles/room3d.css';
 function plural(count, word) {
   return `${count} ${count === 1 ? word : `${word}s`}`;
 }
+
+const LAUNCH_OPTIONS = Object.freeze({ lenses: CAMERA_MODES, scales: ROOM_SIZE_PRESETS.map((preset) => preset.id) });
 
 function sameStance(a, b) {
   return a.xCm === b.xCm && a.zCm === b.zCm && a.headingDeg === b.headingDeg && a.pitchDeg === b.pitchDeg;
@@ -92,6 +103,22 @@ export default function RoomPlannerPage() {
     project.change(name);
     actions.replace(shared, `Loaded shared scene ${name}: ${plural(shared.items.length, 'module')}.`);
     setStatus('');
+  });
+  // A quick-launch link: the envelope is one undo step, and the stance follows
+  // it through the rescale effect below, so eye level lands backed up in the new room.
+  useLaunchPreset(LAUNCH_OPTIONS, ({ lens, scale }) => {
+    const preset = ROOM_SIZE_PRESETS.find((entry) => entry.id === scale);
+    const parts = [];
+    if (preset) {
+      const { widthCm, depthCm, heightCm } = preset;
+      actions.setRoom({ widthCm, depthCm, heightCm });
+      parts.push(`${preset.label} ${widthCm} x ${depthCm} x ${heightCm} cm`);
+    }
+    if (lens) {
+      setCameraMode(lens);
+      parts.push(`${CAMERA_MODE_LABELS[lens]} lens`);
+    }
+    actions.announce(`Launched ${parts.join(', ')}.`);
   });
 
   const snapCm = snapOn ? GRID_SNAP_CM : FREE_SNAP_CM;

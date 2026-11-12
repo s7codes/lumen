@@ -3,7 +3,7 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useBag, useBagDrawer } from '../hooks/useBag.js';
 import { useCommandPalette } from '../hooks/useCommandPalette.js';
-import { useSectionLink } from '../hooks/useSectionLink.js';
+import { useCurrentSection, useSectionLink } from '../hooks/useSectionLink.js';
 import { prefetchRoute } from '../lib/route-manifest.js';
 import { NAV_ROUTES } from '../lib/routes.js';
 import { AuthModal } from './AuthModal.jsx';
@@ -12,16 +12,27 @@ import { CommandPalette, PALETTE_SHORTCUT_LABEL } from './CommandPalette.jsx';
 import { LumenMark, SearchGlyph } from './icons.jsx';
 import { ModeSwitch } from './ModeSwitch.jsx';
 
-/** A primary link into an overview section: glides there, and reads as current inside its workspace. */
-function SectionNavLink({ route }) {
+function linkClass(current) {
+  return current ? 'navbar__link active' : 'navbar__link';
+}
+
+/**
+ * A primary link into an overview section: glides there, reads as the page
+ * inside its workspace and as the location while the overview is scrolled
+ * through its section.
+ */
+function SectionNavLink({ route, section }) {
   const { pathname } = useLocation();
   const onClick = useSectionLink(route.hash);
   const warm = () => prefetchRoute(route.prefetch);
+  let current;
+  if (pathname === route.activePath) current = 'page';
+  else if (pathname === '/' && section === route.hash) current = 'location';
   return (
     <Link
       to={route.path}
-      className="navbar__link"
-      aria-current={pathname === route.activePath ? 'page' : undefined}
+      className={linkClass(current)}
+      aria-current={current}
       data-testid={route.testId}
       onClick={onClick}
       onPointerEnter={warm}
@@ -32,7 +43,20 @@ function SectionNavLink({ route }) {
   );
 }
 
+/** Overview stays current on the overview until the reader scrolls into a spied section. */
+function OverviewNavLink({ route, section }) {
+  const { pathname } = useLocation();
+  const current = pathname === '/' && !section ? 'page' : undefined;
+  const warm = () => prefetchRoute(route.path);
+  return (
+    <Link to="/" className={linkClass(current)} aria-current={current} onPointerEnter={warm} onFocus={warm}>
+      {route.label}
+    </Link>
+  );
+}
+
 export function Navbar() {
+  const section = useCurrentSection();
   const { count } = useBag();
   const { open: bagOpen, returnFocus, openBag, closeBag } = useBagDrawer();
   const bagTriggerRef = useRef(null);
@@ -75,11 +99,12 @@ export function Navbar() {
               {NAV_ROUTES.map((route) => (
                 <li key={route.path}>
                   {route.hash ? (
-                    <SectionNavLink route={route} />
+                    <SectionNavLink route={route} section={section} />
+                  ) : route.path === '/' ? (
+                    <OverviewNavLink route={route} section={section} />
                   ) : (
                     <NavLink
                       to={route.path}
-                      end={route.path === '/'}
                       className="navbar__link"
                       onPointerEnter={() => prefetchRoute(route.path)}
                       onFocus={() => prefetchRoute(route.path)}
