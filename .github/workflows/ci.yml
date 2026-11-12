@@ -39,9 +39,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The browser build is pinned by the lockfile, so the cache key follows it.
+      # cache v5 declares Node 24 (v4 still declares Node 20).
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       # ubuntu-latest already ships the Chromium shared libraries, and the app
       # self-hosts its fonts, so no apt mirror is touched here.
       - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install chromium
 
       - name: Build production bundle
@@ -51,7 +61,7 @@ jobs:
         run: npx playwright test
 
       - name: Upload Playwright report
-        if: ${{ !cancelled() }}
+        if: failure()
         uses: actions/upload-artifact@v6
         with:
           name: playwright-report
