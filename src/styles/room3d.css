@@ -545,6 +545,75 @@
   border-top: 1px solid var(--border-hairline);
 }
 
+/* Room scale: four envelope pills, name over a mono size line. Active is a
+   flat surface inversion. */
+
+.room3d-scale {
+  margin-bottom: var(--space-3);
+}
+
+.room3d-scale .field__label {
+  margin-bottom: var(--space-2);
+}
+
+.room3d-scale__track {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.room3d-scale__pill {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 9px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+  text-align: left;
+  color: var(--text-primary);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-base) var(--ease-out),
+    translate var(--duration-base) var(--ease-out);
+}
+
+.room3d-scale__pill:hover:not([aria-pressed='true']) {
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+  translate: 0 -1px;
+}
+
+.room3d-scale__pill:focus-visible {
+  outline: 1px solid var(--lumen-amber);
+  outline-offset: 2px;
+}
+
+.room3d-scale__pill[aria-pressed='true'] {
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+  color: var(--text-inverse);
+}
+
+.room3d-scale__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.room3d-scale__dims {
+  font-size: 9.5px;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  color: #a1a1aa;
+}
+
+.room3d-scale__pill[aria-pressed='true'] .room3d-scale__dims {
+  color: rgba(11, 11, 10, 0.62);
+}
+
 /* CAD bridge: the 2D exchange for the active wall, .OBJ export and the share
    link, one row of keys under the engineering telemetry. */
 
@@ -1367,35 +1436,54 @@
   visibility: hidden;
 }
 
-/* Engine boot */
+/* Engine boot. A full-screen basalt plate over the whole window (navbar and
+   docks included) while the WebGL engine compiles. It lifts with a cinematic
+   defocus: fade, a slight push toward the eye and a 10px blur over 550 ms,
+   while the workstation beneath settles from 0.99 into place. */
 
 .studio-boot {
-  position: absolute;
+  --boot-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --boot-reveal: 550ms;
+
+  position: fixed;
   inset: 0;
-  z-index: calc(var(--z-hud) + 2);
+  z-index: 9999;
   display: grid;
   place-items: center;
-  background: radial-gradient(ellipse at 50% 42%, #17150f 0%, #0b0a09 62%, #070706 100%);
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 46% 38% at 50% 47%, rgba(232, 146, 58, 0.055) 0%, rgba(232, 146, 58, 0) 100%),
+    radial-gradient(ellipse at 50% 120%, #121110 0%, #080809 58%);
   pointer-events: none;
+  transform-origin: 50% 50%;
   transition:
-    opacity 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity var(--boot-reveal) var(--boot-ease),
+    transform var(--boot-reveal) var(--boot-ease),
+    filter var(--boot-reveal) var(--boot-ease),
     visibility 0s linear 0s;
 }
 
 .studio-boot[data-state='done'] {
   opacity: 0;
+  transform: scale(1.025);
+  filter: blur(10px);
   visibility: hidden;
   transition:
-    opacity 420ms cubic-bezier(0.16, 1, 0.3, 1),
-    visibility 0s linear 420ms;
+    opacity var(--boot-reveal) var(--boot-ease),
+    transform var(--boot-reveal) var(--boot-ease),
+    filter var(--boot-reveal) var(--boot-ease),
+    visibility 0s linear var(--boot-reveal);
 }
 
 .studio-boot__panel {
   display: grid;
   justify-items: center;
-  gap: 14px;
-  width: min(84%, 360px);
-  animation: studio-boot-focus 1000ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  gap: 18px;
+  width: min(calc(100vw - 32px), 300px);
+  animation: studio-boot-focus 1000ms var(--boot-ease) both;
 }
 
 @keyframes studio-boot-focus {
@@ -1413,19 +1501,22 @@
 }
 
 .studio-boot__mark {
-  width: 44px;
-  height: 44px;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 6px;
   color: #ffffff;
 }
 
+/* The tungsten slot breathes like a filament warming up. */
 .studio-boot__aperture {
   fill: var(--lumen-amber);
+  filter: drop-shadow(0 0 3px rgba(232, 146, 58, 0.55));
   animation: studio-boot-aperture 1400ms ease-in-out infinite alternate;
 }
 
 @keyframes studio-boot-aperture {
   from {
-    opacity: 0.35;
+    opacity: 0.3;
   }
 
   to {
@@ -1436,22 +1527,23 @@
 .studio-boot__title {
   margin: 0;
   font-size: 11px;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.28em;
+  white-space: nowrap;
   color: #ffffff;
 }
 
 .studio-boot__meter {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 240px auto;
   align-items: center;
-  gap: 10px;
-  width: 100%;
+  gap: 12px;
+  max-width: 100%;
 }
 
 .studio-boot__bar {
   height: 2px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.09);
 }
 
 .studio-boot__fill {
@@ -1470,9 +1562,9 @@
 
 .studio-boot__steps {
   display: grid;
-  gap: 6px;
+  gap: 7px;
   width: 100%;
-  margin: 0;
+  margin: 6px 0 0;
   padding: 0;
   list-style: none;
   font-size: 10.5px;
@@ -1511,8 +1603,8 @@
   position: absolute;
   right: var(--space-5);
   bottom: var(--space-5);
-  height: 30px;
-  padding-inline: 12px;
+  height: 32px;
+  padding-inline: 14px;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   background: rgba(11, 11, 10, 0.6);
@@ -1524,12 +1616,14 @@
   transition:
     background-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-base) var(--ease-out),
     translate var(--duration-base) var(--ease-out);
 }
 
 .studio-boot__skip:hover {
   background: var(--text-primary);
   color: var(--text-inverse);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
   translate: 0 -1px;
 }
 
@@ -1537,10 +1631,27 @@
   pointer-events: none;
 }
 
+/* As the plate lifts, the workstation settles from 0.99 into place. No fill
+   mode: once it lands the element carries no transform at all. */
+.room3d-workstation[data-boot='done'] {
+  animation: room3d-settle var(--boot-reveal, 550ms) cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes room3d-settle {
+  from {
+    transform: scale(0.99);
+  }
+
+  to {
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .studio-boot,
   .studio-boot__panel,
   .studio-boot__aperture,
+  .room3d-workstation[data-boot],
   .room3d-workstation .room3d-layout {
     animation: none;
     transition: none;

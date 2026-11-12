@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
-const BOOT_HOLD_MS = 320;
+const BOOT_HOLD_MS = 950;
 const REPLAY_MS = 1400;
 // rAF stalls in a hidden tab; the overlay must still clear itself.
 const SAFETY_MS = 900;
+const ENGINE_LABEL = `LUMEN SPATIAL ENGINE v${__APP_VERSION__.split('.').slice(0, 2).join('.')}`;
 
 const STEPS = Object.freeze(['01 / WebGL2 Shader Pipeline', '02 / 4-Wall Raycast & Gizmo Solver', '03 / 24V Photometric Kernel']);
 
@@ -29,13 +31,16 @@ function Monogram() {
 }
 
 /**
- * Engine boot over the stage while the WebGL chunk loads and the first frame
- * compiles. The layer never takes the pointer, only its skip key does; it
- * clears 320 ms after the canvas reports ready, at once under reduced motion,
- * and on Enter Studio Now. The bar and percentage are written per frame
- * straight to the DOM; React only hears about the three step changes.
+ * Full-screen engine boot while the WebGL chunk loads and the first frame
+ * compiles. It is portaled to the body, so no transformed ancestor can trap
+ * its fixed position, and it covers the navbar and every dock. The layer never
+ * takes the pointer, only its skip key does; it clears 950 ms after the canvas
+ * reports ready, at once under reduced motion, and on Enter Studio Now. The
+ * bar and percentage are written per frame straight to the DOM; React only
+ * hears about the three step changes. The phase is mirrored onto `revealRef`
+ * as `data-boot`, which settles the workstation in as the overlay lifts.
  */
-export function StudioBootOverlay({ ready, replay = 0 }) {
+export function StudioBootOverlay({ ready, replay = 0, revealRef = null }) {
   const [phase, setPhase] = useState(() => (reducedMotion() ? 'done' : 'booting'));
   const [run, setRun] = useState({ id: 0, replay: false });
   const [step, setStep] = useState(0);
@@ -50,6 +55,21 @@ export function StudioBootOverlay({ ready, replay = 0 }) {
     setRun((current) => ({ id: current.id + 1, replay: true }));
     setPhase('booting');
   }, [replay]);
+
+  useLayoutEffect(() => {
+    const el = revealRef?.current;
+    if (!el) return undefined;
+    el.dataset.boot = phase;
+    if (phase !== 'done') return undefined;
+    // The settle scale skews getBoundingClientRect while it runs; anything that
+    // measured the stage meanwhile (the WebGL canvas on a scroll) re-reads it
+    // once the workstation lands at full size.
+    const onEnd = (event) => {
+      if (event.target === el) window.dispatchEvent(new Event('resize'));
+    };
+    el.addEventListener('animationend', onEnd);
+    return () => el.removeEventListener('animationend', onEnd);
+  }, [phase, revealRef]);
 
   useEffect(() => {
     if (phase !== 'booting') return undefined;
@@ -69,7 +89,7 @@ export function StudioBootOverlay({ ready, replay = 0 }) {
       last = now;
       if (readyRef.current && readyAt === null) readyAt = now;
       const goal = run.replay ? Math.min(1, (now - startedAt) / REPLAY_MS) : readyAt !== null ? 1 : 0.9;
-      const rate = run.replay ? 14 : readyAt !== null ? 9 : 2.2;
+      const rate = run.replay ? 14 : readyAt !== null ? 6 : 2.2;
       progress += (goal - progress) * (1 - Math.exp(-dt * rate));
       paint(progress);
       const next = stepOf(progress);
@@ -98,7 +118,7 @@ export function StudioBootOverlay({ ready, replay = 0 }) {
 
   const booting = phase === 'booting';
 
-  return (
+  return createPortal(
     <div
       className="studio-boot"
       data-testid="studio-boot-overlay"
@@ -107,9 +127,9 @@ export function StudioBootOverlay({ ready, replay = 0 }) {
       role="status"
       aria-label="Lumen Spatial Engine"
     >
-      <div className="studio-boot__panel" aria-hidden="true">
+      <div key={run.id} className="studio-boot__panel" aria-hidden="true">
         <Monogram />
-        <p className="studio-boot__title mono">LUMEN SPATIAL ENGINE v5.0</p>
+        <p className="studio-boot__title mono">{ENGINE_LABEL}</p>
         <div className="studio-boot__meter">
           <div className="studio-boot__bar">
             <span ref={fillRef} className="studio-boot__fill" />
@@ -138,6 +158,7 @@ export function StudioBootOverlay({ ready, replay = 0 }) {
       >
         Enter Studio Now
       </button>
-    </div>
+    </div>,
+    document.body,
   );
 }

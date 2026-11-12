@@ -2,12 +2,15 @@ import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CatalogGlyph, RoomGlyph, WallGlyph } from '../components/icons.jsx';
 import { ProductCard } from '../components/ProductCard.jsx';
+import { SpatialShowcase } from '../components/SpatialShowcase.jsx';
 import { SurfaceLab } from '../components/SurfaceLab.jsx';
 import { CATEGORIES, PRODUCTS } from '../data/products.js';
 import { useAmbientLight } from '../hooks/useAmbientLight.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { useScrollReveal } from '../hooks/useScrollReveal.js';
+import { useSectionArrival } from '../hooks/useSectionLink.js';
 import { padIndex } from '../lib/format.js';
+import { SHOWCASE_3D_ID } from '../lib/routes.js';
 import '../styles/home.css';
 
 const FLAGSHIPS = PRODUCTS.flatMap((product, i) => (product.flagship ? [{ product, index: i + 1 }] : []));
@@ -28,22 +31,24 @@ const ENTRIES = [
     Glyph: CatalogGlyph,
   },
   {
-    to: '/room-3d',
-    index: '03',
-    section: '3D Room',
-    title: 'Room Planner',
-    body: 'Place fixtures in a dimensioned room and read light falloff before anything is drilled.',
-    Glyph: RoomGlyph,
-  },
-  {
     to: '/studio-2d',
-    index: '04',
+    index: '03',
     section: 'Wall Studio',
     title: 'Wall Studio',
     body: 'Compose shelves, lights and panels on a to-scale elevation, check clearances, send the parts list to the cart.',
     Glyph: WallGlyph,
   },
+  {
+    to: '/room-3d',
+    index: '04',
+    section: '3D Room',
+    title: 'Room Planner',
+    body: 'Place fixtures in a dimensioned room and read light falloff before anything is drilled.',
+    Glyph: RoomGlyph,
+  },
 ];
+
+const ARRIVAL_SECTIONS = Object.freeze([SHOWCASE_3D_ID]);
 
 function AmbientHero() {
   const surfaceRef = useRef(null);
@@ -116,6 +121,7 @@ function SectionHead({ index, section, titleId, title, lede }) {
 
 export default function HomePage() {
   useDocumentTitle(null);
+  useSectionArrival(ARRIVAL_SECTIONS);
   const reveal = useScrollReveal();
 
   return (
@@ -175,10 +181,12 @@ export default function HomePage() {
         </div>
       </section>
 
+      <SpatialShowcase />
+
       <section className="entries container" aria-labelledby="entries-title">
         <header ref={reveal} className="entries__head reveal-up">
           <p className="index-label">
-            <span className="index-label__num">04</span> / Workspaces
+            <span className="index-label__num">05</span> / Workspaces
           </p>
           <h2 id="entries-title" className="entries__title">
             Start from a part, a room or a wall.

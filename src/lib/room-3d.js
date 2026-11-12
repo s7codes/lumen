@@ -47,12 +47,14 @@ export const ROOM_STORAGE_KEY = 'lumen_room_3d_v1';
 export const ROOM_FORMAT = 'lumen.room3d';
 export const ROOM_VERSION = 1;
 
-export const ROOM_WIDTH = Object.freeze({ min: 240, max: 500, initial: 320 });
-export const ROOM_DEPTH = Object.freeze({ min: 200, max: 450, initial: 280 });
-export const ROOM_HEIGHT = Object.freeze({ min: 220, max: 320, initial: 250 });
-export const CAMERA_YAW = Object.freeze({ min: -65, max: 65 });
-export const CAMERA_PITCH = Object.freeze({ min: 8, max: 50 });
-export const CAMERA_ZOOM = Object.freeze({ min: 0.6, max: 1.8 });
+export const ROOM_WIDTH = Object.freeze({ min: 240, max: 900, initial: 320 });
+export const ROOM_DEPTH = Object.freeze({ min: 200, max: 900, initial: 280 });
+export const ROOM_HEIGHT = Object.freeze({ min: 220, max: 420, initial: 250 });
+// Yaw is an angle, not a stop: it wraps through +-180 so the orbit runs a full
+// turn round all four walls. Pitch runs from near the floor to a plan view.
+export const CAMERA_YAW = Object.freeze({ min: -180, max: 180 });
+export const CAMERA_PITCH = Object.freeze({ min: 5, max: 85 });
+export const CAMERA_ZOOM = Object.freeze({ min: 0.45, max: 2.4 });
 export const IMPORT_FALLBACK_PRESET = 'nordic-reading-wall';
 
 export const LIGHTING_MODES = Object.freeze([
@@ -70,6 +72,22 @@ export const CAMERA_PRESETS = Object.freeze([
   { id: 'front', label: 'Front Elevation', camera: Object.freeze({ yaw: 0, pitch: 8, zoom: 1.1 }) },
   { id: 'corner', label: 'Corner Iso', camera: Object.freeze({ yaw: 45, pitch: 35.3, zoom: 0.95 }) },
 ]);
+
+/** One-click envelopes, from a bedroom to a double-height loft. Compact is the initial room. */
+export const ROOM_SIZE_PRESETS = Object.freeze([
+  Object.freeze({ id: 'compact', label: 'Compact', widthCm: 320, depthCm: 280, heightCm: 250 }),
+  Object.freeze({ id: 'living', label: 'Living', widthCm: 480, depthCm: 420, heightCm: 270 }),
+  Object.freeze({ id: 'gallery', label: 'Gallery', widthCm: 640, depthCm: 520, heightCm: 300 }),
+  Object.freeze({ id: 'loft', label: 'Grand Loft', widthCm: 800, depthCm: 650, heightCm: 340 }),
+]);
+
+export function roomSizePreset(room) {
+  return (
+    ROOM_SIZE_PRESETS.find(
+      (preset) => preset.widthCm === room.widthCm && preset.depthCm === room.depthCm && preset.heightCm === room.heightCm,
+    )?.id ?? null
+  );
+}
 
 export const DEFAULT_ROOM = Object.freeze({
   widthCm: ROOM_WIDTH.initial,
@@ -166,6 +184,12 @@ function roundTo(value, step) {
   return Math.round(value / step) * step;
 }
 
+/** Folds a bearing into (-180, 180]; 180 and -180 are the same view, kept as 180. */
+export function wrapYaw(deg) {
+  const folded = ((((deg + 180) % 360) + 360) % 360) - 180;
+  return folded === -180 ? 180 : folded + 0;
+}
+
 
 /* Envelope, camera and wall adapter */
 
@@ -180,11 +204,15 @@ export function sanitizeRoom(input) {
   };
 }
 
-/** Yaw and pitch keep 0.1 deg, zoom keeps 0.01, so stored and rendered values agree. */
+/**
+ * Yaw and pitch keep 0.1 deg, zoom keeps 0.01, so stored and rendered values
+ * agree. Yaw wraps before it rounds, and a rounded -180 reads as 180.
+ */
 export function sanitizeCamera(input) {
   const source = isRecord(input) ? input : {};
+  const yaw = Number(roundTo(wrapYaw(isFiniteNumber(source.yaw) ? source.yaw : DEFAULT_CAMERA.yaw), 0.1).toFixed(1));
   return {
-    yaw: Number(roundTo(clampRange(source.yaw, CAMERA_YAW, DEFAULT_CAMERA.yaw), 0.1).toFixed(1)),
+    yaw: yaw === -180 ? 180 : yaw + 0,
     pitch: Number(roundTo(clampRange(source.pitch, CAMERA_PITCH, DEFAULT_CAMERA.pitch), 0.1).toFixed(1)),
     zoom: Number(roundTo(clampRange(source.zoom, CAMERA_ZOOM, DEFAULT_CAMERA.zoom), 0.01).toFixed(2)),
   };

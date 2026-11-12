@@ -96,9 +96,7 @@
     .studio-layout__inspector,
     .studio-summary,
     .studio-toolbar,
-    .workspace-frame__bar:not(.studio-stage__readouts),
-    .wall-ruler,
-    .wall-grid__origin
+    .workspace-frame__bar:not(.studio-stage__readouts)
   ),
 .room3d-layout:has(.room3d-stage[data-orbiting])
   :is(
@@ -222,6 +220,94 @@
   height: 16px;
   margin-inline: var(--space-1);
   background: var(--cluster-edge-strong);
+}
+
+.studio-toolbar__row {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* The bridge to the 3D studio: the one prominent key on the bar, a flat
+   inverted surface that lifts off its shadow on hover. */
+.studio-toolbar__bridge {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding-inline: 14px;
+  border: 1px solid var(--text-primary);
+  border-radius: 8px;
+  background: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  color: var(--text-inverse);
+  transition:
+    translate var(--duration-base) var(--ease-out),
+    box-shadow var(--duration-base) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.studio-toolbar__bridge svg {
+  width: 13px;
+  height: 13px;
+  transition: transform var(--duration-slow) var(--ease-out);
+}
+
+.studio-toolbar__bridge:hover {
+  translate: 0 -1px;
+  box-shadow: 0 10px 22px -8px rgba(0, 0, 0, 0.7);
+  background: #f2eee7;
+}
+
+.studio-toolbar__bridge:hover svg {
+  transform: translateX(3px);
+}
+
+.studio-toolbar__bridge:focus-visible {
+  outline: 1px solid var(--lumen-amber);
+  outline-offset: 2px;
+}
+
+/* Engineering keys: a quiet, compact strip under the main row. */
+.studio-toolbar__row--strip {
+  gap: var(--space-1) var(--space-3);
+}
+
+.studio-toolbar__cluster--quiet {
+  gap: 0;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.studio-toolbar__cluster--quiet .studio-toolbar__caption {
+  padding-inline: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.studio-toolbar__cluster--quiet .tool-button {
+  height: 24px;
+  padding-inline: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.studio-toolbar__cluster--quiet .tool-button:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.studio-toolbar__cluster--quiet .studio-toolbar__divider {
+  height: 12px;
+  background: var(--cluster-edge);
 }
 
 .studio-toolbar__notice {
@@ -2921,4 +3007,116 @@
   flex: 1 1 100%;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/* ------------------------------------------------------------------------
+   Calm Visual mode (v5.1). The 3D Spatial Studio is the engineering
+   workstation; in Visual mode the 2D wall reads as a gallery wall. The 10 cm
+   graph paper, minor ruler ticks and ruler numbers recede, and come back on
+   their own in Specs mode or the moment a module is in hand. The grid colours
+   are registered so the reveal fades instead of snapping.
+   ------------------------------------------------------------------------ */
+
+@property --grid-major {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --grid-minor {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
+.wall {
+  transition:
+    background-color var(--duration-slow) var(--ease-out),
+    --grid-major var(--duration-slow) var(--ease-out),
+    --grid-minor var(--duration-slow) var(--ease-out);
+}
+
+.studio-layout[data-mode='architectural'] .wall:not(:has(.wall-module[data-dragging])) {
+  --grid-major: rgba(242, 238, 231, 0.032);
+  --grid-minor: rgba(242, 238, 231, 0);
+}
+
+.studio-layout[data-mode='architectural'] .wall[data-surface='daylight']:not(:has(.wall-module[data-dragging])) {
+  --grid-major: rgba(11, 11, 10, 0.045);
+  --grid-minor: rgba(11, 11, 10, 0);
+}
+
+.wall-ruler {
+  transition: border-color var(--duration-slow) var(--ease-out);
+}
+
+.wall-ruler__tick,
+.wall-ruler__label {
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+
+.studio-layout[data-mode='architectural'] .wall-grid:not(:has(.wall-module[data-dragging])) .wall-ruler {
+  border-color: var(--border-hairline);
+}
+
+.studio-layout[data-mode='architectural']
+  .wall-grid:not(:has(.wall-module[data-dragging]))
+  :is(.wall-ruler__label, .wall-grid__origin, .wall-ruler__tick:not([data-major])) {
+  opacity: 0;
+}
+
+.studio-layout[data-mode='architectural'] .wall-grid:not(:has(.wall-module[data-dragging])) .wall-ruler__tick[data-major] {
+  opacity: 0.45;
+}
+
+/* Engineering telemetry stays mounted and readable, but in Visual mode it is
+   a compact mono footnote under the key figures. */
+
+.studio-layout[data-mode='architectural'] .studio-summary__engineering {
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  background: transparent;
+}
+
+.studio-layout[data-mode='architectural'] .studio-summary__engineering-title {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.studio-layout[data-mode='architectural'] .studio-summary__note {
+  font-size: 11px;
+}
+
+.studio-layout[data-mode='architectural'] .studio-summary__grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-2) var(--space-5);
+}
+
+.studio-layout[data-mode='architectural'] .studio-summary__cell dt {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.studio-layout[data-mode='architectural'] .studio-summary__cell dd {
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.studio-layout[data-mode='architectural'] .studio-summary__sub {
+  font-size: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wall,
+  .wall-ruler,
+  .wall-ruler__tick,
+  .wall-ruler__label {
+    transition: none;
+  }
 }

@@ -142,7 +142,7 @@ export default function WallStudioPage() {
   return (
     <>
       <PageHeader
-        index="04"
+        index="03"
         section="Wall Studio"
         title="Wall Studio"
         lede="A to-scale 2D elevation planner. Mount parts from the index, drag them into place, check clearances against the wall and roof slope, then send the bill of materials to the cart."

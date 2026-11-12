@@ -26,8 +26,15 @@ export const WALL_BUFFER_CM = 32;
 export const FURNITURE_BUFFER_CM = 20;
 export const WALK_STEP_CM = 25;
 export const TURN_STEP_DEG = 15;
-export const LOOK_PITCH = Object.freeze({ min: -40, max: 40 });
-export const INSIDE_FOV_DEG = 64;
+export const LOOK_PITCH = Object.freeze({ min: -65, max: 65 });
+// An architectural wide-angle lens; the wheel and the plus / minus keys swing
+// it between a 50 deg detail view and a 92 deg ultra-wide interior.
+export const INSIDE_FOV_DEG = 78;
+export const INSIDE_FOV = Object.freeze({ min: 50, max: 92 });
+export const INSIDE_FOV_STEP_DEG = 4;
+// The opening stance stands 78 percent of the way back from the wall in view,
+// so a bed or a sofa against it leaves open floor in front of the eye.
+const STANCE_BACKOFF = 0.78;
 export const ELEVATION_FOV_DEG = 30;
 const ELEVATION_MARGIN = 1.14;
 const DEG = Math.PI / 180;
@@ -119,16 +126,34 @@ export function resolveStance(walk, room) {
   return { ...walk, xCm: tenth(rx), zCm: tenth(rz) };
 }
 
-/** The opening stance: near the room centre, a little toward the south wall, facing `wall`. */
+/** Inside-room field of view, clamped to the lens range and kept to 0.1 deg. */
+export function sanitizeInsideFov(value) {
+  return tenth(clamp(isFiniteNumber(value) ? value : INSIDE_FOV_DEG, INSIDE_FOV.min, INSIDE_FOV.max));
+}
+
+/**
+ * The opening stance: centred across `wall`, backed up along its look axis
+ * toward the opposite wall, facing it dead-on.
+ */
 export function defaultStance(room, wall = 'north') {
+  const id = sanitizeWallId(wall);
+  const near = 1 - STANCE_BACKOFF;
+  const [u, v] = { north: [0.5, STANCE_BACKOFF], south: [0.5, near], east: [near, 0.5], west: [STANCE_BACKOFF, 0.5] }[id];
   return resolveStance(
-    {
-      xCm: room.widthCm / 2,
-      zCm: room.depthCm * 0.55,
-      headingDeg: WALL_LOOK_HEADING[sanitizeWallId(wall)],
-      pitchDeg: 0,
-    },
+    { xCm: room.widthCm * u, zCm: room.depthCm * v, headingDeg: WALL_LOOK_HEADING[id], pitchDeg: 0 },
     room,
+  );
+}
+
+/**
+ * Carries a stance into a resized envelope at the same relative spot, so an
+ * observer backed up in a compact room is still backed up in a loft.
+ */
+export function rescaleStance(walk, from, to) {
+  if (from.widthCm === to.widthCm && from.depthCm === to.depthCm) return walk;
+  return resolveStance(
+    { ...walk, xCm: (walk.xCm * to.widthCm) / from.widthCm, zCm: (walk.zCm * to.depthCm) / from.depthCm },
+    to,
   );
 }
 

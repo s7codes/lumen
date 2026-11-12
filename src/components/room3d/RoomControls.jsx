@@ -1,6 +1,15 @@
 import { PRODUCTS } from '../../data/products.js';
 import { formatUsd } from '../../lib/format.js';
-import { FURNITURE, LIGHTING_MODES, ROOM_DEPTH, ROOM_HEIGHT, ROOM_WIDTH, WALL_LABELS } from '../../lib/room-3d.js';
+import {
+  FURNITURE,
+  LIGHTING_MODES,
+  ROOM_DEPTH,
+  ROOM_HEIGHT,
+  ROOM_SIZE_PRESETS,
+  ROOM_WIDTH,
+  roomSizePreset,
+  WALL_LABELS,
+} from '../../lib/room-3d.js';
 import { MAX_WALL_ITEMS } from '../../lib/wall-studio.js';
 import { clampNumber } from '../../security/sanitize.js';
 import { Disclosure, NumberField, PaletteItem, PanelSection } from '../studio/controls.jsx';
@@ -31,9 +40,39 @@ function Segment({ legend, name, options, value, onChange, columns = 2 }) {
   );
 }
 
+/** One press sets width, depth and ceiling together; an edited envelope leaves every pill up. */
+function ScalePresets({ room, onRoom }) {
+  const active = roomSizePreset(room);
+  return (
+    <div className="room3d-scale" role="group" aria-labelledby="room-scale-label" data-testid="room-size-presets">
+      <p id="room-scale-label" className="field__label">
+        Room scale
+      </p>
+      <div className="room3d-scale__track">
+        {ROOM_SIZE_PRESETS.map(({ id, label, widthCm, depthCm, heightCm }) => (
+          <button
+            key={id}
+            type="button"
+            className="room3d-scale__pill"
+            aria-pressed={active === id}
+            data-testid={`room-preset-${id}`}
+            onClick={() => onRoom({ widthCm, depthCm, heightCm })}
+          >
+            <span className="room3d-scale__name">{label}</span>
+            <span className="room3d-scale__dims mono">
+              {widthCm} x {depthCm} x {heightCm}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RoomSettings({ room, onRoom }) {
   return (
     <PanelSection title="Envelope & Lighting">
+      <ScalePresets room={room} onRoom={onRoom} />
       <Disclosure
         label="Dimensions"
         summary={`${room.widthCm} x ${room.depthCm} x ${room.heightCm} cm`}

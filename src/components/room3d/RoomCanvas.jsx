@@ -15,7 +15,7 @@ import {
 } from 'three';
 import { formatInt } from '../../lib/format.js';
 import { fieldImage, isoLuxContours } from '../../lib/illuminance-field.js';
-import { CAMERA_PITCH, CAMERA_YAW, ROOM_WALLS, sameCamera, sanitizeCamera, WALL_HEADING } from '../../lib/room-3d.js';
+import { CAMERA_PITCH, CAMERA_YAW, ROOM_WALLS, sameCamera, sanitizeCamera, WALL_HEADING, wrapYaw } from '../../lib/room-3d.js';
 import { intersectRayWithWall } from '../../lib/room-raycast.js';
 import {
   cameraFrame,
@@ -33,10 +33,10 @@ import {
   EYE_HEIGHT_CM,
   facingWall,
   headingTurn,
-  INSIDE_FOV_DEG,
   LOOK_PITCH,
   lookDirection,
   normalizeHeading,
+  sanitizeInsideFov,
 } from '../../lib/room-walkthrough.js';
 import { MAX_FRAME_DT, stepSpring } from '../../lib/spring.js';
 import { setAttr, setData, setText } from '../../lib/dom-writes.js';
@@ -67,6 +67,10 @@ const noRaycast = () => null;
 const LENS_SPRING = { stiffness: 120, damping: 2 * Math.sqrt(120) };
 const LOOK_DEG_PER_PX = 0.22;
 const LOOK_THRESHOLD_PX = 4;
+// One wheel notch (100 px of deltaY) swings the inside lens 4 deg.
+const FOV_DEG_PER_WHEEL_PX = 0.04;
+const WHEEL_LINE_PX = 16;
+const WHEEL_PAGE_PX = 400;
 
 function prefersReducedMotion() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -76,24 +80,12 @@ function prefersReducedMotion() {
  * Camera rig: OrbitControls drives the lens; committed yaw / pitch / zoom
  * drive OrbitControls. Yaw is relative to the heading of the wall in view,
  * so switching walls glides the heading and the orbit centre while the
- * relative view stays put.
+ * relative view stays put. The azimuth is never limited: a drag keeps
+ * turning round all four walls, and yaw wraps through +-180.
  */
 
 const GLIDE_KEYS = ['yaw', 'pitch', 'zoom', 'heading', 'tx', 'ty', 'tz'];
 const GLIDE_EPSILON = { yaw: 0.05, pitch: 0.05, zoom: 0.002, heading: 0.05, tx: 0.0005, ty: 0.0005, tz: 0.0005 };
-
-/** Azimuth limits around a heading; null frees the azimuth while a glide swings between walls. */
-function setAzimuthLimits(controls, heading) {
-  if (!controls) return;
-  if (heading === null) {
-    controls.minAzimuthAngle = -Infinity;
-    controls.maxAzimuthAngle = Infinity;
-    return;
-  }
-  const limits = orbitLimits(CAMERA_YAW, CAMERA_PITCH, heading);
-  controls.minAzimuthAngle = limits.minAzimuthAngle;
-  controls.maxAzimuthAngle = limits.maxAzimuthAngle;
-}
 
 function CameraRig({ room, wall, camera, api }) {
   const controlsRef = useRef(null);
@@ -146,7 +138,6 @@ function CameraRig({ room, wall, camera, api }) {
     }
     // A wall switch is handed to the glide below; size and envelope changes snap.
     if (glide.current || placed.current.heading !== frame.heading) return;
-    setAzimuthLimits(controls, frame.heading);
     place(api.viewRef.current, frame);
   }, [frame, lens, place, api]);
 
@@ -168,19 +159,19 @@ function CameraRig({ room, wall, camera, api }) {
       glide.current = null;
       api.gliding.current = false;
       api.showView(camera);
-      setAzimuthLimits(controlsRef.current, f.heading);
       place(camera, f);
       return;
     }
-    // Unwrap the start heading so the swing takes the short way round.
+    // Unwrap the start heading and the goal yaw so both swings take the short
+    // way round: 175 to -175 turns 10 deg, not 350.
     const heading = f.heading - headingDelta(at.heading, f.heading);
     const [tx, ty, tz] = at.target;
     glide.current = {
       value: { yaw: from.yaw, pitch: from.pitch, zoom: from.zoom, heading, tx, ty, tz },
       velocity: Object.fromEntries(GLIDE_KEYS.map((key) => [key, 0])),
       view: camera,
+      yaw: from.yaw + headingDelta(from.yaw, camera.yaw),
     };
-    setAzimuthLimits(controlsRef.current, null);
     api.gliding.current = true;
     invalidate();
   }, [camera, frame.heading, api, place, invalidate]);
@@ -195,6 +186,7 @@ function CameraRig({ room, wall, camera, api }) {
     const { stiffness, damping } = CAMERA_SPRING;
     const goal = {
       ...g.view,
+      yaw: g.yaw,
       heading: f.heading,
       tx: f.target[0],
       ty: f.target[1],
@@ -209,11 +201,10 @@ function CameraRig({ room, wall, camera, api }) {
       glide.current = null;
       api.gliding.current = false;
       api.showView(g.view);
-      setAzimuthLimits(controlsRef.current, f.heading);
       place(g.view, f);
       return;
     }
-    const view = { yaw: g.value.yaw, pitch: g.value.pitch, zoom: g.value.zoom };
+    const view = { yaw: wrapYaw(g.value.yaw), pitch: g.value.pitch, zoom: g.value.zoom };
     api.showView(view);
     place(view, { heading: g.value.heading, target: [g.value.tx, g.value.ty, g.value.tz] });
   });
@@ -256,6 +247,8 @@ function CameraRig({ room, wall, camera, api }) {
       enablePan={false}
       rotateSpeed={0.5}
       zoomSpeed={1}
+      minAzimuthAngle={-Infinity}
+      maxAzimuthAngle={Infinity}
       minPolarAngle={POLAR_LIMITS.minPolarAngle}
       maxPolarAngle={POLAR_LIMITS.maxPolarAngle}
       onStart={onStart}
@@ -300,10 +293,11 @@ const LOOK_KEYS = new Set(['heading', 'pitch']);
  * Inside-room lens: the observer stands at the walk stance with the eye at
  * 165 cm. Every wall plane faces the eye, so no section cut hides anything.
  * A pointer drag turns the head (the world follows the pointer) and writes
- * straight to the camera; the turn is committed once, on release. A stance
- * change from keys, step buttons or wall tabs glides in on a spring.
+ * straight to the camera; the turn is committed once, on release. The wheel
+ * swings the field of view the same way, committed after a short pause. A
+ * stance change from keys, step buttons or wall tabs glides in on a spring.
  */
-function WalkRig({ room, walk, api }) {
+function WalkRig({ room, walk, insideFov, api }) {
   const lens = useThree((state) => state.camera);
   const size = useThree((state) => state.size);
   const invalidate = useThree((state) => state.invalidate);
@@ -313,9 +307,12 @@ function WalkRig({ room, walk, api }) {
   goal.current = walk;
   const roomRef = useRef(room);
   roomRef.current = room;
-  const fov = fitFov(INSIDE_FOV_DEG, size.width / Math.max(1, size.height));
-  const fovRef = useRef(fov);
-  fovRef.current = fov;
+  const aspect = size.width / Math.max(1, size.height);
+  const aspectRef = useRef(aspect);
+  aspectRef.current = aspect;
+  // The live lens: the wheel writes here between commits; a committed value
+  // (wheel pause, keys, reset) replaces it.
+  const fovLens = useRef({ fov: insideFov, timer: 0 });
   const pose = useRef(null);
   const velocity = useRef(Object.fromEntries(WALK_KEYS.map((key) => [key, 0])));
   const look = useRef(null);
@@ -328,7 +325,7 @@ function WalkRig({ room, walk, api }) {
       z: g.zCm,
       heading: p.heading + headingTurn(p.heading, g.headingDeg),
       pitch: g.pitchDeg,
-      fov: fovRef.current,
+      fov: fitFov(fovLens.current.fov, aspectRef.current),
     };
   }, []);
 
@@ -363,13 +360,46 @@ function WalkRig({ room, walk, api }) {
     invalidate();
   }, [lens, target, apply, invalidate]);
 
+  useLayoutEffect(() => {
+    fovLens.current.fov = insideFov;
+  }, [insideFov]);
+
   useEffect(() => {
     if (prefersReducedMotion() && pose.current) {
       pose.current = target(pose.current);
       apply(pose.current);
     }
     invalidate();
-  }, [walk, fov, target, apply, invalidate]);
+  }, [walk, insideFov, aspect, target, apply, invalidate]);
+
+  useEffect(() => {
+    const el = events.connected ?? gl.domElement;
+    const state = fovLens.current;
+    const commit = () => {
+      state.timer = 0;
+      api.commitFov(state.fov);
+    };
+    const onWheel = (event) => {
+      if (api.drag.isActive()) return;
+      event.preventDefault();
+      const scale = event.deltaMode === 1 ? WHEEL_LINE_PX : event.deltaMode === 2 ? WHEEL_PAGE_PX : 1;
+      const next = sanitizeInsideFov(state.fov + event.deltaY * scale * FOV_DEG_PER_WHEEL_PX);
+      if (next === state.fov) return;
+      state.fov = next;
+      setData(api.walkMirror.current, 'fovDeg', next);
+      invalidate();
+      clearTimeout(state.timer);
+      state.timer = setTimeout(commit, WHEEL_COMMIT_MS);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      if (state.timer) {
+        clearTimeout(state.timer);
+        commit();
+      }
+    };
+  }, [events.connected, gl, api, invalidate]);
 
   useFrame((_, delta) => {
     const p = pose.current;
@@ -1144,8 +1174,8 @@ const SceneGraph = memo(function SceneGraph({ scene, floorLux, heading, cameraMo
  * the scene, the camera or the canvas size changes. The canvas is
  * transparent; the stage behind it paints the horizon.
  */
-function LensRig({ cameraMode, room, wall, camera, walk, api }) {
-  if (cameraMode === 'inside') return <WalkRig room={room} walk={walk} api={api} />;
+function LensRig({ cameraMode, room, wall, camera, walk, insideFov, api }) {
+  if (cameraMode === 'inside') return <WalkRig room={room} walk={walk} insideFov={insideFov} api={api} />;
   if (cameraMode === 'elevation') return <ElevationRig room={room} wall={wall} />;
   return <CameraRig room={room} wall={wall} camera={camera} api={api} />;
 }
@@ -1158,6 +1188,7 @@ export default function RoomCanvas({
   camera,
   cameraMode,
   walk,
+  insideFov,
   api,
   drag,
   manifestRef,
@@ -1179,7 +1210,15 @@ export default function RoomCanvas({
         if (event.type === 'click' && !drag.isActive()) onSelect(null);
       }}
     >
-      <LensRig cameraMode={cameraMode} room={room} wall={wall} camera={camera} walk={walk} api={api} />
+      <LensRig
+        cameraMode={cameraMode}
+        room={room}
+        wall={wall}
+        camera={camera}
+        walk={walk}
+        insideFov={insideFov}
+        api={api}
+      />
       <SceneGraph
         scene={scene}
         floorLux={floorLux}

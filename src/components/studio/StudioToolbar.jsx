@@ -1,6 +1,9 @@
 import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext.jsx';
+import { ArrowRight } from '../icons.jsx';
 import { LightingSceneBar } from '../LightingSceneBar.jsx';
+import { prefetchRoute } from '../../lib/route-manifest.js';
 import { MAX_IMPORT_BYTES, sanitizeLayout, serializeLayout } from '../../lib/wall-studio.js';
 import { safeJsonParse } from '../../security/sanitize.js';
 
@@ -77,130 +80,154 @@ export function StudioToolbar({
     addToast(result, dropped > 0 ? 'warn' : 'success');
   };
 
+  const warm3d = () => prefetchRoute('/room-3d');
+
+  // Everyday edits and scenes sit on the main row with the bridge to the 3D
+  // studio; the engineering keys drop to a quiet strip beneath it.
   return (
     <div className="studio-toolbar">
-      <div className="studio-toolbar__cluster" role="group" aria-label="History and edit">
-        <span className="studio-toolbar__caption" aria-hidden="true">
-          Edit
-        </span>
-        <button
-          type="button"
-          className="tool-button"
-          onClick={actions.undo}
-          disabled={!canUndo}
-          aria-keyshortcuts="Control+Z"
-        >
-          Undo
-        </button>
-        <button
-          type="button"
-          className="tool-button"
-          onClick={actions.redo}
-          disabled={!canRedo}
-          aria-keyshortcuts="Control+Y"
-        >
-          Redo
-        </button>
-        <button
-          type="button"
-          className="tool-button tool-button--danger"
-          data-armed={armed || undefined}
+      <div className="studio-toolbar__row">
+        <div className="studio-toolbar__cluster" role="group" aria-label="History and edit">
+          <span className="studio-toolbar__caption" aria-hidden="true">
+            Edit
+          </span>
+          <button
+            type="button"
+            className="tool-button"
+            onClick={actions.undo}
+            disabled={!canUndo}
+            aria-keyshortcuts="Control+Z"
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            className="tool-button"
+            onClick={actions.redo}
+            disabled={!canRedo}
+            aria-keyshortcuts="Control+Y"
+          >
+            Redo
+          </button>
+          <button
+            type="button"
+            className="tool-button tool-button--danger"
+            data-armed={armed || undefined}
+            disabled={count === 0}
+            onBlur={() => setArmed(false)}
+            onClick={() => {
+              if (!armed) {
+                setArmed(true);
+                return;
+              }
+              setArmed(false);
+              actions.clear();
+            }}
+          >
+            {armed ? `Confirm: clear ${count}` : 'Clear Wall'}
+          </button>
+        </div>
+
+        <LightingSceneBar
+          className="studio-toolbar__cluster"
+          active={activeScene}
           disabled={count === 0}
-          onBlur={() => setArmed(false)}
-          onClick={() => {
-            if (!armed) {
-              setArmed(true);
-              return;
-            }
-            setArmed(false);
-            actions.clear();
-          }}
-        >
-          {armed ? `Confirm: clear ${count}` : 'Clear Wall'}
-        </button>
-      </div>
-
-      <LightingSceneBar
-        className="studio-toolbar__cluster"
-        active={activeScene}
-        disabled={count === 0}
-        onApply={actions.applyScene}
-      />
-
-      <div className="studio-toolbar__cluster" role="group" aria-label="Engineering overlays and export">
-        <span className="studio-toolbar__caption" aria-hidden="true">
-          Engineering
-        </span>
-        <button
-          type="button"
-          className="tool-button"
-          aria-pressed={busOn}
-          data-testid="toggle-bus-topology"
-          title="Show the 24V DC daisy-chain routing"
-          onClick={onToggleBus}
-        >
-          24V Bus
-        </button>
-        <button
-          type="button"
-          className="tool-button"
-          aria-pressed={luxOn}
-          data-testid="toggle-lux-heatmap"
-          title="Point-by-point illuminance with 100 / 250 / 500 lx iso-lux contours"
-          onClick={onToggleLux}
-        >
-          Iso-Lux Map
-        </button>
-        <span className="studio-toolbar__divider" aria-hidden="true" />
-        <button
-          type="button"
-          className="tool-button"
-          aria-haspopup="dialog"
-          aria-expanded={blueprintOpen}
-          data-testid="open-blueprint-sheet"
-          title="1:20 A3 elevation with drilling schedule, SVG and AutoCAD DXF export"
-          onClick={(event) => onOpenBlueprint(event.currentTarget)}
-        >
-          Blueprint
-        </button>
-        <button
-          type="button"
-          className="tool-button"
-          data-testid="copy-share-link"
-          data-share-url={shareUrl || undefined}
-          title="Copy a link that reopens this wall"
-          onClick={onShare}
-        >
-          Share Link
-        </button>
-        <button type="button" className="tool-button" title="Download this wall as a Lumen JSON file" onClick={exportLayout}>
-          Export JSON
-        </button>
-        <button
-          type="button"
-          className="tool-button"
-          title="Open a Lumen JSON wall file"
-          onClick={() => fileRef.current?.click()}
-        >
-          Import JSON
-        </button>
-        <input
-          ref={fileRef}
-          className="visually-hidden"
-          type="file"
-          accept=".json,application/json"
-          tabIndex={-1}
-          aria-label="Import layout file"
-          data-testid="import-layout"
-          onChange={importFile}
+          onApply={actions.applyScene}
         />
+
+        <Link
+          to="/room-3d"
+          className="studio-toolbar__bridge"
+          data-testid="studio-open-3d"
+          title="Open the 3D Spatial Studio and stand in the room"
+          onPointerEnter={warm3d}
+          onFocus={warm3d}
+        >
+          Open in 3D Studio
+          <ArrowRight />
+        </Link>
       </div>
 
-      <p className="studio-toolbar__notice" role="status" aria-live="polite" data-tone={notice.tone}>
-        <span key={notice.serial} className="notice-transient" data-testid="studio-notice">
-          {notice.text}
-        </span>
-      </p>
+      <div className="studio-toolbar__row studio-toolbar__row--strip">
+        <div
+          className="studio-toolbar__cluster studio-toolbar__cluster--quiet"
+          role="group"
+          aria-label="Engineering overlays and export"
+        >
+          <span className="studio-toolbar__caption" aria-hidden="true">
+            Engineering
+          </span>
+          <button
+            type="button"
+            className="tool-button"
+            aria-pressed={busOn}
+            data-testid="toggle-bus-topology"
+            title="Show the 24V DC daisy-chain routing"
+            onClick={onToggleBus}
+          >
+            24V Bus
+          </button>
+          <button
+            type="button"
+            className="tool-button"
+            aria-pressed={luxOn}
+            data-testid="toggle-lux-heatmap"
+            title="Point-by-point illuminance with 100 / 250 / 500 lx iso-lux contours"
+            onClick={onToggleLux}
+          >
+            Iso-Lux Map
+          </button>
+          <span className="studio-toolbar__divider" aria-hidden="true" />
+          <button
+            type="button"
+            className="tool-button"
+            aria-haspopup="dialog"
+            aria-expanded={blueprintOpen}
+            data-testid="open-blueprint-sheet"
+            title="1:20 A3 elevation with drilling schedule, SVG and AutoCAD DXF export"
+            onClick={(event) => onOpenBlueprint(event.currentTarget)}
+          >
+            Blueprint
+          </button>
+          <button
+            type="button"
+            className="tool-button"
+            data-testid="copy-share-link"
+            data-share-url={shareUrl || undefined}
+            title="Copy a link that reopens this wall"
+            onClick={onShare}
+          >
+            Share Link
+          </button>
+          <button type="button" className="tool-button" title="Download this wall as a Lumen JSON file" onClick={exportLayout}>
+            Export JSON
+          </button>
+          <button
+            type="button"
+            className="tool-button"
+            title="Open a Lumen JSON wall file"
+            onClick={() => fileRef.current?.click()}
+          >
+            Import JSON
+          </button>
+          <input
+            ref={fileRef}
+            className="visually-hidden"
+            type="file"
+            accept=".json,application/json"
+            tabIndex={-1}
+            aria-label="Import layout file"
+            data-testid="import-layout"
+            onChange={importFile}
+          />
+        </div>
+
+        <p className="studio-toolbar__notice" role="status" aria-live="polite" data-tone={notice.tone}>
+          <span key={notice.serial} className="notice-transient" data-testid="studio-notice">
+            {notice.text}
+          </span>
+        </p>
+      </div>
     </div>
   );
 }

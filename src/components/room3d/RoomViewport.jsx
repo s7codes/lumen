@@ -14,12 +14,13 @@ import {
   elevationCamera,
   EYE_HEIGHT_CM,
   facingWall,
+  INSIDE_FOV_STEP_DEG,
   normalizeHeading,
+  sanitizeInsideFov,
   TURN_STEP_DEG,
   WALL_LOOK_HEADING,
 } from '../../lib/room-walkthrough.js';
 import { CameraSettings } from './CameraSettings.jsx';
-import { StudioBootOverlay } from './StudioBootOverlay.jsx';
 import { TransformGizmo } from './TransformGizmo.jsx';
 import { ViewportCompass } from './ViewportCompass.jsx';
 import { WalkControls } from './WalkControls.jsx';
@@ -40,6 +41,8 @@ const WALK_STEPS = Object.freeze({
   d: { strafe: 1 },
 });
 const WALK_TURNS = Object.freeze({ q: -TURN_STEP_DEG, arrowleft: -TURN_STEP_DEG, e: TURN_STEP_DEG, arrowright: TURN_STEP_DEG });
+// Plus narrows the inside lens (a closer look), minus widens it.
+const LENS_KEYS = Object.freeze({ '+': -1, '=': -1, '-': 1, _: 1 });
 
 let webglSupport = null;
 
@@ -115,7 +118,20 @@ function staticWallVisibility(room, activeWall, camera, cameraMode) {
  * scene inspectable without reading pixels, and it is the whole viewport
  * when WebGL is unavailable.
  */
-function SceneManifest({ scene, floorLux, renderer, heading, manifestRef, walls, cameraMode, walk, facing, eyeLux, walkRef }) {
+function SceneManifest({
+  scene,
+  floorLux,
+  renderer,
+  heading,
+  manifestRef,
+  walls,
+  cameraMode,
+  walk,
+  insideFov,
+  facing,
+  eyeLux,
+  walkRef,
+}) {
   const selected = scene.modules.find((module) => module.selected);
   return (
     <div
@@ -178,6 +194,7 @@ function SceneManifest({ scene, floorLux, renderer, heading, manifestRef, walls,
         data-eye-cm={EYE_HEIGHT_CM}
         data-heading-deg={walk.headingDeg}
         data-pitch-deg={walk.pitchDeg}
+        data-fov-deg={insideFov}
         data-facing-wall={facing}
         data-eye-lux={eyeLux}
       />
@@ -234,9 +251,9 @@ function SceneManifest({ scene, floorLux, renderer, heading, manifestRef, walls,
   );
 }
 
-function lensReadout(cameraMode, walk, eyeLux, activeWall, facing) {
+function lensReadout(cameraMode, walk, insideFov, eyeLux, activeWall, facing) {
   if (cameraMode === 'inside') {
-    return `Eye ${EYE_HEIGHT_CM} cm / X ${Math.round(walk.xCm)} Z ${Math.round(walk.zCm)} / ${WALL_LABELS[facing]} / ${eyeLux} lx`;
+    return `Eye ${EYE_HEIGHT_CM} cm / FOV ${Math.round(insideFov)} / X ${Math.round(walk.xCm)} Z ${Math.round(walk.zCm)} / ${WALL_LABELS[facing]} / ${eyeLux} lx`;
   }
   if (cameraMode === 'elevation') return `${CAMERA_MODE_LABELS.elevation} / ${WALL_LABELS[activeWall]}`;
   return CAMERA_MODE_LABELS.orbit;
@@ -254,6 +271,7 @@ export function RoomViewport({
   toolbar,
   cameraMode,
   walk,
+  insideFov,
   eyeLux,
   drag,
   axisLock,
@@ -267,6 +285,9 @@ export function RoomViewport({
   onWalkTurn,
   onWalkReset,
   onWalkLook,
+  onInsideFov,
+  onEngineReady,
+  onReplayBoot,
 }) {
   const { room, items, camera } = state;
   const hostRef = useRef(null);
@@ -275,13 +296,14 @@ export function RoomViewport({
   const [renderer, setRenderer] = useState(supported ? 'loading' : 'unavailable');
   const [view, setView] = useState(camera);
   const [orbiting, setOrbiting] = useState(false);
-  const [bootReplay, setBootReplay] = useState(0);
   const viewRef = useRef(camera);
   const liveRef = useRef(false);
   const commitRef = useRef(onCameraCommit);
   commitRef.current = onCameraCommit;
   const lookRef = useRef(onWalkLook);
   lookRef.current = onWalkLook;
+  const fovRef = useRef(onInsideFov);
+  fovRef.current = onInsideFov;
 
   const api = useMemo(() => {
     const showView = (next) => {
@@ -302,6 +324,7 @@ export function RoomViewport({
       hud: { compass: null },
       walkMirror: { current: null },
       commitWalk: (patch) => lookRef.current(patch),
+      commitFov: (deg) => fovRef.current(sanitizeInsideFov(deg)),
     };
   }, [drag]);
 
@@ -320,6 +343,11 @@ export function RoomViewport({
   useEffect(() => {
     drag.end(false);
   }, [cameraMode, drag]);
+
+  // The page owns the full-screen engine boot; it only needs to hear when the renderer settles.
+  useEffect(() => {
+    if (renderer !== 'loading') onEngineReady?.(renderer);
+  }, [renderer, onEngineReady]);
 
   // Without a live canvas there is no glide: the readout follows the commit.
   useEffect(() => {
@@ -392,6 +420,9 @@ export function RoomViewport({
       } else if (key === 'Home') {
         event.preventDefault();
         onWalkReset();
+      } else if (Object.hasOwn(LENS_KEYS, key)) {
+        event.preventDefault();
+        onInsideFov(sanitizeInsideFov(insideFov + LENS_KEYS[key] * INSIDE_FOV_STEP_DEG));
       }
       return;
     }
@@ -428,7 +459,7 @@ export function RoomViewport({
         : normalizeHeading(-(WALL_HEADING[activeWall] + view.yaw));
   const ariaHelp =
     cameraMode === 'inside'
-      ? 'Room viewport, inside at 165 cm. Drag to look around, W A S D to walk, Q and E to turn, Home to reset.'
+      ? 'Room viewport, inside at 165 cm. Drag to look around, W A S D to walk, Q and E to turn, scroll, plus and minus to change the lens, Home to reset.'
       : 'Room viewport. Drag or use the arrow keys to orbit, scroll, plus and minus to zoom, Home to reset. G grabs the selected module.';
 
   return (
@@ -500,6 +531,7 @@ export function RoomViewport({
                   camera={camera}
                   cameraMode={cameraMode}
                   walk={walk}
+                  insideFov={insideFov}
                   api={api}
                   drag={drag}
                   manifestRef={manifestRef}
@@ -522,6 +554,7 @@ export function RoomViewport({
             walls={walls}
             cameraMode={cameraMode}
             walk={walk}
+            insideFov={insideFov}
             facing={facing}
             eyeLux={eyeLux}
             walkRef={api.walkMirror}
@@ -565,8 +598,6 @@ export function RoomViewport({
           {cameraMode === 'inside' && <WalkControls onStep={onWalkStep} onTurn={onWalkTurn} onReset={onWalkReset} />}
         </div>
 
-        <StudioBootOverlay ready={renderer !== 'loading'} replay={bootReplay} />
-
         <span className="workspace-frame__corner workspace-frame__corner--tl" aria-hidden="true" />
         <span className="workspace-frame__corner workspace-frame__corner--tr" aria-hidden="true" />
         <span className="workspace-frame__corner workspace-frame__corner--bl" aria-hidden="true" />
@@ -580,7 +611,7 @@ export function RoomViewport({
             : `Facing the ${WALL_LABELS[cameraMode === 'inside' ? facing : activeWall]}`}
         </span>
         <span className="room3d-stage__lens" data-testid="room-lens-readout">
-          {lensReadout(cameraMode, walk, eyeLux, activeWall, facing)}
+          {lensReadout(cameraMode, walk, insideFov, eyeLux, activeWall, facing)}
         </span>
         <span className="tech-only" data-testid="room-polygons">
           {scene.stats.meshes} meshes / {scene.stats.lights} lights
@@ -590,7 +621,7 @@ export function RoomViewport({
           className="room3d-stage__replay"
           data-testid="replay-studio-boot"
           title="Replay the Lumen Spatial Engine boot sequence"
-          onClick={() => setBootReplay((count) => count + 1)}
+          onClick={onReplayBoot}
         >
           Replay Engine Boot
         </button>

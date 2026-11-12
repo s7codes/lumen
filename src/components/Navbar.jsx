@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useBag, useBagDrawer } from '../hooks/useBag.js';
 import { useCommandPalette } from '../hooks/useCommandPalette.js';
+import { useSectionLink } from '../hooks/useSectionLink.js';
 import { prefetchRoute } from '../lib/route-manifest.js';
 import { NAV_ROUTES } from '../lib/routes.js';
 import { AuthModal } from './AuthModal.jsx';
@@ -10,6 +11,26 @@ import { BagDrawer } from './BagDrawer.jsx';
 import { CommandPalette, PALETTE_SHORTCUT_LABEL } from './CommandPalette.jsx';
 import { LumenMark, SearchGlyph } from './icons.jsx';
 import { ModeSwitch } from './ModeSwitch.jsx';
+
+/** A primary link into an overview section: glides there, and reads as current inside its workspace. */
+function SectionNavLink({ route }) {
+  const { pathname } = useLocation();
+  const onClick = useSectionLink(route.hash);
+  const warm = () => prefetchRoute(route.prefetch);
+  return (
+    <Link
+      to={route.path}
+      className="navbar__link"
+      aria-current={pathname === route.activePath ? 'page' : undefined}
+      data-testid={route.testId}
+      onClick={onClick}
+      onPointerEnter={warm}
+      onFocus={warm}
+    >
+      {route.label}
+    </Link>
+  );
+}
 
 export function Navbar() {
   const { count } = useBag();
@@ -53,15 +74,19 @@ export function Navbar() {
             <ul className="navbar__links">
               {NAV_ROUTES.map((route) => (
                 <li key={route.path}>
-                  <NavLink
-                    to={route.path}
-                    end={route.path === '/'}
-                    className="navbar__link"
-                    onPointerEnter={() => prefetchRoute(route.path)}
-                    onFocus={() => prefetchRoute(route.path)}
-                  >
-                    {route.label}
-                  </NavLink>
+                  {route.hash ? (
+                    <SectionNavLink route={route} />
+                  ) : (
+                    <NavLink
+                      to={route.path}
+                      end={route.path === '/'}
+                      className="navbar__link"
+                      onPointerEnter={() => prefetchRoute(route.path)}
+                      onFocus={() => prefetchRoute(route.path)}
+                    >
+                      {route.label}
+                    </NavLink>
+                  )}
                 </li>
               ))}
             </ul>

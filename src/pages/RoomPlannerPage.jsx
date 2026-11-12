@@ -5,6 +5,7 @@ import { RoomInspector } from '../components/room3d/RoomInspector.jsx';
 import { RoomSummary } from '../components/room3d/RoomSummary.jsx';
 import { RoomToolbar } from '../components/room3d/RoomToolbar.jsx';
 import { RoomViewport } from '../components/room3d/RoomViewport.jsx';
+import { StudioBootOverlay } from '../components/room3d/StudioBootOverlay.jsx';
 import { StudioHeader } from '../components/room3d/StudioHeader.jsx';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useBag, useBagDrawer } from '../hooks/useBag.js';
@@ -32,8 +33,11 @@ import {
   defaultStance,
   DEFAULT_CAMERA_MODE,
   eyeIlluminance,
+  INSIDE_FOV_DEG,
   lookWalk,
+  rescaleStance,
   sanitizeCameraMode,
+  sanitizeInsideFov,
   sanitizeWalk,
   stepWalk,
   turnWalk,
@@ -64,6 +68,11 @@ export default function RoomPlannerPage() {
   const [floorLuxOn, setFloorLuxOn] = useState(false);
   const [cameraMode, setCameraMode] = useState(DEFAULT_CAMERA_MODE);
   const [walk, setWalk] = useState(() => defaultStance(state.room, activeWall));
+  const [insideFov, setInsideFov] = useState(INSIDE_FOV_DEG);
+  const [engineReady, setEngineReady] = useState(false);
+  const [bootReplay, setBootReplay] = useState(0);
+  const workstationRef = useRef(null);
+  const envelopeRef = useRef({ widthCm: state.room.widthCm, depthCm: state.room.depthCm });
   const [snapOn, setSnapOn] = useState(true);
   const [axisLock, setAxisLock] = useState('free');
   const [zen, setZen] = useState(false);
@@ -104,13 +113,20 @@ export default function RoomPlannerPage() {
   const { room } = state;
   const eyeLux = useMemo(() => eyeIlluminance({ room: state.room, items: state.items }, walk), [state.room, state.items, walk]);
 
-  // A new envelope or floor reference pushes the observer back into free floor.
+  // A resized envelope carries the observer to the same relative spot; a new
+  // floor reference pushes them back into free floor.
   useEffect(() => {
+    const from = envelopeRef.current;
+    envelopeRef.current = { widthCm: room.widthCm, depthCm: room.depthCm };
     setWalk((current) => {
-      const next = sanitizeWalk(current, room);
+      const next = sanitizeWalk(rescaleStance(current, from, room), room);
       return sameStance(next, current) ? current : next;
     });
   }, [room]);
+
+  const onInsideFov = useCallback((deg) => setInsideFov(sanitizeInsideFov(deg)), []);
+  const onEngineReady = useCallback(() => setEngineReady(true), []);
+  const onReplayBoot = useCallback(() => setBootReplay((count) => count + 1), []);
 
   // At eye level the view turns to face whichever wall becomes active.
   useEffect(() => {
@@ -142,7 +158,10 @@ export default function RoomPlannerPage() {
     () => ({
       step: (move) => setWalk((current) => stepWalk(current, room, move)),
       turn: (delta) => setWalk((current) => turnWalk(current, delta)),
-      reset: () => setWalk(defaultStance(room, activeWall)),
+      reset: () => {
+        setWalk(defaultStance(room, activeWall));
+        setInsideFov(INSIDE_FOV_DEG);
+      },
       look: ({ headingDeg, pitchDeg }) => setWalk((current) => lookWalk(current, headingDeg, pitchDeg)),
     }),
     [room, activeWall],
@@ -178,7 +197,13 @@ export default function RoomPlannerPage() {
 
   return (
     <>
-      <div className="room3d-workstation" data-mode={mode} data-zen={zen || undefined} data-camera-mode={cameraMode}>
+      <div
+        ref={workstationRef}
+        className="room3d-workstation"
+        data-mode={mode}
+        data-zen={zen || undefined}
+        data-camera-mode={cameraMode}
+      >
         <StudioHeader
           room={room}
           activeWall={activeWall}
@@ -209,6 +234,7 @@ export default function RoomPlannerPage() {
               floorLux={floorLux}
               cameraMode={cameraMode}
               walk={walk}
+              insideFov={insideFov}
               eyeLux={eyeLux}
               drag={drag}
               axisLock={axisLock}
@@ -240,6 +266,9 @@ export default function RoomPlannerPage() {
               onWalkTurn={walkActions.turn}
               onWalkReset={walkActions.reset}
               onWalkLook={walkActions.look}
+              onInsideFov={onInsideFov}
+              onEngineReady={onEngineReady}
+              onReplayBoot={onReplayBoot}
             />
           </div>
 
@@ -288,6 +317,8 @@ export default function RoomPlannerPage() {
           />
         </div>
       </div>
+
+      <StudioBootOverlay ready={engineReady} replay={bootReplay} revealRef={workstationRef} />
 
       <ProjectDiffModal
         open={draftDiff.session !== null}
