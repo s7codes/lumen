@@ -1,14 +1,33 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v5.2.0-e8923a)
+![Release](https://img.shields.io/badge/release-v5.3.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v5.2.0**. The navbar underline now follows the overview: **Overview**
+Current release: **v5.3.0**. The navbar now reads in page order, **Overview**, **3D Room**,
+**Catalog**, **Wall Studio**, and the overview scrolls the same way: hero, spec strip and
+Surface & Dimming Lab, then the 3D Spatial Studio (`#spatial-studio-3d`), Core Modules
+(`#core-modules`) and Workspaces (`#workspaces`). The scroll-spy holds the last section
+whose head has crossed a reading line 45 percent down the viewport, so the underline steps
+one tab at a time, left to right going down and right to left coming back, and never
+flashes back across the gaps between sections. **Catalog** and **Wall Studio** read as the
+location over their preview sections and still route straight to `/catalog` and
+`/studio-2d`. The showcase turntable is calm: a 20 deg/s orbit, a 27 to 35 deg pitch
+swell, 64 cm/s bus pulses and 7 s acts, on a stage that grows into the card column. The
+three capability cards carry an index, a glyph badge, one short sentence and two spec
+pills. **Launch 3D Spatial Studio** wears a champagne cap (`#f3e3c6` to `#d8b27c`,
+espresso ink) with an alabaster beam tracing its edge every 6 s. `/studio-2d` sits in a
+warm drafting-room backdrop: a key light pooled over the elevation, a ground line, a
+perspective plinth and a registered sheet frame. Both planners can **Audition RT60**: the
+room's six-band decay plays through Web Audio while a dB decay curve sweeps in real time.
+`/room-3d` adds **Capture .PNG**, a 1600 x 1000 studio render card of the room with its
+specification.
+
+v5.2.0 made the navbar underline follow the overview: **Overview**
 is current above the 3D Spatial Studio, **3D Room** takes over (`aria-current="location"`)
 while the section crosses the reading band 40 to 45 percent down the viewport, and a
 navbar glide holds it for the whole flight. The showcase stage is a live canvas 2D
@@ -245,6 +264,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v5.3.0  | Navbar and overview in one left-to-right order with a sequential scroll-spy; calm 20 deg/s turntable with 7 s acts; lighter capability cards with spec pills; champagne launch key with a perimeter beam; drafting-room Wall Studio backdrop; Web Audio RT60 audition in both planners; 1600 x 1000 `.png` studio render card |
 | v5.2.0  | Scroll-spy navbar underline on the overview; canvas 2D showcase theatre with four autonomous acts, act keys, card previews, cursor parallax and a lux probe; 3D Studio Launchpad with `?lens=` and `?scale=` quick-launch presets |
 | v5.1.0  | Unrestricted 360-degree orbit and 85-degree plan pitch; 900 x 900 cm envelopes and four room scale presets; 78-degree inside lens with wheel FOV and a backed-up stance; navbar swap and overview 3D Spatial Studio showcase; full-screen engine boot with a defocus reveal; calm Visual-mode Wall Studio |
 | v5.0.0  | Full-viewport 3D spatial workstation with engine boot and zen viewport; orbit, inside-room 165 cm and wall elevation lenses; ray to wall-plane drag engine, transform gizmo, laser dimensions, compass, wall-grouped outliner; skip link |
@@ -335,7 +355,9 @@ src/
                         named project ids (project-library), A/B project
                         comparison (project-diff) and its dialog sources
                         (diff-sources), palette
-                        index and ranking (command-index), credentials and session
+                        index and ranking (command-index), RT60 audition synth
+                        and decay curve (acoustic-audition), studio render card
+                        compositor (render-snapshot), credentials and session
                         token rules (auth), cloud record rules shared with the
                         server (cloud-records),
                         closed-form spring, display mode and currency stores,
@@ -370,11 +392,11 @@ tests/                  Playwright specs, named by architectural domain
 
 | Path         | View          | Role                                                      |
 | ------------ | ------------- | --------------------------------------------------------- |
-| `/`          | Overview      | Pendant hero, surface and dimming lab, core modules, 3D Spatial Studio theatre and launchpad (`#spatial-studio-3d`) |
+| `/`          | Overview      | Pendant hero, surface and dimming lab, 3D Spatial Studio theatre and launchpad (`#spatial-studio-3d`), core modules (`#core-modules`), workspaces (`#workspaces`) |
 | `/catalog`   | Catalog       | Category, search and sort over 12 parts, finish swatch    |
 | `/catalog/:id` | Spec sheet  | Orthographic set, exploded assembly, photometry or bus curve, launchers |
 | `/checkout`  | Project Quote | BOM, driver, freight, currency, trade code, print, export, submit |
-| `/room-3d`   | Room Planner  | Lazy chunk. WebGL room, clearances, 2D bridge, cloud save, cart sync; `?lens=` and `?scale=` quick launch |
+| `/room-3d`   | Room Planner  | Lazy chunk. WebGL room, clearances, 2D bridge, `.obj` and `.png` export, cloud save, cart sync; `?lens=` and `?scale=` quick launch |
 | `/studio-2d` | Wall Studio   | Lazy chunk. To-scale elevation planner, cloud save, cart sync |
 | `/account`   | Account       | Signed in only: cloud projects and submitted requisitions |
 
@@ -389,7 +411,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '5.2.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '5.3.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -667,13 +689,23 @@ custom properties, so React never re-renders on pointer movement.
   key rests, so it trails the cap. Arrows slide 4px, the add glyph turns a quarter.
   Nothing glows: the plinth has no blur, and the glow guard in the E2E suite holds.
 - Showcase theatre: `useShowcaseTheatre` runs one rAF loop per overview visit, only while
-  the stage is on screen. Every motion integrates the frame dt: the camera rides the
-  closed-form spring (`k = 22`, `c = 9.4`) toward each act, act presences and the light
+  the stage is on screen. It is paced as an architectural turntable (`showcase-scene.js`):
+  7 s acts (`ACT_SECONDS`, `ACT_DURATION_MS`), a 20 deg/s orbit (`ORBIT_DEG_PER_S`), a
+  27 to 35 deg pitch swell (`ORBIT_PITCH`), 64 cm/s bus pulses and a gizmo choreography
+  laid out as fractions of the act. The projection is framed for 3:2, so a stage stretched
+  beside the taller card column gains headroom instead of zooming in. Every motion
+  integrates the frame dt: the camera rides the closed-form spring (`k = 14`, `c = 7.6`)
+  toward each act, act presences and the light
   level approach exponentially, the gizmo shelf glides onto each 5 cm tick, and the
   pointer parallax (up to 9 deg yaw, 6 deg pitch) has its own spring, so the same curves
   play at 60, 120 and 240 Hz. The loop paints the canvas and writes AZ, PITCH, LUX, the
   act readout and the act-key fill straight into the DOM; React hears only act changes.
   Under reduced motion each act is one still frame and the cycle does not run.
+- Launch key beam: `cta-border-beam` is an SVG overlay on **Launch 3D Spatial Studio**
+  with two rects at `pathLength="100"`, a gold trail and an alabaster head that share a
+  leading edge. Their dash offsets run 100 units every 6 s (`linear`, `infinite`), so the
+  ribbon moves at one even speed round the long and short edges of the key. It is a
+  stroke, never a blurred shadow, and it pauses under reduced motion.
 - `src/styles/animations.css` holds the reveal states and the shared keyframes (rise,
   settle, unfold, transient status lines). Under `prefers-reduced-motion: reduce` every
   section renders at rest, keys do not drift and status lines stay put.
@@ -699,6 +731,13 @@ custom properties, so React never re-renders on pointer movement.
 
 ## Wall Studio
 
+- The stage is a drafting room (`wall-stage`): the viewport keeps its `#11100f` surround
+  under a warm key light (`radial-gradient(ellipse 85% 70% at 50% 38%, ...)`), the floor
+  datum runs out across the studio as a fading ground line, and a plinth floor recedes in
+  one-point perspective under the elevation with the key light pooled on it. A hairline
+  sheet frame (`studio-backdrop`) carries registration crosses in the corners and a tick
+  at each edge centre. Every backdrop layer ignores the pointer and is clipped to the
+  viewport, so drag, marquee and page width are untouched.
 - Drawing scale is `1 cm = 2.5 px`. The viewport reduces it only as far as needed to fit
   the wall on screen and reports the view percentage. Walls run 180-400 cm wide and
   180-320 cm high (default 300 x 250 cm), with an optional 90 x 90 cm attic slope cut
@@ -811,7 +850,7 @@ custom properties, so React never re-renders on pointer movement.
 - The **Lumen Spatial Engine** boot (`studio-boot-overlay`) is portaled to the body as
   a fixed 100vw x 100vh plate (`z-index: 9999`, `#080809`) over the navbar and every
   dock while the WebGL chunk loads: a 56 px monogram with a breathing tungsten aperture,
-  `LUMEN SPATIAL ENGINE v5.2`, a 240 px bar from `000%` and `01 / WebGL2 Shader
+  `LUMEN SPATIAL ENGINE v5.3`, a 240 px bar from `000%` and `01 / WebGL2 Shader
   Pipeline`, `02 / 4-Wall Raycast & Gizmo Solver`, `03 / 24V Photometric Kernel`. It
   holds 950 ms after the canvas reports ready, then lifts over 550 ms on
   `cubic-bezier(0.16, 1, 0.3, 1)` (opacity to 0, scale to 1.025, blur to 10px) while the
@@ -925,11 +964,18 @@ custom properties, so React never re-renders on pointer movement.
   DCC tools import as is. Faces are quads wound counter-clockwise around their normals.
   Object names are single tokens of `[A-Za-z0-9_-]`; free text only reaches comment
   lines, reduced to printable ASCII.
+- **Capture .PNG** (`capture-room-png`) downloads `lumen-room-<name>.png`: a 1600 x 1000
+  studio render card from `composeRoomSnapshotCanvas` in `src/lib/render-snapshot.js`. The
+  live WebGL frame is drawn once on demand (`advance()`) and read in the same task, so the
+  canvas never pays for `preserveDrawingBuffer`; if that read is blank (no WebGL, or a
+  software rasteriser that keeps its buffer) a drafted axonometric of the envelope stands
+  in. Under it, a specification strip stamps `LUMEN 3D SPATIAL STUDIO`, the sanitized
+  project name, room size, camera lens, modules, 24V load, illuminance and RT60.
 - The summary leads with Modules, 24V Load, Luminous Flux and Total Price beside the
   project name, cloud save and cart sync. Below it, **Engineering Telemetry & CAD
   Bridge** holds the driver, the 24V bus run around the unrolled walls, the Acoustics &
   Illuminance readout for the whole room, the Floor Lux Grid cell, the 2D bridge, the
-  `.OBJ` export and the share link.
+  `.OBJ` export, the `.PNG` studio render and the share link.
 - **Floor Lux Grid** in the camera settings popover lays the floor illuminance field on
   the slab as a false-colour texture with iso-lux contours and a `Peak` label at the
   hotspot. The hidden scene graph mirrors it as `room-floor-lux` (peak, average, minimum,
@@ -971,6 +1017,16 @@ read as the front of a reference zone 260 cm deep, minus the attic slope prism.
   weighted toward 2 and 4 kHz. `stiScore` (0.00-1.00) grades **Poor** (<0.45), **Fair**
   (0.45-0.60), **Good** (0.60-0.75) or **Excellent** (>=0.75). The default wall reads
   `STI 0.54 (Fair)`; a baffle and a frame lift it to 0.58.
+- **Audition RT60** (`audition-room-acoustics`, both planners): `synthesizeAcousticProfile`
+  in `src/lib/acoustic-audition.js` turns the six bands into decay rates
+  (`ln(1000) / RT60`), a C50 clarity figure, a damping percentage and a 32-point energy
+  decay curve in dB on the spectrum's fixed 2.5 s axis. `playAcousticAudition` plays a
+  seeded noise impulse split into six one-octave band-passes, each ringing out on its own
+  RT60 through `setTargetAtTime` (time constant `RT60 / ln(1000)`), under an open D chord
+  whose partials each sustain on the band they sound in. The decay curve
+  (`acoustic-decay-wave`, `data-rt60`, `data-damping-pct`) lights sample by sample as a
+  playhead crosses it in real time; a hairline marks RT60. Without Web Audio the curve
+  still runs, silently, and the context is closed when the take ends.
 - The six-bar spectrum (`acoustic-octave-spectrum`, one fixed 2.5 s scale) and the
   derivation (`V`, `A` in m2 sabins, `rho`, wall lux, task coverage) appear under the
   readout in Technical mode only.
@@ -1226,6 +1282,8 @@ store can stay up during a test run.
 `npx playwright test` against the built bundle. The HTML report is kept as an artifact.
 `ubuntu-latest` already carries Chromium's shared libraries and every font is
 self-hosted, so the job installs no apt packages and does not depend on Ubuntu mirrors.
+`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` is set for the whole workflow, so every JavaScript
+action runs on Node 24 and the runner emits no Node 20 deprecation notices.
 Releases push `develop` and `main` at the same SHA; triggering pushes on `main` only, with
 `concurrency` grouped by ref and `cancel-in-progress`, yields one run per release. Every
 push is followed by a check of the run on the GitHub Actions API until it completes green.

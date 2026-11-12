@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+# Every JavaScript action runs on Node 24, so the runner raises no Node 20 deprecation notices.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 # develop and main are pushed together at the same SHA; only main triggers a
 # push run, and a newer run on the same ref cancels the stale one.
 concurrency:
