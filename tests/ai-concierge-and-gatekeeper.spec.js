@@ -35,6 +35,12 @@ import { collectRuntimeErrors, installCspRecorder, readCspViolations } from './s
 // Test value for the local API under test; the server only length-checks it.
 const TEST_PASSWORD = 'nordic-test-0042';
 const LOCKED_COPY = 'Direct engineering contact is locked while Studio AI handles your questions.';
+const UNHELPFUL_COPY = 'Did not resolve my issue - request engineer';
+const OPEN_3D = 'Why cant I open 3D room designer';
+const LAUNCH_ACTIONS = [
+  { label: 'Launch 3D Spatial Studio', to: '/room-3d' },
+  { label: 'Launch 165 cm Walkthrough', to: '/room-3d?lens=inside' },
+];
 const BESPOKE = 'Can you fabricate a custom 480 cm curved marble beam with onsite structural welding?';
 const SHELF_PROMPT = 'Floating Shelf 110 specs & anchors';
 const DRIVER_PROMPT = 'Compare 60W vs 150W 24V drivers';
@@ -454,7 +460,9 @@ test.describe('Studio AI concierge widget', () => {
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
     await expect(panel).toHaveAttribute('role', 'dialog');
     await expect(panel).toHaveAccessibleName('Lumen Studio AI Concierge');
-    await expect(panel).toContainText('LUMEN SPEC CONCIERGE // LIVE WORKSPACE RAG');
+    await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Lumen AI');
+    await expect(panel.getByTestId('concierge-badge')).toHaveText('Workspace Aware');
+    await expect(panel).not.toContainText('LUMEN SPEC CONCIERGE');
     await expect(panel).toHaveAttribute('data-escalation', 'locked');
     await expect(page.getByTestId('concierge-input')).toBeFocused();
     await expect(page.getByTestId('concierge-quick-prompts').getByTestId('concierge-quick-prompt')).toHaveText(quickPromptsFor('/catalog'));
@@ -474,7 +482,7 @@ test.describe('Studio AI concierge widget', () => {
     await expect(shelf).toContainText('LMN-SH-110');
     await expect(shelf.getByTestId('concierge-metrics')).toContainText('Anchors');
     await expect(shelf.getByTestId('concierge-action').first()).toHaveAttribute('href', '/catalog/floating-shelf-110');
-    await expect(shelf.getByTestId('concierge-mark-unhelpful')).toHaveText('Did not resolve my issue');
+    await expect(shelf.getByTestId('concierge-mark-unhelpful')).toHaveText(UNHELPFUL_COPY);
 
     const gate = await ask(page, 'I want to contact human support');
     await expect(gate).toHaveAttribute('data-category', 'gatekeeper');
@@ -744,5 +752,247 @@ test.describe('Studio AI concierge widget', () => {
     await expect(dock).toBeVisible();
     await expect(page.getByTestId('concierge-trigger')).toBeVisible();
     expect(errors).toEqual([]);
+  });
+});
+
+/* Lumen AI: plain-language guide to the site, resilient transport, stealth panel */
+
+const TYPOGRAPHIC_APOSTROPHE = String.fromCharCode(0x2019);
+
+test.describe('Lumen AI conversational guide, resilient fallback and stealth panel', () => {
+  test('explains the site, the planners and their controls in plain words, decided by the question alone', () => {
+    const open = evaluateConciergeQuery(OPEN_3D, { route: '/' });
+    expect(open).toMatchObject({ category: 'guide', resolved: true, suggestedActions: LAUNCH_ACTIONS });
+    expect(open.confidence).toBeGreaterThanOrEqual(0.9);
+    expect(open.answer).toContain('Clicking 3D Room in the top navigation bar scrolls to the interactive 3D Spatial Studio preview');
+    expect(open.answer).toContain('click Launch 3D Spatial Studio in that section, or use the direct launch button right below this message');
+    // A fault report gets the checks that clear it.
+    expect(open.answer).toContain('hardware acceleration');
+    expect(open.answer).not.toContain(ESCALATION_NOTICE);
+    expect(canMarkUnhelpful(open)).toBe(true);
+
+    // Contractions with or without the apostrophe, typos and other names for the planner land on the same intent.
+    for (const variant of [
+      "Why can't I open the 3D room designer?",
+      `Why can${TYPOGRAPHIC_APOSTROPHE}t I open the 3-D room planer`,
+      'the 3d modeler wont open',
+      'Where is the 3D planner?',
+      'How do I open 3D Room?',
+      'help me launch the spatial studio',
+    ]) {
+      const reply = evaluateConciergeQuery(variant);
+      expect({ category: reply.category, resolved: reply.resolved, actions: reply.suggestedActions }, variant).toEqual({
+        category: 'guide',
+        resolved: true,
+        actions: LAUNCH_ACTIONS,
+      });
+    }
+    // Inside the planner the same verdict leads with the fault checks.
+    const inside = evaluateConciergeQuery(OPEN_3D, { route: '/room-3d' });
+    expect(inside.category).toBe('guide');
+    expect(inside.answer.startsWith('You are already in the 3D Spatial Studio (/room-3d).')).toBe(true);
+
+    const move = evaluateConciergeQuery('How do I move furniture in 3D or 2D?');
+    expect(move).toMatchObject({ category: 'guide', resolved: true });
+    for (const fact of ['Asset Shelf', 'X/Y Transform Gizmo', 'press G to grab', 'Grid Snap', '5 cm', 'Shift + Click', 'marquee', 'Align & Distribute']) {
+      expect(move.answer, fact).toContain(fact);
+    }
+
+    const walk = evaluateConciergeQuery('How do I walk around inside the room and rotate 360 degrees?');
+    expect(walk.category).toBe('guide');
+    for (const fact of ['W A S D', 'a full 360 degrees', '5 to 85 deg', '50 to 92 deg', 'Compact 320 x 280', 'Grand Loft 800 x 650', '900 x 900 x 420 cm']) {
+      expect(walk.answer, fact).toContain(fact);
+    }
+    expect(walk.suggestedActions[0]).toEqual(LAUNCH_ACTIONS[1]);
+    expect(evaluateConciergeQuery('How do I change the room size?').answer.startsWith('Room size lives in the Envelope & Lighting panel')).toBe(true);
+
+    const modes = evaluateConciergeQuery('What is Visual vs Specs mode?');
+    expect(modes.category).toBe('guide');
+    expect(modes.answer).toContain('Specs reveals the technical layer: the 24V bus wiring');
+    const keys = evaluateConciergeQuery('What are the keyboard shortcuts?');
+    for (const fact of ['Ctrl+K (Cmd+K on a Mac)', 'Ctrl+Z undoes', 'Ctrl+Y or Ctrl+Shift+Z', 'Zen, at the right of the 3D studio header']) {
+      expect(keys.answer, fact).toContain(fact);
+    }
+    expect(evaluateConciergeQuery('What does the top bar do?').answer).toContain('3D Room (it scrolls to the 3D Spatial Studio preview');
+
+    // Greetings and "what is Lumen" get a warm tour of the platform, never the escalation notice.
+    for (const question of ['Hi', 'Hello', 'What can you do?', 'What is Lumen?', 'How is this platform architected?']) {
+      const reply = evaluateConciergeQuery(question);
+      expect(reply, question).toMatchObject({ category: 'concierge', resolved: true });
+      expect(reply.confidence, question).toBeGreaterThanOrEqual(0.85);
+      expect(reply.answer, question).toContain('12 canonical parts on one 24V DC SELV spine');
+      expect(reply.answer, question).not.toContain(ESCALATION_NOTICE);
+      expect(canMarkUnhelpful(reply), question).toBe(false);
+    }
+    expect(evaluateConciergeQuery('How is this platform architected?').answer).toContain('pure, deterministic engines');
+    // The brand is not the unit, and the rest of the brain is untouched.
+    expect(evaluateConciergeQuery("What is Lumen's 24V bus?").category).toBe('electrical');
+    expect(evaluateConciergeQuery(SHELF_PROMPT).category).toBe('catalog');
+    expect(evaluateConciergeQuery('Audit my live 3D room & RT60', context('/room-3d')).category).toBe('workspace');
+
+    // Software faults never read as freight damage, nor planner sizes as bespoke work; real cases still escalate.
+    expect(evaluateConciergeQuery('The 3D designer is broken')).toMatchObject({ category: 'guide', resolved: true });
+    expect(evaluateConciergeQuery('Can I set a custom size for my room?')).toMatchObject({ category: 'guide', resolved: true });
+    expect(evaluateConciergeQuery('My shelf arrived broken').resolved).toBe(false);
+    expect(evaluateConciergeQuery(BESPOKE).resolved).toBe(false);
+
+    // Verdicts replay identically without the workspace, and a guide answer can still open the gate.
+    const ctx = context('/room-3d');
+    for (const question of [OPEN_3D, 'How do I move furniture in 3D or 2D?', 'What is Visual vs Specs mode?', 'Hello']) {
+      const live = evaluateConciergeQuery(question, ctx);
+      const replay = evaluateConciergeQuery(question);
+      expect({ category: replay.category, resolved: replay.resolved, confidence: replay.confidence }, question).toEqual({
+        category: live.category,
+        resolved: live.resolved,
+        confidence: live.confidence,
+      });
+    }
+    expect(verifyEscalationTranscript([{ question: OPEN_3D, resolved: true, markedUnhelpful: true }]).reasons).toEqual(['marked_unhelpful']);
+    expect(composeFollowUp(OPEN_3D).answer).toContain('Troubleshooting checklist');
+    expect(quickPromptsFor('/')[0]).toBe('How do I open the 3D room designer?');
+  });
+
+  test('answers "Why cant I open 3D room designer" with a direct launch key and keeps answering when the API 404s or fails', async ({
+    page,
+  }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.goto('/');
+    await openConcierge(page);
+
+    const online = await ask(page, OPEN_3D);
+    await expect(online).toHaveAttribute('data-category', 'guide');
+    await expect(online).toHaveAttribute('data-resolved', 'true');
+    await expect(online).toHaveAttribute('data-transport', 'http');
+    await expect(online).toContainText('Clicking 3D Room in the top navigation bar');
+    const actions = online.getByTestId('concierge-action');
+    await expect(actions).toHaveText(LAUNCH_ACTIONS.map((action) => action.label));
+    await expect(actions.first()).toHaveAttribute('href', '/room-3d');
+    await expect(actions.nth(1)).toHaveAttribute('href', '/room-3d?lens=inside');
+    const onlineId = await online.getAttribute('data-reply-id');
+
+    // A dev server started on an older checkout answers the route with its JSON 404; a static
+    // host, a broken proxy or a tampered reply answer with anything. The visitor still gets the answer.
+    const faults = [
+      { status: 404, contentType: 'application/json', body: JSON.stringify({ error: { code: 'not_found', message: 'No Lumen Cloud endpoint at this path.' } }) },
+      { status: 404, body: '{}' },
+      { status: 500, contentType: 'application/json', body: JSON.stringify({ error: { code: 'internal', message: 'Lumen Cloud hit an unexpected fault.' } }) },
+      { status: 502, contentType: 'text/html', body: '<h1>Bad Gateway</h1>' },
+      { status: 200, contentType: 'application/json', body: JSON.stringify({ reply: { id: 'LMN-C-forged' } }) },
+    ];
+    for (const fault of faults) {
+      await page.route('**/api/concierge/ask', (route) => route.fulfill(fault));
+      const reply = await ask(page, OPEN_3D);
+      await expect(reply, `HTTP ${fault.status}`).toHaveAttribute('data-transport', 'local');
+      await expect(reply, `HTTP ${fault.status}`).toHaveAttribute('data-resolved', 'true');
+      // One deterministic engine on either side: the same reply, id for id.
+      expect(await reply.getAttribute('data-reply-id'), `HTTP ${fault.status}`).toBe(onlineId);
+      await page.unroute('**/api/concierge/ask');
+    }
+    const panel = page.getByTestId('concierge-panel');
+    await expect(page.getByTestId('concierge-fault')).toHaveCount(0);
+    await expect(panel).not.toContainText('No Lumen Cloud endpoint');
+    await expect(panel).not.toContainText('unexpected fault');
+    await expect(panel).toHaveAttribute('data-escalation', 'locked');
+
+    // The direct key opens the full-screen editor.
+    await actions.first().click();
+    await expect(page).toHaveURL(/\/room-3d$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    await expect(panel).toBeHidden();
+    expect(errors.filter((line) => !/status of (404|500|502)/.test(line))).toEqual([]);
+    expect(await readCspViolations(page)).toEqual([]);
+  });
+
+  test('stealth panel: a basalt trigger with the Lumen mark, graphite questions, a silent locked gate and Specs-only metadata', async ({
+    page,
+  }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+
+    // Navbar: Search and Cart wear matching 14 px glyphs on one stroke weight, centred in their pills.
+    const banner = page.getByRole('banner');
+    const cart = banner.getByRole('button', { name: 'Cart (0)' });
+    const bag = cart.getByTestId('bag-glyph');
+    const search = banner.getByTestId('command-palette-trigger').locator('svg');
+    await expect(bag).toBeVisible();
+    const [bagBox, searchBox, cartBox] = await Promise.all([bag.boundingBox(), search.boundingBox(), cart.boundingBox()]);
+    expect([bagBox.width, bagBox.height]).toEqual([14, 14]);
+    expect([searchBox.width, searchBox.height]).toEqual([14, 14]);
+    expect(Math.abs(bagBox.y + bagBox.height / 2 - (cartBox.y + cartBox.height / 2))).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(bagBox.y - searchBox.y)).toBeLessThanOrEqual(0.5);
+    expect(await bag.evaluate((el) => [...el.querySelectorAll('path')].map((path) => path.getAttribute('stroke-width')))).toEqual(['1.25', '1.25']);
+    expect(await search.evaluate((el) => el.querySelector('circle').getAttribute('stroke-width'))).toBe('1.25');
+    await expect(cart).toHaveCSS('column-gap', '8px');
+    await expect(banner.getByTestId('command-palette-trigger')).toHaveCSS('column-gap', '8px');
+
+    // Trigger: dark basalt glass and the Lumen mark with a champagne slit, warming on hover.
+    const trigger = page.getByTestId('concierge-trigger');
+    await expect(trigger.getByTestId('lumen-mark')).toBeVisible();
+    await expect(trigger.locator('.aperture-glyph')).toHaveCount(0);
+    await expect(trigger).toHaveCSS('background-color', 'rgba(20, 19, 17, 0.92)');
+    await expect(trigger).toHaveCSS('color', 'rgb(244, 241, 234)');
+    await expect(trigger).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.12)');
+    await expect(trigger.locator('[data-part="aperture"]')).toHaveCSS('fill', 'rgb(229, 199, 153)');
+    await trigger.hover();
+    await expect(trigger).toHaveCSS('border-top-color', 'rgba(229, 199, 153, 0.45)');
+    const panel = await openConcierge(page);
+    await page.mouse.move(10, 400);
+    await expect(trigger).toHaveCSS('border-top-color', 'rgba(229, 199, 153, 0.45)');
+    await expect(trigger).toHaveCSS('background-color', 'rgba(26, 24, 21, 0.94)');
+    await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Lumen AI');
+    await expect(panel.locator('.concierge-panel__head').getByTestId('lumen-mark')).toBeVisible();
+
+    // Silent gatekeeper: spoken to assistive technology, never painted, no padlock.
+    const gate = page.getByTestId('concierge-gatekeeper-status');
+    await expect(gate).toHaveText(LOCKED_COPY);
+    await expect(gate).toHaveAttribute('role', 'status');
+    await expect(gate).toHaveClass(/visually-hidden/);
+    const gateLook = await gate.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const box = el.getBoundingClientRect();
+      return { position: style.position, overflow: style.overflow, width: box.width, height: box.height };
+    });
+    expect(gateLook).toEqual({ position: 'absolute', overflow: 'hidden', width: 1, height: 1 });
+    await expect(panel.locator('.concierge-gate__glyph, .concierge-gate svg')).toHaveCount(0);
+
+    // A graphite question bubble and a quiet dark-glass answer card, never a yellow block.
+    const reply = await ask(page, 'What is Visual vs Specs mode?');
+    const question = page.getByTestId('concierge-question').last();
+    await expect(question).toHaveCSS('background-color', 'rgb(35, 33, 30)');
+    await expect(question).toHaveCSS('color', 'rgb(244, 241, 234)');
+    await expect(question).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.1)');
+    await expect(question).toHaveCSS('border-bottom-right-radius', '2px');
+    // 0.025 alpha is stored in 8 bits (6 / 255), which Chromium serialises as 0.024.
+    await expect(reply).toHaveCSS('background-color', 'rgba(255, 255, 255, 0.024)');
+    await expect(reply).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.07)');
+    const body = reply.locator('.concierge-msg__body');
+    await expect(body).toHaveCSS('font-size', '13.5px');
+    await expect(body).toHaveCSS('line-height', '21.6px');
+    await expect(body).toHaveCSS('color', 'rgb(230, 226, 218)');
+    // The answer streams in once; its flag lands on the element, so a reopened panel never replays it.
+    await expect(reply).toHaveAttribute('data-revealed', 'true');
+    await expect(body).toHaveCSS('mask-image', 'none');
+    const footer = reply.getByTestId('concierge-mark-unhelpful');
+    await expect(footer).toHaveText(UNHELPFUL_COPY);
+    await expect(footer).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+
+    // Confidence and sources are Specs-mode detail; Visual keeps the answer clean.
+    await expect(reply.getByTestId('concierge-metrics')).toBeVisible();
+    await expect(reply.getByTestId('concierge-confidence')).toBeHidden();
+    await expect(reply.getByTestId('concierge-citations')).toBeHidden();
+    await page.getByTestId('mode-switch').getByRole('button', { name: /^Specs/ }).click();
+    await expect(reply.getByTestId('concierge-confidence')).toBeVisible();
+    await expect(reply.getByTestId('concierge-confidence')).toHaveText(/^Resolved \d+%$/);
+    await expect(reply.getByTestId('concierge-citations')).toBeVisible();
+    await expect(page.getByTestId('concierge-send')).toHaveAccessibleName('Ask');
+
+    // Closing and reopening keeps the settled answer settled.
+    await page.getByTestId('concierge-close').click();
+    await trigger.click();
+    await expect(reply).toHaveAttribute('data-revealed', 'true');
+    await expect(body).toHaveCSS('mask-image', 'none');
+    expect(errors).toEqual([]);
+    expect(await readCspViolations(page)).toEqual([]);
   });
 });

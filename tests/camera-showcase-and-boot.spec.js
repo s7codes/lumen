@@ -461,7 +461,7 @@ test.describe('navbar order and the overview 3D showcase', () => {
     expect(cover).toMatchObject({ parent: 'BODY', position: 'fixed', zIndex: '9999', x: 0, y: 0, coversNav: true });
     expect(cover.width).toBe(cover.innerWidth);
     expect(cover.height).toBe(cover.innerHeight);
-    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v6.0');
+    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v6.1');
     // Layout sizes, not painted boxes: the panel itself is still pulling focus from 1.05.
     await expect(boot.locator('.studio-boot__mark')).toHaveCSS('width', '56px');
     await expect(boot.locator('.studio-boot__bar')).toHaveCSS('width', '240px');
@@ -496,13 +496,23 @@ test.describe('navbar order and the overview 3D showcase', () => {
       await expect(boot).toHaveAttribute('data-state', 'done', { timeout: 20_000 });
       await page.getByTestId('replay-studio-boot').click();
       await expect(boot).toHaveAttribute('data-state', 'booting');
-      // A replay pulls focus back in from the lifted 1.025 scale, then holds the full window.
-      await expect.poll(async () => (await boot.boundingBox()).x).toBe(0);
-      const box = await boot.boundingBox();
-      expect(box).toMatchObject({ x: 0, y: 0, height: 800 });
-      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
-      // The pointer passes straight through to the navbar underneath.
-      expect(await page.evaluate(() => Boolean(document.elementFromPoint(24, 24)?.closest('header.navbar')))).toBe(true);
+      // A replay pulls focus back in from the lifted 1.025 scale, then holds the full window. The
+      // replay lasts 1.4 s, so wait for the overlay's own transitions to finish and read the frame
+      // in that same task, rather than polling a transient state on coarse intervals.
+      const frame = await boot.evaluate(async (el) => {
+        await Promise.all(el.getAnimations().map((animation) => animation.finished.catch(() => null)));
+        const box = el.getBoundingClientRect();
+        return {
+          state: el.dataset.state,
+          x: box.x,
+          y: box.y,
+          height: box.height,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          // The pointer passes straight through to the navbar underneath.
+          navbarUnder: Boolean(document.elementFromPoint(24, 24)?.closest('header.navbar')),
+        };
+      });
+      expect(frame).toEqual({ state: 'booting', x: 0, y: 0, height: 800, overflow: 0, navbarUnder: true });
       await page.getByTestId('skip-studio-boot').click();
       await expect(boot).toHaveAttribute('data-state', 'done');
       await expect(boot).toBeHidden();
@@ -911,7 +921,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     expect(errors).toEqual([]);
   });
 
-  test('the launchpad leads with the studio key and three presets; the Grand Loft preset opens at eye level in 800 x 650 x 340 cm', async ({
+  test('the launch bar is one slim row under the rig: the studio key and three presets stay anchored on hover; the Grand Loft preset opens at eye level in 800 x 650 x 340 cm', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
@@ -920,10 +930,18 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     const pad = page.getByTestId('showcase-launchpad');
     await pad.scrollIntoViewIfNeeded();
     await expect(pad).toBeVisible();
-    await expect(pad).toContainText('SPATIAL ENGINE v6.0 // INTERACTIVE WORKSTATION READY');
+    await expect(pad).toHaveAttribute('data-reveal-settled', '');
     await expect(pad.getByRole('heading', { level: 3, name: 'Step inside the 3D Spatial Workstation.' })).toBeVisible();
     await expect(pad).toHaveCSS('border-top-color', 'rgba(232, 146, 58, 0.28)');
     expect(await pad.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('radial-gradient');
+
+    // Compact and integrated: one row under 110 px, flush under the theatre and its cards, no filler copy.
+    const [padBox, rigBox] = await Promise.all([pad.boundingBox(), page.locator('.showcase3d__rig').boundingBox()]);
+    expect(padBox.height).toBeLessThan(110);
+    expect(padBox.y - (rigBox.y + rigBox.height)).toBeGreaterThanOrEqual(0);
+    expect(padBox.y - (rigBox.y + rigBox.height)).toBeLessThanOrEqual(24);
+    expect(Math.abs(padBox.width - rigBox.width)).toBeLessThanOrEqual(1);
+    await expect(pad.locator('.launchpad__lede, .launchpad__status, .launchpad__spec')).toHaveCount(0);
 
     const cta = page.getByTestId('launch-3d-studio-cta');
     await expect(cta).toHaveAttribute('href', '/room-3d');
@@ -935,22 +953,51 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await expect(cta.locator('.launchpad__cta-glyph svg')).toBeVisible();
     const ctaBox = await cta.boundingBox();
     expect(ctaBox.height).toBeGreaterThanOrEqual(54);
+    // The key, the pills and the headline share the bar's one row.
+    for (const box of [ctaBox, await pad.getByRole('heading', { level: 3 }).boundingBox()]) {
+      expect(box.y).toBeGreaterThanOrEqual(padBox.y);
+      expect(box.y + box.height).toBeLessThanOrEqual(padBox.y + padBox.height);
+    }
 
     const presets = [
-      ['orbit', '/room-3d?lens=orbit', 'Launch 360-Degree Orbit Studio'],
-      ['inside', '/room-3d?lens=inside', 'Launch 165 cm Eye-Level Walkthrough'],
-      ['loft', '/room-3d?scale=loft&lens=inside', 'Launch Grand Loft (800 x 650 cm)'],
+      ['orbit', '/room-3d?lens=orbit', 'Launch 360 Orbit'],
+      ['inside', '/room-3d?lens=inside', 'Launch 165 cm Eye Level'],
+      ['loft', '/room-3d?scale=loft&lens=inside', 'Launch Grand Loft'],
     ];
-    for (const [id, href, label] of presets) {
+    for (const [id, href, name] of presets) {
       const link = page.getByTestId(`launch-preset-${id}`);
       await expect(link).toHaveAttribute('href', href);
-      await expect(link).toContainText(label);
+      await expect(link).toHaveAccessibleName(name);
+      await expect(link).toHaveCSS('height', '40px');
+      const box = await link.boundingBox();
+      expect(Math.abs(box.y + box.height / 2 - (ctaBox.y + ctaBox.height / 2))).toBeLessThanOrEqual(1);
     }
-    // A preset lifts off the panel under the pointer.
+
+    // Every key stays anchored under the pointer: no lift, no magnetic drift, no offset
+    // plinth (the old brown #6f5230 slab); only its arrow travels, 3 px to the right.
     const loft = page.getByTestId('launch-preset-loft');
-    await loft.hover();
-    await expect.poll(() => loft.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).f)).toBeLessThan(-1);
-    // Lifted, not lit: the plinth under a hovered preset or the studio key carries no blur.
+    for (const key of [loft, cta]) {
+      const rest = await key.boundingBox();
+      await key.hover();
+      await expect
+        .poll(() => key.locator('svg[class$="-arrow"]').evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).e))
+        .toBe(3);
+      const held = await key.boundingBox();
+      expect(Math.abs(held.x - rest.x) + Math.abs(held.y - rest.y)).toBeLessThan(0.5);
+      const look = await key.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { transform: style.transform, translate: style.translate, layers: style.boxShadow.split(/,(?![^(]*\))/).map((layer) => layer.trim()) };
+      });
+      expect(look.transform).toBe('none');
+      expect(look.translate).toBe('none');
+      for (const layer of look.layers) expect(layer === 'none' || layer.includes('inset'), layer).toBe(true);
+      expect(look.layers.join(' ')).not.toContain('111, 82, 48');
+    }
+    // The cap brightens in place: a lighter champagne layer fades in under the label, the glyph holds still.
+    await expect.poll(() => cta.evaluate((el) => getComputedStyle(el, '::before').opacity)).toBe('1');
+    await expect(cta.locator('.launchpad__cta-glyph svg')).toHaveCSS('transform', 'none');
+    await expect(cta).toHaveCSS('box-shadow', 'rgba(255, 255, 255, 0.45) 0px 1px 0px 0px inset');
+    // Lifted, not lit: nothing under a hovered preset or the studio key carries blur.
     for (const control of [loft, cta]) {
       const blur = await control.evaluate((el) =>
         getComputedStyle(el)
