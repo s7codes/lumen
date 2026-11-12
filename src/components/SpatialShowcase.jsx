@@ -11,7 +11,6 @@ import { ACTS, STAGE_ROOM } from '../lib/showcase-scene.js';
 import { ArrowRight, CubeGlyph, PresetEyeGlyph, PresetGizmoGlyph, PresetLoftGlyph, PresetOrbitGlyph } from './icons.jsx';
 
 const STAGE_ID = 'showcase3d-stage';
-const ENGINE_VERSION = __APP_VERSION__.split('.').slice(0, 2).join('.');
 const ROOM_LABEL = `${STAGE_ROOM.label} / ${STAGE_ROOM.widthCm} x ${STAGE_ROOM.depthCm} x ${STAGE_ROOM.heightCm} cm`;
 
 const PILLARS = Object.freeze([
@@ -41,28 +40,26 @@ const PILLARS = Object.freeze([
   },
 ]);
 
+// Compact quick-launch pills: the visible label stays short, the spec rides in the tooltip.
 const LAUNCH_PRESETS = Object.freeze([
   {
     id: 'orbit',
-    index: 'A',
-    label: 'Launch 360-Degree Orbit Studio',
+    label: '360 Orbit',
     spec: 'Orbit cutaway / yaw 360 / pitch 5-85 deg',
     to: launchHref({ lens: 'orbit' }),
     Glyph: PresetOrbitGlyph,
   },
   {
     id: 'inside',
-    index: 'B',
-    label: 'Launch 165 cm Eye-Level Walkthrough',
+    label: '165 cm Eye Level',
     spec: 'Inside lens / eye 165 cm / FOV 78 deg',
     to: launchHref({ lens: 'inside' }),
     Glyph: PresetEyeGlyph,
   },
   {
     id: 'loft',
-    index: 'C',
-    label: 'Launch Grand Loft (800 x 650 cm)',
-    spec: '800 x 650 x 340 cm / eye level',
+    label: 'Grand Loft',
+    spec: 'Grand Loft 800 x 650 x 340 cm / eye level',
     to: launchHref({ scale: 'loft', lens: 'inside' }),
     Glyph: PresetLoftGlyph,
   },
@@ -215,67 +212,62 @@ function CtaBorderBeam() {
   );
 }
 
+/*
+ * The launch bar: one slim row under the theatre and its cards (headline,
+ * quick-launch pills, the studio key), so a single button never sits in a
+ * cavernous box. Every key stays anchored on hover: no lift, no plinth, no
+ * magnetic pull; the cap brightens and only its arrow travels.
+ */
 function Launchpad() {
   const reveal = useScrollReveal();
   return (
-    <div ref={reveal} className="launchpad reveal-cinematic" data-testid="showcase-launchpad">
-      <div className="launchpad__main">
-        <p className="launchpad__status mono">
-          <span className="launchpad__status-rule" aria-hidden="true" />
-          SPATIAL ENGINE v{ENGINE_VERSION} // INTERACTIVE WORKSTATION READY
-        </p>
-        <h3 className="launchpad__title">Step inside the 3D Spatial Workstation.</h3>
-        <p className="launchpad__lede">
-          Four walls, one 24V run, one bill of materials. The studio opens full screen with the engine warm and your
-          last room in place.
-        </p>
-        <div className="launchpad__actions">
-          <Link
-            to={LAUNCH_PATH}
-            className="button button--primary launchpad__cta"
-            data-testid="launch-3d-studio-cta"
-            onPointerEnter={warmPlanner}
-            onFocus={warmPlanner}
-          >
-            <span className="launchpad__cta-glyph">
-              <CubeGlyph />
-            </span>
-            <span className="launchpad__cta-copy">
-              <span className="launchpad__cta-label">Launch 3D Spatial Studio</span>
-              <span className="launchpad__cta-sub" aria-hidden="true">
-                Full viewport / WebGL 2
-              </span>
-            </span>
-            <ArrowRight className="launchpad__cta-arrow" />
-            <CtaBorderBeam />
-          </Link>
-          <p className="launchpad__spec mono">240-900 cm envelopes / 3 lenses / OBJ and Wall Studio bridge</p>
-        </div>
-      </div>
+    <div ref={reveal} className="launchpad reveal-up" data-testid="showcase-launchpad">
+      <h3 className="launchpad__title">Step inside the 3D Spatial Workstation.</h3>
 
       <ul className="launchpad__presets" aria-label="Quick launch presets">
-        {LAUNCH_PRESETS.map(({ id, index, label, spec, to, Glyph }) => (
+        {LAUNCH_PRESETS.map(({ id, label, spec, to, Glyph }) => (
           <li key={id}>
             <Link
               to={to}
               className="launchpad__preset"
               data-testid={`launch-preset-${id}`}
+              title={spec}
               onPointerEnter={warmPlanner}
               onFocus={warmPlanner}
             >
               <span className="launchpad__preset-glyph">
                 <Glyph />
               </span>
-              <span className="launchpad__preset-copy">
-                <span className="launchpad__preset-index mono">Preset {index}</span>
-                <span className="launchpad__preset-title">{label}</span>
-                <span className="launchpad__preset-spec mono">{spec}</span>
+              <span className="launchpad__preset-title">
+                <span className="visually-hidden">Launch </span>
+                {label}
               </span>
               <ArrowRight className="launchpad__preset-arrow" />
             </Link>
           </li>
         ))}
       </ul>
+
+      <Link
+        to={LAUNCH_PATH}
+        className="button button--primary launchpad__cta"
+        data-testid="launch-3d-studio-cta"
+        data-magnet="off"
+        onPointerEnter={warmPlanner}
+        onFocus={warmPlanner}
+      >
+        <span className="launchpad__cta-glyph">
+          <CubeGlyph />
+        </span>
+        <span className="launchpad__cta-copy">
+          <span className="launchpad__cta-label">Launch 3D Spatial Studio</span>
+          <span className="launchpad__cta-sub" aria-hidden="true">
+            Full viewport / WebGL 2
+          </span>
+        </span>
+        <ArrowRight className="launchpad__cta-arrow" />
+        <CtaBorderBeam />
+      </Link>
     </div>
   );
 }

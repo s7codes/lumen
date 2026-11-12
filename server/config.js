@@ -31,9 +31,13 @@ export function resolveServerOptions(rootUrl, env = process.env) {
   };
 }
 
-/** One store and one handler per process; both Vite hooks and the standalone server share it. */
-export function createLumenCloud(rootUrl, env = process.env) {
+/**
+ * One store and one handler per process; both Vite hooks and the standalone
+ * server share it. `sessionSecret` pins the HMAC key, so a dev server that
+ * reloads this module keeps every open session valid.
+ */
+export function createLumenCloud(rootUrl, env = process.env, { sessionSecret } = {}) {
   const { version, file, testReset } = resolveServerOptions(rootUrl, env);
   const store = createStore({ file });
-  return { store, handler: createApp({ store, version, testReset }), version, file, testReset };
+  return { store, handler: createApp({ store, version, testReset, sessionSecret }), version, file, testReset };
 }

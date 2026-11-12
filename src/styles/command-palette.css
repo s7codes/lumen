@@ -79,6 +79,22 @@
     font-size: 12.5px;
   }
 
+  /* Like Search, the cart folds to its glyph and count; the word stays in the
+     accessible name ("Cart (n)") through a clip, never display: none. */
+  .navbar__controls .bag-trigger {
+    gap: 6px;
+  }
+
+  .bag-trigger__word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
   .navbar__controls .mode-switch__segment {
     padding-inline: 6px;
     font-size: 12.5px;

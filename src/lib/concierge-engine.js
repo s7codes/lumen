@@ -1,6 +1,6 @@
 import { CATEGORIES, FINISHES, getProduct, PRODUCTS, STOCK_LABELS } from '../data/products.js';
 import { clampNumber, isOneOf, isSafeInternalPath, sanitizeMultilineText, sanitizeText } from '../security/sanitize.js';
-import { sanitizeEmail } from './auth.js';
+import { PASSWORD_MIN, sanitizeEmail } from './auth.js';
 import { sanitizeBagItems } from './bag.js';
 import { computeBusTopology, CONDUCTOR_LABEL, DROP_LIMIT_PCT } from './bus-topology.js';
 import {
@@ -92,6 +92,7 @@ const SCOPE_LINE =
 export const CONCIERGE_CATEGORIES = Object.freeze({
   catalog: 'Catalog & Part Specs',
   workspace: 'Live Workspace Audit',
+  guide: 'Studio Guide & Troubleshooting',
   electrical: '24V Bus, Drivers & DALI-2',
   physics: 'Acoustics & Photometry',
   spatial: '3D Spatial Studio & CAD',
@@ -103,7 +104,7 @@ export const CONCIERGE_CATEGORIES = Object.freeze({
 });
 const CATEGORY_IDS = Object.keys(CONCIERGE_CATEGORIES);
 // Replies that answer the inquiry itself; only these can be marked as not resolving it.
-const SUBSTANTIVE = new Set(['catalog', 'workspace', 'electrical', 'physics', 'spatial', 'commerce']);
+const SUBSTANTIVE = new Set(['catalog', 'workspace', 'guide', 'electrical', 'physics', 'spatial', 'commerce']);
 
 export const WORKSPACE_ROUTES = Object.freeze({
   '/': 'Overview',
@@ -245,10 +246,34 @@ export function validateWorkspaceContext(input) {
 
 /* Text analysis */
 
+// Everyday phrasing, folded before matching: contractions with or without the
+// apostrophe (straight or typographic), common misspellings, and the many
+// names visitors give the two planners. Applied to lower-cased text.
+const APOSTROPHE = "['\u2019]";
+const PHRASING = Object.freeze([
+  [new RegExp(`\\bcan${APOSTROPHE}?t\\b|\\bcan not\\b`, 'g'), 'cannot'],
+  [new RegExp(`\\bwon${APOSTROPHE}?t\\b`, 'g'), 'will not'],
+  [new RegExp(`\\b(do|does|did|is|are|was|were|has|have|had|could|would|should)n${APOSTROPHE}?t\\b`, 'g'), '$1 not'],
+  [new RegExp(`\\b(what|where|how|who|why|when|there|it)${APOSTROPHE}s\\b`, 'g'), '$1 is'],
+  [/\b(what|where|how)s\b/g, '$1 is'],
+  [new RegExp(`\\bi${APOSTROPHE}?m\\b`, 'g'), 'i am'],
+  [new RegExp(`\\bi${APOSTROPHE}ve\\b`, 'g'), 'i have'],
+  [/\b(?:3-d|3 d|three[ -]d(?:imensional)?)\b/g, '3d'],
+  [/\b(?:2-d|2 d|two[ -]d(?:imensional)?)\b/g, '2d'],
+  [/\b(?:desinger|desginer|designr|desiger)\b/g, 'designer'],
+  [/\b(?:planer|planr|plannr)\b/g, 'planner'],
+  [/\b(?:furnature|furnitre|furnitur|furnitures)\b/g, 'furniture'],
+  [/\bwalk[ -]?thr(?:ough|u)\b/g, 'walkthrough'],
+  [/\b(?:short ?cuts?|shorcuts?|shotcuts?)\b/g, 'shortcuts'],
+  [/\b(?:pls|plz)\b/g, 'please'],
+  [/\bu(?![-/])\b/g, 'you'],
+  [/\bur\b/g, 'your'],
+]);
+
 function normalize(text) {
-  return ` ${text
-    .toLowerCase()
-    .replace(/(\d),(?=\d{3}\b)/g, '$1')
+  let lower = text.toLowerCase().replace(/(\d),(?=\d{3}\b)/g, '$1');
+  for (const [re, to] of PHRASING) lower = lower.replace(re, to);
+  return ` ${lower
     .replace(/[^a-z0-9.%+/-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()} `;
@@ -260,6 +285,19 @@ const KNOWN_PHRASES =
 // Phrases where a product word means something else.
 const PRODUCT_NOISE =
   /\b(time ?frame|frame rate|track (my|the|an?|your|our) (orders?|shipments?|deliver(y|ies)|parcels?|packages?|quotes?|requisitions?))\b/g;
+// Software and planner vocabulary that would otherwise read as freight damage
+// or bespoke sizing: "the 3D designer is broken", "a custom room size".
+const UI_NOUNS =
+  '(page|site|website|app|button|link|viewport|canvas|planner|designer|modell?er|studio|editor|workstation|panel|menu|navbar|search|palette|tool|widget|chat|assistant|screen|3d|2d|webgl|gizmo|camera|preview|showcase|cart|checkout)';
+const PLANNER_PHRASES = new RegExp(
+  [
+    `\\b${UI_NOUNS}( is| seems| looks| keeps| got| went| was)?( totally| completely| still| just)? (broken|crash\\w*|faulty|defective|bugged|buggy|glitch\\w*)\\b`,
+    '\\bcustom (room )?(sizes?|sized|dimensions?)( for| of)?( the| my| a| your)? (rooms?|envelopes?|spaces?)\\b',
+    '\\b(rooms?|envelopes?|spaces?) (to |in |at )?(a )?custom (sizes?|dimensions?)\\b',
+    '\\b(search|palette|query) (returns?|returned)\\b',
+  ].join('|'),
+  'g',
+);
 
 const ESCALATION_TOPICS = Object.freeze([
   {
@@ -293,6 +331,137 @@ const CONTACT =
   /\b(contact|talk|speak|chat|e-?mail|mail|call|phone|ring|reach|message|connect)\b[^.?!]*\b(support|human|agent|person|someone|somebody|engineers?|staff|team|representative|rep|customer service|operator|sales)\b|\b(human (agent|support|being)|real person|live (agent|person|chat)|customer (service|support|care)|support (team|ticket|agent|desk)|(open|raise|file) a ticket|escalat\w*|help ?desk)\b/;
 const SMALLTALK =
   /^ (hi|hello|hey|hiya|greetings|good (morning|afternoon|evening|day)|thanks|thank you|thx|cheers|ok|okay|cool|great|help|test)( there| you| again)?[.!]* $|\b(what can you (do|answer|help with)|who are you|what are you|how does this work|help me)\b/;
+const THANKS = /^ (thanks|thank you|thx|cheers|great|cool|perfect|nice|awesome)( a lot| so much| very much| again)?[.!]* $/;
+const OVERVIEW =
+  /\b(what (is|are) lumen|what does lumen|what lumen (is|does)|tell me (about|more about) (lumen|this (site|platform|app|website|place|tool))|about lumen|who (is|are|made|built) lumen|what is this (site|website|platform|app|place|tool|page|about)|what (site|website|platform|app) is this|how (is|was) (lumen|this|it|the)( (site|platform|app|system|website|product))? (architected|built|made|designed|structured|engineered|organi[sz]ed|put together)|(lumen|platform|system|site|product) architecture|how does (lumen|this|it|the (site|platform|app|website|system)) work|what (can|do) (you|lumen) (do|offer|sell|make|help with)|what can i do (here|on this|with (this|lumen))|getting started|get started|where (do|should) i (start|begin)|first time|new here|introduc\w*|give me (a )?tour|show me around)\b/;
+const ARCHITECTURE = /\b(architect\w*|engineered|structured|under the hood|built)\b/;
+
+/* Studio guide vocabulary: navigation, workflows and troubleshooting */
+
+// Question forms that ask how, where or why something in the app works.
+const ASKS_HOW =
+  /\b(how (do|can|should|would|could|to|does|is)|where (is|are|can|do|does|did|would)|why (cannot|will not|does not|do not|is not|is|does|did|are|am)|is there (a|any) way|is it possible|can (i|you|we)|could (i|you|we)|help me|show me|tell me (how|where)|explain|walk me through|i (cannot|am unable to|am not able to|do not know how|do not see|want to|would like to|need to|tried))\b/;
+const ASKS_WHERE =
+  /\b(where (is|are|can|do|does|did|would)|how (do|can|could) (i|we|you) (get|go|find|reach|open|launch|start|enter|access|see|switch)|how to (get|go|find|reach|open|launch|start|enter|access|see|switch)|(cannot|could not|do not|did not) (find|see|locate))\b/;
+const TROUBLE =
+  /\b(cannot|unable|not able|will not|would not|does not|do not|did not|is not|are not|keeps? (failing|crashing|freezing|loading)|not (working|loading|opening|showing|responding|starting|launching|appearing|rendering|displaying|clickable|visible)|broken|stuck|frozen|freez\w*|blank|black screen|white screen|empty screen|nothing (happens|shows|loads|appears)|no response|crash\w*|errors?|fail\w*|bugs?|bugged|buggy|glitch\w*|laggy|lagging|slow|disappear\w*|vanish\w*|gr[ae]yed out|disabled|issues?|problems?|trouble)\b|\b(is|went|goes|stays|turns) (black|white|blank|empty|grey|gray)\b/;
+// Verbs that ask for another feature than opening a tool: those belong to that feature.
+const OTHER_FEATURE =
+  /\b(export\w*|download\w*|share|sharing|sav(e|es|ed|ing)|print\w*|captur\w*|compar\w*|import\w*|sync\w*|buy\w*|order\w*|quot(e|es|ed|ing)|price\w*|cost\w*|audit\w*|check(ing)?|wattage|watts?|rt60|lux)\b/;
+
+const ROOM_TOOL =
+  /\b3d( spatial)?( room)? (designer|design tool|modell?er|planner|editor|studio|workstation|tool|app|view|viewer|mode|room|space|scene|model|builder|configurator|visuali[sz]er|page|section|preview)\b|\b(room|spatial) (designer|planner|editor|studio|builder|configurator|modell?er|visuali[sz]er|tool)\b|\bspatial (studio|workstation)\b|\broom-3d\b/;
+const OPEN_3D_LOOSE = /\b(open\w*|launch\w*|enter\w*|access\w*|get into|go into|switch to)( up)?( the| a| my| your| in)? 3d\b/;
+const WALL_TOOL =
+  /\b2d( wall)? (designer|planner|editor|studio|tool|elevation|view|mode|builder|page)\b|\bwall (studio|designer|planner|editor|builder|configurator|tool)\b|\belevation (studio|planner|editor|designer)\b|\bstudio-2d\b/;
+const OPEN_VERB =
+  /\b(open\w*|launch\w*|start\w*|enter\w*|access\w*|load\w*|run|running|find|locate|get (in|into|to|inside)|go (in|into|to|inside)|navigate to|reach|switch to|bring up|pull up|use|using|explain|walk me through|tour)\b/;
+// Verbs that name the tool's entrance itself; "use" or a fault alone is a weaker signal.
+const OPEN_STRICT = /\b(open\w*|launch\w*|start\w*|enter\w*|access\w*|find|locate|get (in|into|to|inside)|go (in|into|to|inside)|navigate to|reach|switch to)\b/;
+
+const MOVE_STRONG = /\b(mov(e|es|ed|ing)|drag\w*|reposition\w*|rearrang\w*|arrang\w*|slid(e|es|ing)|nudg\w*|relocat\w*)\b/;
+const MOVE_AROUND = /\bmov(e|es|ing) (around|about|through|inside)\b/;
+const MOVE_PLACE = /\b(plac(e|es|ed|ing)|position(ing)?|put|putting|add|adding|insert\w*|align\w*|snap\w*|stack\w*|space (them|it|out|evenly))\b/;
+const MOVE_MOUNT = /\b(mount|mounting|hang|hanging|attach\w*)\b/;
+const MOVE_OBJECT =
+  /\b(furniture|modules?|parts?|pieces?|items?|objects?|products?|components?|assets?|shel(f|ves)|lights?|lamps?|luminaires?|fixtures?|frames?|panels?|baffles?|sconces?|pendants?|cubes?|sideboards?|columns?|spots?|spotlights?|lightbars?|tracks?|hubs?|things|stuff|elements?|selection)\b/;
+const MOVE_PRONOUN = /\b(it|them)\b/;
+const MOVE_GENERIC = /\b(furniture|modules?|parts?|components?|assets?|items?|pieces?|objects?)\b/;
+const PLANNER_STRONG = /\b(3d|2d|planners?|studio|designer|editor|modell?er|viewport|canvas|scene|asset shelf|layout|elevation|gizmo)\b/;
+const PLANNER_LOOSE = /\b(3d|2d|planners?|studio|designer|editor|modell?er|viewport|canvas|scene|asset shelf|layout|elevation|gizmo|grid|rooms?|walls?|north|east|south|west|corner)\b/;
+const GIZMO = /\b(gizmo|transform (handles?|tool|controls?)|x\/y handles?|axis locks?|lock (x|y)|free xy|grab (mode|key))\b/;
+
+const WALK =
+  /\b(walk(ing|s)? (around|inside|in|through|into|about)|walkthrough|stroll\w*|wander\w*|look(ing)? around|move around|go inside|step inside|stand inside|get inside|first[ -]person|eye[ -]?level|eye height|wasd|w a s d|inside (lens|view|room))\b|\bhow (do|can) (i|we|you) walk\b/;
+const ROTATE =
+  /\b(rotat\w*|spin\w*|orbit\w*|circle|swivel\w*|pivot\w*) (the |my |a )?(room|view|camera|scene|model|space|around|360)\b|\borbit\w*\b|\b360\b|\bturn (around|the (room|view|camera|scene))\b|\btilt (the )?(camera|view)\b|\b(zoom\w*|pan|panning|camera\w*|field of view|fov|lens|lenses|perspective|viewing angle|view ?points?|top view|plan view|birds? eye|look (up|down))\b/;
+const RESIZE =
+  /\b(room|envelope|space) (size|sizes|dimensions?|width|depth|height|footprint|scale)\b|\bceiling (height|size)\b|\b(resiz\w*|enlarg\w*|shrink\w*)\b|\bmake (the |my |a )?(room|space|envelope|wall) (bigger|smaller|larger|wider|deeper|taller|higher|lower|narrower|shorter)\b|\b(bigger|smaller|larger) (room|space|envelope)\b|\b(change|set|adjust|edit|increase|decrease|alter|modify)\b[^.?!]{0,28}\b(room|envelope|space|ceiling|wall)\b[^.?!]{0,16}\b(size|dimensions?|width|depth|height)\b|\b(change|set|adjust|edit|increase|decrease|alter|modify)\b[^.?!]{0,16}\b(size|dimensions?|width|depth|height)\b[^.?!]{0,16}\b(room|envelope|space|ceiling)\b|\b(compact|living|gallery|grand loft|loft) (preset|room|size|scale)\b|\b(room|size|scale) presets?\b/;
+const ROOM_WORDS = /\b(room|envelope|space|ceiling)\b/;
+
+const MODES =
+  /\bvisual (vs|versus|or|and) specs?\b|\bspecs? (vs|versus|or|and) visual\b|\b(visual|specs?) (mode|view|toggle|switch|button|setting)s?\b|\b(display|technical|architectural|presentation|engineering) (mode|view|layer)s?\b|\bmode (switch|toggle|button|selector)\b|\b(switch|toggle|change) (the )?modes?\b/;
+const SHORTCUTS =
+  /\b(keyboard( shortcuts?| keys| controls?)?|shortcuts?|hot ?keys?|key ?bindings?|key ?commands?|keystrokes?|command palette|undo|redo|zen( mode)?|full ?screen|maximi[sz]e|hide (the )?(docks?|panels?|sidebars?)|docks?)\b|\b(ctrl|cmd|command|control) ?\+ ?[a-z]\b|\b(ctrl|cmd) ?[a-z]\b/;
+const CHROME =
+  /\b(top ?bar|nav ?bar|navigation (bar|menu|links?)|nav links?|menu ?bar|header|tool ?bar|top menu|main menu|menu|buttons? (at|on|in) the top|top (right|left)( corner)?)\b/;
+const ASKS_WHAT = /\b(what|which) (is|are|does|do)\b/;
+
+const CART_NOUN = /\b(cart|bag|basket|checkout|check out)\b/;
+const CART_VERB =
+  /\b(add\w*|put|putting|send\w*|sync\w*|mov(e|ing)|transfer\w*|get|bring|remov\w*|delet\w*|empt\w*|clear\w*|updat\w*|change|edit\w*|open\w*|find|see|view|where|go)\b/;
+const CHECKOUT_HOW = /\bhow (do|can|could) (i|we) (check ?out|checkout|order|buy|purchase|pay)\b/;
+const COUNTING = /\bhow (many|much)\b/;
+const SAVE_VERB = /\b(sav(e|es|ed|ing)|reopen\w*|re-open\w*|restor\w*|recover\w*|lost my|load (my|a) (saved|previous|old))\b/;
+const ACCOUNT =
+  /\b(sign(ing)? ?(in|up|out)|log(ging)? ?(in|out)|login|logout|register\w*|(create|make|open) (an |my )?account|my account|account page|passwords?|forgot)\b/;
+const SEARCH =
+  /\b(search\w*|command palette|look ?up|quick find|find (a |the |any )?(part|product|page|command|setting|feature|tool))\b|\b(ctrl|cmd|command|control) ?\+? ?k\b/;
+const REMOVE =
+  /\b(remov\w*|delet\w*|get rid of|take (it |them )?(off|out|away)|clear (the |my )?(wall|room|layout|scene)|unmount\w*)\b/;
+const SITE = /\b(page|site|website|app|screen|everything|nothing|interface|buttons?|links?|it|loading|load|blank)\b/;
+
+// In priority order: the first three found are answered.
+const GUIDE_ORDER = Object.freeze(['open3d', 'wallOpen', 'move', 'navigate', 'remove', 'save', 'cart', 'account', 'search', 'modes', 'shortcuts', 'chrome']);
+// Intents concrete enough to answer even when the visitor also asks for a human.
+const CONTACT_SAFE = new Set(['open3d', 'wallOpen', 'move', 'navigate', 'remove', 'save', 'cart']);
+
+/**
+ * How-to, navigation and troubleshooting intents in a question, read from
+ * the text alone like every verdict. `fallback` marks a fault report about
+ * the site that names no tool (answered only when no topic claims it).
+ */
+function detectGuide(norm, products) {
+  const asks = ASKS_HOW.test(norm);
+  const where = ASKS_WHERE.test(norm);
+  const troubled = TROUBLE.test(norm);
+  const cart = CART_NOUN.test(norm);
+  const other = OTHER_FEATURE.test(norm);
+  const found = new Set();
+
+  const roomTool = ROOM_TOOL.test(norm) || OPEN_3D_LOOSE.test(norm);
+  const opens = OPEN_VERB.test(norm) || where;
+  const openStrict = OPEN_STRICT.test(norm) || where;
+  if (roomTool && (opens || troubled) && !other) found.add('open3d');
+  if (WALL_TOOL.test(norm) && (opens || troubled) && !other) found.add('wallOpen');
+
+  const objects = MOVE_OBJECT.test(norm) || MOVE_PRONOUN.test(norm);
+  const strongMove = MOVE_STRONG.test(norm) && !(MOVE_AROUND.test(norm) && !MOVE_OBJECT.test(norm));
+  const placed = asks && MOVE_PLACE.test(norm) && MOVE_OBJECT.test(norm) && (PLANNER_LOOSE.test(norm) || MOVE_GENERIC.test(norm));
+  const mounted = asks && MOVE_MOUNT.test(norm) && PLANNER_STRONG.test(norm);
+  if (!cart && (GIZMO.test(norm) || (strongMove && (objects || PLANNER_LOOSE.test(norm))) || placed || mounted)) found.add('move');
+
+  const resize = RESIZE.test(norm) && (products.length === 0 || ROOM_WORDS.test(norm));
+  const walk = WALK.test(norm);
+  const rotate = ROTATE.test(norm);
+  if (walk || rotate || resize) found.add('navigate');
+
+  if (REMOVE.test(norm) && (asks || troubled) && (MOVE_OBJECT.test(norm) || PLANNER_LOOSE.test(norm)) && !cart) found.add('remove');
+  if (SAVE_VERB.test(norm) && (asks || troubled || where)) found.add('save');
+  if ((cart && CART_VERB.test(norm) && (asks || troubled || where) && !COUNTING.test(norm)) || CHECKOUT_HOW.test(norm)) found.add('cart');
+  if (ACCOUNT.test(norm) && (asks || troubled || where || /\bforgot\b/.test(norm))) found.add('account');
+  if (SEARCH.test(norm) && (asks || troubled || where || /\bsearch\b/.test(norm))) found.add('search');
+  if (MODES.test(norm)) found.add('modes');
+  if (SHORTCUTS.test(norm)) found.add('shortcuts');
+  if (CHROME.test(norm) && (asks || where || ASKS_WHAT.test(norm))) found.add('chrome');
+
+  // "Why can't I use the 3D room" with a walk or move question is about that action.
+  const weakOpen = found.has('open3d') && !openStrict;
+  if (weakOpen && found.size > 1) found.delete('open3d');
+
+  const intents = GUIDE_ORDER.filter((id) => found.has(id));
+  return {
+    intents,
+    asks,
+    troubled,
+    strong: intents.length > 0 && !(intents[0] === 'open3d' && weakOpen),
+    contactSafe: intents.some((id) => CONTACT_SAFE.has(id)) && (asks || troubled),
+    walk,
+    rotate,
+    resize,
+    fallback: intents.length === 0 && troubled && SITE.test(norm),
+  };
+}
 
 const POSSESSIVE = /\b(my|mine|our|ours|current|currently|this|live)\b/;
 const WORKSPACE_NOUN =
@@ -313,7 +482,7 @@ const WORKSPACE_FACETS = Object.freeze({
   electrical:
     /\b(watts?|wattage|power|load|draw|drivers?|psus?|supply|amps?|current|volts?|voltage|drop|bus|24 ?v|cables?|cabling|wiring|run)\b/,
   acoustic: /\b(rt60|reverb\w*|echo\w*|acoustic\w*|sabine|sti|speech|intelligib\w*|absorption|octaves?|sound|noise)\b/,
-  lighting: /\b(lux|lx|illuminance|bright\w*|light level|lighting level|lumens?|dark|task light\w*)\b/,
+  lighting: /\b(lux|lx|illuminance|bright\w*|light level|lighting level|lumens|dark|task light\w*)\b/,
   conflicts: /\b(conflicts?|overlap\w*|collision\w*|collid\w*|clash\w*|intersect\w*)\b/,
   cost: /\b(costs?|prices?|pricing|total|budget|how much|expensive|cheap)\b/,
   logistics: /\b(crates?|ship|shipping|shipment|dispatch|deliver\w*|freight|pallet|parcel|waves?|weight|weigh|kg)\b/,
@@ -323,7 +492,8 @@ const FACETS = Object.freeze([
   ['dimensions', /\b(dimensions?|sizes?|how (big|wide|tall|deep|long)|width|height|depth|length|measure\w*|w x h)\b/],
   ['weight', /\b(weight|weighs?|kg|heavy|mass)\b/],
   ['power', /\b(watts?|wattage|power draw|draw|consum\w*|\d+ ?w)\b/],
-  ['lumens', /\b(lumens?|lm|output|flux|brightness)\b/],
+  // Singular "lumen" is the brand ("What is Lumen?"); the unit reads as plural or with a figure.
+  ['lumens', /\b(lumens|\d+ ?lumen|lumen (output|rating|value|count|level)|lm|output|flux|brightness)\b/],
   ['kelvin', /\b(kelvin|cct|colou?r temperature|2700 ?k|3000 ?k|warm|cool)\b/],
   ['cri', /\b(cri|colou?r rendering)\b/],
   ['nrc', /\b(nrc|absorption|absorb\w*|felt|sound)\b/],
@@ -452,7 +622,7 @@ function routeProduct(route) {
 
 function analyze(text) {
   const norm = normalize(text);
-  const scan = norm.replace(KNOWN_PHRASES, ' ');
+  const scan = norm.replace(KNOWN_PHRASES, ' ').replace(PLANNER_PHRASES, ' ');
   const escalations = ESCALATION_TOPICS.filter((topic) => topic.re.test(scan));
   const products = matchProducts(norm);
   const facets = FACETS.filter(([, re]) => re.test(norm)).map(([id]) => id);
@@ -491,6 +661,9 @@ function analyze(text) {
     subtopics,
     contact: CONTACT.test(norm),
     smalltalk: SMALLTALK.test(norm),
+    overview: OVERVIEW.test(norm),
+    thanks: THANKS.test(norm),
+    guide: detectGuide(norm, products),
     workspace: {
       intent: (possessive || audit || need) && !howTo,
       audit: AUDIT.test(norm),
@@ -521,13 +694,22 @@ function classify(analysis) {
     const confidence = Math.max(0.08, 0.38 - 0.07 * (analysis.escalations.length - 1) - (topScore > 0 ? 0 : 0.04));
     return { category: 'engineering', resolved: false, confidence: round(confidence, 2), ranked };
   }
+  // A how-to, navigation or fault question about the app itself outranks the
+  // topic words it mentions ("why can't I open my 3D room" is not an audit).
+  const { guide } = analysis;
+  if (guide.intents.length > 0 && (!analysis.contact || guide.contactSafe)) {
+    const strength = 3 + guide.intents.length + (guide.asks ? 1 : 0) + (guide.troubled ? 1 : 0) + (guide.strong ? 1 : 0);
+    return { category: 'guide', resolved: true, confidence: scoreConfidence(strength), ranked };
+  }
   if (analysis.workspace.intent) {
     const strength = 3 + analysis.workspace.facets.length + (analysis.workspace.target ? 1 : 0);
     return { category: 'workspace', resolved: true, confidence: scoreConfidence(strength), ranked };
   }
   if (top) return { category: top, resolved: true, confidence: scoreConfidence(topScore), ranked };
   if (analysis.contact) return { category: 'gatekeeper', resolved: true, confidence: 0.7, ranked };
-  if (analysis.smalltalk) return { category: 'concierge', resolved: true, confidence: 0.66, ranked };
+  if (guide.fallback) return { category: 'guide', resolved: true, confidence: scoreConfidence(4), ranked };
+  if (analysis.overview) return { category: 'concierge', resolved: true, confidence: 0.9, ranked };
+  if (analysis.smalltalk) return { category: 'concierge', resolved: true, confidence: 0.85, ranked };
   return { category: 'unrecognized', resolved: false, confidence: analysis.norm.trim().length < 4 ? 0.1 : 0.18, ranked };
 }
 
@@ -553,6 +735,10 @@ const CITE = Object.freeze({
   spatial: { id: 'manual:spatial-studio', label: '3D Spatial Studio Manual' },
   cad: { id: 'manual:cad-exports', label: 'CAD Export Schedule' },
   cloud: { id: 'manual:lumen-cloud', label: 'Lumen Cloud Library Rules' },
+  navigation: { id: 'manual:navigation', label: 'Lumen Navigation Guide' },
+  controls: { id: 'manual:controls', label: 'Keyboard & Display Mode Reference' },
+  wallStudio: { id: 'manual:wall-studio', label: '2D Wall Studio Manual' },
+  troubleshooting: { id: 'manual:troubleshooting', label: 'Studio Troubleshooting Notes' },
   wall: { id: 'workspace:wall', label: 'Live 2D Wall Draft' },
   room: { id: 'workspace:room', label: 'Live 3D Room Draft' },
   cart: { id: 'workspace:cart', label: 'Live Cart' },
@@ -564,6 +750,10 @@ const ACTIONS = Object.freeze({
   wall: { label: 'Open Wall Studio', to: '/studio-2d' },
   checkout: { label: 'Open Checkout Spec', to: '/checkout' },
   catalog: { label: 'Browse Catalog', to: '/catalog' },
+  launch: { label: 'Launch 3D Spatial Studio', to: '/room-3d' },
+  walkthrough: { label: 'Launch 165 cm Walkthrough', to: launchHref({ lens: 'inside' }) },
+  loft: { label: 'Open the Grand Loft', to: launchHref({ scale: 'loft', lens: 'orbit' }) },
+  account: { label: 'Open Account', to: '/account' },
 });
 
 function productAction(product) {
@@ -1280,6 +1470,234 @@ function composeWorkspace(analysis, ctx) {
   return section(paragraphs, { metrics, citations, actions });
 }
 
+/* Studio guide: how the site, the planners and their controls work */
+
+const LENS_SHORT = Object.freeze({ orbit: 'Orbit', inside: `Inside ${EYE_HEIGHT_CM} cm`, elevation: 'Elevation' });
+const LENS_LIST = `${LENS_SHORT.orbit}, ${LENS_SHORT.inside} and ${LENS_SHORT.elevation}`;
+const MAX_ROOM_LABEL = `${ROOM_WIDTH.max} x ${ROOM_DEPTH.max} x ${ROOM_HEIGHT.max} cm`;
+
+function presetList() {
+  return listLabel(ROOM_SIZE_PRESETS.map((preset) => `${preset.label} ${preset.widthCm} x ${preset.depthCm}`));
+}
+
+function ceilingRange() {
+  const heights = ROOM_SIZE_PRESETS.map((preset) => preset.heightCm);
+  return `${Math.min(...heights)} to ${Math.max(...heights)} cm`;
+}
+
+function mentions2d(analysis, ctx) {
+  return /\b(2d|wall studio|elevation)\b/.test(analysis.norm) || ctx.route === '/studio-2d';
+}
+
+const GUIDE_SECTIONS = Object.freeze({
+  open3d(analysis, ctx) {
+    const inside = ctx.route === '/room-3d';
+    const fault = analysis.guide.troubled || inside;
+    const nav =
+      `Clicking 3D Room in the top navigation bar scrolls to the interactive 3D Spatial Studio preview on the Overview page, so you can preview its four camera and physics acts first: the 360-degree orbit, the ${EYE_HEIGHT_CM} cm eye-level walkthrough, the transform gizmo and the iso-lux field. To enter the full-screen 3D editor (/room-3d), click Launch 3D Spatial Studio in that section, or use the direct launch button right below this message.`;
+    const checks = `three things cover almost every case. The editor draws with WebGL 2, so switch on hardware acceleration in your browser settings or use a current Chrome, Edge, Firefox or Safari; without WebGL the page says so and keeps the scene, inspector and 2D bridge live. The first launch downloads the 3D engine, so give the boot overlay a few seconds on a slow connection. And a reload is always safe: your last room is kept on this device and reopens exactly as you left it.`;
+    const quickStart = `Once inside, pick the active wall (North, East, South or West) in the header, click any part in the left Asset Shelf to mount it there, and switch lenses between ${LENS_LIST}.`;
+    let paragraphs;
+    if (inside) paragraphs = [`You are already in the 3D Spatial Studio (/room-3d). If the viewport stays empty, ${checks}`, nav];
+    else if (fault) paragraphs = [nav, `If the studio still does not open, ${checks}`];
+    else paragraphs = [nav, quickStart];
+    return {
+      paragraphs,
+      metrics: [
+        { label: 'Editor', value: '/room-3d' },
+        { label: 'Lenses', value: `${LENS_SHORT.orbit} / Inside / ${LENS_SHORT.elevation}` },
+        { label: 'Renderer', value: 'WebGL 2' },
+      ],
+      actions: [ACTIONS.launch, ACTIONS.walkthrough],
+      citations: [CITE.navigation, CITE.spatial, ...(fault ? [CITE.troubleshooting] : [])],
+    };
+  },
+
+  wallOpen(analysis) {
+    const paragraphs = [
+      `Wall Studio in the top navigation bar opens the 2D Wall Studio (/studio-2d) directly, with no preview step. It composes one elevation up to ${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm with up to ${MAX_WALL_ITEMS} modules: start from a Wall Preset or click parts under Components, then drag, align and distribute them on the ${GRID_STEP_CM} cm grid. Blueprint in the toolbar opens the 1:20 sheet with its drilling schedule, ready to download as .SVG or AutoCAD .DXF.`,
+    ];
+    if (analysis.guide.troubled) {
+      paragraphs.push('If it does not load, reload the page: the wall is kept on this device. The 2D studio is drawn in plain HTML and SVG, so it needs no WebGL.');
+    }
+    return {
+      paragraphs,
+      metrics: [
+        { label: 'Wall Max', value: `${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm` },
+        { label: 'Modules', value: String(MAX_WALL_ITEMS) },
+        { label: 'Grid', value: `${GRID_STEP_CM} cm` },
+      ],
+      actions: [ACTIONS.wall],
+      citations: [CITE.navigation, CITE.wallStudio],
+    };
+  },
+
+  move(analysis, ctx) {
+    const [product] = analysis.products;
+    const room = `In the 3D Spatial Studio, choose the active wall (North, East, South or West) in the header, then click any part in the left Asset Shelf: one click mounts it on that wall${product ? `, and the ${product.name} sits there with the other parts` : ''}. Click a mounted module in the 3D view to select it and reveal the X/Y Transform Gizmo, then drag the module or a handle straight across the wall. The pointer ray is solved against the wall plane, so the part slides in true wall centimetres, and each release is one undoable step.`;
+    const keys = `From the keyboard, press G to grab the selected module, nudge it with the arrow keys, then Enter (or G again) to drop it or Escape to cancel. Grid Snap in the header holds moves to 5 cm (switch it off for 1 cm free moves), and the inspector's Transform panel offers ${listLabel(Object.values(AXIS_LOCK_LABELS))}. Overlaps, parts past the wall edge and clashes with the reference furniture are flagged as conflicts.`;
+    const wall = `In the 2D Wall Studio, click a part under Components to mount it, drag modules directly on the elevation, Shift + Click or drag a marquee across empty wall to select several, and use Align & Distribute in the inspector. The arrow keys nudge by one grid step (Shift for ten) and Delete removes the selection.`;
+    return {
+      paragraphs: mentions2d(analysis, ctx) && !/\b3d\b/.test(analysis.norm) ? [wall, room, keys] : [room, keys, wall],
+      metrics: [
+        { label: 'Grid Snap', value: '5 cm' },
+        { label: 'Free Move', value: '1 cm' },
+        { label: 'Axis Locks', value: 'X / Y' },
+      ],
+      actions: [ACTIONS.launch, ACTIONS.wall],
+      citations: [CITE.spatial, CITE.wallStudio],
+    };
+  },
+
+  navigate(analysis, ctx) {
+    const { walk, rotate, resize } = analysis.guide;
+    const lenses = `The 3D Spatial Studio has three camera lenses in its header. ${LENS_SHORT.orbit} is the default: drag to circle the room a full 360 degrees, tilt from ${CAMERA_PITCH.min} to ${CAMERA_PITCH.max} deg and zoom with the mouse wheel (${CAMERA_ZOOM.min}x to ${CAMERA_ZOOM.max}x); the arrow keys step the camera and Home or 0 resets it. ${LENS_SHORT.inside} puts you on your feet at eye height: walk with W A S D or the arrow keys, turn with Q and E, drag to look around, and the mouse wheel or + and - set the field of view from ${INSIDE_FOV.min} to ${INSIDE_FOV.max} deg. ${LENS_SHORT.elevation} shows the active wall square-on.`;
+    const size = `Room size lives in the Envelope & Lighting panel on the left: the Room scale presets set ${presetList()} (ceilings ${ceilingRange()}), and the width, depth and ceiling fields take any size from ${ROOM_WIDTH.min} x ${ROOM_DEPTH.min} x ${ROOM_HEIGHT.min} cm up to ${MAX_ROOM_LABEL}. The 24V bus, RT60 and floor lux recalculate as the envelope changes.`;
+    const wall = `In the 2D Wall Studio, Wall Setup sets the elevation from ${WALL_WIDTH.min} x ${WALL_HEIGHT.min} cm up to ${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm.`;
+    const sizeFirst = resize && !walk && !rotate;
+    const paragraphs = sizeFirst ? [size, lenses] : [lenses, size];
+    if (resize && mentions2d(analysis, ctx)) paragraphs.splice(sizeFirst ? 1 : 2, 0, wall);
+    return {
+      paragraphs,
+      metrics: [
+        { label: 'Orbit Pitch', value: `${CAMERA_PITCH.min}-${CAMERA_PITCH.max} deg` },
+        { label: 'Inside FOV', value: `${INSIDE_FOV.min}-${INSIDE_FOV.max} deg` },
+        { label: 'Eye Height', value: `${EYE_HEIGHT_CM} cm` },
+        { label: 'Max Room', value: MAX_ROOM_LABEL },
+      ],
+      actions: sizeFirst ? [ACTIONS.launch, ACTIONS.loft] : [ACTIONS.walkthrough, ACTIONS.launch, ACTIONS.loft],
+      citations: [CITE.spatial],
+    };
+  },
+
+  remove() {
+    return {
+      paragraphs: [
+        `In the 3D Spatial Studio, select the module (click it in the view or in the Modules outliner) and press Remove under Actions in the inspector. In the 2D Wall Studio, select one or more modules and press Delete or Backspace, or use Remove in the inspector. Ctrl+Z (Cmd+Z on a Mac) brings anything back, up to ${HISTORY_LIMIT} steps.`,
+      ],
+      metrics: [
+        { label: 'Undo', value: 'Ctrl+Z' },
+        { label: 'History', value: `${HISTORY_LIMIT} steps` },
+      ],
+      actions: [ACTIONS.launch, ACTIONS.wall],
+      citations: [CITE.controls],
+    };
+  },
+
+  save() {
+    return {
+      paragraphs: [
+        `Your working draft is kept on this device automatically after every change. Save to Cloud, in the summary under each planner, adds a named copy to your library: it needs at least one mounted module, and Lumen Cloud keeps ${MAX_STORED_PROJECTS} projects per library, this browser profile while you are signed out and your account once you sign in.`,
+        'Saving under an existing name adds a revision; once the library is full, a new name is refused until you delete a project on the Account page, where every saved project is listed. With the API unreachable, a save stays on this device and syncs when the connection returns.',
+      ],
+      metrics: [
+        { label: 'Projects', value: String(MAX_STORED_PROJECTS) },
+        { label: 'Drafts', value: 'Kept on this device' },
+      ],
+      actions: [ACTIONS.account],
+      citations: [CITE.cloud],
+    };
+  },
+
+  cart(analysis) {
+    const paragraphs = [
+      'Add parts from any Catalog card or product page with Add to Cart once the finish is chosen. From a planner, Sync Room to Cart or Sync Wall to Cart sends every mounted module in one step. Cart, at the top right, opens the drawer with your lines, the 24V load and the subtotal; Configure Quote & Checkout builds the quote sheet with the sized 24V driver, crates and dispatch waves, and Submit Requisition sends it to Lumen Cloud for an LMN-R reference.',
+    ];
+    if (analysis.guide.troubled || /\bempt\w*\b/.test(analysis.norm)) {
+      paragraphs.push('The cart is kept per browser profile, so another browser or a private window starts with an empty cart.');
+    }
+    return { paragraphs, metrics: [{ label: 'VAT', value: `${VAT_RATE_PCT}%` }], actions: [ACTIONS.catalog, ACTIONS.checkout], citations: [CITE.quote] };
+  },
+
+  account() {
+    return {
+      paragraphs: [
+        `Sign In at the top right opens a dialog: enter your email and a password of at least ${PASSWORD_MIN} characters. There is no separate registration, so the first sign-in with an address opens its account library, and Lumen Cloud moves this browser's saved projects, quotes and tickets into it, ready on any device signed in with the same address. Once signed in, the button reads Account and lists your projects, requisitions and engineering tickets.`,
+      ],
+      metrics: [{ label: 'Password', value: `${PASSWORD_MIN}+ characters` }],
+      actions: [ACTIONS.account],
+      citations: [CITE.cloud],
+    };
+  },
+
+  search() {
+    return {
+      paragraphs: [
+        `Search, the first control in the top bar, opens the command palette, and Ctrl+K (Cmd+K on a Mac) opens it from any page. Type a part, a workspace or a command and press Enter to jump straight there. The Catalog lists all ${PRODUCTS.length} parts with their specs and prices.`,
+      ],
+      metrics: [{ label: 'Shortcut', value: 'Ctrl+K / Cmd+K' }],
+      actions: [ACTIONS.catalog],
+      citations: [CITE.controls],
+    };
+  },
+
+  modes() {
+    return {
+      paragraphs: [
+        'Visual and Specs, the switch in the top bar, set how much engineering the whole site shows. Visual is the clean presentation view. Specs reveals the technical layer: the 24V bus wiring in the Wall Studio, dimension guides, rulers, SKU tags and clearance callouts in the planners, module coordinates, the six-band octave RT60 spectrum and the engineering telemetry. Your choice is remembered on this device.',
+      ],
+      metrics: [
+        { label: 'Visual', value: 'Presentation' },
+        { label: 'Specs', value: 'Engineering layer' },
+      ],
+      actions: [ACTIONS.wall, ACTIONS.launch],
+      citations: [CITE.controls],
+    };
+  },
+
+  shortcuts(analysis) {
+    const zen = 'Zen, at the right of the 3D studio header, collapses the side docks for a full-viewport view; Docks brings them back.';
+    const keys = `Keyboard shortcuts: Ctrl+K (Cmd+K on a Mac) opens the command palette anywhere, and Ctrl+Z undoes while Ctrl+Y or Ctrl+Shift+Z redoes in both planners (${HISTORY_LIMIT} steps). In the 3D Spatial Studio, G grabs the selected module, the arrow keys nudge it, Enter drops it and Escape cancels; in the ${LENS_SHORT.inside} lens, W A S D walk and Q and E turn. In the 2D Wall Studio, Ctrl+A selects every module, the arrow keys nudge (Shift for ten steps) and Delete removes the selection.`;
+    const zenFirst = /\b(zen|full ?screen|maximi[sz]e|docks?|hide)\b/.test(analysis.norm) && !/\b(keyboard|shortcuts?|hot ?keys?|ctrl|cmd)\b/.test(analysis.norm);
+    return {
+      paragraphs: zenFirst ? [zen, keys] : [`${keys} ${zen}`],
+      metrics: [
+        { label: 'Palette', value: 'Ctrl+K / Cmd+K' },
+        { label: 'Undo', value: 'Ctrl+Z' },
+        { label: 'Redo', value: 'Ctrl+Y' },
+      ],
+      actions: [ACTIONS.launch, ACTIONS.wall],
+      citations: [CITE.controls],
+    };
+  },
+
+  chrome() {
+    return {
+      paragraphs: [
+        'The top bar, left to right: the Lumen mark returns to the Overview; Overview, 3D Room (it scrolls to the 3D Spatial Studio preview, whose launch key opens the editor), Catalog and Wall Studio; then Search (Ctrl+K), the Visual / Specs switch, Sign In or Account, and Cart with its live item count. Below 1200 px wide the page links move to a second row.',
+      ],
+      metrics: [{ label: 'Pages', value: 'Overview / 3D Room / Catalog / Wall Studio' }],
+      actions: [ACTIONS.launch, ACTIONS.catalog],
+      citations: [CITE.navigation],
+    };
+  },
+
+  trouble() {
+    return {
+      paragraphs: [
+        'A few checks clear most issues. Reload the page: your 2D wall, 3D room and cart are kept on this device, so nothing is lost. Keep hardware acceleration switched on so the 3D Spatial Studio can use WebGL 2. And if Lumen Cloud is unreachable, the planners and this assistant keep working on the device and saves wait there until the connection returns; only requisitions need the connection.',
+        'Tell me which page or button misbehaves, for example "the 3D room will not open" or "I cannot move a shelf", and I will walk you through it.',
+      ],
+      metrics: [],
+      actions: [ACTIONS.launch, ACTIONS.wall],
+      citations: [CITE.troubleshooting],
+    };
+  },
+});
+
+function composeGuide(analysis, ctx) {
+  const ids = analysis.guide.intents.length > 0 ? analysis.guide.intents.slice(0, 3) : ['trouble'];
+  const parts = ids.map((id) => GUIDE_SECTIONS[id](analysis, ctx));
+  // The leading intent keeps its whole answer; the others add their first two paragraphs.
+  const paragraphs = parts.flatMap((part, i) => (i === 0 ? part.paragraphs : part.paragraphs.slice(0, 2))).slice(0, 5);
+  const [product] = analysis.products;
+  return section(paragraphs, {
+    metrics: uniqueBy(parts.flatMap((part) => part.metrics), 'label', 4),
+    citations: parts.flatMap((part) => part.citations),
+    actions: [...parts.flatMap((part) => part.actions), ...(product ? [productAction(product)] : [])],
+  });
+}
+
 /* Unresolved and gatekeeper replies */
 
 function composeEngineering(analysis) {
@@ -1315,19 +1733,38 @@ function composeGatekeeper() {
   return section([CONTACT_GATE_REPLY]);
 }
 
-function composeConcierge() {
+/** Greetings and "what is Lumen": a short, warm tour of the platform and of what to ask. */
+function composeConcierge(analysis) {
+  if (analysis?.thanks) {
+    return section(['You are welcome. Ask whenever you need a spec, a driver size or a hand with either planner.']);
+  }
+  const overview = Boolean(analysis?.overview);
   return section(
     [
-      `I am the Lumen Spec Concierge. ${SCOPE_LINE}`,
-      'Try "Audit my live 3D room & RT60", "Compare 60W vs 150W 24V drivers" or "Floating Shelf 110 specs & anchors".',
+      `${overview ? '' : 'Hello, I am Lumen AI, the studio assistant built into this workspace. '}Lumen is a Scandinavian system of architectural lighting, acoustic surfaces and modular furniture: ${PRODUCTS.length} canonical parts on one ${BUS_VOLTAGE}V DC SELV spine, so every shelf, light bar, pendant and sconce plugs into the same low-voltage bus, sized with a 60W or 150W driver and dimmed per module over DALI-2 from ${DIM_RANGE.min} to ${DIM_RANGE.max}%.`,
+      `You plan in two places. The 3D Spatial Studio is a full-screen editor for all four walls of a room up to ${ROOM_WIDTH.max / 100} x ${ROOM_DEPTH.max / 100} m: orbit it 360 degrees, walk it at ${EYE_HEIGHT_CM} cm eye level and drag parts straight across the walls. The 2D Wall Studio composes one elevation and exports a 1:20 blueprint as .SVG or .DXF. Both recalculate the 24V driver and voltage drop, Sabine RT60 and STI across six octaves, and floor lux as you work, and Checkout turns the layout into a server-verified quote with crates and dispatch waves.`,
+      overview && ARCHITECTURE.test(analysis.norm)
+        ? 'Under the hood, every figure comes from the same pure, deterministic engines in your browser and on the Lumen Cloud API: the server re-prices every requisition, and I answer the same way online or offline.'
+        : null,
+      'Ask me anything in plain words: how to open or use a tool, the size or price of a part, driver sizing, acoustics or shipping. Say "audit my room" and I will read your live 2D wall, 3D room and cart.',
     ],
-    { actions: [ACTIONS.room, ACTIONS.catalog] },
+    {
+      metrics: [
+        { label: 'Parts', value: String(PRODUCTS.length) },
+        { label: 'Bus', value: `${BUS_VOLTAGE} V SELV` },
+        { label: 'Dimming', value: `${DIM_RANGE.min}-${DIM_RANGE.max}%` },
+        { label: 'Planners', value: '2D + 3D' },
+      ],
+      citations: [CITE.catalog, CITE.navigation],
+      actions: [ACTIONS.launch, ACTIONS.wall, ACTIONS.catalog],
+    },
   );
 }
 
 const COMPOSERS = Object.freeze({
   catalog: composeCatalog,
   workspace: composeWorkspace,
+  guide: composeGuide,
   electrical: composeElectrical,
   physics: composePhysics,
   spatial: composeSpatial,
@@ -1384,8 +1821,9 @@ export function evaluateConciergeQuery(question, workspaceContext) {
   const analysis = analyze(text);
   const verdict = classify(analysis);
   const sections = [COMPOSERS[verdict.category](analysis, ctx)];
-  // A second topic joins when it carries real weight of its own.
-  if (SUBSTANTIVE.has(verdict.category) && verdict.category !== 'workspace') {
+  // A second topic joins when it carries real weight of its own. A guide
+  // answer stays on the task: a named part rides along as a link instead.
+  if (SUBSTANTIVE.has(verdict.category) && verdict.category !== 'workspace' && verdict.category !== 'guide') {
     const second = verdict.ranked.find((topic) => topic !== verdict.category && analysis.scores[topic] >= 3);
     if (second) sections.push(COMPOSERS[second](analysis, ctx));
   }
@@ -1441,6 +1879,11 @@ function deeperDetail(analysis, verdict, ctx) {
     case 'spatial':
       return [
         'Keyboard map: G grabs the selected module, the arrow keys nudge it, Enter commits and Escape cancels; Home or 0 resets the orbit camera; in the Inside Room lens W A S D or the arrows walk and the wheel sets the field of view.',
+      ];
+    case 'guide':
+      return [
+        `Full keyboard map: Ctrl+K or Cmd+K opens the command palette; Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes (${HISTORY_LIMIT} steps). 3D Spatial Studio: G grabs, the arrow keys nudge, Enter drops, Escape cancels, Home or 0 resets the orbit; in the ${LENS_SHORT.inside} lens W A S D walk, Q and E turn, + and - set the lens. 2D Wall Studio: Ctrl+A selects all, the arrow keys nudge (Shift for ten), Delete removes.`,
+        'Troubleshooting checklist: reload the page (drafts and the cart are kept on this device); switch on hardware acceleration so WebGL 2 can run the 3D Spatial Studio; allow site data for this address so drafts survive between visits, since a private window starts with an empty workspace; and when Lumen Cloud is unreachable, saves stay on the device and sync later.',
       ];
     case 'commerce':
       return [
@@ -1511,8 +1954,8 @@ export function sanitizeConciergeReply(input) {
 /* Quick prompts and workspace summary */
 
 const QUICK_PROMPTS = Object.freeze({
-  default: ['Audit my live 3D room & RT60', 'Compare 60W vs 150W 24V drivers', 'Floating Shelf 110 specs & anchors', 'Explain Split Rough-In shipping'],
-  '/room-3d': ['Audit my live 3D room & RT60', 'Which PSU driver do I need?', 'How do I walk inside at 165 cm?', 'Export my room as .OBJ or .PNG'],
+  default: ['How do I open the 3D room designer?', 'Audit my live 3D room & RT60', 'Compare 60W vs 150W 24V drivers', 'Floating Shelf 110 specs & anchors'],
+  '/room-3d': ['Audit my live 3D room & RT60', 'How do I move a module in 3D?', 'How do I walk inside at 165 cm?', 'Which PSU driver do I need?'],
   '/studio-2d': ['How many watts is my wall using?', 'Check my wall voltage drop', 'Export a 1:20 DXF blueprint', 'Compare 60W vs 150W 24V drivers'],
   '/catalog': ['Floating Shelf 110 specs & anchors', 'Which finishes ship in Obsidian?', 'Lead times for made-to-order parts', 'Compare 60W vs 150W 24V drivers'],
   '/checkout': ['How many crates will my cart ship in?', 'Explain Split Rough-In shipping', 'How do TRADE15 and 27% VAT apply?', 'Which PSU driver do I need?'],

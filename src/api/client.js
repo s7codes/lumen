@@ -551,9 +551,11 @@ function loadEngine() {
 }
 
 /**
- * Asks the Studio AI concierge. The server answers over HTTP; when the API is
- * unreachable the same deterministic engine answers on this device, so the
- * reply is identical either way. Resolves with `{ reply, transport }`.
+ * Asks the Studio AI concierge. The server answers over HTTP; whenever it
+ * cannot (unreachable, a static host, a 404 from a dev server started on an
+ * older checkout, a 5xx, a refused or unreadable reply) the same
+ * deterministic engine answers on this device, so the visitor always gets the
+ * reply and never a transport fault. Resolves with `{ reply, transport }`.
  */
 export function askConcierge(question, workspaceContext) {
   return roundTrip(async (trip) => {
@@ -561,12 +563,13 @@ export function askConcierge(question, workspaceContext) {
     try {
       const payload = await request(trip, 'POST', '/concierge/ask', { question, workspaceContext }, { session: false });
       const reply = engine.sanitizeConciergeReply(payload.reply);
-      if (!reply) throw new ApiError('storage', 'The concierge sent an unreadable reply.');
-      return { reply, transport: 'http' };
+      if (reply) return { reply, transport: 'http' };
     } catch (error) {
-      goOffline(trip, error);
-      return { reply: engine.evaluateConciergeQuery(question, workspaceContext), transport: 'local' };
+      // Only a dead link moves the transport indicator to offline: a server
+      // that answered without this route is still the cloud for everything else.
+      if (error instanceof OfflineError) goOffline(trip, error);
     }
+    return { reply: engine.evaluateConciergeQuery(question, workspaceContext), transport: 'local' };
   });
 }
 

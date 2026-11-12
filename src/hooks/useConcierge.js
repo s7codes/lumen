@@ -8,6 +8,7 @@ import {
   ESCALATION_LOCKED,
   ESCALATION_UNLOCKED,
   escalationTranscript,
+  evaluateConciergeQuery,
   quickPromptsFor,
   sanitizeQuestion,
 } from '../lib/concierge-engine.js';
@@ -45,14 +46,18 @@ export function useConcierge(route) {
     const text = sanitizeQuestion(question);
     if (!text || stateRef.current.pending) return false;
     dispatch({ type: 'ask', question: text });
+    const context = readWorkspaceContext(routeRef.current);
     try {
-      const { reply, transport } = await askConcierge(text, readWorkspaceContext(routeRef.current));
+      const { reply, transport } = await askConcierge(text, context);
       dispatch({ type: 'reply', reply, transport });
-    } catch (error) {
-      dispatch({
-        type: 'fail',
-        message: error?.name === 'ApiError' ? error.message : 'The concierge could not answer. Ask again.',
-      });
+    } catch {
+      // askConcierge already answers locally on every transport fault; this is
+      // the last net, and a server message never reaches the conversation.
+      try {
+        dispatch({ type: 'reply', reply: evaluateConciergeQuery(text, context), transport: 'local' });
+      } catch {
+        dispatch({ type: 'fail', message: 'The concierge could not answer. Ask again.' });
+      }
     }
     return true;
   }, []);

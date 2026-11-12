@@ -9,7 +9,7 @@ import { NAV_ROUTES } from '../lib/routes.js';
 import { AuthModal } from './AuthModal.jsx';
 import { BagDrawer } from './BagDrawer.jsx';
 import { CommandPalette, PALETTE_SHORTCUT_LABEL } from './CommandPalette.jsx';
-import { LumenMark, SearchGlyph } from './icons.jsx';
+import { BagGlyph, LumenMark, SearchGlyph } from './icons.jsx';
 import { ModeSwitch } from './ModeSwitch.jsx';
 
 function linkClass(current) {
@@ -176,7 +176,10 @@ export function Navbar() {
               aria-controls="bag-drawer"
               onClick={() => openBag(bagTriggerRef.current)}
             >
-              Cart <span className="bag-trigger__count">({count})</span>
+              <BagGlyph />
+              <span className="bag-trigger__label">
+                <span className="bag-trigger__word">Cart</span> <span className="bag-trigger__count">({count})</span>
+              </span>
             </button>
           </div>
         </div>

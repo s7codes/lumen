@@ -257,6 +257,23 @@
   border-radius: var(--pill-radius);
 }
 
+/* The cart key pairs with Search: the same 14px glyph, gap and inset, then
+   the label. The glyph is decorative; the name stays "Cart (n)". */
+.bag-trigger {
+  gap: var(--space-2);
+  padding-inline: var(--space-3) var(--space-4);
+}
+
+.bag-trigger svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.bag-trigger__label {
+  white-space: nowrap;
+}
+
 .bag-trigger__count {
   color: var(--text-secondary);
 }

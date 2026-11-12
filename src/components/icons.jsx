@@ -28,23 +28,6 @@ export function ArrowRight({ className }) {
   );
 }
 
-// Six-blade camera aperture inside a hexagonal bezel: the Studio AI mark.
-export function ApertureGlyph({ size = 18 }) {
-  return (
-    <svg viewBox="0 0 20 20" width={size} height={size} aria-hidden="true" focusable="false" className="aperture-glyph">
-      <path d="M10 1.75 17.15 5.88V14.12L10 18.25 2.85 14.12V5.88Z" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path
-        d="M10 1.75 12.7 8.45M17.15 5.88 11.9 10.95M17.15 14.12 9.95 13.05M10 18.25 7.3 11.55M2.85 14.12 8.1 9.05M2.85 5.88 10.05 6.95"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1"
-        strokeLinecap="round"
-      />
-      <path d="M10 7.2 12.42 8.6V11.4L10 12.8 7.58 11.4V8.6Z" fill="currentColor" />
-    </svg>
-  );
-}
-
 export function PlusGlyph() {
   return (
     <svg className="glyph-plus" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
@@ -132,6 +115,20 @@ export function SearchGlyph({ className }) {
     <svg className={className} viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
       <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.25" />
       <path d="M10.5 10.5 14 14" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
+    </svg>
+  );
+}
+
+/**
+ * Architectural tote for the Cart key: a square-shouldered body and a single
+ * handle loop, drawn on the same 16-unit grid and 1.25 stroke as SearchGlyph
+ * so the two navbar keys carry one visual weight at 14 x 14.
+ */
+export function BagGlyph({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false" data-testid="bag-glyph">
+      <path d="M2.75 5.75h10.5l-.75 8H3.5l-.75-8Z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="miter" />
+      <path d="M5.75 7.5V4.25a2.25 2.25 0 0 1 4.5 0V7.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
     </svg>
   );
 }

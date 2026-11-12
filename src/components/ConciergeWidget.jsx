@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useRef, useState } from 'react';
-import { ApertureGlyph } from './icons.jsx';
+import { LumenMark } from './icons.jsx';
 import '../styles/concierge.css';
 
 // The panel, its engine and the catalog math behind it load on first intent,
@@ -12,7 +12,10 @@ const CONCIERGE_PANEL_ID = 'lumen-concierge-panel';
 function PanelLoading() {
   return (
     <div className="concierge-panel concierge-panel--loading" role="status" data-testid="concierge-panel-loading">
-      <p className="concierge-panel__status mono">LUMEN SPEC CONCIERGE // LOADING ENGINE</p>
+      <span className="concierge-panel__mark" aria-hidden="true">
+        <LumenMark size={16} />
+      </span>
+      <p className="concierge-panel__loading-copy">Loading Lumen AI</p>
     </div>
   );
 }
@@ -64,7 +67,7 @@ export function ConciergeWidget() {
         onPointerEnter={loadPanel}
         onFocus={loadPanel}
       >
-        <ApertureGlyph />
+        <LumenMark size={16} className="concierge-trigger__mark" />
         <span className="concierge-trigger__label" aria-hidden="true">
           Ask Studio AI
         </span>

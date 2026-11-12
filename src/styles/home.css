@@ -1364,22 +1364,26 @@
   color: #f3e3c6;
 }
 
-/* ---------- launchpad portal ---------- */
+/* ---------- launch bar ---------- */
 
+/* One slim row under the rig: the headline, three quick-launch pills and the
+   studio key. Its height is the key's (54 px) plus a 20 px inset, under
+   110 px on a desktop; narrower frames wrap it to two rows, phones stack it. */
 .launchpad {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: 'copy presets cta';
   align-items: center;
-  gap: var(--space-7) var(--space-8);
+  gap: var(--space-4) var(--space-5);
   margin-top: var(--bento-gap);
-  padding: clamp(28px, 4.2vw, 64px);
+  padding: 20px 20px 20px 28px;
   border: 1px solid rgba(232, 146, 58, 0.28);
   border-radius: var(--bento-radius);
   background: radial-gradient(
-    120% 140% at 85% 50%,
-    rgba(232, 146, 58, 0.18) 0%,
-    rgba(232, 146, 58, 0.04) 45%,
+    55% 240% at 100% 50%,
+    rgba(232, 146, 58, 0.16) 0%,
+    rgba(232, 146, 58, 0.04) 55%,
     rgba(255, 255, 255, 0.02) 100%
   );
   -webkit-backdrop-filter: blur(var(--bento-blur));
@@ -1388,7 +1392,7 @@
   isolation: isolate;
 }
 
-/* A drafting lattice that fades out toward the copy, and a lit top edge. */
+/* A drafting lattice behind the keys that fades out toward the headline, and a lit top edge. */
 .launchpad::before {
   content: '';
   position: absolute;
@@ -1397,8 +1401,8 @@
   background:
     repeating-linear-gradient(90deg, rgba(242, 238, 231, 0.035) 0 1px, transparent 1px 40px),
     repeating-linear-gradient(0deg, rgba(242, 238, 231, 0.035) 0 1px, transparent 1px 40px);
-  -webkit-mask-image: radial-gradient(70% 90% at 85% 50%, #000 0%, transparent 75%);
-  mask-image: radial-gradient(70% 90% at 85% 50%, #000 0%, transparent 75%);
+  -webkit-mask-image: radial-gradient(45% 160% at 100% 50%, #000 0%, transparent 80%);
+  mask-image: radial-gradient(45% 160% at 100% 50%, #000 0%, transparent 80%);
   pointer-events: none;
 }
 
@@ -1413,80 +1417,100 @@
   pointer-events: none;
 }
 
-.launchpad__main {
-  min-width: 0;
-}
-
-.launchpad__status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  font-size: var(--text-2xs);
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  color: #f0b273;
-}
-
-.launchpad__status-rule {
-  position: relative;
-  flex: none;
-  width: 28px;
-  height: 1px;
-  overflow: hidden;
-  background: rgba(240, 178, 115, 0.35);
-}
-
-.launchpad__status-rule::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: #fff1dc;
-  transform: translateX(-100%);
-  animation: launchpad-scan 2.4s var(--ease-in-out) infinite;
-}
-
-@keyframes launchpad-scan {
-  to {
-    transform: translateX(100%);
-  }
-}
-
 .launchpad__title {
-  margin-top: var(--space-5);
-  max-width: 13ch;
-  font-size: clamp(2.25rem, 1.2rem + 3.1vw, 4.25rem);
+  grid-area: copy;
+  min-width: 0;
+  font-size: 20px;
   font-weight: var(--weight-strong);
-  line-height: 0.98;
-  letter-spacing: -0.04em;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
   color: #ffffff;
 }
 
-.launchpad__lede {
-  margin-top: var(--space-5);
-  max-width: 46ch;
-  font-size: var(--text-base);
-  font-weight: var(--weight-light);
-  line-height: 1.55;
-  color: var(--text-secondary);
-}
-
-.launchpad__actions {
+/* Quick-launch pills: a glyph, a short label and an arrow that is the only part to travel. */
+.launchpad__presets {
+  grid-area: presets;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4) var(--space-6);
-  margin-top: var(--space-7);
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-/* The flagship key: sans, sentence case, a taller lift off a deeper plinth. A soft
-   champagne cap with espresso ink and a lit top edge; like every key it never
-   glows: the plinth is a zero-blur slab, the highlight a zero-blur inset line. */
-.button.launchpad__cta {
-  --key-lift: 3px;
-  --key-plinth: 5px;
-  --key-plinth-color: #6f5230;
+.launchpad__preset {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 40px;
+  padding: 0 14px 0 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(8, 8, 10, 0.46);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  transition:
+    border-color var(--duration-base) var(--ease-out),
+    background-color var(--duration-base) var(--ease-out);
+}
 
+.launchpad__preset:hover,
+.launchpad__preset:focus-visible {
+  border-color: rgba(240, 178, 115, 0.5);
+  background: rgba(26, 20, 14, 0.72);
+}
+
+.launchpad__preset:focus-visible {
+  outline: 1px solid var(--lumen-amber-soft);
+  outline-offset: 2px;
+}
+
+.launchpad__preset-glyph {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.launchpad__preset-glyph svg {
+  width: 22px;
+  height: 22px;
+}
+
+.launchpad__preset-arrow {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+  transition:
+    transform var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out);
+}
+
+.launchpad__preset:hover .launchpad__preset-arrow,
+.launchpad__preset:focus-visible .launchpad__preset-arrow {
+  transform: translateX(3px);
+  color: var(--lumen-amber-soft);
+}
+
+/* The flagship key: sans, sentence case, a soft champagne cap with espresso ink
+   and a lit top edge. It stays anchored on hover (no lift, no plinth, no
+   magnetic pull): a brighter cap fades in over it and only the arrow moves. */
+.button.launchpad__cta {
+  grid-area: cta;
   position: relative;
+  isolation: isolate;
   gap: var(--space-4);
   height: auto;
   min-height: 54px;
@@ -1499,14 +1523,34 @@
   border-color: rgba(255, 244, 224, 0.55);
   background: linear-gradient(135deg, #f3e3c6 0%, #e5c799 55%, #d8b27c 100%);
   color: #141210;
-  box-shadow:
-    inset 0 1px 0 0 rgba(255, 251, 242, 0.75),
-    calc(var(--mx, 0px) * -1) calc(var(--plinth, 0px) - var(--my, 0px)) 0 0 var(--key-plinth-color);
+  translate: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
-.button.launchpad__cta:hover:not(:disabled) {
+.button.launchpad__cta::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #fbf3e4 0%, #f1dbb5 55%, #e6c591 100%);
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+
+.button.launchpad__cta:hover:not(:disabled),
+.button.launchpad__cta:active:not(:disabled) {
+  --lift: 0px;
+  --plinth: 0px;
+  translate: none;
   border-color: rgba(255, 249, 238, 0.85);
-  background: linear-gradient(135deg, #f8ecd7 0%, #ecd2a8 55%, #e0bd89 100%);
+  background: linear-gradient(135deg, #f3e3c6 0%, #e5c799 55%, #d8b27c 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.button.launchpad__cta:hover:not(:disabled)::before,
+.button.launchpad__cta:focus-visible::before {
+  opacity: 1;
 }
 
 .launchpad__cta-glyph {
@@ -1520,9 +1564,28 @@
   background: rgba(255, 255, 255, 0.28);
 }
 
+.button.launchpad__cta .launchpad__cta-glyph svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Every glyph in the key holds still on hover; the arrow alone slides 3 px. */
+.button.launchpad__cta:hover:not(:disabled) svg {
+  transform: none;
+}
+
+.button.launchpad__cta .launchpad__cta-arrow {
+  transition: transform var(--duration-base) var(--ease-out);
+}
+
+.button.launchpad__cta:hover:not(:disabled) .launchpad__cta-arrow,
+.button.launchpad__cta:focus-visible .launchpad__cta-arrow {
+  transform: translateX(3px);
+}
+
 /* The border beam: an alabaster head on a gold trail, gliding round the key once
-   every 6 s. Each dash starts one dash length back, so both share a leading edge. */
-/* Laid over the border box, so the ribbon runs on the key's own 1px edge. */
+   every 6 s. Each dash starts one dash length back, so both share a leading edge.
+   Laid over the border box, so the ribbon runs on the key's own 1px edge. */
 .button.launchpad__cta .launchpad__cta-beam {
   position: absolute;
   inset: -1px;
@@ -1530,11 +1593,6 @@
   height: calc(100% + 2px);
   overflow: visible;
   pointer-events: none;
-}
-
-/* The beam rides the key itself: no icon nudge on hover. */
-.button.launchpad__cta:hover:not(:disabled) .launchpad__cta-beam {
-  transform: none;
 }
 
 .launchpad__cta-beam rect {
@@ -1578,17 +1636,6 @@
   }
 }
 
-.button.launchpad__cta .launchpad__cta-glyph svg {
-  width: 20px;
-  height: 20px;
-  transform: none;
-  transition: transform var(--duration-hover) var(--ease-cinematic);
-}
-
-.button.launchpad__cta:hover:not(:disabled) .launchpad__cta-glyph svg {
-  transform: rotate(-12deg) scale(1.08);
-}
-
 .launchpad__cta-copy {
   display: grid;
   gap: 3px;
@@ -1608,110 +1655,14 @@
   opacity: 0.72;
 }
 
-.launchpad__spec {
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: #a1a1aa;
-}
-
-.launchpad__presets {
-  display: grid;
-  gap: var(--space-3);
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.launchpad__preset {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-5) var(--space-4) var(--space-4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--bento-radius-inner);
-  background: rgba(8, 8, 10, 0.46);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  color: var(--text-secondary);
-  transition:
-    transform var(--duration-slow) var(--ease-cinematic),
-    border-color var(--duration-slow) var(--ease-out),
-    background-color var(--duration-slow) var(--ease-out),
-    box-shadow var(--duration-slow) var(--ease-out);
-}
-
-.launchpad__preset:hover,
-.launchpad__preset:focus-visible {
-  transform: translateY(-2px);
-  border-color: rgba(240, 178, 115, 0.5);
-  background: rgba(18, 15, 12, 0.66);
-  box-shadow: 0 2px 0 0 rgba(140, 79, 27, 0.55);
-}
-
-.launchpad__preset:focus-visible {
-  outline: 1px solid var(--lumen-amber-soft);
-  outline-offset: 2px;
-}
-
-.launchpad__preset-glyph {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.025);
-  color: #ffffff;
-}
-
-.launchpad__preset-glyph svg {
-  width: 32px;
-  height: 32px;
-}
-
-.launchpad__preset-copy {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.launchpad__preset-index {
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--lumen-amber);
-}
-
-.launchpad__preset-title {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  line-height: 1.25;
-  letter-spacing: -0.01em;
-  color: #ffffff;
-}
-
-.launchpad__preset-spec {
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-  color: #a1a1aa;
-}
-
-.launchpad__preset-arrow {
-  width: 14px;
-  height: 14px;
-  color: var(--text-muted);
-  transition:
-    transform var(--duration-slow) var(--ease-out),
-    color var(--duration-base) var(--ease-out);
-}
-
-.launchpad__preset:hover .launchpad__preset-arrow,
-.launchpad__preset:focus-visible .launchpad__preset-arrow {
-  transform: translateX(4px);
-  color: var(--lumen-amber-soft);
+/* Narrower desktops: the headline takes the first row, pills and key the second. */
+@media (max-width: 1279px) {
+  .launchpad {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'copy copy'
+      'presets cta';
+  }
 }
 
 @media (max-width: 1099px) {
@@ -1722,10 +1673,6 @@
   .showcase3d__pillars {
     grid-template-rows: none;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .launchpad {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -1762,12 +1709,42 @@
     border-bottom: 1px solid var(--bento-edge);
   }
 
+  .launchpad {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'copy'
+      'presets'
+      'cta';
+    padding: 20px;
+  }
+
+  .launchpad__presets li {
+    flex: 1 1 auto;
+  }
+
+  .launchpad__preset {
+    width: 100%;
+  }
+
+  .launchpad__preset-arrow {
+    margin-left: auto;
+  }
+
   .button.launchpad__cta {
     width: 100%;
+    gap: var(--space-3);
+    padding: 0 var(--space-5);
   }
 
   .launchpad__cta-arrow {
     margin-left: auto;
+  }
+}
+
+/* Small phones: the key keeps its label on one line; the spec sub-line is decorative. */
+@media (max-width: 419px) {
+  .launchpad__cta-sub {
+    display: none;
   }
 }
 
@@ -1776,14 +1753,9 @@
     animation-play-state: paused;
   }
 
-  .launchpad__status-rule::after {
-    animation: none;
-    transform: none;
-    opacity: 0.6;
-  }
-
-  .launchpad__preset:hover,
-  .launchpad__preset:focus-visible {
-    transform: none;
+  .button.launchpad__cta::before,
+  .button.launchpad__cta .launchpad__cta-arrow,
+  .launchpad__preset-arrow {
+    transition: none;
   }
 }

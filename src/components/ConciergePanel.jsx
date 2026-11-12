@@ -7,13 +7,15 @@ import { sanitizeEmail } from '../lib/auth.js';
 import { sanitizeTicketMessage, sanitizeTicketSubject, TICKET_LIMITS, TICKET_QUEUED } from '../lib/cloud-records.js';
 import { canMarkUnhelpful, CONCIERGE_CATEGORIES, QUESTION_MAX, routeLabel } from '../lib/concierge-engine.js';
 import { isSafeInternalPath } from '../security/sanitize.js';
-import { ApertureGlyph } from './icons.jsx';
+import { ArrowRight, LumenMark } from './icons.jsx';
 
+// Read by assistive technology and the gatekeeper specs; never painted while locked.
 const LOCKED_COPY = 'Direct engineering contact is locked while Studio AI handles your questions.';
 const UNLOCKED_COPY = Object.freeze({
   unresolved_query: 'Studio Engineering Contact unlocked: Studio AI could not resolve your inquiry.',
   marked_unhelpful: 'Studio Engineering Contact unlocked: you marked an answer as not resolving your issue.',
 });
+const UNHELPFUL_COPY = 'Did not resolve my issue - request engineer';
 
 function DismissGlyph() {
   return (
@@ -23,12 +25,10 @@ function DismissGlyph() {
   );
 }
 
-function LockGlyph({ open }) {
+function SendGlyph() {
   return (
-    <svg viewBox="0 0 14 16" width="12" height="14" aria-hidden="true" focusable="false" className="concierge-gate__glyph">
-      <rect x="1.5" y="7" width="11" height="7.5" rx="1" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d={open ? 'M4 7V4.5a3 3 0 0 1 5.8-1.1' : 'M4 7V4.5a3 3 0 0 1 6 0V7'} fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M7 10v1.8" stroke="currentColor" strokeWidth="1.2" />
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true" focusable="false">
+      <path d="M8 13V3.5M3.75 7.5 8 3.25l4.25 4.25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" />
     </svg>
   );
 }
@@ -62,6 +62,14 @@ function AnswerBody({ text }) {
   });
 }
 
+// The body streams in once, top to bottom; the flag lands on the element
+// itself (never through React state), so reopening the panel never replays it.
+function markRevealed(event) {
+  if (event.target instanceof Element && event.target.classList.contains('concierge-msg__body')) {
+    event.currentTarget.dataset.revealed = 'true';
+  }
+}
+
 function ReplyTurn({ turn, pathname, onUnhelpful, onNavigate, latestRef }) {
   const { reply, kind, markedUnhelpful } = turn;
   const pct = Math.round(reply.confidence * 100);
@@ -79,13 +87,18 @@ function ReplyTurn({ turn, pathname, onUnhelpful, onNavigate, latestRef }) {
       data-confidence={reply.confidence.toFixed(2)}
       data-transport={turn.transport}
       data-marked-unhelpful={markedUnhelpful || undefined}
+      onAnimationEnd={markRevealed}
     >
-      <p className="concierge-msg__meta mono">
+      <p className="concierge-msg__meta">
         <span className="concierge-msg__category">
           {kind === 'followup' ? 'Engineering Follow-Up' : CONCIERGE_CATEGORIES[reply.category]}
         </span>
         {kind === 'answer' && (
-          <span className="concierge-msg__confidence" data-testid="concierge-confidence" data-resolved={String(reply.resolved)}>
+          <span
+            className="concierge-msg__confidence tech-only mono"
+            data-testid="concierge-confidence"
+            data-resolved={String(reply.resolved)}
+          >
             {reply.resolved ? 'Resolved' : 'Needs Engineer'} {pct}%
           </span>
         )}
@@ -105,22 +118,30 @@ function ReplyTurn({ turn, pathname, onUnhelpful, onNavigate, latestRef }) {
       )}
       {actions.length > 0 && (
         <nav className="concierge-actions" aria-label="Suggested next steps">
-          {actions.map((action) => (
-            <Link key={action.to} to={action.to} className="concierge-action" data-testid="concierge-action" onClick={onNavigate}>
+          {actions.map((action, i) => (
+            <Link
+              key={action.to}
+              to={action.to}
+              className="concierge-action"
+              data-primary={i === 0 || undefined}
+              data-testid="concierge-action"
+              onClick={onNavigate}
+            >
               {action.label}
+              <ArrowRight className="concierge-action__arrow" />
             </Link>
           ))}
         </nav>
       )}
       {reply.citations.length > 0 && (
-        <p className="concierge-cites mono" data-testid="concierge-citations">
+        <p className="concierge-cites tech-only mono" data-testid="concierge-citations">
           Sources: {reply.citations.map((citation) => citation.label).join(' / ')}
         </p>
       )}
       {kind === 'answer' &&
         canMarkUnhelpful(reply) &&
         (markedUnhelpful ? (
-          <p className="concierge-msg__flag mono" data-testid="concierge-marked-unhelpful">
+          <p className="concierge-msg__flag" data-testid="concierge-marked-unhelpful">
             Marked as not resolving your issue
           </p>
         ) : (
@@ -130,7 +151,7 @@ function ReplyTurn({ turn, pathname, onUnhelpful, onNavigate, latestRef }) {
             data-testid="concierge-mark-unhelpful"
             onClick={() => onUnhelpful(turn.id)}
           >
-            Did not resolve my issue
+            {UNHELPFUL_COPY}
           </button>
         ))}
     </li>
@@ -153,7 +174,7 @@ function TicketConfirmation({ ticket, email, signedIn, onNavigate }) {
       role="status"
       tabIndex={-1}
     >
-      <p className="concierge-confirm__label mono">Engineering Ticket Issued</p>
+      <p className="concierge-confirm__label">Engineering Ticket Issued</p>
       <p className="concierge-confirm__ref mono" data-testid="concierge-ticket-ref">
         {ticket.ref}
       </p>
@@ -166,6 +187,7 @@ function TicketConfirmation({ ticket, email, signedIn, onNavigate }) {
       {signedIn && (
         <Link to="/account" className="concierge-action" onClick={onNavigate}>
           View in Account
+          <ArrowRight className="concierge-action__arrow" />
         </Link>
       )}
     </div>
@@ -322,9 +344,10 @@ function EscalationForm({ concierge, user, onSent }) {
 }
 
 /**
- * Lumen Studio AI concierge panel. A non-modal dialog: the page stays usable
- * while it is open. Escape (from inside) and the close key hand focus back
- * to the trigger.
+ * Lumen AI panel. A non-modal dialog: the page stays usable while it is
+ * open. Escape (from inside) and the close key hand focus back to the
+ * trigger. The escalation gatekeeper runs silently: while locked it is a
+ * screen-reader status only, and it surfaces once contact unlocks.
  */
 export default function ConciergePanel({ open, onClose, panelId }) {
   const { pathname } = useLocation();
@@ -403,13 +426,17 @@ export default function ConciergePanel({ open, onClose, panelId }) {
       onKeyDown={onPanelKeyDown}
     >
       <header className="concierge-panel__head">
-        <span className="concierge-panel__mark">
-          <ApertureGlyph size={16} />
+        <span className="concierge-panel__mark" aria-hidden="true">
+          <LumenMark size={16} />
         </span>
         <div className="concierge-panel__heading">
-          <p className="concierge-panel__status mono">LUMEN SPEC CONCIERGE // LIVE WORKSPACE RAG</p>
-          <h2 className="concierge-panel__title">Studio AI Concierge</h2>
-          <p className="concierge-panel__context mono" data-testid="concierge-context">
+          <div className="concierge-panel__title-row">
+            <h2 className="concierge-panel__title">Lumen AI</h2>
+            <span className="concierge-panel__badge" data-testid="concierge-badge">
+              Workspace Aware
+            </span>
+          </div>
+          <p className="concierge-panel__context" data-testid="concierge-context">
             Context: {routeLabel(pathname)}
           </p>
         </div>
@@ -422,7 +449,8 @@ export default function ConciergePanel({ open, onClose, panelId }) {
         <div className="concierge-intro" data-testid="concierge-quick-prompts">
           {turns.length === 0 && (
             <p className="concierge-intro__lede">
-              Ask about any part, 24V driver sizing, acoustics or lighting. I read your live 2D wall, 3D room and cart.
+              Ask me anything about Lumen: how a tool works, the specs of a part, 24V sizing or acoustics. I also read your
+              live 2D wall, 3D room and cart.
             </p>
           )}
           <div className="concierge-prompts" role="group" aria-label="Suggested questions">
@@ -461,7 +489,7 @@ export default function ConciergePanel({ open, onClose, panelId }) {
           {pending && (
             <li className="concierge-msg concierge-msg--pending" data-testid="concierge-pending">
               <span className="concierge-pending__bar" aria-hidden="true" />
-              <p className="mono">Consulting the catalog and your live workspace...</p>
+              <p>Consulting the catalog and your live workspace...</p>
             </li>
           )}
         </ol>
@@ -480,35 +508,44 @@ export default function ConciergePanel({ open, onClose, panelId }) {
           ))}
       </div>
 
+      {/* One persistent live region: the unlock is announced as a change, and
+          while locked the status is spoken but never painted. */}
       <div
-        className="concierge-gate"
+        className={unlocked ? 'concierge-gate' : 'concierge-gate visually-hidden'}
         data-testid="concierge-gatekeeper-status"
         data-escalation={concierge.escalation}
         role="status"
       >
-        <LockGlyph open={unlocked} />
         <p>{unlocked ? UNLOCKED_COPY[concierge.escalationReason] : LOCKED_COPY}</p>
       </div>
 
       <form className="concierge-composer" onSubmit={onSubmit}>
-        <label className="visually-hidden" htmlFor={`${panelId}-input`}>
-          Ask Studio AI
-        </label>
-        <input
-          ref={inputRef}
-          id={`${panelId}-input`}
-          className="concierge-composer__input"
-          type="text"
-          autoComplete="off"
-          maxLength={QUESTION_MAX}
-          placeholder="Ask about parts, 24V sizing, acoustics or your live room"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          data-testid="concierge-input"
-        />
-        <button type="submit" className="concierge-composer__send" data-testid="concierge-send" disabled={pending || draft.trim() === ''}>
-          Ask
-        </button>
+        <div className="concierge-composer__field">
+          <label className="visually-hidden" htmlFor={`${panelId}-input`}>
+            Ask Studio AI
+          </label>
+          <input
+            ref={inputRef}
+            id={`${panelId}-input`}
+            className="concierge-composer__input"
+            type="text"
+            autoComplete="off"
+            maxLength={QUESTION_MAX}
+            placeholder="Ask anything about Lumen, a part or your room"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            data-testid="concierge-input"
+          />
+          <button
+            type="submit"
+            className="concierge-composer__send"
+            aria-label="Ask"
+            data-testid="concierge-send"
+            disabled={pending || draft.trim() === ''}
+          >
+            <SendGlyph />
+          </button>
+        </div>
       </form>
     </section>
   );

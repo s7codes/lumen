@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
-const SELECTOR = '.button';
+// A key can opt out with data-magnet="off" (the overview launch key stays anchored).
+const SELECTOR = '.button:not([data-magnet="off"])';
 
 function clampUnit(value) {
   return Math.max(-1, Math.min(1, value));
