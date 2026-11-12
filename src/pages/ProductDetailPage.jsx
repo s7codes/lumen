@@ -45,6 +45,7 @@ function specRows(product) {
   return [
     ['SKU', product.sku],
     ['Dimensions', `W ${w} x H ${h} x D ${d} cm`],
+    ['Mass / Weight', `${product.weightKg.toFixed(1)} kg`, 'spec-weight'],
     ['Mounting', `${product.mount}, ${product.mountingPoints} pts`],
     ['24V DC load', `${product.watts} W`],
     ['Output', product.lumens > 0 ? `${product.lumens} lm` : '--'],
@@ -308,10 +309,10 @@ function ProductDetail({ product }) {
             </div>
 
             <dl className="spec-table">
-              {specRows(product).map(([term, value]) => (
+              {specRows(product).map(([term, value, testId]) => (
                 <div key={term} className="spec-table__row">
                   <dt>{term}</dt>
-                  <dd>{value}</dd>
+                  <dd data-testid={testId}>{value}</dd>
                 </div>
               ))}
             </dl>

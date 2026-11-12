@@ -1,6 +1,10 @@
 import { isOneOf, safeStorage, sanitizeMultilineText, sanitizeText } from '../security/sanitize.js';
 import { recommendPsu, resolveBagLines } from './bag.js';
+import { DRIVERS, driverUnit } from './drivers.js';
 import { BUS_RATED_W, BUS_VOLTAGE } from './electrical.js';
+import { computeLogisticsSchedule, serializeLogistics } from './logistics.js';
+
+export { DRIVERS };
 
 export const WALL_SPAN_MOUNTS = Object.freeze(['wall', 'recessed']);
 export const CABLE_LEAD_IN_M = 3;
@@ -60,11 +64,6 @@ export const PROMOS = Object.freeze([
 ]);
 const PROMO_BY_CODE = new Map(PROMOS.map((promo) => [promo.code, promo]));
 
-export const DRIVERS = Object.freeze({
-  'driver-60': Object.freeze({ sku: 'LMN-DR-060', name: 'Lumen 60W 24V Driver', priceUsd: 58 }),
-  'driver-150': Object.freeze({ sku: 'LMN-DR-150', name: 'Lumen 150W 24V Driver', priceUsd: 112 }),
-});
-
 export const FIELD_LIMITS = Object.freeze({ reference: 96, preparedFor: 96, notes: 600 });
 
 const INTEGER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
@@ -109,7 +108,7 @@ export function formatMoney(minorUnits, currency) {
 /** The driver line that completes the electrical specification, or null for a passive-only bag. */
 export function driverLine(psu) {
   if (psu.drivers === 0) return null;
-  const driver = psu.id === 'driver-60' ? DRIVERS['driver-60'] : DRIVERS['driver-150'];
+  const driver = driverUnit(psu.id);
   return {
     key: `driver:${psu.id}`,
     sku: driver.sku,
@@ -141,7 +140,14 @@ function isoDate(date) {
  * once, half up, and gross is defined as their sum, so
  * net - discount + vat === gross holds exactly in every currency.
  */
-export function buildQuote({ items, currencyCode, promo = null, includeDriver = true, date = new Date() }) {
+export function buildQuote({
+  items,
+  currencyCode,
+  promo = null,
+  includeDriver = true,
+  fulfilmentMode = 'consolidated',
+  date = new Date(),
+}) {
   const currency = getCurrency(currencyCode);
   const bagLines = resolveBagLines(items);
   const loadW = bagLines.reduce((sum, line) => sum + line.lineW, 0);
@@ -178,6 +184,14 @@ export function buildQuote({ items, currencyCode, promo = null, includeDriver = 
   valid.setDate(valid.getDate() + QUOTE_VALID_DAYS);
   const suffix = fnv1a(fingerprint).toString(36).toUpperCase().padStart(6, '0').slice(-6);
 
+  const electrical = {
+    busVoltage: BUS_VOLTAGE,
+    loadW,
+    currentA: loadW / BUS_VOLTAGE,
+    psu,
+    driverIncluded: Boolean(driver),
+  };
+
   return {
     quoteId: `LMN-Q-${day.replaceAll('-', '')}-${suffix}`,
     date: day,
@@ -185,14 +199,9 @@ export function buildQuote({ items, currencyCode, promo = null, includeDriver = 
     currency,
     promo,
     lines: priced,
-    electrical: {
-      busVoltage: BUS_VOLTAGE,
-      loadW,
-      currentA: loadW / BUS_VOLTAGE,
-      psu,
-      driverIncluded: Boolean(driver),
-    },
+    electrical,
     installation: buildInstallation(bagLines),
+    logistics: computeLogisticsSchedule(bagLines, electrical, { fulfilmentMode }),
     totals: { net, discount, netAfterDiscount, vat, gross, vatPct: VAT_RATE_PCT, discountPct: pct },
   };
 }
@@ -238,6 +247,7 @@ export function serializeQuote(quote, project) {
       driverIncluded: quote.electrical.driverIncluded,
     },
     installation: { ...quote.installation },
+    logistics: serializeLogistics(quote.logistics),
     bom: quote.lines.map((line) => ({
       sku: line.sku,
       name: line.name,

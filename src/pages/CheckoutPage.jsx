@@ -113,7 +113,147 @@ function InstallationSchedule({ installation }) {
   );
 }
 
-function QuoteSheet({ quote, project }) {
+const FULFILMENT_OPTIONS = [
+  { mode: 'consolidated', label: 'Consolidated Dispatch' },
+  { mode: 'split', label: 'Split Rough-In Dispatch' },
+];
+
+function formatKg(value) {
+  return `${value.toFixed(1)} kg`;
+}
+
+function LogisticsSchedule({ logistics, onModeChange }) {
+  const { crates, waves } = logistics;
+  return (
+    <section
+      className="quote-sheet__section logistics"
+      aria-label="Logistics and crate schedule"
+      data-testid="logistics-schedule"
+      data-mode={logistics.mode}
+    >
+      <div className="logistics__head">
+        <p className="index-label">
+          <span className="index-label__num">04</span> / Logistics &amp; Crate Schedule
+        </p>
+        <div className="segment-switch logistics__switch no-print" role="group" aria-label="Fulfilment mode">
+          {FULFILMENT_OPTIONS.map((option) => (
+            <button
+              key={option.mode}
+              type="button"
+              className="segment-switch__option"
+              aria-pressed={logistics.mode === option.mode}
+              data-testid={`fulfilment-${option.mode}`}
+              onClick={() => onModeChange(option.mode)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <dl className="install-schedule__grid">
+        <div className="install-schedule__cell">
+          <dt>Net / gross mass</dt>
+          <dd
+            data-testid="logistics-weight"
+            data-net={logistics.netWeightKg}
+            data-tare={logistics.tareWeightKg}
+            data-gross={logistics.grossWeightKg}
+          >
+            {logistics.netWeightKg.toFixed(1)} / {formatKg(logistics.grossWeightKg)}
+          </dd>
+          <p className="install-schedule__note">Tare {formatKg(logistics.tareWeightKg)}, crating and foam</p>
+        </div>
+        <div className="install-schedule__cell">
+          <dt>Crated volume</dt>
+          <dd data-testid="logistics-volume" data-value={logistics.totalVolumeM3}>
+            {logistics.totalVolumeM3.toFixed(2)} m3
+          </dd>
+          <p className="install-schedule__note">
+            {crates.length} {crates.length === 1 ? 'crate' : 'crates'}, {logistics.pieceCount} pcs
+          </p>
+        </div>
+        <div className="install-schedule__cell">
+          <dt>Freight class</dt>
+          <dd data-testid="logistics-freight-class">{logistics.freightClass ?? '--'}</dd>
+          <p className="install-schedule__note">Longest crate {logistics.longestCrateCm} cm</p>
+        </div>
+        <div className="install-schedule__cell">
+          <dt>Dispatch window</dt>
+          <dd data-testid="logistics-window">{logistics.windowLabel}</dd>
+          <p className="install-schedule__note" data-testid="logistics-mode-label">
+            {logistics.modeLabel}
+          </p>
+        </div>
+      </dl>
+
+      <div className="logistics__columns">
+        <div className="logistics__column">
+          <p className="logistics__caption">Packing manifest</p>
+          <ol className="logistics__list" data-testid="logistics-crate-list">
+            {crates.map((crate) => (
+              <li
+                key={crate.id}
+                className="logistics__item"
+                data-testid="logistics-crate"
+                data-code={crate.code}
+                data-type={crate.type}
+              >
+                <div className="logistics__item-head">
+                  <span className="logistics__code mono">{crate.code}</span>
+                  <span className="logistics__label">{crate.label}</span>
+                  <span className="logistics__figure mono">{formatKg(crate.grossWeightKg)}</span>
+                </div>
+                <p className="logistics__meta mono">
+                  {crate.dimsCm.w} x {crate.dimsCm.h} x {crate.dimsCm.d} cm / {crate.itemCount} pcs
+                </p>
+                <ul className="logistics__skus" aria-label={`${crate.code} contents`}>
+                  {crate.contents.map((entry) => (
+                    <li key={entry.sku} className="logistics__sku mono" data-sku={entry.sku}>
+                      {entry.qty} x {entry.sku}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <div className="logistics__column">
+          <p className="logistics__caption">Dispatch waves</p>
+          <ol className="logistics__list" data-testid="logistics-wave-list">
+            {waves.map((wave) => (
+              <li key={wave.id} className="logistics__item" data-testid="logistics-wave" data-code={wave.code}>
+                <div className="logistics__item-head">
+                  <span className="logistics__code mono">{wave.code}</span>
+                  <span className="logistics__label">{wave.label}</span>
+                  <span className="logistics__figure mono">{wave.window}</span>
+                </div>
+                <ul className="logistics__wave-lines">
+                  {wave.lines.map((line) => (
+                    <li key={line.sku} className="logistics__wave-line mono" data-sku={line.sku}>
+                      <span>
+                        {line.qty} x {line.name}
+                      </span>
+                      <span className="logistics__lead">{line.lead}</span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ol>
+          {logistics.note && (
+            <p className="logistics__note mono" data-testid="logistics-note">
+              {logistics.note}
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function QuoteSheet({ quote, project, onModeChange }) {
   const { currency, totals, electrical } = quote;
   const { psu } = electrical;
   const utilisation = Math.round(psu.utilisation * 100);
@@ -281,8 +421,10 @@ function QuoteSheet({ quote, project }) {
         </div>
       </dl>
 
+      <LogisticsSchedule logistics={quote.logistics} onModeChange={onModeChange} />
+
       <footer className="quote-sheet__foot mono">
-        Prices ex works Budapest. Lead times per catalog. Quote valid {quote.validUntil}. All
+        Prices ex works Budapest. Lead times per catalog, freight quoted separately. Quote valid {quote.validUntil}. All
         fixtures 24V DC SELV.
       </footer>
     </article>
@@ -298,6 +440,7 @@ export default function CheckoutPage() {
   const [promo, setPromo] = useState(null);
   const [promoNote, setPromoNote] = useState({ text: '', tone: 'info' });
   const [includeDriver, setIncludeDriver] = useState(true);
+  const [fulfilmentMode, setFulfilmentMode] = useState('consolidated');
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [confirmed, setConfirmed] = useState(null);
@@ -306,8 +449,8 @@ export default function CheckoutPage() {
   const { addToast } = useToast();
 
   const quote = useMemo(
-    () => buildQuote({ items, currencyCode, promo, includeDriver }),
-    [items, currencyCode, promo, includeDriver],
+    () => buildQuote({ items, currencyCode, promo, includeDriver, fulfilmentMode }),
+    [items, currencyCode, promo, includeDriver, fulfilmentMode],
   );
   const project = useMemo(() => sanitizeProject(form), [form]);
   const needsDriver = quote.electrical.psu.drivers > 0;
@@ -596,7 +739,7 @@ export default function CheckoutPage() {
         </div>
 
         <div className="checkout__sheet">
-          <QuoteSheet quote={quote} project={project} />
+          <QuoteSheet quote={quote} project={project} onModeChange={setFulfilmentMode} />
         </div>
       </div>
     </>

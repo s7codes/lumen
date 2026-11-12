@@ -536,3 +536,196 @@
     color: #555 !important;
   }
 }
+
+/* Logistics and crate schedule */
+
+.logistics {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-strong);
+}
+
+.logistics__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+}
+
+.logistics__switch {
+  max-width: 100%;
+}
+
+.logistics__switch .segment-switch__option {
+  white-space: nowrap;
+}
+
+.logistics__columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.logistics__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.logistics__caption {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.logistics__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border-hairline);
+}
+
+.logistics__item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.logistics__item-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.logistics__code {
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-primary);
+}
+
+.logistics__label {
+  min-width: 0;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.logistics__figure {
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.logistics__meta,
+.logistics__note {
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.logistics__skus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.logistics__sku {
+  padding: 1px 6px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.logistics__wave-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.logistics__wave-line {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+}
+
+.logistics__wave-line > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.logistics__lead {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 899px) {
+  .logistics__columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 599px) {
+  .logistics__switch {
+    width: 100%;
+  }
+
+  .logistics__switch .segment-switch__option {
+    white-space: normal;
+  }
+}
+
+@media print {
+  .logistics {
+    break-inside: avoid;
+    border-top-color: #000;
+  }
+
+  .logistics .install-schedule__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .logistics__columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .logistics__item {
+    break-inside: avoid;
+  }
+
+  .logistics__code,
+  .logistics__sku {
+    border-color: #bbb;
+    color: #000;
+  }
+
+  .logistics__caption,
+  .logistics__meta,
+  .logistics__note,
+  .logistics__lead,
+  .logistics__wave-line {
+    color: #444 !important;
+  }
+}
