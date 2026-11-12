@@ -3,13 +3,18 @@ import {
   MAX_REVISION,
   MAX_STORED_PROJECTS,
   MAX_STORED_QUOTES,
+  MAX_STORED_TICKETS,
   normalizeProjects,
   normalizeQuotes,
+  normalizeTickets,
   PROJECT_CODECS,
   QUOTE_STATUSES,
   sanitizeProjectRecord,
   sanitizeQuoteRecord,
+  sanitizeTicketRecord,
   serializeProjectRecord,
+  TICKET_QUEUED,
+  TICKET_REF_PATTERN,
 } from '../lib/cloud-records.js';
 import {
   isProjectId,
@@ -44,6 +49,8 @@ export const PROJECTS_STORAGE_KEY = 'lumen_cloud_projects_v1';
 export const QUOTES_STORAGE_KEY = 'lumen_cloud_quotes_v1';
 export const CLIENT_STORAGE_KEY = 'lumen_cloud_client_v1';
 export const SYNC_STORAGE_KEY = 'lumen_cloud_sync_v1';
+export const TICKETS_STORAGE_KEY = 'lumen_cloud_tickets_v1';
+export const TICKET_OUTBOX_STORAGE_KEY = 'lumen_cloud_ticket_outbox_v1';
 export const CLIENT_HEADER = 'X-Lumen-Client';
 export const API_BASE = '/api';
 // A floor, not a simulation: saving and syncing states never flash on a fast link.
@@ -58,7 +65,7 @@ export const LIBRARY_LABELS = Object.freeze({
   account: 'Account (session-bound)',
   device: 'This browser profile',
 });
-export { MAX_STORED_PROJECTS, MAX_STORED_QUOTES, PROJECT_KINDS, PROJECT_NAME_MAX, PROJECT_NAMES, QUOTE_STATUSES };
+export { MAX_STORED_PROJECTS, MAX_STORED_QUOTES, MAX_STORED_TICKETS, PROJECT_KINDS, PROJECT_NAME_MAX, PROJECT_NAMES, QUOTE_STATUSES };
 
 const SYNC_BATCH_CHARS = 48 * 1024;
 const MAX_RESPONSE_CHARS = 2_000_000;
@@ -152,6 +159,9 @@ function libraryOwner() {
 
 /* HTTP */
 
+// Server fault codes the UI tells apart; every other refusal reads as `invalid`.
+const PASSED_FAULTS = new Set(['quota', 'gatekeeper_locked']);
+
 /**
  * One JSON call. With `session` (the default) a stored server session rides
  * along as a Bearer token; a 401 for it drops the token and throws
@@ -210,7 +220,7 @@ async function request(trip, method, path, body, { headers = {}, session = true 
   const fault = isRecord(payload) && isRecord(payload.error) ? payload.error : {};
   const message =
     sanitizeText(fault.message, { maxLength: 240 }) || `Lumen Cloud refused the request (HTTP ${response.status}).`;
-  const code = fault.code === 'quota' ? 'quota' : response.status >= 500 ? 'storage' : 'invalid';
+  const code = PASSED_FAULTS.has(fault.code) ? fault.code : response.status >= 500 ? 'storage' : 'invalid';
   throw new ApiError(code, message);
 }
 
@@ -530,6 +540,154 @@ export function submitQuote({ quote, project }) {
 /** Resolves with submitted requisitions, newest first. */
 export function loadQuotes() {
   return loadCollection('quotes');
+}
+
+/* Studio AI concierge */
+
+// The engine and the catalog math behind it load only with the concierge,
+// never with the entry bundle.
+function loadEngine() {
+  return import('../lib/concierge-engine.js');
+}
+
+/**
+ * Asks the Studio AI concierge. The server answers over HTTP; when the API is
+ * unreachable the same deterministic engine answers on this device, so the
+ * reply is identical either way. Resolves with `{ reply, transport }`.
+ */
+export function askConcierge(question, workspaceContext) {
+  return roundTrip(async (trip) => {
+    const engine = await loadEngine();
+    try {
+      const payload = await request(trip, 'POST', '/concierge/ask', { question, workspaceContext }, { session: false });
+      const reply = engine.sanitizeConciergeReply(payload.reply);
+      if (!reply) throw new ApiError('storage', 'The concierge sent an unreadable reply.');
+      return { reply, transport: 'http' };
+    } catch (error) {
+      goOffline(trip, error);
+      return { reply: engine.evaluateConciergeQuery(question, workspaceContext), transport: 'local' };
+    }
+  });
+}
+
+/* Studio engineering tickets */
+
+// Tickets written while the API was unreachable wait here, with the full
+// escalation request, until the server's gatekeeper accepts or refuses them.
+const MAX_OUTBOX = 4;
+
+function readTicketMirror() {
+  return normalizeTickets(safeStorage.read(TICKETS_STORAGE_KEY, { fallback: [], validate: Array.isArray }));
+}
+
+function readOutbox() {
+  const stored = safeStorage.read(TICKET_OUTBOX_STORAGE_KEY, { fallback: [], validate: Array.isArray });
+  return stored
+    .filter(
+      (entry) =>
+        isRecord(entry) &&
+        typeof entry.ref === 'string' &&
+        TICKET_REF_PATTERN.test(entry.ref) &&
+        typeof entry.owner === 'string' &&
+        OWNER_PATTERN.test(entry.owner) &&
+        isRecord(entry.payload) &&
+        sanitizeTicketRecord(entry.ticket)?.ref === entry.ref,
+    )
+    .slice(0, MAX_OUTBOX);
+}
+
+function writeOutbox(entries) {
+  return entries.length === 0 ? safeStorage.remove(TICKET_OUTBOX_STORAGE_KEY) : safeStorage.write(TICKET_OUTBOX_STORAGE_KEY, entries);
+}
+
+function outboxFor(owner) {
+  return readOutbox().filter((entry) => entry.owner === 'device' || entry.owner === owner);
+}
+
+/** Server tickets plus this library's queued device tickets, newest first; queued ones carry `pending: true`. */
+function withPending(list) {
+  const known = new Set(list.map((ticket) => ticket.ref));
+  const queued = outboxFor(libraryOwner())
+    .map((entry) => sanitizeTicketRecord(entry.ticket))
+    .filter((ticket) => ticket && !known.has(ticket.ref))
+    .map((ticket) => ({ ...ticket, pending: true }));
+  return [...list.map((ticket) => ({ ...ticket, pending: false })), ...queued]
+    .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+    .slice(0, MAX_STORED_TICKETS);
+}
+
+/**
+ * Sends queued device tickets through the server gatekeeper. Each entry leaves
+ * the outbox as soon as the server answers it, accepted or refused for good,
+ * so a dropped connection later in the trip can never send it twice.
+ */
+async function flushTicketOutbox(trip) {
+  for (const entry of outboxFor(libraryOwner())) {
+    try {
+      await request(trip, 'POST', '/concierge/escalate', entry.payload);
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.code === 'storage') throw error;
+    }
+    writeOutbox(readOutbox().filter((queued) => queued.ref !== entry.ref));
+  }
+}
+
+function reconcileTickets(list) {
+  return () => {
+    if (!safeStorage.write(TICKETS_STORAGE_KEY, list)) safeStorage.remove(TICKETS_STORAGE_KEY);
+  };
+}
+
+/**
+ * Transmits an engineering ticket. The server re-verifies the gatekeeper
+ * (an unresolved or unhelpful-marked concierge turn) and issues the
+ * `LMN-T-` reference. Offline, the same gatekeeper runs on this device and
+ * the ticket is queued for the server. Resolves with `{ ticket, transport }`;
+ * rejects with ApiError (`gatekeeper_locked`, `invalid` or `storage`).
+ */
+export function submitSupportTicket(payload) {
+  return roundTrip(async (trip) => {
+    try {
+      await flushTicketOutbox(trip);
+      const response = await request(trip, 'POST', '/concierge/escalate', payload);
+      const ticket = sanitizeTicketRecord(response.ticket);
+      if (!ticket) throw new ApiError('storage', 'Lumen Cloud sent an unreadable ticket.');
+      trip.commits.set('tickets', reconcileTickets(normalizeTickets(response.tickets)));
+      return { ticket, transport: 'http' };
+    } catch (error) {
+      goOffline(trip, error);
+      const verdict = (await loadEngine()).validateEscalationRequest(payload);
+      if (!verdict.ok) throw new ApiError(verdict.code, verdict.message);
+      const ticket = sanitizeTicketRecord({
+        ...verdict.ticket,
+        ref: `LMN-T-${randomHex(4).toUpperCase()}`,
+        submittedAt: new Date().toISOString(),
+        status: TICKET_QUEUED,
+      });
+      if (!ticket) throw new ApiError('invalid', 'The ticket could not be encoded.');
+      const owner = libraryOwner();
+      trip.commits.set('tickets', () => {
+        const queued = [...readOutbox(), { ref: ticket.ref, owner, payload, ticket }];
+        if (queued.length > MAX_OUTBOX || !writeOutbox(queued)) throw unreachable();
+      });
+      return { ticket, transport: 'local' };
+    }
+  });
+}
+
+/** Resolves with this library's engineering tickets, newest first, queued device tickets included. */
+export function loadSupportTickets() {
+  return roundTrip(async (trip) => {
+    try {
+      await flushTicketOutbox(trip);
+      const list = normalizeTickets((await request(trip, 'GET', '/tickets')).tickets);
+      trip.commits.set('tickets', reconcileTickets(list));
+      return withPending(list);
+    } catch (error) {
+      goOffline(trip, error);
+      return withPending(readTicketMirror());
+    }
+  });
 }
 
 /* Sessions */

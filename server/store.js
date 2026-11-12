@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, renameSync, statSync } from 'node:fs';
 import { mkdir, open, rename, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { normalizeProjects, normalizeQuotes, serializeProjectRecord } from '../src/lib/cloud-records.js';
+import { normalizeProjects, normalizeQuotes, normalizeTickets, serializeProjectRecord } from '../src/lib/cloud-records.js';
 import { isOneOf, safeJsonParse } from '../src/security/sanitize.js';
 
 export const STORE_FORMAT = 'lumen.cloud';
@@ -40,7 +40,16 @@ export function accountNamespace(email) {
 }
 
 function emptyNamespace() {
-  return { touchedAt: 0, projects: [], quotes: [] };
+  return { touchedAt: 0, projects: [], quotes: [], tickets: [] };
+}
+
+/** Mutable copy of a namespace's collections, stamped with the time of the change. */
+function draftOf(entry, touchedAt) {
+  return { touchedAt, projects: [...entry.projects], quotes: [...entry.quotes], tickets: [...entry.tickets] };
+}
+
+function isEmpty(entry) {
+  return entry.projects.length === 0 && entry.quotes.length === 0 && entry.tickets.length === 0;
 }
 
 /** Every record read from disk passes the same validators as a request body. */
@@ -53,8 +62,10 @@ function reviveNamespace(entry) {
       .map((quote) => [quote.ref, isOneOf(quote.origin, QUOTE_ORIGINS) ? quote.origin : 'device']),
   );
   const quotes = normalizeQuotes(entry.quotes).map((quote) => ({ ...quote, origin: origins.get(quote.ref) }));
+  // Stores written before v6 carry no tickets array; it reads as empty.
+  const tickets = normalizeTickets(entry.tickets);
   const touchedAt = Number.isSafeInteger(entry.touchedAt) && entry.touchedAt > 0 ? entry.touchedAt : 0;
-  return { touchedAt, projects, quotes };
+  return { touchedAt, projects, quotes, tickets };
 }
 
 function evictOldest(namespaces, keep) {
@@ -168,14 +179,13 @@ export function createStore({ file = null } = {}) {
 
     read(id) {
       const entry = namespaces.get(id) ?? emptyNamespace();
-      return { projects: entry.projects, quotes: entry.quotes };
+      return { projects: entry.projects, quotes: entry.quotes, tickets: entry.tickets };
     },
 
     /** Runs `mutate(draft)` and persists the result. A throw inside `mutate` discards the draft. */
     transact(id, mutate) {
       return serialized(async () => {
-        const current = namespaces.get(id) ?? emptyNamespace();
-        const draft = { touchedAt: Date.now(), projects: [...current.projects], quotes: [...current.quotes] };
+        const draft = draftOf(namespaces.get(id) ?? emptyNamespace(), Date.now());
         const result = mutate(draft);
         const next = new Map(namespaces);
         next.set(id, draft);
@@ -194,15 +204,14 @@ export function createStore({ file = null } = {}) {
       return serialized(async () => {
         const source = namespaces.get(fromId);
         if (!source || fromId === toId) return null;
-        const target = namespaces.get(toId) ?? emptyNamespace();
         const now = Date.now();
-        const into = { touchedAt: now, projects: [...target.projects], quotes: [...target.quotes] };
-        const from = { touchedAt: now, projects: [...source.projects], quotes: [...source.quotes] };
+        const into = draftOf(namespaces.get(toId) ?? emptyNamespace(), now);
+        const from = draftOf(source, now);
         const result = merge(into, from);
         if (!result?.changed) return result ?? null;
         const next = new Map(namespaces);
         next.set(toId, into);
-        if (from.projects.length === 0 && from.quotes.length === 0) next.delete(fromId);
+        if (isEmpty(from)) next.delete(fromId);
         else next.set(fromId, from);
         evictOldest(next, toId);
         await commit(next);

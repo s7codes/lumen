@@ -5,12 +5,16 @@ import {
   MAX_REVISION,
   MAX_STORED_PROJECTS,
   MAX_STORED_QUOTES,
+  MAX_STORED_TICKETS,
   normalizeProjects,
   normalizeQuotes,
   sanitizeProjectData,
   sanitizeQuoteRecord,
+  sanitizeTicketRecord,
   serializeProjectRecord,
+  TICKET_QUEUED,
 } from '../src/lib/cloud-records.js';
+import { evaluateConciergeQuery, validateConciergeAsk, validateEscalationRequest } from '../src/lib/concierge-engine.js';
 import { isProjectId, PROJECT_KINDS, projectIdFor, sanitizeProjectName } from '../src/lib/project-library.js';
 import { buildQuote, CURRENCY_CODES, resolvePromo, sanitizeProject, validateProject } from '../src/lib/quote.js';
 import { isOneOf, safeJsonParse } from '../src/security/sanitize.js';
@@ -225,9 +229,10 @@ function byNewest(field) {
   return (a, b) => b[field].localeCompare(a[field]);
 }
 
-function issueRef(taken) {
+/** Server-issued reference: `LMN-R-` requisitions, `LMN-T-` engineering tickets, 32 random bits each. */
+function issueRef(prefix, taken) {
   for (;;) {
-    const ref = `LMN-R-${randomBytes(4).toString('hex').toUpperCase()}`;
+    const ref = `${prefix}-${randomBytes(4).toString('hex').toUpperCase()}`;
     if (!taken.has(ref)) return ref;
   }
 }
@@ -242,11 +247,27 @@ function quoteItems(quote) {
   return items;
 }
 
+/** Moves guest records keyed by `key` into the account list, up to `cap`; the rest stay with the guest. */
+function mergeByRef(accountList, guestList, key, cap) {
+  const merged = new Map(accountList.map((record) => [record[key], record]));
+  const kept = [];
+  let moved = 0;
+  for (const record of guestList) {
+    if (merged.has(record[key]) || merged.size < cap) {
+      if (!merged.has(record[key])) merged.set(record[key], record);
+      moved += 1;
+    } else {
+      kept.push(record);
+    }
+  }
+  return { merged: [...merged.values()].sort(byNewest('submittedAt')), kept, moved };
+}
+
 /**
  * Moves a browser-profile library into an account library. Projects match by
- * id and quotes by requisition ref; on a project clash the newer save wins
- * and the revision never goes backwards. Records past the library caps stay
- * in the guest namespace rather than being dropped.
+ * id, quotes by requisition ref and tickets by ticket ref; on a project clash
+ * the newer save wins and the revision never goes backwards. Records past the
+ * library caps stay in the guest namespace rather than being dropped.
  */
 function mergeLibraries(account, guest) {
   const projects = new Map(account.projects.map((project) => [project.id, project]));
@@ -266,32 +287,34 @@ function mergeLibraries(account, guest) {
     }
   }
 
-  const quotes = new Map(account.quotes.map((quote) => [quote.ref, quote]));
-  const keptQuotes = [];
-  let movedQuotes = 0;
-  for (const quote of guest.quotes) {
-    if (quotes.has(quote.ref) || quotes.size < MAX_STORED_QUOTES) {
-      if (!quotes.has(quote.ref)) quotes.set(quote.ref, quote);
-      movedQuotes += 1;
-    } else {
-      keptQuotes.push(quote);
-    }
-  }
+  const quotes = mergeByRef(account.quotes, guest.quotes, 'ref', MAX_STORED_QUOTES);
+  const tickets = mergeByRef(account.tickets, guest.tickets, 'ref', MAX_STORED_TICKETS);
 
   account.projects = [...projects.values()].sort(byNewest('savedAt'));
-  account.quotes = [...quotes.values()].sort(byNewest('submittedAt'));
+  account.quotes = quotes.merged;
+  account.tickets = tickets.merged;
   guest.projects = keptProjects;
-  guest.quotes = keptQuotes;
-  return { changed: movedProjects + movedQuotes > 0, projects: movedProjects, quotes: movedQuotes };
+  guest.quotes = quotes.kept;
+  guest.tickets = tickets.kept;
+  return {
+    changed: movedProjects + quotes.moved + tickets.moved > 0,
+    projects: movedProjects,
+    quotes: quotes.moved,
+    tickets: tickets.moved,
+  };
 }
 
 function createHandlers({ store, version, sessions }) {
   const projectsOf = (id) => store.read(id).projects;
   const quotesOf = (id) => store.read(id).quotes.map(publicQuote);
+  const ticketsOf = (id) => store.read(id).tickets;
 
+  // The session response keeps its v3 shape ({ projects, quotes }); tickets move silently.
   async function claimGuest(guest, account) {
     const pending = store.read(guest);
-    if (pending.projects.length === 0 && pending.quotes.length === 0) return NOTHING_CLAIMED;
+    if (pending.projects.length === 0 && pending.quotes.length === 0 && pending.tickets.length === 0) {
+      return NOTHING_CLAIMED;
+    }
     const result = await store.claim(guest, account, mergeLibraries);
     return result ? { projects: result.projects, quotes: result.quotes } : NOTHING_CLAIMED;
   }
@@ -432,7 +455,7 @@ function createHandlers({ store, version, sessions }) {
 
       const record = await store.transact(id, (draft) => {
         const next = sanitizeQuoteRecord({
-          ref: issueRef(new Set(draft.quotes.map((entry) => entry.ref))),
+          ref: issueRef('LMN-R', new Set(draft.quotes.map((entry) => entry.ref))),
           quoteId: built.quoteId,
           submittedAt: new Date().toISOString(),
           reference: fields.reference,
@@ -487,6 +510,44 @@ function createHandlers({ store, version, sessions }) {
       return [200, { projects: projectsOf(id), quotes: quotesOf(id) }];
     },
 
+    /** Stateless: the same engine the browser falls back to offline answers here. */
+    async askConcierge(req) {
+      const body = await readJsonBody(req);
+      const { question, context, error } = validateConciergeAsk(body);
+      if (error) throw invalid(error);
+      return [200, { reply: evaluateConciergeQuery(question, context) }];
+    },
+
+    /**
+     * Gatekeeper: a ticket is issued only when the transcript holds a turn the
+     * engine itself replays as unresolved, or a resolved answer the visitor
+     * marked as not resolving the issue. Anything else is gatekeeper_locked.
+     */
+    async escalate(req) {
+      const id = await libraryOf(req);
+      const body = await readJsonBody(req);
+      const verdict = validateEscalationRequest(body);
+      if (!verdict.ok) {
+        throw new HttpError(400, verdict.code, verdict.message, verdict.fields ? { fields: verdict.fields } : {});
+      }
+      const ticket = await store.transact(id, (draft) => {
+        const next = sanitizeTicketRecord({
+          ...verdict.ticket,
+          ref: issueRef('LMN-T', new Set(draft.tickets.map((entry) => entry.ref))),
+          submittedAt: new Date().toISOString(),
+          status: TICKET_QUEUED,
+        });
+        if (!next) throw invalid('The ticket could not be encoded.');
+        draft.tickets = [next, ...draft.tickets].sort(byNewest('submittedAt')).slice(0, MAX_STORED_TICKETS);
+        return next;
+      });
+      return [201, { ticket, tickets: ticketsOf(id) }];
+    },
+
+    async listTickets(req) {
+      return [200, { tickets: ticketsOf(await libraryOf(req)) }];
+    },
+
     async reset(req) {
       const removed = await store.remove(await libraryOf(req));
       return [200, { ok: true, reset: removed }];
@@ -508,6 +569,9 @@ function buildRoutes(handlers, testReset) {
     { pattern: /^\/api\/projects\/([^/]{1,256})$/, methods: { DELETE: handlers.deleteProject } },
     { path: '/api/quotes', methods: { GET: handlers.listQuotes, POST: handlers.submitQuote } },
     { path: '/api/sync', methods: { POST: handlers.sync } },
+    { path: '/api/concierge/ask', methods: { POST: handlers.askConcierge } },
+    { path: '/api/concierge/escalate', methods: { POST: handlers.escalate } },
+    { path: '/api/tickets', methods: { GET: handlers.listTickets } },
   ];
   if (testReset) routes.push({ path: '/api/test/reset', methods: { POST: handlers.reset } });
   return routes;

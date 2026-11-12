@@ -28,6 +28,23 @@ export function ArrowRight({ className }) {
   );
 }
 
+// Six-blade camera aperture inside a hexagonal bezel: the Studio AI mark.
+export function ApertureGlyph({ size = 18 }) {
+  return (
+    <svg viewBox="0 0 20 20" width={size} height={size} aria-hidden="true" focusable="false" className="aperture-glyph">
+      <path d="M10 1.75 17.15 5.88V14.12L10 18.25 2.85 14.12V5.88Z" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d="M10 1.75 12.7 8.45M17.15 5.88 11.9 10.95M17.15 14.12 9.95 13.05M10 18.25 7.3 11.55M2.85 14.12 8.1 9.05M2.85 5.88 10.05 6.95"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
+      <path d="M10 7.2 12.42 8.6V11.4L10 12.8 7.58 11.4V8.6Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function PlusGlyph() {
   return (
     <svg className="glyph-plus" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">

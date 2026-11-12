@@ -4,6 +4,7 @@ import { ToastProvider } from '../contexts/ToastContext.jsx';
 import { useMagneticField } from '../hooks/useMagneticField.js';
 import { BagProvider } from './BagProvider.jsx';
 import { CommandPaletteProvider } from './CommandPalette.jsx';
+import { ConciergeWidget } from './ConciergeWidget.jsx';
 import { Footer } from './Footer.jsx';
 import { Navbar } from './Navbar.jsx';
 import '../styles/shell.css';
@@ -53,6 +54,8 @@ export function LayoutShell() {
               </main>
               <Footer />
             </div>
+            {/* After the shell in DOM order: the dock never enters the page's tab sequence early. */}
+            <ConciergeWidget />
             <ScrollRestoration />
           </CommandPaletteProvider>
         </BagProvider>

@@ -7,6 +7,7 @@ import {
   LIBRARY_LABELS,
   loadProjects,
   loadQuotes,
+  loadSupportTickets,
   subscribeCloudTransport,
 } from '../api/client.js';
 import { ElevationThumb } from '../components/ElevationThumb.jsx';
@@ -213,6 +214,80 @@ function OrderRow({ quote }) {
   );
 }
 
+const TICKET_REASONS = Object.freeze({
+  unresolved_query: 'Studio AI could not resolve',
+  marked_unhelpful: 'Marked as not resolving the issue',
+});
+
+function TicketRow({ ticket }) {
+  const status = ticket.status.toLowerCase().replace(/\s+/g, '-');
+  return (
+    <li
+      className="ticket-row"
+      data-testid="account-ticket"
+      data-ticket-ref={ticket.ref}
+      data-reason={ticket.reason}
+      data-pending={ticket.pending || undefined}
+    >
+      <div className="order-row__head">
+        <span className="ticket-row__ref mono" data-testid="account-ticket-ref">
+          {ticket.ref}
+        </span>
+        <span className="ticket-row__status mono" data-status={status} data-testid="account-ticket-status">
+          {ticket.status}
+        </span>
+      </div>
+      <p className="order-row__project" data-testid="account-ticket-subject">
+        {ticket.subject}
+      </p>
+      <dl className="order-row__meta mono">
+        <div>
+          <dt>Submitted</dt>
+          <dd data-testid="account-ticket-time">{formatSavedAt(ticket.submittedAt)}</dd>
+        </div>
+        <div>
+          <dt>Escalation</dt>
+          <dd>{TICKET_REASONS[ticket.reason]}</dd>
+        </div>
+        <div>
+          <dt>Turns</dt>
+          <dd>{padIndex(ticket.turns)}</dd>
+        </div>
+        <div>
+          <dt>Reply To</dt>
+          <dd>{ticket.email}</dd>
+        </div>
+      </dl>
+      <p className="ticket-row__inquiry">Escalated inquiry: {ticket.inquiry}</p>
+      {ticket.workspaceSummary && (
+        <p className="ticket-row__summary mono" data-testid="account-ticket-summary">
+          {ticket.workspaceSummary}
+        </p>
+      )}
+      {ticket.pending && (
+        <p className="order-row__ref mono" data-testid="account-ticket-pending">
+          Device copy. It transmits through the Studio AI gatekeeper when Lumen Cloud is reachable.
+        </p>
+      )}
+    </li>
+  );
+}
+
+function useSupportTickets() {
+  const [tickets, setTickets] = useState({ status: 'loading', list: [] });
+  useEffect(() => {
+    let live = true;
+    loadSupportTickets().then(
+      (list) => live && setTickets({ status: 'ready', list }),
+      () => live && setTickets({ status: 'error', list: [] }),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  return tickets;
+}
+
 function CloudLoading({ testId, rows }) {
   return (
     <div className="cloud-loading" data-testid={testId} role="status">
@@ -282,6 +357,7 @@ export default function AccountPage() {
   const { user, signOut } = useAuth();
   const { addToast } = useToast();
   const cloud = useCloudAccount();
+  const tickets = useSupportTickets();
   const transport = useSyncExternalStore(subscribeCloudTransport, getCloudTransport, getCloudTransport);
   const reveal = useScrollReveal();
   const loading = cloud.status === 'loading';
@@ -457,6 +533,42 @@ export default function AccountPage() {
               title="No quotes submitted yet."
               body="Submit a requisition from checkout and it is tracked here."
               actions={[{ to: '/catalog', label: 'Browse Catalog' }]}
+            />
+          )}
+        </section>
+
+        <section
+          ref={reveal}
+          className="account-panel account-panel--tickets bento reveal-cinematic"
+          aria-labelledby="account-tickets-title"
+          aria-busy={tickets.status === 'loading' || undefined}
+          data-testid="account-tickets-section"
+          data-state={tickets.status}
+          data-count={tickets.list.length}
+        >
+          <header className="account-panel__head">
+            <p className="index-label">
+              <span className="index-label__num">04</span> / Support
+            </p>
+            <h2 id="account-tickets-title" className="account-panel__title">
+              Studio Engineering Tickets
+            </h2>
+          </header>
+          {tickets.status === 'loading' ? (
+            <CloudLoading testId="tickets-loading" rows={2} />
+          ) : tickets.list.length > 0 ? (
+            <ol className="order-list ticket-list" data-testid="account-tickets">
+              {tickets.list.map((ticket) => (
+                <TicketRow key={ticket.ref} ticket={ticket} />
+              ))}
+            </ol>
+          ) : (
+            <EmptyState
+              art="sheet"
+              compact
+              testId="account-tickets-empty"
+              title="No engineering tickets."
+              body="Studio AI answers most questions directly. A ticket opens only when it cannot, and it is tracked here."
             />
           )}
         </section>
