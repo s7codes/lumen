@@ -8,16 +8,15 @@ const VIEWS = [
   { path: '/studio-2d', heading: 'Wall Studio' },
 ];
 
+const HOME_TITLE = 'Lumen - Architectural Lighting & Modular Systems';
+
+// 3D Room lands on the overview showcase; its launch key then enters the planner.
 const NAV_SEQUENCE = [
   { link: /catalog/i, path: '/catalog', heading: 'Catalog', title: 'Catalog - Lumen' },
-  { link: /3d room/i, path: '/room-3d', heading: 'Room Planner', title: 'Room Planner - Lumen' },
   { link: /wall studio/i, path: '/studio-2d', heading: 'Wall Studio', title: 'Wall Studio - Lumen' },
-  {
-    link: /overview/i,
-    path: '/',
-    heading: /light and storage/i,
-    title: 'Lumen - Architectural Lighting & Modular Systems',
-  },
+  { link: /3d room/i, path: '/', heading: /light and storage/i, title: HOME_TITLE, current: /overview/i },
+  { launch: true, link: /3d room/i, path: '/room-3d', heading: 'Room Planner', title: 'Room Planner - Lumen' },
+  { link: /overview/i, path: '/', heading: /light and storage/i, title: HOME_TITLE },
 ];
 
 function collectRuntimeErrors(page) {
@@ -87,11 +86,12 @@ test.describe('app shell', () => {
 
     for (const step of NAV_SEQUENCE) {
       const link = nav.getByRole('link', { name: step.link });
-      await link.click();
+      if (step.launch) await page.getByTestId('launch-3d-studio-cta').click();
+      else await link.click();
 
       await expect(page).toHaveURL((url) => url.pathname === step.path);
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(step.heading);
-      await expect(link).toHaveAttribute('aria-current', 'page');
+      await expect(nav.getByRole('link', { name: step.current ?? step.link })).toHaveAttribute('aria-current', 'page');
       await expect(page).toHaveTitle(step.title);
       expect(await page.evaluate(() => window.__lumenSessionMarker)).toBe('alive');
     }

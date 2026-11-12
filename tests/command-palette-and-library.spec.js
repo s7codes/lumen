@@ -234,10 +234,13 @@ test.describe('command palette', () => {
     await nav.getByRole('link', { name: /wall studio/i }).focus();
     await expect.poll(() => scripts.some((path) => /\/WallStudioPage-/.test(path))).toBe(true);
 
-    // A second hover reuses the warmed chunk instead of fetching again.
+    // A second hover reuses the warmed chunk. 3D Room opens the overview
+    // showcase, and its launch key enters the planner on the cached chunk.
     const before = scripts.length;
     await nav.getByRole('link', { name: /3d room/i }).hover();
     await nav.getByRole('link', { name: /3d room/i }).click();
+    await expect(page.getByTestId('home-3d-showcase')).toBeInViewport();
+    await page.getByTestId('launch-3d-studio-cta').click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
     expect(scripts.slice(before).filter((path) => /\/RoomPlannerPage-/.test(path))).toEqual([]);
     expect(errors).toEqual([]);

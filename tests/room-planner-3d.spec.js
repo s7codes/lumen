@@ -5,6 +5,7 @@ import { formatUsd } from '../src/lib/format.js';
 import {
   CAMERA_PITCH,
   CAMERA_YAW,
+  CAMERA_ZOOM,
   createRoomState,
   furnitureLayout,
   ROOM_FORMAT,
@@ -37,6 +38,14 @@ const MARK_GEOMETRY = {
 
 async function openRoom(page) {
   await page.goto('/room-3d');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+}
+
+// The navbar 3D Room link opens the overview showcase; its launch key enters the planner.
+async function enterRoomFromNav(page) {
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /3d room/i }).click();
+  await expect(page.getByTestId('home-3d-showcase')).toBeInViewport();
+  await page.getByTestId('launch-3d-studio-cta').click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
 }
 
@@ -332,8 +341,8 @@ test.describe('room planner', () => {
     await expect(roomLights(page, 'm1')).toHaveCount(1);
 
     await openDimensions(page, 'room-dimensions');
-    await commitField(page, 'room-width', 900);
-    await expect(page.getByTestId('room-width')).toHaveValue('500');
+    await commitField(page, 'room-width', 1200);
+    await expect(page.getByTestId('room-width')).toHaveValue('900');
     await commitField(page, 'room-width', 400);
     await commitField(page, 'room-depth', 360);
     await commitField(page, 'room-height', 300);
@@ -419,13 +428,15 @@ test.describe('room planner', () => {
     if (renderer === 'unavailable') {
       test.info().annotations.push({ type: 'webgl', description: 'unavailable: pointer orbit skipped' });
     } else {
-      // Dragging right swings the eye toward negative yaw until the azimuth limit.
+      // Dragging right swings the eye toward negative yaw, straight past the old 65 deg stop.
       await page.mouse.move(cx, cy);
       await page.mouse.down();
       await page.mouse.move(cx + 400, cy + 60, { steps: 10 });
       await page.mouse.up();
-      await expect(stage).toHaveAttribute('data-camera-yaw', String(CAMERA_YAW.min));
+      await expect.poll(async () => Math.abs((await cameraOf()).yaw)).toBeGreaterThan(90);
       const afterFirst = await cameraOf();
+      expect(afterFirst.yaw).toBeGreaterThanOrEqual(CAMERA_YAW.min);
+      expect(afterFirst.yaw).toBeLessThanOrEqual(CAMERA_YAW.max);
       expect(afterFirst.pitch).toBeGreaterThan(24);
       expect(afterFirst.pitch).toBeLessThan(CAMERA_PITCH.max);
       expect(afterFirst.zoom).toBe(1);
@@ -435,7 +446,7 @@ test.describe('room planner', () => {
       await page.mouse.move(cx - 100, cy + 600, { steps: 10 });
       await page.mouse.up();
       await expect(stage).toHaveAttribute('data-camera-pitch', String(CAMERA_PITCH.max));
-      expect((await cameraOf()).yaw).toBeGreaterThan(CAMERA_YAW.min);
+      expect((await cameraOf()).yaw).not.toBe(afterFirst.yaw);
 
       // One wheel notch dollies 5 percent; a burst stops at the zoom limit. Wheel
       // input reaches the page asynchronously, so count deliveries before moving on.
@@ -448,8 +459,8 @@ test.describe('room planner', () => {
       await expect(stage).toHaveAttribute('data-camera-zoom', '1.05');
       for (let i = 0; i < 20; i += 1) await page.mouse.wheel(0, -100);
       await expect.poll(() => page.evaluate(() => window.__wheels)).toBe(21);
-      await expect(stage).toHaveAttribute('data-camera-zoom', '1.8');
-      await expect.poll(async () => (await readStoredRoom(page)).camera.zoom).toBe(1.8);
+      await expect(stage).toHaveAttribute('data-camera-zoom', String(CAMERA_ZOOM.max));
+      await expect.poll(async () => (await readStoredRoom(page)).camera.zoom).toBe(CAMERA_ZOOM.max);
     }
 
     await stage.focus();
@@ -643,12 +654,13 @@ test.describe('room planner', () => {
     await page.evaluate(([key, value]) => localStorage.setItem(key, value), [ROOM_KEY, raw]);
     await page.reload();
 
-    await expect(page.getByTestId('room-label')).toHaveText('Viewport / Room 500 x 200 x 250 cm');
+    await expect(page.getByTestId('room-label')).toHaveText('Viewport / Room 900 x 200 x 250 cm');
     await expect(viewport(page)).toHaveAttribute('data-furniture', 'none');
     await expect(viewport(page)).toHaveAttribute('data-lighting', 'night');
-    await expectCamera(page, { yaw: 65, pitch: 8, zoom: 1 });
+    // Yaw is an angle: 999 deg wraps to -81; pitch clamps to the floor-level limit.
+    await expectCamera(page, { yaw: -81, pitch: CAMERA_PITCH.min, zoom: 1 });
     await expect(page.getByTestId('room-module')).toHaveCount(3);
-    await expect(roomModule(page, 'm1')).toHaveAttribute('data-x-cm', '390');
+    await expect(roomModule(page, 'm1')).toHaveAttribute('data-x-cm', '790');
     await expect(roomModule(page, 'm1')).toHaveAttribute('data-y-cm', '0');
     await expect(roomModule(page, 'm1')).toHaveAttribute('data-led', 'true');
     await expect(roomModule(page, 'm2')).toHaveAttribute('data-product', 'modular-cube-36');
@@ -686,8 +698,7 @@ test.describe('2D and 3D bridge', () => {
     expect(wall.wall.widthCm).toBe(360);
     expect(wall.items).toHaveLength(4);
 
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /3d room/i }).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    await enterRoomFromNav(page);
     await page.getByTestId('import-from-wall-studio').click();
     await expect(page.getByTestId('room-notice')).toHaveText('Loaded 4 modules from Wall Studio. Main wall 360 x 250 cm.');
     await expect(viewport(page)).toHaveAttribute('data-room-width', '360');
@@ -727,7 +738,7 @@ test.describe('2D and 3D bridge', () => {
       String(moved.xCm + 30),
     );
 
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /3d room/i }).click();
+    await enterRoomFromNav(page);
     const items = (await readStoredRoom(page)).items;
     const lines = aggregateBagLines(items);
     const priceUsd = items.reduce((sum, item) => sum + getProduct(item.productId).priceUsd, 0);
@@ -818,9 +829,9 @@ test.describe('scene description', () => {
 
   test('orbit frame round-trips yaw, pitch and zoom and mirrors the camera limits', () => {
     const cameras = [
-      { yaw: -65, pitch: 8, zoom: 0.6 },
+      { yaw: -150, pitch: CAMERA_PITCH.min, zoom: CAMERA_ZOOM.min },
       { yaw: 30, pitch: 20, zoom: 1.2 },
-      { yaw: 65, pitch: 50, zoom: 1.8 },
+      { yaw: 180, pitch: CAMERA_PITCH.max, zoom: CAMERA_ZOOM.max },
     ];
     const radius = 0.5 * Math.hypot(3.6, 2.6, 3.0);
     for (const aspect of [0.6, 1, 1.6, 2.4]) {
@@ -828,8 +839,11 @@ test.describe('scene description', () => {
       for (const camera of cameras) {
         expect(sanitizeCamera(cameraFromPosition(frame, cameraPosition(frame, camera)))).toEqual(camera);
       }
-      // Even fully zoomed in, the eye stays outside the room's bounding sphere.
-      expect(frame.minDistance).toBeGreaterThan(radius);
+      // Fully zoomed in, the eye comes to the edge of the bounding sphere for a
+      // detail view; fully out it frames the room from more than twice as far.
+      expect(frame.minDistance).toBeCloseTo(frame.base / CAMERA_ZOOM.max, 10);
+      expect(frame.minDistance).toBeGreaterThan(radius * 0.9);
+      expect(frame.maxDistance).toBeGreaterThan(radius * 2);
     }
     const limits = orbitLimits(CAMERA_YAW, CAMERA_PITCH);
     expect(limits.minPolarAngle).toBeCloseTo(((90 - CAMERA_PITCH.max) * Math.PI) / 180, 10);

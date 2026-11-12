@@ -160,7 +160,7 @@ test.describe('multi-wall 3D room architecture', () => {
     for (const wall of ROOM_WALLS) {
       const frame = cameraFrame(state.room, 1.6, wall);
       expect(frame.heading).toBe(WALL_HEADING[wall]);
-      for (const camera of [{ yaw: -65, pitch: 8, zoom: 0.6 }, { yaw: 0, pitch: 24, zoom: 1 }, { yaw: 65, pitch: 50, zoom: 1.8 }]) {
+      for (const camera of [{ yaw: -179, pitch: 5, zoom: 0.45 }, { yaw: 0, pitch: 24, zoom: 1 }, { yaw: 179, pitch: 85, zoom: 2.4 }]) {
         const back = cameraFromPosition(frame, cameraPosition(frame, camera));
         expect(back.yaw).toBeCloseTo(camera.yaw, 6);
         expect(back.zoom).toBeCloseTo(camera.zoom, 6);
@@ -427,7 +427,7 @@ test.describe('human-friendly UX and header polish', () => {
     await page.goto('/');
     const nav = page.getByRole('navigation', { name: 'Primary' });
     const links = nav.getByRole('link');
-    await expect(links).toHaveText(['Overview', 'Catalog', '3D Room', 'Wall Studio']);
+    await expect(links).toHaveText(['Overview', 'Catalog', 'Wall Studio', '3D Room']);
     const type = await links.first().evaluate((el) => {
       const style = getComputedStyle(el);
       return {

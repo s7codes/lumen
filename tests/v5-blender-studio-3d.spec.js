@@ -222,7 +222,8 @@ test.describe('inside-room observer engine', () => {
   test('stands at 165 cm, faces each wall, walks inside the wall buffer and around the floor reference', () => {
     const room = createRoomState().room;
     const stance = defaultStance(room);
-    expect(stance).toEqual({ xCm: 160, zCm: 154, headingDeg: 0, pitchDeg: 0 });
+    // Centred across the north wall, backed up to 78 percent of the depth.
+    expect(stance).toEqual({ xCm: 160, zCm: 218.4, headingDeg: 0, pitchDeg: 0 });
     expect(EYE_HEIGHT_CM).toBe(165);
 
     for (const [wall, heading] of Object.entries(WALL_LOOK_HEADING)) {
@@ -246,7 +247,7 @@ test.describe('inside-room observer engine', () => {
     const sofa = { ...room, furniture: 'sofa-200' };
     expect(furnitureZone(sofa)).toEqual({ x0: 40, x1: 280, z0: -14, z1: 118 });
     walk = defaultStance(sofa);
-    for (let i = 0; i < 4; i += 1) walk = stepWalk(walk, sofa, { forward: 1 });
+    for (let i = 0; i < 6; i += 1) walk = stepWalk(walk, sofa, { forward: 1 });
     expect(walk).toMatchObject({ xCm: 160, zCm: 118 });
     // A stance inside the bed is pushed out to the nearest free floor.
     expect(resolveStance({ xCm: 160, zCm: 150, headingDeg: 0, pitchDeg: 0 }, { ...room, furniture: 'bed-160' })).toMatchObject({
@@ -402,7 +403,10 @@ test.describe('direct 3D manipulation on the wall', () => {
     const shelf = roomModule(page, 'm1');
     const before = { x: await numberAttr(cube, 'data-x-cm'), y: await numberAttr(cube, 'data-y-cm') };
 
-    // A press on the mesh itself, where the gizmo origin sits, drags in free XY.
+    // A press on the mesh itself, where the gizmo origin sits, drags in free XY. Mounting
+    // from the dock can scroll the page, so the stage comes back into view first.
+    await viewport(page).scrollIntoViewIfNeeded();
+    await settleGizmo(page);
     const canvas = await page.getByTestId('room-canvas').boundingBox();
     const grab = {
       x: canvas.x + (await numberAttr(gizmo(page), 'data-screen-x')),
@@ -502,7 +506,7 @@ test.describe('inside-room 360 degree lens', () => {
     await expect(state).toHaveAttribute('data-camera-mode', 'inside');
     await expect(state).toHaveAttribute('data-eye-cm', '165');
     await expect(state).toHaveAttribute('data-x-cm', '160');
-    await expect(state).toHaveAttribute('data-z-cm', '154');
+    await expect(state).toHaveAttribute('data-z-cm', '218');
     await expect(state).toHaveAttribute('data-heading-deg', '0');
     await expect(state).toHaveAttribute('data-facing-wall', 'north');
     for (const wall of ['north', 'east', 'south', 'west']) {
@@ -515,7 +519,7 @@ test.describe('inside-room 360 degree lens', () => {
     await expect(page.getByTestId('walk-controls')).toBeVisible();
 
     // Eye illuminance matches the engine for the stored room and the stance.
-    const stance = { xCm: 160, zCm: 154, headingDeg: 0, pitchDeg: 0 };
+    const stance = { xCm: 160, zCm: 218.4, headingDeg: 0, pitchDeg: 0 };
     const stored = sanitizeRoomState(await readStoredRoom(page));
     await expect(state).toHaveAttribute('data-eye-lux', String(eyeIlluminance(stored, stance)));
     expect(Number(await state.getAttribute('data-eye-lux'))).toBeGreaterThan(0);
@@ -539,13 +543,13 @@ test.describe('inside-room 360 degree lens', () => {
     await page.getByTestId('turn-right').click();
     await expect(state).toHaveAttribute('data-heading-deg', '15');
     await page.getByTestId('walk-reset').click();
-    await expect(state).toHaveAttribute('data-z-cm', '154');
+    await expect(state).toHaveAttribute('data-z-cm', '218');
     await expect(state).toHaveAttribute('data-heading-deg', '0');
 
     // Keys walk too: S steps back, D strafes right, Q turns left.
     await viewport(page).focus();
     await page.keyboard.press('s');
-    await expect(state).toHaveAttribute('data-z-cm', '179');
+    await expect(state).toHaveAttribute('data-z-cm', '243');
     await page.keyboard.press('d');
     await expect(state).toHaveAttribute('data-x-cm', '185');
     await page.keyboard.press('q');
@@ -555,7 +559,7 @@ test.describe('inside-room 360 degree lens', () => {
 
     // The sofa stops the walk at its footprint.
     await page.getByRole('radio', { name: 'Modular Sofa 200cm' }).check();
-    for (let i = 0; i < 4; i += 1) await page.getByTestId('walk-forward').click();
+    for (let i = 0; i < 6; i += 1) await page.getByTestId('walk-forward').click();
     await expect(state).toHaveAttribute('data-z-cm', '118');
 
     // A drag across the stage turns the head; the turn commits on release.
@@ -639,7 +643,7 @@ test.describe('studio boot, zen viewport and skip link', () => {
 
     await replay.click();
     await expect(boot).toHaveAttribute('data-state', 'booting');
-    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v5.0');
+    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v5.1');
     await expect(boot).toContainText('01 / WebGL2 Shader Pipeline');
     await expect(boot).toContainText('02 / 4-Wall Raycast & Gizmo Solver');
     await expect(boot).toContainText('03 / 24V Photometric Kernel');
