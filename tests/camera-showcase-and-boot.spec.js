@@ -461,7 +461,7 @@ test.describe('navbar order and the overview 3D showcase', () => {
     expect(cover).toMatchObject({ parent: 'BODY', position: 'fixed', zIndex: '9999', x: 0, y: 0, coversNav: true });
     expect(cover.width).toBe(cover.innerWidth);
     expect(cover.height).toBe(cover.innerHeight);
-    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v5.3');
+    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v6.0');
     // Layout sizes, not painted boxes: the panel itself is still pulling focus from 1.05.
     await expect(boot.locator('.studio-boot__mark')).toHaveCSS('width', '56px');
     await expect(boot.locator('.studio-boot__bar')).toHaveCSS('width', '240px');
@@ -920,7 +920,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     const pad = page.getByTestId('showcase-launchpad');
     await pad.scrollIntoViewIfNeeded();
     await expect(pad).toBeVisible();
-    await expect(pad).toContainText('SPATIAL ENGINE v5.3 // INTERACTIVE WORKSTATION READY');
+    await expect(pad).toContainText('SPATIAL ENGINE v6.0 // INTERACTIVE WORKSTATION READY');
     await expect(pad.getByRole('heading', { level: 3, name: 'Step inside the 3D Spatial Workstation.' })).toBeVisible();
     await expect(pad).toHaveCSS('border-top-color', 'rgba(232, 146, 58, 0.28)');
     expect(await pad.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('radial-gradient');

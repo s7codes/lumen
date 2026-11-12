@@ -1,14 +1,33 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v5.3.0-e8923a)
+![Release](https://img.shields.io/badge/release-v6.0.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v5.3.0**. The navbar now reads in page order, **Overview**, **3D Room**,
+Current release: **v6.0.0**. The **Lumen Studio AI Concierge** sits bottom-right on every
+route. The **Ask Studio AI** pill opens a spec concierge that answers from the 12-part
+catalog, the 24V SELV driver schedule and voltage-drop model, DALI-2 dimming and scenes,
+Sabine acoustics and illuminance, both planners, the CAD exports, pricing, VAT,
+fulfilment and Lumen Cloud, and that reads the visitor's live 2D wall, 3D room and cart
+through the same engines the planners and checkout use: modules per wall, rated and
+active 24V load, the sized driver, bus run and voltage drop, RT60, STI, lux, conflicts,
+crates and dispatch waves. One deterministic engine (`src/lib/concierge-engine.js`)
+answers on the server through `POST /api/concierge/ask` and on the device when the API
+is unreachable, with the same reply id either way. Human contact sits behind a strict
+gatekeeper: **Contact Studio Engineering** unlocks only when the engine cannot resolve an
+inquiry (confidence under 0.45) or the visitor marks a resolved answer **Did not resolve my
+issue**. Asking for a human, by itself, never unlocks it. `POST /api/concierge/escalate`
+replays every transcript turn through the engine before it issues an `LMN-T-XXXXXXXX`
+ticket, so a request without a verified unresolved or unhelpful turn answers
+`400 gatekeeper_locked`. Tickets are listed under **Studio Engineering Tickets** on
+`/account`. CI now runs the suite on four parallel workers with a cached Playwright
+browser and uploads the HTML report only when a run fails.
+
+v5.3.0 put the navbar in page order, **Overview**, **3D Room**,
 **Catalog**, **Wall Studio**, and the overview scrolls the same way: hero, spec strip and
 Surface & Dimming Lab, then the 3D Spatial Studio (`#spatial-studio-3d`), Core Modules
 (`#core-modules`) and Workspaces (`#workspaces`). The scroll-spy holds the last section
@@ -264,6 +283,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v6.0.0  | Lumen Studio AI Concierge on every route with live-workspace retrieval over the catalog, 24V bus, DALI-2, acoustics, planners, CAD exports, pricing and fulfilment; strict support escalation gatekeeper with server-replayed transcripts; `POST /api/concierge/ask`, `POST /api/concierge/escalate`, `GET /api/tickets`; Studio Engineering Tickets on `/account` with an offline outbox; four-worker CI with a cached Playwright browser |
 | v5.3.0  | Navbar and overview in one left-to-right order with a sequential scroll-spy; calm 20 deg/s turntable with 7 s acts; lighter capability cards with spec pills; champagne launch key with a perimeter beam; drafting-room Wall Studio backdrop; Web Audio RT60 audition in both planners; 1600 x 1000 `.png` studio render card |
 | v5.2.0  | Scroll-spy navbar underline on the overview; canvas 2D showcase theatre with four autonomous acts, act keys, card previews, cursor parallax and a lux probe; 3D Studio Launchpad with `?lens=` and `?scale=` quick-launch presets |
 | v5.1.0  | Unrestricted 360-degree orbit and 85-degree plan pitch; 900 x 900 cm envelopes and four room scale presets; 78-degree inside lens with wheel FOV and a backed-up stance; navbar swap and overview 3D Spatial Studio showcase; full-screen engine boot with a defocus reveal; calm Visual-mode Wall Studio |
@@ -411,7 +431,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '5.3.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '6.0.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -421,6 +441,9 @@ a fast link. Requests time out after 8 s.
 | `GET /api/quotes` | | `{ quotes }`, newest first, at most 24 |
 | `POST /api/quotes` | `{ quote: { items, currency, promo, includeDriver, grossMinor }, project }` | `201 { quote, quotes }` |
 | `POST /api/sync` | `{ mode, projects?, quotes? }` | `{ projects, quotes }` |
+| `POST /api/concierge/ask` | `{ question, workspaceContext? }` | `200 { reply: { id, question, answer, confidence, category, resolved, citations, suggestedActions, metrics } }` |
+| `POST /api/concierge/escalate` | `{ email, subject, message, reason, transcript, workspaceSummary }` | `201 { ticket, tickets }`, or `400 gatekeeper_locked` without a verified unresolved or unhelpful turn |
+| `GET /api/tickets` | | `{ tickets }`, newest first, at most 12 |
 | `POST /api/test/reset` | | only with `LUMEN_TEST_RESET=1`: clears the caller's namespace |
 
 - Signed out, every data endpoint is scoped by the `X-Lumen-Client` header: a 128-bit
@@ -436,7 +459,7 @@ a fast link. Requests time out after 8 s.
 - Quotes are priced again on the server from the submitted parts, currency, promo and
   driver choice. `grossMinor` from the client is a cross-check only: a mismatch answers
   `409 stale`. The server issues the `LMN-R-XXXXXXXX` reference from `node:crypto`.
-- Errors are JSON `{ error: { code, message } }`: `400 invalid`, `401 unauthorized`,
+- Errors are JSON `{ error: { code, message } }`: `400 invalid`, `400 gatekeeper_locked`, `401 unauthorized`,
   `404 not_found`, `405 method_not_allowed` (with `Allow`), `409 quota` or `stale`,
   `413 payload_too_large`, `415 unsupported_media_type`, `503 storage`.
 
@@ -490,6 +513,9 @@ a fast link. Requests time out after 8 s.
 | `deleteProject(id)` | the remaining projects, newest first | `lumen_cloud_projects_v1` |
 | `submitQuote({ quote, project })` | `{ ref, quoteId, submittedAt, reference, preparedFor, currency, grossMinor, lines, loadW, status }` | `lumen_cloud_quotes_v1` |
 | `loadQuotes()` | requisitions, newest first, at most 24 | `lumen_cloud_quotes_v1` |
+| `askConcierge(question, workspaceContext)` | `{ reply, transport }`, `transport` is `http` or `local` | none |
+| `submitSupportTicket(payload)` | `{ ticket, transport }`; offline, the ticket waits in an outbox | `lumen_cloud_ticket_outbox_v1` |
+| `loadSupportTickets()` | tickets, newest first, at most 12; queued device tickets carry `pending: true` | `lumen_cloud_tickets_v1` |
 
 - A named library of up to 12 projects (`MAX_STORED_PROJECTS`). The name (one line, at
   most 48 characters) maps to a deterministic id: the default names **Wall A** and
@@ -564,6 +590,9 @@ a fast link. Requests time out after 8 s.
   room planner also warms its WebGL chunk behind the page. Each path is fetched once per
   session, and nothing is prefetched when the browser reports Save-Data or a 2G link.
   A cold load of `/` still requests zero planner or WebGL chunks.
+- The Studio AI panel and its engine ship as their own chunks (`ConciergePanel`,
+  `concierge-engine`), loaded on pointer or focus intent over the **Ask Studio AI** pill.
+  The client only imports the engine dynamically, for the offline fallback.
 - The fallback is a frame centered in the main area: the Lumen mark under a sweeping
   mask highlight, a 160 x 1 px indeterminate bar and a mono label (**Loading spatial
   engine**, **Loading wall studio**). It enters with the cinematic focus reveal. On
@@ -850,7 +879,7 @@ custom properties, so React never re-renders on pointer movement.
 - The **Lumen Spatial Engine** boot (`studio-boot-overlay`) is portaled to the body as
   a fixed 100vw x 100vh plate (`z-index: 9999`, `#080809`) over the navbar and every
   dock while the WebGL chunk loads: a 56 px monogram with a breathing tungsten aperture,
-  `LUMEN SPATIAL ENGINE v5.3`, a 240 px bar from `000%` and `01 / WebGL2 Shader
+  `LUMEN SPATIAL ENGINE v6.0`, a 240 px bar from `000%` and `01 / WebGL2 Shader
   Pipeline`, `02 / 4-Wall Raycast & Gizmo Solver`, `03 / 24V Photometric Kernel`. It
   holds 950 ms after the canvas reports ready, then lifts over 550 ms on
   `cubic-bezier(0.16, 1, 0.3, 1)` (opacity to 0, scale to 1.025, blur to 10px) while the
@@ -1185,6 +1214,62 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
   Projects** in the panel head compares the two newest, older as A. Both selects list
   every saved revision and the live Wall Studio and Room Planner drafts; **Swap**
   exchanges them. The dialog code loads in its own chunk on first open.
+- **Studio Engineering Tickets** spans the row beneath (`account-tickets-section`):
+  every `LMN-T-XXXXXXXX` ticket in the library with its subject, status (**Queued for
+  Engineering Review**), submit time, escalation path, transcript length, reply address,
+  the escalated inquiry and the attached workspace digest. A ticket written offline shows
+  as a device copy until the outbox replays it.
+
+## Studio AI Concierge
+
+`ConciergeWidget` is mounted once in the layout shell, after the page in DOM order, so the
+conversation survives every route change and never enters the page's tab sequence early.
+
+- **Dock.** A 40 px **Ask Studio AI** pill fixed 20 px from the bottom-right corner
+  (`z-index: 90`): basalt `#141311`, a 1 px `rgba(229, 199, 153, 0.28)` edge, a six-blade
+  aperture glyph and a zero-blur plinth. Engaged, it inverts flat to champagne. Under
+  560 px it compacts to a 40 x 40 key with the same accessible name. The panel chunk (and
+  the engine behind it) loads on pointer or focus intent, never with the entry.
+- **Layout guard.** While any `aria-modal` dialog is open (sign-in, cart, palette,
+  blueprint, compare) or the 3D camera popover is open, the dock steps aside
+  (`visibility: hidden`) and returns with its session intact. `scroll-padding-bottom:
+  76px` on the root keeps anything scrolled into view from below (keyboard focus, find in
+  page, end-aligned anchors) clear of the pill.
+- **Panel.** A non-modal dialog (`aria-label="Lumen Studio AI Concierge"`,
+  `data-escalation="locked" | "unlocked"`), `min(420px, 100vw - 32px)` wide and at most
+  `min(640px, 100vh - 96px)` tall: a header (`LUMEN SPEC CONCIERGE // LIVE WORKSPACE RAG`,
+  the route context, close), four route-aware quick prompts, the conversation, the
+  gatekeeper bar and the composer. Escape from inside closes it and focus returns to the
+  pill. Each reply shows its category, a resolved or needs-engineer confidence, metric
+  badges, suggested navigation chips, its sources and, on resolved answers,
+  **Did not resolve my issue**.
+- **Engine.** `evaluateConciergeQuery(question, workspaceContext)` caps the question at
+  500 characters and rebuilds the context (`route`, `currency`, `wallDraft`, `roomDraft`,
+  `bagItems`) through `sanitizeLayout`, `sanitizeRoomState` and `sanitizeBagItems`. It
+  scores catalog, electrical, physics, spatial and commerce signals, matches every part
+  by name, alias and SKU, and composes answers from the canonical modules: the catalog,
+  `DRIVERS`, `maxRunM`, `LIGHTING_SCENES`, `computeEnvironmentalPhysics`,
+  `computeBusTopology`, `findRoomConflicts`, `buildQuote` and
+  `computeLogisticsSchedule`. Questions about *my* wall, room, design or cart read the
+  live drafts (`lumen_wall_studio_v1`, `lumen_room_3d_v1`, `lumen_bag_v1`) at question
+  time. Every reply is `{ id, question, answer, confidence, category, resolved,
+  citations, suggestedActions, metrics }`; resolved replies score 0.65 and above.
+- **Gatekeeper.** Bespoke fabrication outside the catalog, structural, masonry or
+  wet-zone certification, onsite crew booking, freight damage and claims, B2B invoicing
+  and off-topic requests resolve `false` under 0.45 and unlock contact with reason
+  `unresolved_query`. **Did not resolve my issue** adds a deeper engineering follow-up and
+  unlocks with `marked_unhelpful`. A request for a human alone gets the gatekeeper reply
+  and stays locked. Resolution depends on the question text only, so the server's replay
+  agrees with what the visitor saw.
+- **Tickets.** The unlocked **Contact Studio Engineering** form takes Email (pre-filled
+  when signed in), Subject (2 to 120 characters, pre-filled from the inquiry) and an
+  Engineering Brief (10 to 2000), and attaches the transcript and a 600-character
+  workspace digest. `POST /api/concierge/escalate` replays the transcript (the unlocking
+  turn is always kept within the 24-turn cap), checks the fields and the reason, and
+  issues the reference from `node:crypto`. Up to 12 tickets per library, merged into the
+  account on sign-in like quotes. Offline, the same gatekeeper runs on the device and the
+  ticket waits in `lumen_cloud_ticket_outbox_v1` until the next reachable call replays it
+  through the server.
 
 ## Command palette
 
@@ -1254,6 +1339,11 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
   address-derived namespace id cannot be used to read someone else's library. A
   presented Bearer token that fails verification answers `401`; only the `Bearer`
   scheme selects a session, so a staging proxy's Basic auth stays anonymous.
+- The escalation gatekeeper is enforced on the server: client `resolved` and
+  `markedUnhelpful` flags count only when the engine reproduces them on replay, so a
+  forged transcript answers `400 gatekeeper_locked`. Concierge replies are rebuilt by
+  `sanitizeConciergeReply` on the client, and every suggested action must pass
+  `isSafeInternalPath` before it reaches the router.
 
 ## Development
 
@@ -1279,23 +1369,28 @@ store can stay up during a test run.
 
 `.github/workflows/ci.yml` runs on pushes to `main` and on pull requests to `main` and
 `develop`: `npm ci`, the Playwright Chromium binary, `npm run build`, then
-`npx playwright test` against the built bundle. The HTML report is kept as an artifact.
+`npx playwright test` against the built bundle on four parallel workers (every browser
+context owns its `X-Lumen-Client` namespace in the isolated test store). The browser
+binary is cached under `~/.cache/ms-playwright` with `actions/cache@v5`, keyed on the
+lockfile hash, and downloaded only on a cache miss. The HTML report is uploaded only when
+the run fails.
 `ubuntu-latest` already carries Chromium's shared libraries and every font is
 self-hosted, so the job installs no apt packages and does not depend on Ubuntu mirrors.
 Every action is pinned to a major that declares Node 24 (`actions/checkout@v5`,
-`actions/setup-node@v5`, `actions/upload-artifact@v6`), and
+`actions/setup-node@v5`, `actions/cache@v5`, `actions/upload-artifact@v6`), and
 `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` is set for the whole workflow as a safeguard, so the
 runner raises no Node 20 deprecation warning.
 Releases push `develop` and `main` at the same SHA; triggering pushes on `main` only, with
-`concurrency` grouped by ref and `cancel-in-progress`, yields one run per release. Every
-push is followed by a check of the run on the GitHub Actions API until it completes green.
+`concurrency` grouped by ref and `cancel-in-progress`, yields one run per release. The
+local build and full suite are the release gate; after a push, one query to the GitHub
+Actions API confirms the run was dispatched and records its id.
 
 ## Workflow
 
 - `main` holds releases, `develop` integrates, each milestone lands on a short-lived
   `feat/*` branch. Once `develop` and `main` are pushed, the feature branch is deleted
   locally and on `origin`, so only `main` and `develop` stay published.
-- Only major releases are tagged: `v1.0.0`, `v2.0.0`, `v3.0.0`, `v4.0.0`, `v5.0.0`. Minor and patch
+- Only major releases are tagged: `v1.0.0`, `v2.0.0`, `v3.0.0`, `v4.0.0`, `v5.0.0`, `v6.0.0`. Minor and patch
   releases ship untagged and are recorded in the release history above.
 - Releases advance `develop` and `main` by pointer (`git branch -f`) from the finished
   feature branch, never by switching back first, so no working-tree directories are

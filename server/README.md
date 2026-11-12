@@ -5,8 +5,8 @@ Lumen Cloud HTTP API. Node only, no dependencies: `node:http`, `node:fs`, `node:
 
 | File | Role |
 | ---- | ---- |
-| `app.js` | Request handler `(req, res)`: routes, 64 KB JSON bodies, signed sessions, session-bound library resolution and guest claim, security headers |
-| `store.js` | State per `X-Lumen-Client` or `acct-` account namespace, serialized transactions, atomic two-namespace claims, atomic temp-file + rename writes |
+| `app.js` | Request handler `(req, res)`: routes, 64 KB JSON bodies, signed sessions, session-bound library resolution and guest claim, Studio AI concierge and escalation gatekeeper, security headers |
+| `store.js` | Projects, quotes and engineering tickets per `X-Lumen-Client` or `acct-` account namespace, serialized transactions, atomic two-namespace claims, atomic temp-file + rename writes |
 | `config.js` | Environment, data file path (dev or test store), one store and handler per process |
 | `index.js` | Standalone server for `npm run server` |
 
@@ -18,7 +18,15 @@ The same handler runs in three places:
 
 Validation is not duplicated here. The handler imports the browser's own rules from
 `src/lib/` (`cloud-records`, `wall-studio`, `room-3d`, `quote`, `bag`,
-`project-library`, `auth`) and `src/security/sanitize.js`.
+`project-library`, `auth`, `concierge-engine`) and `src/security/sanitize.js`.
+
+Studio AI: `POST /api/concierge/ask` runs `evaluateConciergeQuery` from
+`src/lib/concierge-engine.js`, the same engine the browser falls back to offline.
+`POST /api/concierge/escalate` is the support gatekeeper: it replays every transcript
+turn through that engine and issues an `LMN-T-` ticket only for a turn the engine itself
+answers as unresolved, or a resolved answer the visitor marked as not resolving the
+issue; anything else is `400 gatekeeper_locked`. `GET /api/tickets` lists the library's
+tickets (12 at most). Stores written before v6 carry no tickets array and read as empty.
 
 Environment:
 
