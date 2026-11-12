@@ -310,9 +310,10 @@ function WalkRig({ room, walk, insideFov, api }) {
   const aspect = size.width / Math.max(1, size.height);
   const aspectRef = useRef(aspect);
   aspectRef.current = aspect;
-  // The live lens: the wheel writes here between commits; a committed value
-  // (wheel pause, keys, reset) replaces it.
-  const fovLens = useRef({ fov: insideFov, timer: 0 });
+  // The live lens: the wheel writes here between commits. `committed` is the
+  // last value this rig handed up, so the echo of its own commit is told apart
+  // from a new value set elsewhere (keys, reset), which replaces the live one.
+  const fovLens = useRef({ fov: insideFov, committed: insideFov, timer: 0 });
   const pose = useRef(null);
   const velocity = useRef(Object.fromEntries(WALK_KEYS.map((key) => [key, 0])));
   const look = useRef(null);
@@ -360,8 +361,13 @@ function WalkRig({ room, walk, insideFov, api }) {
     invalidate();
   }, [lens, target, apply, invalidate]);
 
+  // A wheel tick that lands between a commit and its re-render must not be
+  // pulled back to the older committed value.
   useLayoutEffect(() => {
-    fovLens.current.fov = insideFov;
+    const state = fovLens.current;
+    if (insideFov === state.committed) return;
+    state.fov = insideFov;
+    state.committed = insideFov;
   }, [insideFov]);
 
   useEffect(() => {
@@ -377,6 +383,7 @@ function WalkRig({ room, walk, insideFov, api }) {
     const state = fovLens.current;
     const commit = () => {
       state.timer = 0;
+      state.committed = state.fov;
       api.commitFov(state.fov);
     };
     const onWheel = (event) => {
@@ -392,8 +399,13 @@ function WalkRig({ room, walk, insideFov, api }) {
       state.timer = setTimeout(commit, WHEEL_COMMIT_MS);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
+    // The mirror says when the inside lens actually takes input: the rig mounts
+    // in the WebGL tree a beat after the lens switch commits.
+    const mirror = api.walkMirror.current;
+    setData(mirror, 'lensLive', 'inside');
     return () => {
       el.removeEventListener('wheel', onWheel);
+      if (mirror) delete mirror.dataset.lensLive;
       if (state.timer) {
         clearTimeout(state.timer);
         commit();

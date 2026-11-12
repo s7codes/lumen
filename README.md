@@ -798,14 +798,16 @@ custom properties, so React never re-renders on pointer movement.
   north, 90 east, 180 south, -90 west, 25 cm steps, 15 deg turns, a 32 cm wall buffer and
   the floor reference grown by 20 cm, the facing wall, eye illuminance on the plane facing
   the gaze, and the elevation lens. The inside lens is 78 deg; the wheel (4 deg a notch,
-  written straight to the camera and committed after a 180 ms pause) and `+` / `-`
-  swing it between 50 and 92 deg, and `Home` or **Reset Stance** restores stance and
+  written straight to the camera and committed after a 180 ms pause; a tick that lands
+  between a commit and its re-render is kept, never pulled back by the echo) and `+` /
+  `-` swing it between 50 and 92 deg, and `Home` or **Reset Stance** restores stance and
   lens. `defaultStance(room, wall)` centres the eye across the wall in view and backs it
   up to 78 percent of the way from it; `rescaleStance` carries the eye to the same
   relative spot when the envelope is resized. The mirror carries it as
   `room-walkthrough-state` (`data-camera-mode`, `data-x-cm`, `data-z-cm`,
   `data-eye-cm`, `data-heading-deg`, `data-pitch-deg`, `data-fov-deg`,
-  `data-facing-wall`, `data-eye-lux`) beside `room-wall` and
+  `data-facing-wall`, `data-eye-lux`, and `data-lens-live="inside"` once the inside rig
+  in the WebGL tree takes input) beside `room-wall` and
   `room-ceiling` nodes whose `data-visible` follows the section cut every frame.
 - Direct manipulation: press the selected module (a 4 px threshold keeps clicks as
   clicks) or a gizmo handle (`gizmo-axis-x`, `gizmo-axis-y`, `gizmo-axis-xy`) and drag.
