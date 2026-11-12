@@ -1,14 +1,47 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v4.2.0-e8923a)
+![Release](https://img.shields.io/badge/release-v5.0.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v4.2.0**. Every quote now carries a freight manifest. Each catalog part
+Current release: **v5.0.0**. `/room-3d` is now a full-viewport spatial workstation. A
+header bar carries the title and envelope, the four wall tabs, the camera lens, **Grid
+Snap** and a **Zen** key; a 260px left dock holds the envelope, lighting and asset shelf,
+a 288px right dock the wall-grouped outliner and inspector, the stage takes 72vh between
+them and the KPI and CAD bridge strip sits in a bottom dock. Each dock scrolls on its own;
+Zen folds both away so the viewport spans the full width. The page opens on the **Lumen
+Spatial Engine** boot: monogram, progress bar and three subsystem steps over the stage,
+clearing 320 ms after the canvas is ready, at once under reduced motion or on **Enter
+Studio Now**; the layer never takes the pointer, and **Replay Engine Boot** plays it again.
+
+Three camera lenses. **Orbit Cutaway** is the v4 orbit with its section cut. **Inside
+Room (165 cm)** stands the eye inside the room, near its centre and a little toward the
+south wall: all four walls, the 8 cm baseboards, the corner creases and a ceiling stay in
+view, a drag turns the head through 360 deg (pitch -40 to +40 deg), the wall tabs swing
+the gaze to 0, 90, 180 or -90 deg, and `W A S D`, the arrows, `Q` / `E` or the walk pad
+step 25 cm and turn 15 deg, held 32 cm off the walls and clear of the floor reference.
+**Wall Elevation** looks dead-on and level at the middle of the active wall. A compass in
+the stage corner turns with the view, reads the azimuth and faces a wall (`N E S W`), the
+corner orbit (`ISO`) or the eye (`EYE`) in one press.
+
+Modules move on their walls in 3D. `src/lib/room-raycast.js` exports
+`intersectRayWithWall(origin, dir, wall, room)`, the hit of a room ray on the interior
+plane of the north (Z 0), east (X = W), south (Z = D) or west (X 0) wall in that wall's
+own `(uCm, vCm)`, and `solveWallDragPosition(...)`, which takes off the grab offset,
+applies an axis lock (`free`, `x`, `y`), snaps to 5 cm (1 cm with Grid Snap off) and
+clamps to the wall. The selected module carries a transform gizmo (X along the wall, Y up
+it, an XY plane square) and laser dimensions to the floor, both corners and the ceiling.
+Dragging the module or a handle casts one ray per animation frame and writes the mesh,
+gizmo, dimensions and scene-graph mirror straight to the DOM; React hears one commit on
+release, a single undo step. `G` grabs from the keyboard (arrows step, Enter confirms,
+Escape restores), and the inspector's Transform section adds an Axis Gizmo Lock and a
+nudge pad. A **Skip to main content** link now leads every page.
+
+v4.2.0 put a freight manifest on every quote. Each catalog part
 states its mass (`weightKg`, 1.4 to 18.5 kg; 0.6 kg for the 60W driver, 1.2 kg for the
 150W unit), read out as **Mass / Weight** on its spec sheet. `src/lib/logistics.js`
 exports `computeLogisticsSchedule(bagLines, electrical, { fulfilmentMode })`, a pure
@@ -183,6 +216,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v5.0.0  | Full-viewport 3D spatial workstation with engine boot and zen viewport; orbit, inside-room 165 cm and wall elevation lenses; ray to wall-plane drag engine, transform gizmo, laser dimensions, compass, wall-grouped outliner; skip link |
 | v4.2.0  | Part and driver mass, crate packing and freight class engine, consolidated or split rough-in dispatch waves on checkout |
 | v4.1.0  | Project and revision A/B diff engine and comparison dialog; spin-free number wells, centred cloud save key, one-line sidebar labels |
 | v4.0.0  | Four-wall 360-degree room with wall selector and per-wall mounting, collisions, bridge, lux and OBJ; human-friendly planner UI; Visual / Specs switch |
@@ -255,10 +289,13 @@ src/
                         useCommandPalette, useCurrency, useDisplayMode,
                         useDocumentTitle, useDraftDiff, useLaunchedModule, useMagneticField,
                         useModalDialog, useProjectName, useSceneShare,
-                        useRoom3d, useScrollReveal, useWallStudio
+                        useRoom3d, useScrollReveal, useWallDrag, useWallStudio
   lib/                  bag store and PSU sizing, wall studio geometry and history,
                         room model and 2D bridge (room-3d), WebGL scene description
-                        and orbit frame (room-scene), Wavefront OBJ writer
+                        and orbit frame (room-scene), ray to wall-plane drag solver
+                        (room-raycast), camera lenses and the 165 cm observer
+                        (room-walkthrough), guarded per-frame DOM writes
+                        (dom-writes), Wavefront OBJ writer
                         (obj-export), 1:20 blueprint sheet compiler and SVG
                         (blueprint-sheet), AutoCAD R12 DXF writer (dxf-export),
                         named project ids (project-library), A/B project
@@ -315,7 +352,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '4.2.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '5.0.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -706,8 +743,36 @@ custom properties, so React never re-renders on pointer movement.
   from its left corner seen from inside the room and `Bottom Y` in cm, modules extruded
   to their catalog depth into the room. North and south span the width, east and west
   the depth.
+- The page is a full-bleed workstation (`.room3d-workstation`, basalt `#0c0c0e` with
+  `#242220` dock seams): a header bar, the left dock (envelope, lighting, asset shelf),
+  the stage (72vh), the right dock (outliner and inspector) and the bottom dock (KPIs,
+  project, cloud save, cart sync, engineering telemetry and CAD bridge). From 1280px the
+  docks sit beside the stage and scroll on their own; from 960px the inspector moves
+  under the stage; below 960px everything stacks. **Zen** (`toggle-zen-viewport`) folds
+  both docks and makes them inert.
+- The **Lumen Spatial Engine** boot (`studio-boot-overlay`) plays over the stage while
+  the WebGL chunk loads: `01 / WebGL2 Shader Pipeline`, `02 / 4-Wall Raycast & Gizmo
+  Solver`, `03 / 24V Photometric Kernel`. It clears 320 ms after the canvas reports
+  ready, at once under reduced motion and on **Enter Studio Now** (`skip-studio-boot`).
+  Only that key takes the pointer, so the stage under it is live from the first frame.
+- Camera lenses (`camera-lens-switcher`): `camera-mode-orbit`, `camera-mode-walkthrough`
+  (Inside Room, 165 cm) and `camera-mode-elevation`. The lens is view state; the orbit
+  camera still persists. `src/lib/room-walkthrough.js` holds the observer: bearings 0
+  north, 90 east, 180 south, -90 west, 25 cm steps, 15 deg turns, a 32 cm wall buffer and
+  the floor reference grown by 20 cm, the facing wall, eye illuminance on the plane facing
+  the gaze, and the elevation lens. The mirror carries it as `room-walkthrough-state`
+  (`data-camera-mode`, `data-x-cm`, `data-z-cm`, `data-eye-cm`, `data-heading-deg`,
+  `data-pitch-deg`, `data-facing-wall`, `data-eye-lux`) beside `room-wall` and
+  `room-ceiling` nodes whose `data-visible` follows the section cut every frame.
+- Direct manipulation: press the selected module (a 4 px threshold keeps clicks as
+  clicks) or a gizmo handle (`gizmo-axis-x`, `gizmo-axis-y`, `gizmo-axis-xy`) and drag.
+  Orbit is held off while a module is in hand. `room-transform-gizmo` carries
+  `data-module-uid`, `data-wall`, `data-x-cm`, `data-y-cm` and `data-axis-lock`;
+  `room-live-dimensions` carries `data-floor-cm`, `data-left-cm`, `data-right-cm` and
+  `data-ceiling-cm` with `Y:`, `X:`, `R:` and `C:` labels. Grid Snap (`room-grid-snap`)
+  and the Axis Gizmo Lock (`gizmo-lock-mode`) set how a drag lands.
 - The **Wall Selector** (`active-wall-switcher`, tabs `wall-tab-north` ... `west`, each
-  with a module count badge) sets the active wall. Mounting places a part on it at the
+  with a module count badge) sits in the header and sets the active wall. Mounting places a part on it at the
   first clear spot, keeping clear of modules on the adjoining walls at the corners and of
   the floor reference. The inspector's **Mounted on** select (`module-wall-select`)
   rehangs a module on another wall; **Clear Wall** in the HUD empties the active wall
@@ -1090,7 +1155,7 @@ push is followed by a check of the run on the GitHub Actions API until it comple
 - `main` holds releases, `develop` integrates, each milestone lands on a short-lived
   `feat/*` branch. Once `develop` and `main` are pushed, the feature branch is deleted
   locally and on `origin`, so only `main` and `develop` stay published.
-- Only major releases are tagged: `v1.0.0`, `v2.0.0`, `v3.0.0`, `v4.0.0`. Minor and patch
+- Only major releases are tagged: `v1.0.0`, `v2.0.0`, `v3.0.0`, `v4.0.0`, `v5.0.0`. Minor and patch
   releases ship untagged and are recorded in the release history above.
 - Releases advance `develop` and `main` by pointer (`git branch -f`) from the finished
   feature branch, never by switching back first, so no working-tree directories are
