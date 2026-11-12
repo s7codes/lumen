@@ -643,7 +643,7 @@ test.describe('studio boot, zen viewport and skip link', () => {
 
     await replay.click();
     await expect(boot).toHaveAttribute('data-state', 'booting');
-    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v5.2');
+    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v5.3');
     await expect(boot).toContainText('01 / WebGL2 Shader Pipeline');
     await expect(boot).toContainText('02 / 4-Wall Raycast & Gizmo Solver');
     await expect(boot).toContainText('03 / 24V Photometric Kernel');

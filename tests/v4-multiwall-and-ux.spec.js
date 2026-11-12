@@ -427,7 +427,7 @@ test.describe('human-friendly UX and header polish', () => {
     await page.goto('/');
     const nav = page.getByRole('navigation', { name: 'Primary' });
     const links = nav.getByRole('link');
-    await expect(links).toHaveText(['Overview', 'Catalog', 'Wall Studio', '3D Room']);
+    await expect(links).toHaveText(['Overview', '3D Room', 'Catalog', 'Wall Studio']);
     const type = await links.first().evaluate((el) => {
       const style = getComputedStyle(el);
       return {

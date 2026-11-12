@@ -31,14 +31,20 @@ import {
 import { launchHref, readLaunchPreset, stripLaunchParams } from '../src/lib/launch-presets.js';
 import { NAV_ROUTES, SHOWCASE_3D_ID } from '../src/lib/routes.js';
 import {
+  ACT_DURATION_MS,
   ACT_IDS,
   ACT_SECONDS,
+  actCamera,
+  actSpinRate,
   buildLuxField,
   eyeFrustum,
   eyeIlluminance,
   gizmoPose,
   ISO_LEVELS,
   isoSegments,
+  ORBIT_DEG_PER_S,
+  ORBIT_PITCH,
+  PULSE_SPEED_CM_S,
   shelfDimensions,
   SNAP_CM,
   STAGE_ROOM,
@@ -369,7 +375,7 @@ test.describe('spacious envelopes and the wide inside-room lens', () => {
 });
 
 test.describe('navbar order and the overview 3D showcase', () => {
-  test('Wall Studio precedes 3D Room; 3D Room glides to the showcase from any page and the launch key boots the studio full screen', async ({
+  test('3D Room sits beside Overview in page order; it glides to the showcase from any page and the launch key boots the studio full screen', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
@@ -381,9 +387,10 @@ test.describe('navbar order and the overview 3D showcase', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-    expect(NAV_ROUTES.map((route) => route.label)).toEqual(['Overview', 'Catalog', 'Wall Studio', '3D Room']);
+    expect(NAV_ROUTES.map((route) => route.label)).toEqual(['Overview', '3D Room', 'Catalog', 'Wall Studio']);
+    expect(NAV_ROUTES.map((route) => route.index)).toEqual(['01', '02', '03', '04']);
     const nav = page.getByRole('navigation', { name: 'Primary' });
-    await expect(nav.getByRole('link')).toHaveText(['Overview', 'Catalog', 'Wall Studio', '3D Room']);
+    await expect(nav.getByRole('link')).toHaveText(['Overview', '3D Room', 'Catalog', 'Wall Studio']);
     const navLink = page.getByTestId('nav-3d-showcase');
     await expect(navLink).toHaveText('3D Room');
     await expect(navLink).toHaveAttribute('href', `/#${SHOWCASE_3D_ID}`);
@@ -454,7 +461,7 @@ test.describe('navbar order and the overview 3D showcase', () => {
     expect(cover).toMatchObject({ parent: 'BODY', position: 'fixed', zIndex: '9999', x: 0, y: 0, coversNav: true });
     expect(cover.width).toBe(cover.innerWidth);
     expect(cover.height).toBe(cover.innerHeight);
-    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v5.2');
+    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v5.3');
     // Layout sizes, not painted boxes: the panel itself is still pulling focus from 1.05.
     await expect(boot.locator('.studio-boot__mark')).toHaveCSS('width', '56px');
     await expect(boot.locator('.studio-boot__bar')).toHaveCSS('width', '240px');
@@ -586,7 +593,8 @@ function fillScale(page, act) {
 test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => {
   test('engine: four acts, 5 cm gizmo ticks, an eye-level lens landed on the shell and a lit field with all three iso-lines', () => {
     expect(ACT_IDS).toEqual(['orbit', 'inside', 'gizmo', 'isolux']);
-    expect(ACT_SECONDS).toBe(4.5);
+    expect(ACT_SECONDS).toBe(7);
+    expect(ACT_DURATION_MS).toBe(7000);
     const gallery = ROOM_SIZE_PRESETS.find((preset) => preset.id === 'gallery');
     expect(STAGE_ROOM).toMatchObject({ widthCm: gallery.widthCm, depthCm: gallery.depthCm, heightCm: gallery.heightCm });
 
@@ -604,8 +612,9 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     expect(xs.size).toBeGreaterThan(10);
     expect(gizmoPose(0)).toMatchObject({ x: 140, y: 145 });
     expect(gizmoPose(ACT_SECONDS - 1e-6)).toMatchObject({ x: 140, y: 145 });
-    expect(gizmoPose(1.2).axis).toBe('x');
-    expect(gizmoPose(2.6).axis).toBe('y');
+    expect(gizmoPose(ACT_SECONDS * 0.25).axis).toBe('x');
+    expect(gizmoPose(ACT_SECONDS * 0.6).axis).toBe('y');
+    expect(gizmoPose(ACT_SECONDS * 0.85).axis).toBe('xy');
 
     // The 78 deg lens: every ray lands on a wall, the floor or the ceiling.
     const { widthCm: W, depthCm: D, heightCm: H } = STAGE_ROOM;
@@ -661,7 +670,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     expect(stripLaunchParams('?lens=inside&scene=abc')).toBe('?scene=abc');
   });
 
-  test('the navbar underline follows the overview: Overview above the showcase, 3D Room inside it, held through a glide and handed back on the way up', async ({
+  test('the navbar underline follows the overview: Overview above the showcase, 3D Room inside it, Catalog on the modules, held through a glide and handed back on the way up', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
@@ -681,10 +690,15 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await expectCurrent(room, 'location');
     await expectIdle(overview);
 
-    // Back up through Core Modules and the Surface Lab, Overview takes it back.
+    // On down into Core Modules, the next tab along takes it; back up through the Surface Lab, Overview does.
+    const catalog = nav.getByRole('link', { name: 'Catalog' });
     await page.getByTestId('core-modules').evaluate((el) => el.scrollIntoView());
-    await expectCurrent(overview, 'page');
+    await expectCurrent(catalog, 'location');
     await expectIdle(room);
+    await expectIdle(overview);
+    await showcase.evaluate((el) => el.scrollIntoView());
+    await expectCurrent(room, 'location');
+    await expectIdle(catalog);
     await page.getByTestId('surface-lab').evaluate((el) => el.scrollIntoView());
     await expectCurrent(overview, 'page');
     await showcase.evaluate((el) => el.scrollIntoView());
@@ -738,8 +752,8 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
   test('the theatre paints a 2D projection, cycles four acts, holds one on a key or card, probes lux under the cursor and loads no WebGL', async ({
     page,
   }) => {
-    // Three full acts run in real time here (cycle, hold, cycle again).
-    test.setTimeout(60_000);
+    // Three full 7 s acts run in real time here (cycle, hold, cycle again).
+    test.setTimeout(90_000);
     const errors = collectRuntimeErrors(page);
     const scripts = [];
     page.on('request', (request) => {
@@ -784,7 +798,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
 
     // After one act the stage moves on by itself to the eye-level sweep. The act clock runs
     // on frame dt clamped at 50 ms, so a slow software-raster runner stretches it: wait wide.
-    await expect(stage).toHaveAttribute('data-act', 'inside', { timeout: 15_000 });
+    await expect(stage).toHaveAttribute('data-act', 'inside', { timeout: 20_000 });
     await expect(page.getByTestId('showcase-pillar-inside')).toHaveAttribute('data-active', 'true');
     await expect(page.getByTestId('showcase-readout')).toHaveText(/^Eye 165 cm \/ FOV 78 deg \/ \d+ lx$/);
     const lux = new Set();
@@ -823,7 +837,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await expect(gizmoKey).toHaveAttribute('aria-pressed', 'false');
     await expect(stage).not.toHaveAttribute('data-held');
     await page.mouse.move(4, 400);
-    await expect(stage).toHaveAttribute('data-act', 'isolux', { timeout: 15_000 });
+    await expect(stage).toHaveAttribute('data-act', 'isolux', { timeout: 20_000 });
     await expect(readout).toHaveText(/^Iso-lux 100 \/ 250 \/ 500 lx \/ Floor peak \d+ lx$/);
 
     // Hovering a capability card previews its act and lights the card; leaving hands the stage back.
@@ -906,7 +920,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     const pad = page.getByTestId('showcase-launchpad');
     await pad.scrollIntoViewIfNeeded();
     await expect(pad).toBeVisible();
-    await expect(pad).toContainText('SPATIAL ENGINE v5.2 // INTERACTIVE WORKSTATION READY');
+    await expect(pad).toContainText('SPATIAL ENGINE v5.3 // INTERACTIVE WORKSTATION READY');
     await expect(pad.getByRole('heading', { level: 3, name: 'Step inside the 3D Spatial Workstation.' })).toBeVisible();
     await expect(pad).toHaveCSS('border-top-color', 'rgba(232, 146, 58, 0.28)');
     expect(await pad.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('radial-gradient');
@@ -1007,5 +1021,235 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     expect(ctaBox.width).toBeGreaterThan(padBox.width * 0.7);
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     expect(errors).toEqual([]);
+  });
+});
+
+/** Index of the navbar link that reads as current, or -1. */
+function currentTabIndex() {
+  return [...document.querySelectorAll('.navbar__links a')].findIndex((link) => link.hasAttribute('aria-current'));
+}
+
+function maxBlurPx(el) {
+  return Math.max(
+    0,
+    ...getComputedStyle(el)
+      .boxShadow.split(/,(?![^(]*\))/)
+      .map((layer) => Number.parseFloat((layer.match(/-?\d*\.?\d+px/g) ?? [])[2] ?? '0')),
+  );
+}
+
+test.describe('page-order scroll-spy, calm turntable and champagne launch key', () => {
+  test('scrolling the overview walks the underline one tab at a time, left to right going down and right to left coming back', async ({
+    page,
+  }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/light and storage/i);
+    const nav = page.getByRole('navigation', { name: 'Primary' });
+    const links = nav.getByRole('link');
+    await expect(links).toHaveText(['Overview', '3D Room', 'Catalog', 'Wall Studio']);
+
+    // The tabs sit left to right in page order, and so do the sections they stand for.
+    const lefts = await links.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().left));
+    expect([...lefts].sort((a, b) => a - b)).toEqual(lefts);
+    const tops = await page.evaluate(() =>
+      ['surface-lab', 'home-3d-showcase', 'core-modules', 'workspaces'].map(
+        (id) => document.querySelector(`[data-testid="${id}"]`).getBoundingClientRect().top + window.scrollY,
+      ),
+    );
+    expect([...tops].sort((a, b) => a - b)).toEqual(tops);
+    await expect(page.getByTestId('home-3d-showcase')).toContainText('03 / 3D Spatial Studio');
+    await expect(page.getByTestId('core-modules')).toContainText('04 / Core Modules');
+    await expect(page.getByTestId('workspaces')).toContainText('05 / Workspaces');
+    await expect(page.getByTestId('workspaces').locator('.entry-card .index-label')).toHaveText([
+      '02 / 3D Room',
+      '03 / Catalog',
+      '04 / Wall Studio',
+    ]);
+
+    // Step the page in 90 px increments and log every change of the current tab.
+    const walk = (direction) =>
+      page.evaluate(async (dir) => {
+        const read = () =>
+          [...document.querySelectorAll('.navbar__links a')].findIndex((link) => link.hasAttribute('aria-current'));
+        const settle = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        const seen = [read()];
+        for (let i = 0; i <= Math.ceil(max / 90); i += 1) {
+          const y = dir === 'down' ? Math.min(max, i * 90) : Math.max(0, max - i * 90);
+          window.scrollTo({ top: y, behavior: 'instant' });
+          await settle();
+          const now = read();
+          if (now !== seen.at(-1)) seen.push(now);
+        }
+        return seen;
+      }, direction);
+
+    expect(await walk('down')).toEqual([0, 1, 2, 3]);
+    await expect(nav.getByRole('link', { name: 'Wall Studio' })).toHaveAttribute('aria-current', 'location');
+    expect(await walk('up')).toEqual([3, 2, 1, 0]);
+    await expect(nav.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
+    expect(await page.evaluate(currentTabIndex)).toBe(0);
+
+    // The spied tabs still route straight to their workspaces.
+    const catalog = nav.getByRole('link', { name: 'Catalog' });
+    await page.getByTestId('core-modules').evaluate((el) => el.scrollIntoView());
+    await expect(catalog).toHaveAttribute('aria-current', 'location');
+    await expect(catalog).toHaveAttribute('href', '/catalog');
+    await catalog.click();
+    await expect(page).toHaveURL(/\/catalog$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Catalog');
+    await expect(catalog).toHaveAttribute('aria-current', 'page');
+    await page.goBack();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/light and storage/i);
+    const studio = nav.getByRole('link', { name: 'Wall Studio' });
+    await page.getByTestId('workspaces').evaluate((el) => el.scrollIntoView());
+    await expect(studio).toHaveAttribute('aria-current', 'location');
+    await studio.click();
+    await expect(page).toHaveURL(/\/studio-2d$/);
+    await expect(studio).toHaveAttribute('aria-current', 'page');
+    expect(errors).toEqual([]);
+  });
+
+  test('the turntable is calm: a 20 deg/s yaw, a 27 to 35 deg pitch swell, drifting pulses and 7 s acts', async ({
+    page,
+  }) => {
+    expect(ORBIT_DEG_PER_S).toBeGreaterThanOrEqual(18);
+    expect(ORBIT_DEG_PER_S).toBeLessThanOrEqual(22);
+    expect(actSpinRate('orbit')).toBe(ORBIT_DEG_PER_S);
+    expect(ORBIT_PITCH).toEqual({ min: 27, max: 35 });
+    const pitches = Array.from({ length: 141 }, (_, i) => actCamera('orbit', (i / 140) * ACT_SECONDS, 0, 0).pitch);
+    expect(Math.min(...pitches)).toBeCloseTo(27, 6);
+    expect(Math.max(...pitches)).toBeCloseTo(35, 6);
+    expect(pitches[0]).toBeCloseTo(27, 6);
+    expect(pitches[70]).toBeCloseTo(35, 6);
+    expect(PULSE_SPEED_CM_S).toBeLessThanOrEqual(80);
+    expect(ACT_DURATION_MS).toBe(ACT_SECONDS * 1000);
+
+    const errors = collectRuntimeErrors(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    const stage = stageOf(page);
+    await stage.scrollIntoViewIfNeeded();
+    // Held on the orbit, so no act change swings the camera mid-sample.
+    await page.getByTestId('showcase-act-orbit').click();
+    await expect(stage).toHaveAttribute('data-held', 'true');
+    await page.mouse.move(4, 400);
+    await expect(page.locator('[data-hud="az"]')).toHaveText(/^\d{3}$/);
+    await page.waitForTimeout(800);
+
+    const rate = await page.evaluate(async () => {
+      const el = document.querySelector('[data-hud="az"]');
+      const read = () => Number(el.textContent);
+      let last = read();
+      let turned = 0;
+      const start = performance.now();
+      while (performance.now() - start < 2500) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const now = read();
+        turned += Math.abs(((((now - last) % 360) + 540) % 360) - 180);
+        last = now;
+      }
+      return turned / ((performance.now() - start) / 1000);
+    });
+    expect(rate).toBeGreaterThan(2);
+    expect(rate).toBeLessThanOrEqual(25);
+    expect(errors).toEqual([]);
+  });
+
+  test('the capability cards read at a glance: index and glyph badge, a title, one short sentence and two spec pills', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    const expected = {
+      orbit: ['01', '360-Degree Four-Wall Envelope', ['Full 360-Degree Orbit', 'Up to 9 x 9 m Loft']],
+      inside: ['02', '165 cm Eye-Level Walkthrough', ['165 cm Eye Height', 'Live Eye Lux']],
+      gizmo: ['03', 'Direct 3D Raycast & Gizmo', ['5 cm Grid Snap', 'X and Y Axis Locks']],
+    };
+    for (const [act, [index, title, chips]] of Object.entries(expected)) {
+      const card = page.getByTestId(`showcase-pillar-${act}`);
+      await card.scrollIntoViewIfNeeded();
+      await expect(card.locator('.showcase3d__pillar-index')).toHaveText(index);
+      await expect(card.locator('.showcase3d__pillar-badge svg')).toBeVisible();
+      await expect(card.getByRole('heading', { level: 3 })).toHaveText(title);
+      await expect(card).not.toContainText('Capability');
+
+      const summary = card.getByTestId('showcase-pillar-summary');
+      const text = (await summary.innerText()).trim();
+      expect(text.split(/\s+/).length, text).toBeLessThanOrEqual(14);
+      expect(text.match(/[.!?]/g), text).toHaveLength(1);
+      expect(text.endsWith('.')).toBe(true);
+      expect(/^[\x20-\x7e]*$/.test(text)).toBe(true);
+      await expect(summary).toHaveCSS('color', 'rgb(184, 184, 184)');
+      const type = await summary.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { size: Number.parseFloat(style.fontSize), leading: Number.parseFloat(style.lineHeight) };
+      });
+      expect(type.leading).toBeGreaterThanOrEqual(type.size * 1.6);
+
+      const pills = card.getByTestId('showcase-pillar-chip');
+      await expect(pills).toHaveText(chips);
+      const look = await pills.first().evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { radius: style.borderTopLeftRadius, width: style.borderTopWidth, shadow: style.boxShadow };
+      });
+      expect(look).toEqual({ radius: '999px', width: '1px', shadow: 'none' });
+      await expect(card.locator('.showcase3d__pillar-spec')).toHaveCount(0);
+    }
+  });
+
+  test('the launch key wears a soft champagne cap and a perimeter beam on a 6 s loop, with no blurred glow', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    const cta = page.getByTestId('launch-3d-studio-cta');
+    await cta.scrollIntoViewIfNeeded();
+    await expect(cta).toHaveCSS(
+      'background-image',
+      'linear-gradient(135deg, rgb(243, 227, 198) 0%, rgb(229, 199, 153) 55%, rgb(216, 178, 124) 100%)',
+    );
+    await expect(cta).toHaveCSS('color', 'rgb(20, 18, 16)');
+    expect(await cta.evaluate(maxBlurPx)).toBe(0);
+    // The lit top edge is an inset hairline, not a glow.
+    expect(await cta.evaluate((el) => getComputedStyle(el).boxShadow)).toContain('inset');
+
+    const beam = page.getByTestId('cta-border-beam');
+    await expect(beam).toBeVisible();
+    const [beamBox, ctaBox] = await Promise.all([beam.boundingBox(), cta.boundingBox()]);
+    expect(Math.abs(beamBox.width - ctaBox.width)).toBeLessThanOrEqual(2.5);
+    expect(Math.abs(beamBox.height - ctaBox.height)).toBeLessThanOrEqual(2.5);
+    const head = beam.locator('.launchpad__cta-beam-head');
+    const motion = await head.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        duration: style.animationDuration,
+        count: style.animationIterationCount,
+        timing: style.animationTimingFunction,
+        state: style.animationPlayState,
+        perimeter: el.getTotalLength(),
+      };
+    });
+    expect(motion).toMatchObject({ duration: '6s', count: 'infinite', timing: 'linear', state: 'running' });
+    // The rect runs the whole key, not a 14 px icon box.
+    expect(motion.perimeter).toBeGreaterThan(2 * (ctaBox.width + ctaBox.height) * 0.9);
+    const offset = () => head.evaluate((el) => Number.parseFloat(getComputedStyle(el).strokeDashoffset));
+    const first = await offset();
+    await expect.poll(offset).not.toBe(first);
+    for (const control of [beam, head]) expect(await control.evaluate(maxBlurPx)).toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('under reduced motion the beam holds still on the key', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/');
+    const head = page.getByTestId('cta-border-beam').locator('.launchpad__cta-beam-head');
+    await head.scrollIntoViewIfNeeded();
+    await expect(head).toHaveCSS('animation-play-state', 'paused');
+    const offset = () => head.evaluate((el) => getComputedStyle(el).strokeDashoffset);
+    const still = await offset();
+    await page.waitForTimeout(600);
+    expect(await offset()).toBe(still);
   });
 });
