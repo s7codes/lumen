@@ -1,15 +1,38 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v6.1.0-e8923a)
+![Release](https://img.shields.io/badge/release-v6.2.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v6.1.0**. Lumen AI, the studio assistant behind the **Ask Studio AI**
-pill, now knows how the site itself works. Plain questions such as "Why cant I open 3D
+Current release: **v6.2.0**. Lumen AI reads like a modern assistant. Before the first
+message the panel opens on a welcome: the Lumen mark, **How can I help with your
+space?**, one line and the four route-aware starters as cards; once the thread starts the
+starters fold into one scrolling chip row docked on the composer, so the conversation
+keeps at least 80% of the full-height panel, and a **New chat** key in the header clears
+it. Questions sit in warm charcoal-bronze bubbles on the right (`#2a2621`, 18 18 4 18
+radius); answers sit straight on the glass beside a 22 px Lumen avatar. Every answer is
+now one lead sentence and two to four short bullets in `Label: value` form (the panel sets
+the label in bold), 35 to 65 words, with at most four metric pills and pill-shaped next
+steps; "check my voltage drop" stays on the drop, while "audit my room" reads power,
+acoustics, light and layout. The composer is a single pill with a round send key. Both
+planners now draw every part as its own miniature architectural SVG
+(`ProductThumbGlyph`): a cantilevered shelf with its wash, an open cube, a two-door
+credenza, a lightbar, a floor column, a tilted spot, a fluted acoustic frame, the copper
+track bus, a twin-cable pendant, a ribbed baffle, a wall sconce and the DALI-2 hub, each
+in the active finish's tones and backlit only when it gives light, at 36 px on the
+Components and Asset Shelf palettes and 28 px in the module lists and the `Ctrl+K`
+palette. The overview no longer drops to flat black below the hero: one continuous
+atmosphere scrolls with the sections (tungsten and bronze washes, drafting lines,
+champagne hairline dividers), and every other route sits on a fixed backdrop of warm
+basalt depth (`#0d0c0b` to `#141210` to `#0b0a09`), a tungsten wash from above and drafting
+lines at the edges; the Account tiles are lit from their top edge. CI gives the long
+software-WebGL scenario tests a 60 s budget on its shared four-vCPU runner.
+
+v6.1.0 taught Lumen AI how the site itself works. Plain questions such as "Why cant I open 3D
 room designer", "how do I move furniture in 3D", "how do I walk around inside the room"
 or "what is Visual vs Specs mode" get a resolved, accurate walkthrough of the navbar, both
 planners, their lenses, gizmo, room presets, keyboard shortcuts and fault checks, with
@@ -23,17 +46,16 @@ deterministic engine answers on the device with the same reply id. In developmen
 itself loads through Vite's SSR module graph, so an edit under `server/` or `src/lib/`
 takes effect on the next request without restarting the dev server.
 
-The panel is redrawn as stealth basalt glass: the Lumen mark on a dark pill, a **Lumen
-AI** header with a **Workspace Aware** badge, graphite question bubbles, quiet answer cards
-that stream in once, compact metric pills, a champagne primary next step and an
-understated **Did not resolve my issue - request engineer** link. Confidence and sources
-are Specs-mode detail. The gatekeeper is silent while locked: its status is spoken to
-assistive technology and never painted, and it surfaces only once contact unlocks. The
-navbar **Cart** pill gains a bag glyph that pairs with **Search**, and the showcase's
-launch box becomes one launch bar under the theatre and its cards (headline, three
-quick-launch pills and the champagne key, 96 px tall on a desktop) whose keys stay
-anchored on hover: no lift, no plinth, no magnetic drift; the cap brightens and only the
-arrow travels 3 px.
+v6.1.0 also redrew the panel as stealth basalt glass: the Lumen mark on a dark pill, a
+**Lumen AI** header with a **Workspace Aware** badge, answers that stream in once, compact
+metric pills, a champagne primary next step and an understated **Did not resolve my
+issue - request engineer** link. Confidence and sources are Specs-mode detail. The
+gatekeeper is silent while locked: its status is spoken to assistive technology and never
+painted, and it surfaces only once contact unlocks. The navbar **Cart** pill gained a bag
+glyph that pairs with **Search**, and the showcase's launch box became one launch bar
+under the theatre and its cards (headline, three quick-launch pills and the champagne
+key, 96 px tall on a desktop) whose keys stay anchored on hover: no lift, no plinth, no
+magnetic drift; the cap brightens and only the arrow travels 3 px.
 
 v6.0.0 added the **Lumen Studio AI Concierge**, bottom-right on every
 route. The **Ask Studio AI** pill opens a spec concierge that answers from the 12-part
@@ -310,6 +332,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v6.2.0  | Modern Lumen AI chat: welcome hero with starter cards that fold into a docked chip row, New chat, right-aligned warm question bubbles, avatar answers and a pill composer; every answer one lead sentence and two to four labelled bullets (35 to 65 words, at most four pills); bespoke 36 px / 28 px architectural SVG drawings of all 12 parts in both planners' palettes, module lists and Ctrl+K; a continuous lit atmosphere below the overview hero, a fixed route-aware basalt backdrop on every other route and lit Account tiles; 60 s CI budget for software-WebGL scenario tests |
 | v6.1.0  | Lumen AI understands the site itself: navigation, both planners, lenses, gizmo, room presets, modes, shortcuts and fault checks, with direct launch keys; phrasing normalisation; a local answer on any API fault (404, 5xx, unreachable, unreadable); dev API hot-reloaded through Vite's SSR module graph; stealth basalt panel with a silent locked gatekeeper; navbar Cart glyph; slim showcase launch bar with anchored keys |
 | v6.0.0  | Lumen Studio AI Concierge on every route with live-workspace retrieval over the catalog, 24V bus, DALI-2, acoustics, planners, CAD exports, pricing and fulfilment; strict support escalation gatekeeper with server-replayed transcripts; `POST /api/concierge/ask`, `POST /api/concierge/escalate`, `GET /api/tickets`; Studio Engineering Tickets on `/account` with an offline outbox; four-worker CI with a cached Playwright browser |
 | v5.3.0  | Navbar and overview in one left-to-right order with a sequential scroll-spy; calm 20 deg/s turntable with 7 s acts; lighter capability cards with spec pills; champagne launch key with a perimeter beam; drafting-room Wall Studio backdrop; Web Audio RT60 audition in both planners; 1600 x 1000 `.png` studio render card |
@@ -374,6 +397,7 @@ src/
                         ProjectNameField, EmptyState, BusTelemetryCell,
                         SpatialShowcase (overview 3D studio section),
                         EnvironmentalPhysicsCell, ElevationThumb,
+                        ProductThumbGlyph (architectural drawing per part),
                         ProjectDiffModal (lazy on /account),
                         RouteFallback (loading frame and chunk error), icons
     studio/             WallStage, StudioPalette, StudioInspector, StudioToolbar,
@@ -459,7 +483,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '6.1.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '6.2.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -676,6 +700,23 @@ headlines run 640 weight against 350 weight ledes. From 1920px `--grid-max` wide
 2K displays. The 12-column structural grid sits behind the shell at 1% and fades out
 down the viewport. Technical mode tints it amber, keeps it full height and reveals
 measurement overlays; the choice persists through validated storage.
+
+No page sits on flat black. `LayoutShell` renders one fixed `.ambient-backdrop`
+(`data-atmosphere` names the route) under the structural grid: warm basalt depth
+(`#0d0c0b` to `#141210` to `#0b0a09`), a tungsten wash falling on the stage from above, an
+oak glow from the top right, a bronze lift from the lower left and a 96 px drafting
+lattice that clears toward the middle of the page. On the overview the hero owns the top
+and the backdrop stays a calm basalt; below the hero `.home-atmosphere` scrolls with the
+sections, rising from the hero's floor tone (`rgb(10, 10, 9)`) into warm basalt with
+tungsten and bronze washes behind the lab, the 3D studio, the core modules and the
+workspaces, 120 px drafting lines that strengthen toward the edges, and a champagne
+hairline (`rgba(229, 199, 153, 0.16)`) at the head of each section.
+
+Every part has its own drawing (`ProductThumbGlyph`): a miniature architectural SVG on
+a dark glass tile, 36 px in the planner palettes and 28 px in the module lists and the
+command palette, painted in the base, highlight and shade of the active finish
+(`FINISH_RAMPS`). Parts that give light carry a warm backlight and their light cones while
+their 24V channel is on; passive hardware never glows.
 
 Bento tiles carry every major block below the hero. `.bento` (and the product card)
 is `linear-gradient(145deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))` on a 16px
@@ -1226,9 +1267,11 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
   (`Signed in as a@b.com. 1 project from this browser moved into your account
   library.`). Signing out of an account library says the projects stay in Lumen Cloud.
 - Once signed in the trigger becomes an **Account** link. `/account` sits behind
-  `RequireAuth` and redirects to `/` when signed out. The page is one bento grid under a
-  fixed oak-amber wash (`--glow-oak`, a 5% `#e8923a` radial falling off by 40% from the
-  top right). A full-width profile tile shows the name, email, transport, library, sync
+  `RequireAuth` and redirects to `/` when signed out. The page is one bento grid on the
+  fixed page atmosphere (see Design system). Each tile is lit from its top edge (a soft
+  tungsten radial over the bento surface) and carries a champagne hairline inside its
+  border, the profile tile with a warmer corner light, and saved project cards repeat it
+  at a smaller scale. A full-width profile tile shows the name, email, transport, library, sync
   state and project and quote counts, with **Sign Out** on its top-right corner (below the identity
   on phones). Beneath it, **Saved Spatial Projects** (every named wall and room in the
   library as inset cards with an elevation thumbnail, envelope, module count, 24V load,
@@ -1272,18 +1315,34 @@ conversation survives every route change and never enters the page's tab sequenc
   76px` on the root keeps anything scrolled into view from below (keyboard focus, find in
   page, end-aligned anchors) clear of the pill.
 - **Panel.** A non-modal dialog (`aria-label="Lumen Studio AI Concierge"`,
-  `data-escalation="locked" | "unlocked"`), `min(420px, 100vw - 32px)` wide and at most
-  `min(640px, 100vh - 96px)` tall, in dark glass: a header (the Lumen mark, **Lumen AI**,
-  a **Workspace Aware** badge, the route context, close), four route-aware quick prompts,
-  the conversation and a rounded composer with its send key inside. Escape from inside
-  closes it and focus returns to the pill. Questions sit in graphite bubbles (`#23211e`);
-  each answer is a quiet card (`rgba(255, 255, 255, 0.025)`, 13.5 px Inter Tight at 1.6)
-  with its category, compact metric pills, next-step keys (the first a champagne cap)
-  and, on resolved answers, an understated **Did not resolve my issue - request
-  engineer** link. Confidence and sources show in Specs mode only. A fresh answer streams
-  in once, top to bottom under a soft mask edge, and marks itself `data-revealed` on the
-  element (never through React state), so a reopened panel never replays it; reduced
-  motion shows it at once.
+  `data-escalation="locked" | "unlocked"`, `data-thread="welcome" | "active"`),
+  `min(400px, 100vw - 32px)` wide and `min(700px, 100dvh - 96px)` tall, in dark glass: a
+  header (the Lumen mark, **Lumen AI**, a **Workspace Aware** badge, the route as a quiet
+  pill, **New chat** once the thread has started, close), the thread and a pill composer
+  (`#181715`, 999 px radius, a champagne edge on focus) with a round **Ask** key inside.
+  Escape from inside closes it and focus returns to the pill. Before the first message
+  the thread shows a welcome: the mark, **How can I help with your space?**, one line and
+  the four route-aware starters as cards with arrows. Once the thread starts the starters
+  fold into a single scrolling row of chips (at most 34 px) docked on the composer, so the
+  thread keeps at least 80% of the full-height panel; **New chat** returns to the welcome
+  with the gatekeeper locked again, and a reply still in flight from the old thread is
+  dropped. Questions sit in warm charcoal-bronze bubbles on the right (`#2a2621`, a
+  `rgba(229, 199, 153, 0.22)` edge, 18 18 4 18 radius, at most 82% wide). Answers sit
+  straight on the glass beside a 22 px Lumen avatar: the category, the lead sentence, the
+  bullets with their labels in bold, up to four metric pills, pill-shaped next steps (the
+  first a champagne cap) and, on resolved answers, an understated **Did not resolve my
+  issue - request engineer** link; closing notices read as a champagne-ruled callout.
+  Confidence and sources show in Specs mode only. A fresh answer streams in once, top to
+  bottom under a soft mask edge, and marks itself `data-revealed` on the element (never
+  through React state), so a reopened panel never replays it; reduced motion shows it at
+  once.
+- **Answer format.** Every answer is one lead sentence, then two to four `- Label: value`
+  bullets, 35 to 65 words, with at most four metrics: a datasheet reads Size, Light,
+  Mounting and Order; an audit reads Power, Acoustics, Light and Layout; a question about
+  one figure ("check my wall voltage drop") gets two bullets on that figure. Escalations
+  keep their lead and scope bullet and close on the unchanged notice; the gatekeeper reply
+  is unchanged. The text stays plain ASCII with no markup, so the API, the transcript and
+  the device answer read the same.
 - **Engine.** `evaluateConciergeQuery(question, workspaceContext)` caps the question at
   500 characters and rebuilds the context (`route`, `currency`, `wallDraft`, `roomDraft`,
   `bagItems`) through `sanitizeLayout`, `sanitizeRoomState` and `sanitizeBagItems`. It
@@ -1443,7 +1502,9 @@ store can stay up during a test run.
 context owns its `X-Lumen-Client` namespace in the isolated test store). The browser
 binary is cached under `~/.cache/ms-playwright` with `actions/cache@v5`, keyed on the
 lockfile hash, and downloaded only on a cache miss. The HTML report is uploaded only when
-the run fails.
+the run fails. On CI the four workers share a four-vCPU runner where WebGL falls back to
+software rasterisation, so the long 3D scenario tests get a 60 s test budget and a 10 s
+assertion budget there (30 s and 5 s locally); both are ceilings, never waits.
 `ubuntu-latest` already carries Chromium's shared libraries and every font is
 self-hosted, so the job installs no apt packages and does not depend on Ubuntu mirrors.
 Every action is pinned to a major that declares Node 24 (`actions/checkout@v5`,
