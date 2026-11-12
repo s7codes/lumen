@@ -282,6 +282,8 @@ test.describe('spacious envelopes and the wide inside-room lens', () => {
     await expect(page.getByTestId('room-lens-readout')).toContainText('FOV 78');
 
     if (renderer !== 'unavailable') {
+      // The inside rig mounts in the WebGL tree after the lens switch; wheel once it takes input.
+      await expect(state).toHaveAttribute('data-lens-live', 'inside');
       const box = await stage.boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       // Three notches out widen the lens 4 deg each; the page itself never scrolls.
@@ -317,6 +319,36 @@ test.describe('spacious envelopes and the wide inside-room lens', () => {
 
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     expect(await readCspViolations(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test('a wheel tick that lands right behind a lens commit is kept, not pulled back by the commit echo', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await openRoom(page);
+    test.skip((await rendererOf(page)) === 'unavailable', 'The inside lens needs a WebGL context.');
+    await page.getByTestId('camera-mode-walkthrough').click();
+    const state = walkState(page);
+    await expect(state).toHaveAttribute('data-lens-live', 'inside');
+
+    // The second tick is queued on the same delay as the 180 ms commit timer, so it
+    // runs after the commit and before React renders the committed value.
+    await page.evaluate(async () => {
+      const canvas = document.querySelector('[data-testid="room-viewport"] canvas');
+      const tick = () => canvas.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
+      tick();
+      await new Promise((resolve) => {
+        setTimeout(() => {
+          tick();
+          resolve();
+        }, 180);
+      });
+    });
+    await expect(state).toHaveAttribute('data-fov-deg', '86');
+    await expect(page.getByTestId('room-lens-readout')).toContainText('FOV 86');
+
+    // Leaving the lens takes the readiness flag down with the rig.
+    await page.getByTestId('camera-mode-orbit').click();
+    await expect(state).not.toHaveAttribute('data-lens-live', 'inside');
     expect(errors).toEqual([]);
   });
 });
