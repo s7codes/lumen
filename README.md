@@ -1,27 +1,43 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v5.0.0-e8923a)
+![Release](https://img.shields.io/badge/release-v5.1.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v5.0.0**. `/room-3d` is now a full-viewport spatial workstation. A
+Current release: **v5.1.0**. The orbit camera turns a full 360 deg round all four walls
+with no stop (yaw wraps through +-180) and climbs from 5 deg above the floor to an 85 deg
+plan view, zoom 0.45x to 2.4x. Rooms grow to 900 x 900 x 420 cm, and four **Room scale**
+pills in the Envelope card set Compact (320 x 280 x 250), Living (480 x 420 x 270),
+Gallery (640 x 520 x 300) or Grand Loft (800 x 650 x 340) in one undoable press. Inside
+Room (165 cm) is now a 78 deg architectural lens with +-65 deg of look pitch; the wheel or
+the `+` / `-` keys swing it from 50 to 92 deg, and the observer opens backed up to 78
+percent of the way from the wall in view, carried to the same relative spot when the
+envelope changes. The navbar reads Overview, Catalog, Wall Studio, 3D Room: **3D Room**
+glides to the new **3D Spatial Studio** showcase on the overview (an SVG isometric
+cutaway, three capability pillars and **Launch 3D Spatial Studio**, still zero WebGL on
+`/`), and the launch key enters the planner under a full-screen engine boot that lifts
+with a defocus while the workstation settles in. Wall Studio is calmer in Visual mode: a
+gallery wall with a faint grid, an **Open in 3D Studio** key and a quiet engineering strip.
+
+`/room-3d` is a full-viewport spatial workstation (v5.0.0). A
 header bar carries the title and envelope, the four wall tabs, the camera lens, **Grid
 Snap** and a **Zen** key; a 260px left dock holds the envelope, lighting and asset shelf,
 a 288px right dock the wall-grouped outliner and inspector, the stage takes 72vh between
 them and the KPI and CAD bridge strip sits in a bottom dock. Each dock scrolls on its own;
 Zen folds both away so the viewport spans the full width. The page opens on the **Lumen
-Spatial Engine** boot: monogram, progress bar and three subsystem steps over the stage,
-clearing 320 ms after the canvas is ready, at once under reduced motion or on **Enter
-Studio Now**; the layer never takes the pointer, and **Replay Engine Boot** plays it again.
+Spatial Engine** boot: monogram, progress bar and three subsystem steps on a full-screen
+basalt plate, clearing 950 ms after the canvas is ready, at once under reduced motion or
+on **Enter Studio Now**; the layer never takes the pointer, and **Replay Engine Boot**
+plays it again.
 
 Three camera lenses. **Orbit Cutaway** is the v4 orbit with its section cut. **Inside
-Room (165 cm)** stands the eye inside the room, near its centre and a little toward the
-south wall: all four walls, the 8 cm baseboards, the corner creases and a ceiling stay in
-view, a drag turns the head through 360 deg (pitch -40 to +40 deg), the wall tabs swing
+Room (165 cm)** stands the eye inside the room, backed up toward the wall opposite the
+one in view: all four walls, the 8 cm baseboards, the corner creases and a ceiling stay in
+view, a drag turns the head through 360 deg (pitch -65 to +65 deg), the wall tabs swing
 the gaze to 0, 90, 180 or -90 deg, and `W A S D`, the arrows, `Q` / `E` or the walk pad
 step 25 cm and turn 15 deg, held 32 cm off the walls and clear of the floor reference.
 **Wall Elevation** looks dead-on and level at the middle of the active wall. A compass in
@@ -216,6 +232,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v5.1.0  | Unrestricted 360-degree orbit and 85-degree plan pitch; 900 x 900 cm envelopes and four room scale presets; 78-degree inside lens with wheel FOV and a backed-up stance; navbar swap and overview 3D Spatial Studio showcase; full-screen engine boot with a defocus reveal; calm Visual-mode Wall Studio |
 | v5.0.0  | Full-viewport 3D spatial workstation with engine boot and zen viewport; orbit, inside-room 165 cm and wall elevation lenses; ray to wall-plane drag engine, transform gizmo, laser dimensions, compass, wall-grouped outliner; skip link |
 | v4.2.0  | Part and driver mass, crate packing and freight class engine, consolidated or split rough-in dispatch waves on checkout |
 | v4.1.0  | Project and revision A/B diff engine and comparison dialog; spin-free number wells, centred cloud save key, one-line sidebar labels |
@@ -273,6 +290,7 @@ src/
                         BlueprintViews, ExplodedAssembly (lazy) and
                         ExplosionSpreadControl, PhotometricCurve, CloudSaveButton,
                         ProjectNameField, EmptyState, BusTelemetryCell,
+                        SpatialShowcase (overview 3D studio section),
                         EnvironmentalPhysicsCell, ElevationThumb,
                         ProjectDiffModal (lazy on /account),
                         RouteFallback (loading frame and chunk error), icons
@@ -280,7 +298,8 @@ src/
                         BlueprintSheetModal,
                         StudioSummary, shared field, switch and finish controls
     room3d/             RoomViewport, RoomCanvas (lazy WebGL), RoomControls,
-                        RoomInspector, RoomToolbar, RoomSummary, CameraSettings
+                        RoomInspector, RoomToolbar, RoomSummary, CameraSettings,
+                        StudioBootOverlay (full-screen engine boot)
   contexts/             AuthContext (session, RequireAuth), ToastContext
   data/                 products.js (parts, finishes, categories), wall-presets.js
   pages/                Home, Catalog, ProductDetail, Checkout, RoomPlanner,
@@ -289,7 +308,8 @@ src/
                         useCommandPalette, useCurrency, useDisplayMode,
                         useDocumentTitle, useDraftDiff, useLaunchedModule, useMagneticField,
                         useModalDialog, useProjectName, useSceneShare,
-                        useRoom3d, useScrollReveal, useWallDrag, useWallStudio
+                        useRoom3d, useScrollReveal, useSectionLink, useWallDrag,
+                        useWallStudio
   lib/                  bag store and PSU sizing, wall studio geometry and history,
                         room model and 2D bridge (room-3d), WebGL scene description
                         and orbit frame (room-scene), ray to wall-plane drag solver
@@ -333,7 +353,7 @@ tests/                  Playwright specs, named by architectural domain
 
 | Path         | View          | Role                                                      |
 | ------------ | ------------- | --------------------------------------------------------- |
-| `/`          | Overview      | Pendant hero, surface and dimming lab, core modules       |
+| `/`          | Overview      | Pendant hero, surface and dimming lab, core modules, 3D Spatial Studio showcase (`#spatial-studio-3d`) |
 | `/catalog`   | Catalog       | Category, search and sort over 12 parts, finish swatch    |
 | `/catalog/:id` | Spec sheet  | Orthographic set, exploded assembly, photometry or bus curve, launchers |
 | `/checkout`  | Project Quote | BOM, driver, freight, currency, trade code, print, export, submit |
@@ -352,7 +372,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '5.0.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '5.1.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -497,8 +517,10 @@ a fast link. Requests time out after 8 s.
   canvas-free, so the home page never touches WebGL.
 - Intent prefetch. `src/lib/route-manifest.js` holds the lazy loaders and exports
   `prefetchRoute(path)` (re-exported from `router.jsx`). The **3D Room** and **Wall
-  Studio** navbar links call it on pointer enter and on focus, and the command palette
+  Studio** navbar links, the showcase's **Launch 3D Spatial Studio** key and Wall Studio's
+  **Open in 3D Studio** key call it on pointer enter and on focus, and the command palette
   calls it when a workspace is highlighted, so the chunk is cached before the click. The
+  **3D Room** link itself opens the overview showcase, which is SVG and CSS only. The
   room planner also warms its WebGL chunk behind the page. Each path is fetched once per
   session, and nothing is prefetched when the browser reports Save-Data or a 2G link.
   A cold load of `/` still requests zero planner or WebGL chunks.
@@ -693,6 +715,14 @@ custom properties, so React never re-renders on pointer movement.
   navbar from 960px up, scrolling on their own. Readouts under the stage stay hidden
   until the stage is hovered, focused or has a selection. While a module is dragged,
   the panels, toolbar, summary and the other modules step back to 28-45% opacity.
+- Visual mode keeps the wall a calm gallery elevation: the 10 cm graph paper fades out,
+  the 50 cm grid drops to a whisper, minor ruler ticks and ruler numbers recede. Specs
+  mode, or any module in hand, brings the full grid and the numbered rulers back on a
+  420 ms fade (the grid colours are registered custom properties). The toolbar's main row
+  holds Edit, the DALI-2 scenes and **Open in 3D Studio** (`studio-open-3d`); 24V Bus,
+  Iso-Lux Map, Blueprint, Share Link, Export JSON and Import JSON sit in a quiet 24 px
+  strip beneath it with the status line. Engineering Telemetry stays mounted and visible,
+  set as a compact mono footnote in Visual mode.
 - The layout persists under `lumen_wall_studio_v1` through `safeStorage`. Reads and JSON
   imports pass `safeJsonParse` and a sanitizer that requires the `lumen.wall` envelope,
   drops unknown parts and finishes, rounds and clamps coordinates, reissues bad or
@@ -737,8 +767,10 @@ custom properties, so React never re-renders on pointer movement.
 
 ## Room Planner
 
-- Rooms run 240-500 cm wide, 200-450 cm deep and 220-320 cm to the ceiling (default
-  320 x 280 x 250 cm). Four walls: north at Z 0, east at X = width, south at Z = depth
+- Rooms run 240-900 cm wide, 200-900 cm deep and 220-420 cm to the ceiling (default
+  320 x 280 x 250 cm). **Room scale** (`room-size-presets`) sets `room-preset-compact`,
+  `room-preset-living`, `room-preset-gallery` or `room-preset-loft` in one undo step;
+  the matching pill reads pressed, and an edited envelope leaves every pill up. Four walls: north at Z 0, east at X = width, south at Z = depth
   and west at X 0. Each wall shares Wall Studio coordinates in its own frame: `Left X`
   from its left corner seen from inside the room and `Bottom Y` in cm, modules extruded
   to their catalog depth into the room. North and south span the width, east and west
@@ -750,19 +782,30 @@ custom properties, so React never re-renders on pointer movement.
   docks sit beside the stage and scroll on their own; from 960px the inspector moves
   under the stage; below 960px everything stacks. **Zen** (`toggle-zen-viewport`) folds
   both docks and makes them inert.
-- The **Lumen Spatial Engine** boot (`studio-boot-overlay`) plays over the stage while
-  the WebGL chunk loads: `01 / WebGL2 Shader Pipeline`, `02 / 4-Wall Raycast & Gizmo
-  Solver`, `03 / 24V Photometric Kernel`. It clears 320 ms after the canvas reports
-  ready, at once under reduced motion and on **Enter Studio Now** (`skip-studio-boot`).
-  Only that key takes the pointer, so the stage under it is live from the first frame.
+- The **Lumen Spatial Engine** boot (`studio-boot-overlay`) is portaled to the body as
+  a fixed 100vw x 100vh plate (`z-index: 9999`, `#080809`) over the navbar and every
+  dock while the WebGL chunk loads: a 56 px monogram with a breathing tungsten aperture,
+  `LUMEN SPATIAL ENGINE v5.1`, a 240 px bar from `000%` and `01 / WebGL2 Shader
+  Pipeline`, `02 / 4-Wall Raycast & Gizmo Solver`, `03 / 24V Photometric Kernel`. It
+  holds 950 ms after the canvas reports ready, then lifts over 550 ms on
+  `cubic-bezier(0.16, 1, 0.3, 1)` (opacity to 0, scale to 1.025, blur to 10px) while the
+  workstation (`data-boot`) settles from 0.99 to full size and drops its transform. It
+  clears at once under reduced motion and on **Enter Studio Now** (`skip-studio-boot`).
+  Only that key takes the pointer, so everything under it is live from the first frame.
 - Camera lenses (`camera-lens-switcher`): `camera-mode-orbit`, `camera-mode-walkthrough`
   (Inside Room, 165 cm) and `camera-mode-elevation`. The lens is view state; the orbit
   camera still persists. `src/lib/room-walkthrough.js` holds the observer: bearings 0
   north, 90 east, 180 south, -90 west, 25 cm steps, 15 deg turns, a 32 cm wall buffer and
   the floor reference grown by 20 cm, the facing wall, eye illuminance on the plane facing
-  the gaze, and the elevation lens. The mirror carries it as `room-walkthrough-state`
-  (`data-camera-mode`, `data-x-cm`, `data-z-cm`, `data-eye-cm`, `data-heading-deg`,
-  `data-pitch-deg`, `data-facing-wall`, `data-eye-lux`) beside `room-wall` and
+  the gaze, and the elevation lens. The inside lens is 78 deg; the wheel (4 deg a notch,
+  written straight to the camera and committed after a 180 ms pause) and `+` / `-`
+  swing it between 50 and 92 deg, and `Home` or **Reset Stance** restores stance and
+  lens. `defaultStance(room, wall)` centres the eye across the wall in view and backs it
+  up to 78 percent of the way from it; `rescaleStance` carries the eye to the same
+  relative spot when the envelope is resized. The mirror carries it as
+  `room-walkthrough-state` (`data-camera-mode`, `data-x-cm`, `data-z-cm`,
+  `data-eye-cm`, `data-heading-deg`, `data-pitch-deg`, `data-fov-deg`,
+  `data-facing-wall`, `data-eye-lux`) beside `room-wall` and
   `room-ceiling` nodes whose `data-visible` follows the section cut every frame.
 - Direct manipulation: press the selected module (a 4 px threshold keeps clicks as
   clicks) or a gizmo handle (`gizmo-axis-x`, `gizmo-axis-y`, `gizmo-axis-xy`) and drag.
@@ -800,10 +843,12 @@ custom properties, so React never re-renders on pointer movement.
   below shelves, cubes, sideboards, lightbars (up and down) and the monopoint spot, a
   `PointLight` for the floor column and the backlit art frame halo. Intensity scales with
   rated lumens. Switching the 24V channel off removes the light and darkens the emitter.
-- Camera: drei `OrbitControls` (no pan, no damping) clamped to yaw -65 to 65 deg around
-  the active wall's heading, pitch 8 to 50 deg and zoom 0.6-1.8x through azimuth, polar
-  and distance limits. A wall tab glides the heading and orbit centre on the same spring,
-  the short way round, while the relative yaw, pitch and zoom stay put. A drag
+- Camera: drei `OrbitControls` (no pan, no damping) with a free azimuth: a drag keeps
+  turning round all four walls, and yaw, measured from the active wall's heading, wraps
+  through +-180 deg (`wrapYaw`; stored values fold into (-180, 180]). Pitch runs 5 to 85
+  deg, a near plan view, and zoom 0.45-2.4x through polar and distance limits. A wall tab
+  glides the heading and orbit centre on the same spring, and a preset or key glides the
+  yaw, both the short way round, while the relative yaw, pitch and zoom stay put. A drag
   commits on release, wheel zoom after a 180 ms pause; the committed yaw / pitch / zoom
   persists and drives the lens back, so presets, keys and reloads land exactly.
 - Presets (Perspective, Front Elevation, Corner Iso, Reset Camera) glide in on the
