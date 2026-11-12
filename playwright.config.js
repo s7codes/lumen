@@ -16,6 +16,13 @@ export default defineConfig({
   // Every context owns its X-Lumen-Client namespace in the test store, so CI
   // runs four isolated workers in parallel.
   workers: process.env.CI ? 4 : undefined,
+  // Four workers share a four-vCPU runner where WebGL falls back to software
+  // rasterisation, so the long 3D scenario tests run two to three times slower
+  // there than on a local GPU (the v6.1.0 run timed out two of them at 30 s while
+  // they were still progressing). These are ceilings, not waits: an assertion
+  // returns as soon as its condition holds.
+  timeout: process.env.CI ? 60_000 : 30_000,
+  expect: { timeout: process.env.CI ? 10_000 : 5_000 },
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: BASE_URL,
