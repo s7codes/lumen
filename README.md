@@ -1,14 +1,28 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v5.1.0-e8923a)
+![Release](https://img.shields.io/badge/release-v5.2.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v5.1.0**. The orbit camera turns a full 360 deg round all four walls
+Current release: **v5.2.0**. The navbar underline now follows the overview: **Overview**
+is current above the 3D Spatial Studio, **3D Room** takes over (`aria-current="location"`)
+while the section crosses the reading band 40 to 45 percent down the viewport, and a
+navbar glide holds it for the whole flight. The showcase stage is a live canvas 2D
+theatre: a projected 640 x 520 x 300 cm Gallery with four section-cut walls, a linear
+pendant, lit shelf, corner column, acoustic frame and platform on one 24V bus, cycling
+four 4.5 s acts (360-degree orbit with bus pulses, a 78 deg lens at 165 cm with live
+eye lux, a raycast gizmo sliding the shelf on 5 cm ticks with laser dimensions, and an
+iso-lux field with 100 / 250 / 500 lx rings). Act keys and the capability cards hold or
+preview an act, and the cursor parallaxes the camera and probes floor lux, all outside
+React. The bottom bar is now the **3D Studio Launchpad**: an amber-lit portal with the
+flagship **Launch 3D Spatial Studio** key and three quick-launch presets that open
+`/room-3d?lens=orbit`, `/room-3d?lens=inside` and `/room-3d?scale=loft&lens=inside`.
+
+v5.1.0 unlocked the orbit: the camera turns a full 360 deg round all four walls
 with no stop (yaw wraps through +-180) and climbs from 5 deg above the floor to an 85 deg
 plan view, zoom 0.45x to 2.4x. Rooms grow to 900 x 900 x 420 cm, and four **Room scale**
 pills in the Envelope card set Compact (320 x 280 x 250), Living (480 x 420 x 270),
@@ -17,9 +31,8 @@ Room (165 cm) is now a 78 deg architectural lens with +-65 deg of look pitch; th
 the `+` / `-` keys swing it from 50 to 92 deg, and the observer opens backed up to 78
 percent of the way from the wall in view, carried to the same relative spot when the
 envelope changes. The navbar reads Overview, Catalog, Wall Studio, 3D Room: **3D Room**
-glides to the new **3D Spatial Studio** showcase on the overview (an SVG isometric
-cutaway, three capability pillars and **Launch 3D Spatial Studio**, still zero WebGL on
-`/`), and the launch key enters the planner under a full-screen engine boot that lifts
+glides to the new **3D Spatial Studio** showcase on the overview (three capability
+pillars and **Launch 3D Spatial Studio**, still zero WebGL on `/`), and the launch key enters the planner under a full-screen engine boot that lifts
 with a defocus while the workstation settles in. Wall Studio is calmer in Visual mode: a
 gallery wall with a faint grid, an **Open in 3D Studio** key and a quiet engineering strip.
 
@@ -232,6 +245,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v5.2.0  | Scroll-spy navbar underline on the overview; canvas 2D showcase theatre with four autonomous acts, act keys, card previews, cursor parallax and a lux probe; 3D Studio Launchpad with `?lens=` and `?scale=` quick-launch presets |
 | v5.1.0  | Unrestricted 360-degree orbit and 85-degree plan pitch; 900 x 900 cm envelopes and four room scale presets; 78-degree inside lens with wheel FOV and a backed-up stance; navbar swap and overview 3D Spatial Studio showcase; full-screen engine boot with a defocus reveal; calm Visual-mode Wall Studio |
 | v5.0.0  | Full-viewport 3D spatial workstation with engine boot and zen viewport; orbit, inside-room 165 cm and wall elevation lenses; ray to wall-plane drag engine, transform gizmo, laser dimensions, compass, wall-grouped outliner; skip link |
 | v4.2.0  | Part and driver mass, crate packing and freight class engine, consolidated or split rough-in dispatch waves on checkout |
@@ -306,10 +320,10 @@ src/
                         WallStudio, Account, NotFound
   hooks/                useAmbientLight, useBag, useCardTilt, useCloudSave,
                         useCommandPalette, useCurrency, useDisplayMode,
-                        useDocumentTitle, useDraftDiff, useLaunchedModule, useMagneticField,
-                        useModalDialog, useProjectName, useSceneShare,
-                        useRoom3d, useScrollReveal, useSectionLink, useWallDrag,
-                        useWallStudio
+                        useDocumentTitle, useDraftDiff, useLaunchedModule, useLaunchPreset,
+                        useMagneticField, useModalDialog, useProjectName, useSceneShare,
+                        useRoom3d, useScrollReveal, useSectionLink (glide and
+                        scroll-spy), useShowcaseTheatre, useWallDrag, useWallStudio
   lib/                  bag store and PSU sizing, wall studio geometry and history,
                         room model and 2D bridge (room-3d), WebGL scene description
                         and orbit frame (room-scene), ray to wall-plane drag solver
@@ -329,7 +343,10 @@ src/
                         daisy-chain routing and drop (bus-topology), illuminance
                         and Sabine RT60 (room-physics), point-by-point lux
                         field and iso-lux contours (illuminance-field), share link
-                        codec (scene-codec), clipboard with fallback,
+                        codec (scene-codec), quick-launch links (launch-presets),
+                        showcase theatre scene, photometry and choreography
+                        (showcase-scene) and its canvas painter (showcase-painter),
+                        clipboard with fallback,
                         quote engine, crate packing and dispatch waves
                         (logistics), boxed driver specs (drivers), formatting, nav routes, lazy chunk loaders
                         and prefetch (route-manifest)
@@ -353,11 +370,11 @@ tests/                  Playwright specs, named by architectural domain
 
 | Path         | View          | Role                                                      |
 | ------------ | ------------- | --------------------------------------------------------- |
-| `/`          | Overview      | Pendant hero, surface and dimming lab, core modules, 3D Spatial Studio showcase (`#spatial-studio-3d`) |
+| `/`          | Overview      | Pendant hero, surface and dimming lab, core modules, 3D Spatial Studio theatre and launchpad (`#spatial-studio-3d`) |
 | `/catalog`   | Catalog       | Category, search and sort over 12 parts, finish swatch    |
 | `/catalog/:id` | Spec sheet  | Orthographic set, exploded assembly, photometry or bus curve, launchers |
 | `/checkout`  | Project Quote | BOM, driver, freight, currency, trade code, print, export, submit |
-| `/room-3d`   | Room Planner  | Lazy chunk. WebGL room, clearances, 2D bridge, cloud save, cart sync |
+| `/room-3d`   | Room Planner  | Lazy chunk. WebGL room, clearances, 2D bridge, cloud save, cart sync; `?lens=` and `?scale=` quick launch |
 | `/studio-2d` | Wall Studio   | Lazy chunk. To-scale elevation planner, cloud save, cart sync |
 | `/account`   | Account       | Signed in only: cloud projects and submitted requisitions |
 
@@ -372,7 +389,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '5.1.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '5.2.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -513,14 +530,15 @@ a fast link. Requests time out after 8 s.
 - `RoomPlannerPage` and `WallStudioPage` load through `React.lazy`, each behind its own
   `<Suspense>` boundary. The overview, catalog, spec sheets, checkout and account never
   download planner code. `three`, React Three Fiber and drei stay in the `RoomCanvas`
-  chunk, which the room viewport loads on demand. The overview hero is CSS and
-  canvas-free, so the home page never touches WebGL.
+  chunk, which the room viewport loads on demand. The overview hero is CSS only and the
+  3D Spatial Studio theatre draws on a canvas 2D context, so the home page never touches
+  WebGL.
 - Intent prefetch. `src/lib/route-manifest.js` holds the lazy loaders and exports
   `prefetchRoute(path)` (re-exported from `router.jsx`). The **3D Room** and **Wall
   Studio** navbar links, the showcase's **Launch 3D Spatial Studio** key and Wall Studio's
   **Open in 3D Studio** key call it on pointer enter and on focus, and the command palette
   calls it when a workspace is highlighted, so the chunk is cached before the click. The
-  **3D Room** link itself opens the overview showcase, which is SVG and CSS only. The
+  **3D Room** link itself opens the overview showcase, which is canvas 2D, never WebGL. The
   room planner also warms its WebGL chunk behind the page. Each path is fetched once per
   session, and nothing is prefetched when the browser reports Save-Data or a 2G link.
   A cold load of `/` still requests zero planner or WebGL chunks.
@@ -648,6 +666,14 @@ custom properties, so React never re-renders on pointer movement.
   the hovered key toward a fine pointer by at most 4 x 3 px; the plinth stays where the
   key rests, so it trails the cap. Arrows slide 4px, the add glyph turns a quarter.
   Nothing glows: the plinth has no blur, and the glow guard in the E2E suite holds.
+- Showcase theatre: `useShowcaseTheatre` runs one rAF loop per overview visit, only while
+  the stage is on screen. Every motion integrates the frame dt: the camera rides the
+  closed-form spring (`k = 22`, `c = 9.4`) toward each act, act presences and the light
+  level approach exponentially, the gizmo shelf glides onto each 5 cm tick, and the
+  pointer parallax (up to 9 deg yaw, 6 deg pitch) has its own spring, so the same curves
+  play at 60, 120 and 240 Hz. The loop paints the canvas and writes AZ, PITCH, LUX, the
+  act readout and the act-key fill straight into the DOM; React hears only act changes.
+  Under reduced motion each act is one still frame and the cycle does not run.
 - `src/styles/animations.css` holds the reveal states and the shared keyframes (rise,
   settle, unfold, transient status lines). Under `prefers-reduced-motion: reduce` every
   section renders at rest, keys do not drift and status lines stay put.
@@ -785,7 +811,7 @@ custom properties, so React never re-renders on pointer movement.
 - The **Lumen Spatial Engine** boot (`studio-boot-overlay`) is portaled to the body as
   a fixed 100vw x 100vh plate (`z-index: 9999`, `#080809`) over the navbar and every
   dock while the WebGL chunk loads: a 56 px monogram with a breathing tungsten aperture,
-  `LUMEN SPATIAL ENGINE v5.1`, a 240 px bar from `000%` and `01 / WebGL2 Shader
+  `LUMEN SPATIAL ENGINE v5.2`, a 240 px bar from `000%` and `01 / WebGL2 Shader
   Pipeline`, `02 / 4-Wall Raycast & Gizmo Solver`, `03 / 24V Photometric Kernel`. It
   holds 950 ms after the canvas reports ready, then lifts over 550 ms on
   `cubic-bezier(0.16, 1, 0.3, 1)` (opacity to 0, scale to 1.025, blur to 10px) while the
@@ -1059,6 +1085,13 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
   planner's kind, carrying a `__proto__`, `constructor` or `prototype` key (escaped or
   not), or with any module that does not survive `sanitizeLayout` / `sanitizeRoomState`.
   A refused link keeps the local draft and shows `Shared scene link is invalid.`
+
+- Quick-launch links: `?lens=orbit|inside|elevation` picks the camera lens and
+  `?scale=compact|living|gallery|loft` a room scale preset (one undo step; the
+  observer follows the envelope, so `?scale=loft&lens=inside` stands at 400 / 507 cm
+  in an 800 x 650 x 340 cm room). Values are matched against the planner allow-lists,
+  anything else is ignored, and both parameters leave the address bar with a history
+  replace on arrival (`src/lib/launch-presets.js`, `useLaunchPreset`).
 
 ## Account
 
