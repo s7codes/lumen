@@ -14,7 +14,8 @@ const HOME_TITLE = 'Lumen - Architectural Lighting & Modular Systems';
 const NAV_SEQUENCE = [
   { link: /catalog/i, path: '/catalog', heading: 'Catalog', title: 'Catalog - Lumen' },
   { link: /wall studio/i, path: '/studio-2d', heading: 'Wall Studio', title: 'Wall Studio - Lumen' },
-  { link: /3d room/i, path: '/', heading: /light and storage/i, title: HOME_TITLE, current: /overview/i },
+  // On the overview, 3D Room glides to its section and reads as the current location there.
+  { link: /3d room/i, path: '/', heading: /light and storage/i, title: HOME_TITLE, currentAs: 'location' },
   { launch: true, link: /3d room/i, path: '/room-3d', heading: 'Room Planner', title: 'Room Planner - Lumen' },
   { link: /overview/i, path: '/', heading: /light and storage/i, title: HOME_TITLE },
 ];
@@ -91,7 +92,7 @@ test.describe('app shell', () => {
 
       await expect(page).toHaveURL((url) => url.pathname === step.path);
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(step.heading);
-      await expect(nav.getByRole('link', { name: step.current ?? step.link })).toHaveAttribute('aria-current', 'page');
+      await expect(nav.getByRole('link', { name: step.link })).toHaveAttribute('aria-current', step.currentAs ?? 'page');
       await expect(page).toHaveTitle(step.title);
       expect(await page.evaluate(() => window.__lumenSessionMarker)).toBe('alive');
     }

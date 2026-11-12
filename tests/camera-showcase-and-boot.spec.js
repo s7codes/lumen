@@ -17,6 +17,7 @@ import {
 } from '../src/lib/room-3d.js';
 import { cameraFrame, cameraFromPosition, cameraPosition, orbitLimits } from '../src/lib/room-scene.js';
 import {
+  CAMERA_MODES,
   defaultStance,
   facingWall,
   INSIDE_FOV,
@@ -27,7 +28,21 @@ import {
   sanitizeInsideFov,
   WALL_LOOK_HEADING,
 } from '../src/lib/room-walkthrough.js';
+import { launchHref, readLaunchPreset, stripLaunchParams } from '../src/lib/launch-presets.js';
 import { NAV_ROUTES, SHOWCASE_3D_ID } from '../src/lib/routes.js';
+import {
+  ACT_IDS,
+  ACT_SECONDS,
+  buildLuxField,
+  eyeFrustum,
+  eyeIlluminance,
+  gizmoPose,
+  ISO_LEVELS,
+  isoSegments,
+  shelfDimensions,
+  SNAP_CM,
+  STAGE_ROOM,
+} from '../src/lib/showcase-scene.js';
 import { collectRuntimeErrors, horizontalOverflow, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
 const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
@@ -374,7 +389,7 @@ test.describe('navbar order and the overview 3D showcase', () => {
     await expect(navLink).toHaveAttribute('href', `/#${SHOWCASE_3D_ID}`);
     await expect(nav.getByRole('link', { name: 'Wall Studio' })).toHaveAttribute('href', '/studio-2d');
 
-    // The showcase is SVG and CSS: the overview still loads no planner or WebGL chunk.
+    // The showcase is a canvas 2D projection: the overview still loads no planner or WebGL chunk.
     const showcase = page.getByTestId('home-3d-showcase');
     await expect(showcase).toHaveAttribute('id', SHOWCASE_3D_ID);
     await showcase.evaluate((el) => el.scrollIntoView());
@@ -382,16 +397,19 @@ test.describe('navbar order and the overview 3D showcase', () => {
       'Step inside a four-walled room before a single hole is drilled.',
     );
     await expect(showcase).toContainText('3D Spatial Studio');
-    await expect(showcase.locator('svg.showcase3d__svg')).toBeVisible();
+    await expect(page.getByTestId('showcase-stage-canvas')).toBeVisible();
     for (const title of ['360-Degree Four-Wall Envelope', '165 cm Eye-Level Walkthrough', 'Direct 3D Raycast & Gizmo']) {
       await expect(showcase.getByRole('heading', { level: 3, name: title })).toBeVisible();
     }
     const cta = page.getByTestId('launch-3d-studio-cta');
-    await expect(cta).toHaveText('Launch 3D Spatial Studio');
+    await expect(cta).toContainText('Launch 3D Spatial Studio');
+    await expect(page.getByRole('link', { name: 'Launch 3D Spatial Studio', exact: true })).toHaveAttribute('href', '/room-3d');
     await expect(cta).toHaveAttribute('href', '/room-3d');
     await page.waitForLoadState('networkidle');
     expect(scripts.filter((path) => PLANNER_CHUNK.test(path))).toEqual([]);
-    expect(await showcase.evaluate((el) => el.querySelectorAll('canvas').length)).toBe(0);
+    expect(
+      await showcase.evaluate((el) => [...el.querySelectorAll('canvas')].map((c) => [Boolean(c.getContext('2d')), c.getContext('webgl'), c.getContext('webgl2')])),
+    ).toEqual([[true, null, null]]);
 
     // On the overview, 3D Room glides in place and lands on the section.
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -399,7 +417,8 @@ test.describe('navbar order and the overview 3D showcase', () => {
     await expect(page).toHaveURL(new RegExp(`/#${SHOWCASE_3D_ID}$`));
     await expect(showcase.getByRole('heading', { level: 2 })).toBeInViewport();
     await expect(showcase).toBeFocused();
-    await expect(nav.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
+    await expect(navLink).toHaveAttribute('aria-current', 'location');
+    await expect(nav.getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current');
 
     // From another page it routes to the overview and glides there on arrival.
     await nav.getByRole('link', { name: 'Catalog' }).click();
@@ -435,7 +454,7 @@ test.describe('navbar order and the overview 3D showcase', () => {
     expect(cover).toMatchObject({ parent: 'BODY', position: 'fixed', zIndex: '9999', x: 0, y: 0, coversNav: true });
     expect(cover.width).toBe(cover.innerWidth);
     expect(cover.height).toBe(cover.innerHeight);
-    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v5.1');
+    await expect(boot).toContainText('LUMEN SPATIAL ENGINE v5.2');
     // Layout sizes, not painted boxes: the panel itself is still pulling focus from 1.05.
     await expect(boot.locator('.studio-boot__mark')).toHaveCSS('width', '56px');
     await expect(boot.locator('.studio-boot__bar')).toHaveCSS('width', '240px');
@@ -530,6 +549,463 @@ test.describe('calm 2D wall studio', () => {
     await expect(bridge).toHaveAttribute('href', '/room-3d');
     await bridge.click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    expect(errors).toEqual([]);
+  });
+});
+
+const RESTING = 'matrix(1, 0, 0, 1, 0, 0)';
+const RETRACTED = 'matrix(0, 0, 0, 1, 0, 0)';
+
+function underline(link) {
+  return link.evaluate((el) => getComputedStyle(el, '::after').transform);
+}
+
+async function expectCurrent(link, value) {
+  await expect(link).toHaveAttribute('aria-current', value);
+  await expect(link).toHaveClass(/(^|\s)active(\s|$)/);
+  await expect.poll(() => underline(link)).toBe(RESTING);
+}
+
+async function expectIdle(link) {
+  await expect(link).not.toHaveAttribute('aria-current');
+  await expect(link).not.toHaveClass(/(^|\s)active(\s|$)/);
+  await expect.poll(() => underline(link)).toBe(RETRACTED);
+}
+
+function stageOf(page) {
+  return page.getByTestId('showcase-stage');
+}
+
+function fillScale(page, act) {
+  return page
+    .getByTestId(`showcase-act-${act}`)
+    .locator('.theatre__act-fill')
+    .evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
+}
+
+test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => {
+  test('engine: four acts, 5 cm gizmo ticks, an eye-level lens landed on the shell and a lit field with all three iso-lines', () => {
+    expect(ACT_IDS).toEqual(['orbit', 'inside', 'gizmo', 'isolux']);
+    expect(ACT_SECONDS).toBe(4.5);
+    const gallery = ROOM_SIZE_PRESETS.find((preset) => preset.id === 'gallery');
+    expect(STAGE_ROOM).toMatchObject({ widthCm: gallery.widthCm, depthCm: gallery.depthCm, heightCm: gallery.heightCm });
+
+    // Every gizmo pose sits on the snap grid and inside the wall; the act ends where it began.
+    const xs = new Set();
+    for (let t = 0; t < ACT_SECONDS; t += 0.05) {
+      const pose = gizmoPose(t);
+      expect(pose.x % SNAP_CM).toBe(0);
+      expect(pose.y % SNAP_CM).toBe(0);
+      const dims = shelfDimensions(pose);
+      expect(dims.x + 110 + dims.r).toBe(STAGE_ROOM.widthCm);
+      expect(dims.y + 5 + dims.c).toBe(STAGE_ROOM.heightCm);
+      xs.add(pose.x);
+    }
+    expect(xs.size).toBeGreaterThan(10);
+    expect(gizmoPose(0)).toMatchObject({ x: 140, y: 145 });
+    expect(gizmoPose(ACT_SECONDS - 1e-6)).toMatchObject({ x: 140, y: 145 });
+    expect(gizmoPose(1.2).axis).toBe('x');
+    expect(gizmoPose(2.6).axis).toBe('y');
+
+    // The 78 deg lens: every ray lands on a wall, the floor or the ceiling.
+    const { widthCm: W, depthCm: D, heightCm: H } = STAGE_ROOM;
+    for (const heading of [-82, 0, 82]) {
+      const lens = eyeFrustum(heading);
+      expect(lens.ring).toHaveLength(24);
+      for (const p of [...lens.ring, lens.centre]) {
+        const onShell = [p[0], W - p[0], p[1], H - p[1], p[2], D - p[2]].some((gap) => Math.abs(gap) < 1e-6);
+        expect(onShell).toBe(true);
+        expect(p[0]).toBeGreaterThanOrEqual(-1e-6);
+        expect(p[2]).toBeLessThanOrEqual(D + 1e-6);
+      }
+    }
+    expect(eyeFrustum(0).centre[2]).toBeCloseTo(0, 6);
+    expect(eyeFrustum(90).centre[0]).toBeCloseTo(W, 6);
+    // Facing the pendant reads more light at the eye than facing a side wall.
+    expect(eyeIlluminance(0)).toBeGreaterThan(eyeIlluminance(80));
+    expect(eyeIlluminance(0)).toBeGreaterThan(150);
+    expect(eyeIlluminance(0)).toBeLessThan(500);
+
+    // Marching squares on a cone: one ring of segments, every end on the 3-unit circle.
+    const cone = Array.from({ length: 9 }, (_, j) => Array.from({ length: 9 }, (_, i) => 10 - Math.hypot(i - 4, j - 4)));
+    const ring = isoSegments(cone, 7);
+    expect(ring.length).toBeGreaterThanOrEqual(8);
+    for (const [a, b] of ring) for (const [i, j] of [a, b]) expect(Math.abs(Math.hypot(i - 4, j - 4) - 3)).toBeLessThan(0.35);
+
+    const field = buildLuxField();
+    expect(field.surfaces.map((surface) => surface.id)).toEqual(['floor', 'north', 'east', 'south', 'west']);
+    const floor = field.surfaces[0];
+    expect(floor.peak).toBeGreaterThan(Math.max(...ISO_LEVELS));
+    expect(floor.peak).toBeLessThan(1200);
+    for (const { level, segments } of floor.contours) {
+      expect(ISO_LEVELS).toContain(level);
+      expect(segments.length, `${level} lx`).toBeGreaterThan(0);
+      for (const [a] of segments) expect(a[1]).toBeGreaterThan(0);
+    }
+    expect(floor.labels.every((entry) => Array.isArray(entry.anchor))).toBe(true);
+  });
+
+  test('launch links: lens and scale read against the planner allow-lists and leave the address bar clean', () => {
+    expect(launchHref({ lens: 'orbit' })).toBe('/room-3d?lens=orbit');
+    expect(launchHref({ lens: 'inside' })).toBe('/room-3d?lens=inside');
+    expect(launchHref({ scale: 'loft', lens: 'inside' })).toBe('/room-3d?scale=loft&lens=inside');
+    expect(launchHref()).toBe('/room-3d');
+
+    const allow = { lenses: CAMERA_MODES, scales: ROOM_SIZE_PRESETS.map((preset) => preset.id) };
+    expect(readLaunchPreset('?scale=loft&lens=inside', allow)).toEqual({ present: true, lens: 'inside', scale: 'loft' });
+    expect(readLaunchPreset('?lens=orbit', allow)).toEqual({ present: true, lens: 'orbit', scale: null });
+    expect(readLaunchPreset('?lens=constructor&scale=__proto__', allow)).toEqual({ present: true, lens: null, scale: null });
+    expect(readLaunchPreset('?lens=INSIDE&scale=loft%00', allow)).toEqual({ present: true, lens: null, scale: null });
+    expect(readLaunchPreset('?scene=abc', allow)).toEqual({ present: false, lens: null, scale: null });
+    expect(stripLaunchParams('?scale=loft&lens=inside')).toBe('');
+    expect(stripLaunchParams('?lens=inside&scene=abc')).toBe('?scene=abc');
+  });
+
+  test('the navbar underline follows the overview: Overview above the showcase, 3D Room inside it, held through a glide and handed back on the way up', async ({
+    page,
+  }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/light and storage/i);
+    const nav = page.getByRole('navigation', { name: 'Primary' });
+    const overview = nav.getByRole('link', { name: 'Overview' });
+    const room = page.getByTestId('nav-3d-showcase');
+    const showcase = page.getByTestId('home-3d-showcase');
+
+    await expectCurrent(overview, 'page');
+    await expectIdle(room);
+
+    // Scrolled into the showcase, the underline crosses to 3D Room.
+    await showcase.evaluate((el) => el.scrollIntoView());
+    await expectCurrent(room, 'location');
+    await expectIdle(overview);
+
+    // Back up through Core Modules and the Surface Lab, Overview takes it back.
+    await page.getByTestId('core-modules').evaluate((el) => el.scrollIntoView());
+    await expectCurrent(overview, 'page');
+    await expectIdle(room);
+    await page.getByTestId('surface-lab').evaluate((el) => el.scrollIntoView());
+    await expectCurrent(overview, 'page');
+    await showcase.evaluate((el) => el.scrollIntoView());
+    await expectCurrent(room, 'location');
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expectCurrent(overview, 'page');
+    await expectIdle(room);
+
+    // A click hands the underline over at once and holds it for the whole glide.
+    const samples = await page.evaluate(async () => {
+      const link = document.querySelector('[data-testid="nav-3d-showcase"]');
+      const seen = [];
+      link.click();
+      const until = performance.now() + 900;
+      while (performance.now() < until) {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        seen.push(`${link.getAttribute('aria-current')} ${window.scrollY > 0}`);
+      }
+      return seen;
+    });
+    expect(samples.length).toBeGreaterThan(5);
+    expect(new Set(samples.map((sample) => sample.split(' ')[0]))).toEqual(new Set(['location']));
+    expect(samples.at(-1)).toBe('location true');
+    await expect(showcase.getByRole('heading', { level: 2 })).toBeInViewport();
+    await expectCurrent(room, 'location');
+    await expectIdle(overview);
+
+    // The reader's own scroll takes over from the glide's hold.
+    const box = await showcase.getByRole('heading', { level: 2 }).boundingBox();
+    await page.mouse.move(box.x + 10, box.y + 10);
+    for (let i = 0; i < 12; i += 1) await page.mouse.wheel(0, -900);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(400);
+    await expectCurrent(overview, 'page');
+    await expectIdle(room);
+
+    // A cold load on the anchor opens with 3D Room current; the planner keeps it as the page.
+    await page.goto('/catalog');
+    await page.goto(`/#${SHOWCASE_3D_ID}`);
+    await expect(showcase.getByRole('heading', { level: 2 })).toBeInViewport();
+    await expectCurrent(room, 'location');
+    await expectIdle(overview);
+    await page.goto('/room-3d');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    await expectCurrent(room, 'page');
+    await expectIdle(overview);
+
+    expect(await readCspViolations(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test('the theatre paints a 2D projection, cycles four acts, holds one on a key or card, probes lux under the cursor and loads no WebGL', async ({
+    page,
+  }) => {
+    // Three full acts run in real time here (cycle, hold, cycle again).
+    test.setTimeout(60_000);
+    const errors = collectRuntimeErrors(page);
+    const scripts = [];
+    page.on('request', (request) => {
+      if (request.resourceType() === 'script') scripts.push(new URL(request.url()).pathname);
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    const stage = stageOf(page);
+    const canvas = page.getByTestId('showcase-stage-canvas');
+    await stage.scrollIntoViewIfNeeded();
+    await expect(canvas).toBeVisible();
+    await expect(stage).toHaveAttribute('data-act', 'orbit');
+    await expect(canvas).toHaveAttribute('data-act', 'orbit');
+    await expect(canvas).toHaveAttribute('role', 'img');
+
+    // A 2D context at device resolution, with the room actually painted into it.
+    await expect
+      .poll(() =>
+        canvas.evaluate((el) => {
+          const { data } = el.getContext('2d').getImageData(0, 0, el.width, el.height);
+          let lit = 0;
+          for (let i = 3; i < data.length; i += 16) if (data[i] > 0) lit += 1;
+          return lit / (data.length / 16);
+        }),
+      )
+      .toBeGreaterThan(0.2);
+    const surface = await canvas.evaluate((el) => ({ width: el.width, cssWidth: el.clientWidth, webgl: el.getContext('webgl2') }));
+    expect(surface.webgl).toBeNull();
+    expect(surface.width).toBeGreaterThanOrEqual(surface.cssWidth);
+
+    const acts = page.getByRole('group', { name: 'Stage acts' }).getByRole('button');
+    await expect(acts).toHaveCount(4);
+    for (const id of ACT_IDS) await expect(page.getByTestId(`showcase-act-${id}`)).toBeVisible();
+    await expect(page.getByTestId('showcase-act-orbit')).toHaveAttribute('data-active', 'true');
+
+    // The orbit turns on its own and the act clock fills the live key.
+    const az = page.locator('[data-hud="az"]');
+    const firstAz = await az.innerText();
+    await expect.poll(() => az.innerText()).not.toBe(firstAz);
+    await expect.poll(() => fillScale(page, 'orbit')).toBeGreaterThan(0.2);
+    await expect(page.getByTestId('showcase-readout')).toHaveText('24V DC daisy chain / 5 nodes / 2700K');
+
+    // After one act the stage moves on by itself to the eye-level sweep. The act clock runs
+    // on frame dt clamped at 50 ms, so a slow software-raster runner stretches it: wait wide.
+    await expect(stage).toHaveAttribute('data-act', 'inside', { timeout: 15_000 });
+    await expect(page.getByTestId('showcase-pillar-inside')).toHaveAttribute('data-active', 'true');
+    await expect(page.getByTestId('showcase-readout')).toHaveText(/^Eye 165 cm \/ FOV 78 deg \/ \d+ lx$/);
+    const lux = new Set();
+    for (let i = 0; i < 8; i += 1) {
+      lux.add(await page.getByTestId('showcase-readout').innerText());
+      await page.waitForTimeout(120);
+    }
+    expect(lux.size).toBeGreaterThan(1);
+
+    // A key holds its act past the act length; the shelf slides on 5 cm ticks meanwhile.
+    const gizmoKey = page.getByTestId('showcase-act-gizmo');
+    await gizmoKey.click();
+    await expect(stage).toHaveAttribute('data-act', 'gizmo');
+    await expect(gizmoKey).toHaveAttribute('aria-pressed', 'true');
+    await expect(stage).toHaveAttribute('data-held', 'true');
+    const readout = page.getByTestId('showcase-readout');
+    await expect(readout).toHaveText(/^X: \d+ cm \/ Y: \d+ cm \/ R: \d+ cm \/ C: \d+ cm$/);
+    const poses = new Set();
+    const deadline = Date.now() + (ACT_SECONDS + 0.6) * 1000;
+    while (Date.now() < deadline) {
+      const text = await readout.innerText();
+      const [x, y, r, c] = text.match(/\d+/g).map(Number);
+      expect(x % SNAP_CM).toBe(0);
+      expect(y % SNAP_CM).toBe(0);
+      expect(x + 110 + r).toBe(STAGE_ROOM.widthCm);
+      expect(y + 5 + c).toBe(STAGE_ROOM.heightCm);
+      poses.add(text);
+      await page.waitForTimeout(150);
+    }
+    expect(poses.size).toBeGreaterThan(3);
+    await expect(stage).toHaveAttribute('data-act', 'gizmo');
+    expect(await fillScale(page, 'gizmo')).toBe(1);
+
+    // Pressing the held key again lets the cycle run on.
+    await gizmoKey.click();
+    await expect(gizmoKey).toHaveAttribute('aria-pressed', 'false');
+    await expect(stage).not.toHaveAttribute('data-held');
+    await page.mouse.move(4, 400);
+    await expect(stage).toHaveAttribute('data-act', 'isolux', { timeout: 15_000 });
+    await expect(readout).toHaveText(/^Iso-lux 100 \/ 250 \/ 500 lx \/ Floor peak \d+ lx$/);
+
+    // Hovering a capability card previews its act and lights the card; leaving hands the stage back.
+    const eyeCard = page.getByTestId('showcase-pillar-inside');
+    await eyeCard.hover();
+    await expect(stage).toHaveAttribute('data-act', 'inside');
+    await expect(eyeCard).toHaveAttribute('data-active', 'true');
+    await expect(page.getByTestId('showcase-pillar-orbit')).not.toHaveAttribute('data-active');
+    await page.mouse.move(4, 400);
+    await expect(stage).toHaveAttribute('data-act', 'isolux');
+    await expect(eyeCard).not.toHaveAttribute('data-active');
+
+    // Clicking a card holds its act, and its title key reports the hold.
+    const orbitCard = page.getByTestId('showcase-pillar-orbit');
+    await orbitCard.click();
+    await page.mouse.move(4, 400);
+    await expect(stage).toHaveAttribute('data-act', 'orbit');
+    await expect(orbitCard.getByRole('button', { name: '360-Degree Four-Wall Envelope' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('showcase-act-orbit')).toHaveAttribute('aria-pressed', 'true');
+
+    // Over the stage the cursor probes the floor under it; off the stage the act's own reading returns.
+    const luxOut = page.locator('[data-hud="lux"]');
+    await expect(luxOut).toHaveText(/^\d{3,}$/);
+    const resting = await luxOut.innerText();
+    const box = await canvas.boundingBox();
+    const probed = new Set();
+    for (const [fx, fy] of [
+      [0.32, 0.62],
+      [0.5, 0.7],
+      [0.66, 0.58],
+      [0.44, 0.48],
+    ]) {
+      await page.mouse.move(box.x + box.width * fx, box.y + box.height * fy, { steps: 4 });
+      await page.waitForTimeout(80);
+      probed.add(await luxOut.innerText());
+    }
+    expect([...probed].some((value) => value !== resting)).toBe(true);
+    // Pointer motion never re-renders React: the stage keeps its act through all of it.
+    await expect(stage).toHaveAttribute('data-act', 'orbit');
+    await page.mouse.move(4, 400);
+    await expect(luxOut).toHaveText(resting);
+
+    await page.waitForLoadState('networkidle');
+    expect(scripts.filter((path) => PLANNER_CHUNK.test(path))).toEqual([]);
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+    expect(await readCspViolations(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test('under reduced motion the theatre holds a still per act; keys still switch it', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    const stage = stageOf(page);
+    await stage.scrollIntoViewIfNeeded();
+    const az = page.locator('[data-hud="az"]');
+    await expect(az).toHaveText(/^\d{3}$/);
+    const still = await az.innerText();
+    await page.waitForTimeout(1200);
+    await expect(az).toHaveText(still);
+    expect(await fillScale(page, 'orbit')).toBe(1);
+
+    await page.getByTestId('showcase-act-isolux').click();
+    await expect(stage).toHaveAttribute('data-act', 'isolux');
+    await expect(page.getByTestId('showcase-readout')).toHaveText(/^Iso-lux/);
+    await page.mouse.move(4, 400);
+    const isoAz = await az.innerText();
+    await page.waitForTimeout(800);
+    await expect(az).toHaveText(isoAz);
+    expect(errors).toEqual([]);
+  });
+
+  test('the launchpad leads with the studio key and three presets; the Grand Loft preset opens at eye level in 800 x 650 x 340 cm', async ({
+    page,
+  }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    const pad = page.getByTestId('showcase-launchpad');
+    await pad.scrollIntoViewIfNeeded();
+    await expect(pad).toBeVisible();
+    await expect(pad).toContainText('SPATIAL ENGINE v5.2 // INTERACTIVE WORKSTATION READY');
+    await expect(pad.getByRole('heading', { level: 3, name: 'Step inside the 3D Spatial Workstation.' })).toBeVisible();
+    await expect(pad).toHaveCSS('border-top-color', 'rgba(232, 146, 58, 0.28)');
+    expect(await pad.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('radial-gradient');
+
+    const cta = page.getByTestId('launch-3d-studio-cta');
+    await expect(cta).toHaveAttribute('href', '/room-3d');
+    await expect(cta).toHaveCSS('min-height', '54px');
+    await expect(cta).toHaveCSS('padding-left', '28px');
+    await expect(cta).toHaveCSS('padding-right', '28px');
+    await expect(cta).toHaveCSS('font-size', '15px');
+    await expect(cta).toHaveCSS('font-weight', '600');
+    await expect(cta.locator('.launchpad__cta-glyph svg')).toBeVisible();
+    const ctaBox = await cta.boundingBox();
+    expect(ctaBox.height).toBeGreaterThanOrEqual(54);
+
+    const presets = [
+      ['orbit', '/room-3d?lens=orbit', 'Launch 360-Degree Orbit Studio'],
+      ['inside', '/room-3d?lens=inside', 'Launch 165 cm Eye-Level Walkthrough'],
+      ['loft', '/room-3d?scale=loft&lens=inside', 'Launch Grand Loft (800 x 650 cm)'],
+    ];
+    for (const [id, href, label] of presets) {
+      const link = page.getByTestId(`launch-preset-${id}`);
+      await expect(link).toHaveAttribute('href', href);
+      await expect(link).toContainText(label);
+    }
+    // A preset lifts off the panel under the pointer.
+    const loft = page.getByTestId('launch-preset-loft');
+    await loft.hover();
+    await expect.poll(() => loft.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).f)).toBeLessThan(-1);
+    // Lifted, not lit: the plinth under a hovered preset or the studio key carries no blur.
+    for (const control of [loft, cta]) {
+      const blur = await control.evaluate((el) =>
+        getComputedStyle(el)
+          .boxShadow.split(/,(?![^(]*\))/)
+          .map((layer) => Number.parseFloat((layer.match(/-?\d*\.?\d+px/g) ?? [])[2] ?? '0')),
+      );
+      expect(Math.max(0, ...blur)).toBe(0);
+    }
+
+    await loft.click();
+    await expect(page).toHaveURL(/\/room-3d$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    const stage = viewport(page);
+    await expect(stage).toHaveAttribute('data-room-width', '800');
+    await expect(stage).toHaveAttribute('data-room-depth', '650');
+    await expect(stage).toHaveAttribute('data-room-height', '340');
+    await expect(page.getByTestId('room-preset-loft')).toHaveAttribute('aria-pressed', 'true');
+    const state = walkState(page);
+    await expect(state).toHaveAttribute('data-camera-mode', 'inside');
+    await expect(state).toHaveAttribute('data-fov-deg', '78');
+    await expect(state).toHaveAttribute('data-x-cm', '400');
+    await expect(state).toHaveAttribute('data-z-cm', '507');
+    await expect(page.getByTestId('camera-mode-walkthrough')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('room-notice')).toHaveText('Launched Grand Loft 800 x 650 x 340 cm, Inside Room (165 cm) lens.');
+    await expect.poll(async () => (await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), ROOM_KEY)).room.widthCm).toBe(800);
+
+    // A reload opens the studio as left, not as the link asked.
+    await expect(bootOverlay(page)).toHaveAttribute('data-state', 'done', { timeout: 20_000 });
+    await page.getByTestId('camera-mode-orbit').click();
+    await page.reload();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    await expect(walkState(page)).toHaveAttribute('data-camera-mode', 'orbit');
+    expect(errors).toEqual([]);
+  });
+
+  test('a lens link alone keeps the envelope; unknown lens and scale values are ignored and stripped', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.goto('/room-3d?lens=inside');
+    await expect(page).toHaveURL(/\/room-3d$/);
+    await expect(walkState(page)).toHaveAttribute('data-camera-mode', 'inside');
+    await expect(viewport(page)).toHaveAttribute('data-room-width', '320');
+    await expect(walkState(page)).toHaveAttribute('data-x-cm', '160');
+
+    await page.goto('/room-3d?lens=%3Cimg%20src%3Dx%3E&scale=__proto__');
+    await expect(page).toHaveURL(/\/room-3d$/);
+    await expect(walkState(page)).toHaveAttribute('data-camera-mode', 'orbit');
+    await expect(viewport(page)).toHaveAttribute('data-room-width', '320');
+    await expect(page.getByTestId('room-preset-compact')).toHaveAttribute('aria-pressed', 'true');
+    expect(await page.evaluate(() => Object.prototype.polluted)).toBeUndefined();
+    expect(errors).toEqual([]);
+  });
+
+  test('at phone width the theatre, act keys and launchpad stack without overflow', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto(`/#${SHOWCASE_3D_ID}`);
+    const stage = stageOf(page);
+    await stage.scrollIntoViewIfNeeded();
+    await expect(page.getByTestId('showcase-stage-canvas')).toBeVisible();
+    const columns = await page
+      .getByRole('group', { name: 'Stage acts' })
+      .evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
+    expect(columns).toBe(2);
+    const pad = page.getByTestId('showcase-launchpad');
+    await pad.scrollIntoViewIfNeeded();
+    const padBox = await pad.boundingBox();
+    const ctaBox = await page.getByTestId('launch-3d-studio-cta').boundingBox();
+    expect(ctaBox.width).toBeGreaterThan(padBox.width * 0.7);
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     expect(errors).toEqual([]);
   });
 });
