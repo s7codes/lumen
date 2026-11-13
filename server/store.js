@@ -16,6 +16,50 @@ const MAX_NAMESPACES = 512;
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
 const RENAME_RETRIES = 8;
 const RETRYABLE_FS_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+/**
+ * Writes waiting for the store lock before new ones are refused with
+ * LUMEN_BUSY (the API answers 503 busy with Retry-After). Each waiting write
+ * holds its request open, so the queue must not grow without bound.
+ */
+export const MAX_PENDING_WRITES = 256;
+
+/**
+ * FIFO async mutex. `run(task)` starts `task` only after every task queued
+ * before it has settled, so critical sections never interleave across an
+ * `await`, and resolves or rejects with the task's own outcome. A rejected
+ * task never blocks the queue. Past `maxPending` queued or running tasks, new
+ * ones are refused at once with an error coded LUMEN_BUSY.
+ */
+export function createMutex({ maxPending = Infinity } = {}) {
+  let tail = Promise.resolve();
+  let pending = 0;
+  return {
+    get pending() {
+      return pending;
+    },
+
+    run(task) {
+      if (pending >= maxPending) {
+        return Promise.reject(Object.assign(new Error('Lumen Cloud store queue is full.'), { code: 'LUMEN_BUSY' }));
+      }
+      pending += 1;
+      const result = tail.then(() => task()).finally(() => {
+        pending -= 1;
+      });
+      tail = result.catch(() => {});
+      return result;
+    },
+
+    /** Resolves once the queue is empty, including tasks queued while it waits. */
+    async idle() {
+      while (pending > 0) await tail;
+    },
+  };
+}
+
+function isThenable(value) {
+  return value !== null && (typeof value === 'object' || typeof value === 'function') && typeof value.then === 'function';
+}
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -68,11 +112,21 @@ function reviveNamespace(entry) {
   return { touchedAt, projects, quotes, tickets };
 }
 
+/**
+ * Keeps at most MAX_NAMESPACES. Browser-profile namespaces go before signed-in
+ * account libraries, least recently written first, so a flood of throwaway
+ * X-Lumen-Client ids can only push out other guest libraries.
+ */
 function evictOldest(namespaces, keep) {
   if (namespaces.size <= MAX_NAMESPACES) return;
   const ordered = [...namespaces.entries()]
     .filter(([id]) => id !== keep)
-    .sort((a, b) => a[1].touchedAt - b[1].touchedAt);
+    .sort((a, b) => {
+      const accountA = a[0].startsWith(ACCOUNT_PREFIX);
+      const accountB = b[0].startsWith(ACCOUNT_PREFIX);
+      if (accountA !== accountB) return accountA ? 1 : -1;
+      return a[1].touchedAt - b[1].touchedAt;
+    });
   for (const [id] of ordered.slice(0, namespaces.size - MAX_NAMESPACES)) namespaces.delete(id);
 }
 
@@ -148,18 +202,32 @@ async function writeAtomic(file, text) {
 
 /**
  * Lumen Cloud state, isolated per client namespace. `file: null` keeps the
- * store in memory only. Mutations run one at a time against a draft and are
- * committed to memory only after the snapshot containing them is on disk, so
- * a failed write leaves both the file and the served state untouched.
+ * store in memory only.
+ *
+ * Every mutation (transact, claim, remove) runs inside one FIFO mutex, so each
+ * one reads the snapshot its predecessor committed: no lost update, no quota
+ * checked against a stale count, however many requests arrive at once. A
+ * mutation works on a draft and is committed to memory only after the
+ * snapshot containing it is on disk, so a failed write leaves both the file
+ * and the served state untouched. Reads take no lock: they see the last
+ * committed snapshot, which is replaced whole, never mutated in place.
  */
-export function createStore({ file = null } = {}) {
+export function createStore({ file = null, maxPendingWrites = MAX_PENDING_WRITES } = {}) {
   let namespaces = loadSnapshot(file);
-  let queue = Promise.resolve();
+  const lock = createMutex({ maxPending: maxPendingWrites });
 
   function serialized(task) {
-    const run = queue.then(task, task);
-    queue = run.catch(() => {});
-    return run;
+    return lock.run(task);
+  }
+
+  /** A mutator must finish inside the lock; one that returns a promise would commit a half-built draft. */
+  function runMutator(mutate, ...drafts) {
+    const result = mutate(...drafts);
+    if (isThenable(result)) {
+      result.then(undefined, () => {});
+      throw new TypeError('Store mutators must be synchronous: make every change to the draft before returning.');
+    }
+    return result;
   }
 
   async function commit(next) {
@@ -186,7 +254,7 @@ export function createStore({ file = null } = {}) {
     transact(id, mutate) {
       return serialized(async () => {
         const draft = draftOf(namespaces.get(id) ?? emptyNamespace(), Date.now());
-        const result = mutate(draft);
+        const result = runMutator(mutate, draft);
         const next = new Map(namespaces);
         next.set(id, draft);
         evictOldest(next, id);
@@ -207,7 +275,7 @@ export function createStore({ file = null } = {}) {
         const now = Date.now();
         const into = draftOf(namespaces.get(toId) ?? emptyNamespace(), now);
         const from = draftOf(source, now);
-        const result = merge(into, from);
+        const result = runMutator(merge, into, from);
         if (!result?.changed) return result ?? null;
         const next = new Map(namespaces);
         next.set(toId, into);
@@ -229,9 +297,18 @@ export function createStore({ file = null } = {}) {
       });
     },
 
-    /** Resolves once every queued mutation has settled. */
+    /** Writes queued or running right now; never above `maxPendingWrites`. */
+    get pendingWrites() {
+      return lock.pending;
+    },
+
+    /**
+     * Resolves once every queued mutation has settled, including any queued
+     * while it waits. Never refused for a full queue, so a graceful shutdown
+     * can always drain.
+     */
     flush() {
-      return serialized(() => undefined);
+      return lock.idle();
     },
   };
 }
