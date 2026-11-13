@@ -7,9 +7,17 @@ import { createStore } from './store.js';
 
 export const DEFAULT_DATA_FILE = 'server/.data/lumen-cloud.json';
 export const TEST_DATA_FILE = 'server/.data/lumen-cloud.test.json';
+export const DEFAULT_STATIC_DIR = 'dist';
 /** Environment the Playwright web server runs with; specs resolve the same options from it. */
-// The deterministic MCP orchestrator answers in E2E even on a machine with an LLM key set.
-export const E2E_SERVER_ENV = Object.freeze({ LUMEN_TEST_RESET: '1', LUMEN_DATA_FILE: TEST_DATA_FILE, LUMEN_LLM_PROVIDER: 'deterministic' });
+// The deterministic MCP orchestrator answers in E2E even on a machine with an LLM key set, and
+// the rate limits stay at their defaults (generous on loopback) whatever the shell exports.
+export const E2E_SERVER_ENV = Object.freeze({
+  LUMEN_TEST_RESET: '1',
+  LUMEN_DATA_FILE: TEST_DATA_FILE,
+  LUMEN_LLM_PROVIDER: 'deterministic',
+  LUMEN_RATE_LIMIT_MAX: '',
+  LUMEN_TRUST_PROXY: '',
+});
 
 /**
  * Environment:
@@ -17,6 +25,13 @@ export const E2E_SERVER_ENV = Object.freeze({ LUMEN_TEST_RESET: '1', LUMEN_DATA_
  *   LUMEN_STORAGE=memory  keep state in memory only
  *   LUMEN_TEST_RESET=1    expose POST /api/test/reset and default to the test store
  *   LUMEN_SESSION_SECRET  32+ characters; otherwise a per-process secret
+ *   LUMEN_TRUST_PROXY     reverse-proxy hops in front of the server (1 behind
+ *                         Caddy or Nginx); client addresses come from
+ *                         X-Forwarded-For only when set
+ *   LUMEN_RATE_LIMIT_MAX  read budget per client per minute (default 600);
+ *                         auth, AI and write budgets scale with it; off disables
+ *   LUMEN_STATIC_DIR      built app the standalone server serves beside /api,
+ *                         default dist; off serves the API only
  *   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, LUMEN_LLM_BASE_URL,
  *   LUMEN_LLM_MODEL, LUMEN_LLM_PROVIDER   Lumen AI provider (server/llm-agent.js);
  *                         read from the process env first, then from .env
@@ -29,10 +44,12 @@ export function resolveServerOptions(rootUrl, env = process.env) {
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   const testReset = env.LUMEN_TEST_RESET === '1';
   const fallback = testReset ? TEST_DATA_FILE : DEFAULT_DATA_FILE;
+  const staticDir = (env.LUMEN_STATIC_DIR ?? '').trim();
   return {
     version: pkg.version,
     file: env.LUMEN_STORAGE === 'memory' ? null : resolve(root, env.LUMEN_DATA_FILE || fallback),
     testReset,
+    staticDir: staticDir.toLowerCase() === 'off' ? null : resolve(root, staticDir || DEFAULT_STATIC_DIR),
   };
 }
 
@@ -41,9 +58,11 @@ export function resolveServerOptions(rootUrl, env = process.env) {
  * server share it. `sessionSecret` pins the HMAC key, so a dev server that
  * reloads this module keeps every open session valid.
  */
-export function createLumenCloud(rootUrl, env = process.env, { sessionSecret } = {}) {
-  const { version, file, testReset } = resolveServerOptions(rootUrl, env);
+export function createLumenCloud(rootUrl, env = process.env, { sessionSecret, logger = console } = {}) {
+  const { version, file, testReset, staticDir } = resolveServerOptions(rootUrl, env);
   const store = createStore({ file });
   const agent = createConciergeAgent({ version, env: { ...loadDotEnv(rootUrl), ...pickLlmEnv(env) } });
-  return { store, handler: createApp({ store, version, testReset, sessionSecret, agent }), version, file, testReset, agent };
+  // Rate limits and proxy trust come from the same env: LUMEN_RATE_LIMIT_MAX and LUMEN_TRUST_PROXY.
+  const handler = createApp({ store, version, testReset, sessionSecret, agent, env, logger });
+  return { store, handler, version, file, testReset, staticDir, agent };
 }

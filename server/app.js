@@ -19,7 +19,18 @@ import { handleMcpRequest, JSONRPC_ERRORS, MCP_PROTOCOL_VERSION } from '../src/l
 import { isProjectId, PROJECT_KINDS, projectIdFor, sanitizeProjectName } from '../src/lib/project-library.js';
 import { buildQuote, CURRENCY_CODES, resolvePromo, sanitizeProject, validateProject } from '../src/lib/quote.js';
 import { isOneOf, safeJsonParse } from '../src/security/sanitize.js';
+import { compressSync, isCompressible, negotiateEncoding } from './compress.js';
 import { createConciergeAgent } from './llm-agent.js';
+import {
+  createRateLimiter,
+  isLoopbackAddress,
+  RATE_LIMITED_CODE,
+  RATE_LIMITED_MESSAGE,
+  rateKeyFor,
+  resolveClientAddress,
+  resolveRateLimitOptions,
+  resolveTrustProxy,
+} from './rate-limit.js';
 import { ACCOUNT_PREFIX, accountNamespace, isClientNamespace } from './store.js';
 
 export const MAX_BODY_BYTES = 64 * 1024;
@@ -75,20 +86,39 @@ export function isApiPath(url) {
   return typeof url === 'string' && (url === '/api' || url.startsWith('/api/') || url.startsWith('/api?'));
 }
 
-function send(res, status, payload, headers = {}) {
+const JSON_TYPE = 'application/json; charset=utf-8';
+
+/**
+ * Writes one JSON response. Bodies over 1 KB go out as Brotli or gzip when
+ * the request's Accept-Encoding allows it; every JSON answer carries
+ * `Vary: Accept-Encoding`, so no cache can hand one coding to a client that
+ * asked for another.
+ */
+function send(req, res, status, payload, headers = {}) {
   if (payload === undefined) {
     res.writeHead(status, { ...SECURITY_HEADERS, ...headers });
     res.end();
     return;
   }
-  const body = JSON.stringify(payload);
-  res.writeHead(status, {
-    ...SECURITY_HEADERS,
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body),
-    ...headers,
-  });
+  let body = Buffer.from(JSON.stringify(payload), 'utf8');
+  const out = { ...SECURITY_HEADERS, 'Content-Type': JSON_TYPE, Vary: 'Accept-Encoding', ...headers };
+  const encoding = isCompressible(JSON_TYPE, body.length) ? negotiateEncoding(req.headers['accept-encoding']) : null;
+  if (encoding) {
+    body = compressSync(body, encoding);
+    out['Content-Encoding'] = encoding;
+  }
+  out['Content-Length'] = body.length;
+  res.writeHead(status, out);
   res.end(body);
+}
+
+/** Lets an unread request body flow to nowhere, and cuts a runaway upload. */
+function discardBody(req) {
+  let size = 0;
+  req.on('data', (chunk) => {
+    size += chunk.length;
+    if (size > MAX_BODY_BYTES + DRAIN_LIMIT_BYTES) req.destroy();
+  });
 }
 
 /* Request body: strict JSON, 64 KB, prototype keys stripped by safeJsonParse. */
@@ -344,7 +374,7 @@ function mergeLibraries(account, guest) {
   };
 }
 
-function createHandlers({ store, version, sessions, agent }) {
+function createHandlers({ store, version, sessions, agent, logger }) {
   const projectsOf = (id) => store.read(id).projects;
   const quotesOf = (id) => store.read(id).quotes.map(publicQuote);
   const ticketsOf = (id) => store.read(id).tickets;
@@ -577,10 +607,12 @@ function createHandlers({ store, version, sessions, agent }) {
       res.on('close', () => {
         if (!res.writableFinished) controller.abort();
       });
+      // no-transform and X-Accel-Buffering keep Caddy, Nginx and CDNs from buffering or
+      // compressing the stream, so every frame reaches the browser as it is written.
       res.writeHead(200, {
         ...SECURITY_HEADERS,
         'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-store, no-transform',
+        'Cache-Control': 'no-cache, no-store, no-transform',
         'X-Accel-Buffering': 'no',
       });
       const write = (event, data) => {
@@ -592,7 +624,7 @@ function createHandlers({ store, version, sessions, agent }) {
         write('complete', { reply });
       } catch (fault) {
         if (!controller.signal.aborted) {
-          console.error('[lumen-cloud]', fault);
+          logger.error('[lumen-cloud]', fault);
           write('error', { code: 'internal', message: 'Lumen AI could not finish this answer.' });
         }
       }
@@ -621,7 +653,8 @@ function createHandlers({ store, version, sessions, agent }) {
         }
         throw error;
       }
-      const response = handleMcpRequest(message, { version });
+      // A tool fault answers JSON-RPC -32603 rather than escaping as an HTTP 500; it is still logged here.
+      const response = handleMcpRequest(message, { version, onError: (fault) => logger.error('[lumen-cloud] mcp', fault) });
       if (response === null) return [202];
       const refused = response.error && (response.error.code === JSONRPC_ERRORS.invalidRequest || response.error.code === JSONRPC_ERRORS.parse);
       return [refused ? 400 : 200, response];
@@ -664,12 +697,18 @@ function createHandlers({ store, version, sessions, agent }) {
   };
 }
 
+/**
+ * Route table. `tiers` names the rate-limit budget per method where it is not
+ * the default (`read` for GET, `write` for any other method); `exempt` routes
+ * are never limited, so a load balancer's health probe always reaches them.
+ */
 function buildRoutes(handlers, testReset) {
   const routes = [
-    { path: '/api/health', methods: { GET: handlers.health } },
+    { path: '/api/health', methods: { GET: handlers.health }, exempt: true },
     {
       path: '/api/auth/session',
       methods: { POST: handlers.openSession, GET: handlers.readSession, DELETE: handlers.closeSession },
+      tiers: { POST: 'auth', DELETE: 'auth' },
     },
     {
       path: '/api/projects',
@@ -678,9 +717,9 @@ function buildRoutes(handlers, testReset) {
     { pattern: /^\/api\/projects\/([^/]{1,256})$/, methods: { DELETE: handlers.deleteProject } },
     { path: '/api/quotes', methods: { GET: handlers.listQuotes, POST: handlers.submitQuote } },
     { path: '/api/sync', methods: { POST: handlers.sync } },
-    { path: '/api/concierge/ask', methods: { POST: handlers.askConcierge } },
-    { path: '/api/concierge/stream', methods: { POST: handlers.streamConcierge } },
-    { path: '/api/mcp', methods: { POST: handlers.mcp } },
+    { path: '/api/concierge/ask', methods: { POST: handlers.askConcierge }, tiers: { POST: 'ai' } },
+    { path: '/api/concierge/stream', methods: { POST: handlers.streamConcierge }, tiers: { POST: 'ai' } },
+    { path: '/api/mcp', methods: { POST: handlers.mcp }, tiers: { POST: 'ai' } },
     { path: '/api/concierge/escalate', methods: { POST: handlers.escalate } },
     { path: '/api/tickets', methods: { GET: handlers.listTickets } },
   ];
@@ -688,19 +727,29 @@ function buildRoutes(handlers, testReset) {
   return routes;
 }
 
-function matchRoute(routes, pathname) {
+/** The route for a path, with its raw pattern captures; nothing is decoded yet. */
+function findRoute(routes, pathname) {
+  if (pathname === null) return null;
   for (const route of routes) {
-    if (route.path === pathname) return { route, params: [] };
+    if (route.path === pathname) return { route, captures: [] };
     const match = route.pattern?.exec(pathname);
-    if (match) {
-      try {
-        return { route, params: match.slice(1).map((value) => decodeURIComponent(value)) };
-      } catch {
-        throw invalid('The request path is not valid percent-encoding.');
-      }
-    }
+    if (match) return { route, captures: match.slice(1) };
   }
   return null;
+}
+
+function decodeCaptures(captures) {
+  try {
+    return captures.map((value) => decodeURIComponent(value));
+  } catch {
+    throw invalid('The request path is not valid percent-encoding.');
+  }
+}
+
+/** Rate-limit tier for a request: the route's own tier, else read for safe methods and write for the rest. */
+function tierFor(route, method) {
+  if (route?.exempt) return null;
+  return route?.tiers?.[method] ?? (method === 'GET' || method === 'HEAD' || method === 'OPTIONS' ? 'read' : 'write');
 }
 
 function resolveSecret(secret) {
@@ -711,35 +760,106 @@ function resolveSecret(secret) {
 }
 
 /**
+ * Per-client rate limiting for one app. Each request spends one unit of its
+ * tier's budget, keyed by client address (IPv6 by /64), and every limited
+ * response carries X-RateLimit-Limit, -Remaining and -Reset (epoch seconds at
+ * which the bucket is full again). An exhausted bucket answers 429 with
+ * Retry-After before the body is read or any handler runs.
+ */
+function createRateGate({ options, trustHops, logger }) {
+  const limiter = options ? createRateLimiter(options) : null;
+  const warned = new Set();
+  const warnOnce = (key, message) => {
+    if (warned.has(key)) return;
+    warned.add(key);
+    logger.warn(`[lumen-cloud] ${message}`);
+  };
+
+  return {
+    limiter,
+
+    admit(req, res, route) {
+      const tier = tierFor(route, req.method);
+      if (!limiter || !tier) return;
+      const client = resolveClientAddress(req, trustHops);
+      if (client.forwarded && !client.trusted) {
+        if (trustHops === 0 && isLoopbackAddress(client.peer)) {
+          warnOnce(
+            'untrusted-proxy',
+            'A proxy on this host forwards client addresses, but LUMEN_TRUST_PROXY is not set: every visitor shares the proxy rate-limit bucket. Set LUMEN_TRUST_PROXY=1 behind Caddy or Nginx.',
+          );
+        } else if (trustHops > 0) {
+          warnOnce('public-peer', 'Forwarding headers from a peer outside loopback and private networks are ignored for rate limiting.');
+        }
+      }
+      const scale = options.loopbackScale > 1 && isLoopbackAddress(client.address) ? options.loopbackScale : 1;
+      const verdict = limiter.take(tier, rateKeyFor(client.address), scale);
+      res.setHeader('X-RateLimit-Limit', String(verdict.limit));
+      res.setHeader('X-RateLimit-Remaining', String(verdict.remaining));
+      res.setHeader('X-RateLimit-Reset', String(Math.ceil(verdict.resetAt / 1000)));
+      if (verdict.allowed) return;
+      const retryAfterSec = Math.max(1, Math.ceil(verdict.retryAfterMs / 1000));
+      res.setHeader('Retry-After', String(retryAfterSec));
+      discardBody(req);
+      throw new HttpError(429, RATE_LIMITED_CODE, RATE_LIMITED_MESSAGE, { retryAfterSec });
+    },
+  };
+}
+
+/**
  * Lumen Cloud request handler: `(req, res) => Promise<void>` for node:http,
  * Vite (dev and preview) or any connect-style host. Every response is JSON
  * with nosniff and no-store, including errors, except the Server-Sent Events
  * of POST /api/concierge/stream.
+ *
+ * Options beyond the store and version:
+ * - `rateLimit`: false, or an explicit `{ tiers, maxEntries, loopbackScale, now }`
+ *   policy (see server/rate-limit.js). Undefined uses the defaults, generous
+ *   on loopback, with the read budget from `LUMEN_RATE_LIMIT_MAX`.
+ * - `trustProxy`: reverse-proxy hops in front of the server (`true` is one);
+ *   undefined reads `LUMEN_TRUST_PROXY`.
+ * - `env`: where those defaults are read, `process.env` unless given.
+ * - `logger`: `{ warn, error }`, the console unless given.
+ * The handler exposes its limiter as `handler.limiter` (null when disabled).
  */
-export function createApp({ store, version, testReset = false, sessionSecret, agent = createConciergeAgent({ version }) } = {}) {
+export function createApp({
+  store,
+  version,
+  testReset = false,
+  sessionSecret,
+  agent = createConciergeAgent({ version }),
+  rateLimit,
+  trustProxy,
+  env = process.env,
+  logger = console,
+} = {}) {
   const sessions = createSessions(resolveSecret(sessionSecret));
-  const routes = buildRoutes(createHandlers({ store, version, sessions, agent }), testReset);
+  const routes = buildRoutes(createHandlers({ store, version, sessions, agent, logger }), testReset);
+  const gate = createRateGate({ options: resolveRateLimitOptions(rateLimit, env), trustHops: resolveTrustProxy(trustProxy, env), logger });
 
-  return async function lumenCloud(req, res) {
+  async function lumenCloud(req, res) {
     try {
-      let pathname;
+      let pathname = null;
       try {
         pathname = new URL(req.url, 'http://lumen.invalid').pathname;
       } catch {
-        throw invalid('The request URL is not valid.');
+        pathname = null;
       }
-      const matched = matchRoute(routes, pathname);
+      const matched = findRoute(routes, pathname);
+      // Limited before anything else is resolved, so 404, 405 and malformed probes spend budget too.
+      gate.admit(req, res, matched?.route ?? null);
+      if (pathname === null) throw invalid('The request URL is not valid.');
       if (!matched) throw new HttpError(404, 'not_found', 'No Lumen Cloud endpoint at this path.');
       const handler = matched.route.methods[req.method];
       if (!handler) {
         const allow = Object.keys(matched.route.methods).join(', ');
         throw new HttpError(405, 'method_not_allowed', `Use ${allow} on this endpoint.`, { allow });
       }
-      const result = await handler(req, ...matched.params, res);
+      const result = await handler(req, ...decodeCaptures(matched.captures), res);
       // A streaming handler wrote its own headers and frames and ended the response.
       if (res.headersSent) return;
       const [status, payload] = result;
-      send(res, status, payload);
+      send(req, res, status, payload);
     } catch (error) {
       if (res.headersSent) {
         res.destroy();
@@ -748,15 +868,22 @@ export function createApp({ store, version, testReset = false, sessionSecret, ag
       if (error instanceof HttpError) {
         const { allow, ...extra } = error.extra;
         const headers = allow ? { Allow: allow } : {};
-        send(res, error.status, { error: { code: error.code, message: error.message, ...extra } }, headers);
+        send(req, res, error.status, { error: { code: error.code, message: error.message, ...extra } }, headers);
+        return;
+      }
+      if (error?.code === 'LUMEN_BUSY') {
+        send(req, res, 503, { error: { code: 'busy', message: 'Lumen Cloud is busy. Nothing was saved; retry in a moment.' } }, { 'Retry-After': '1' });
         return;
       }
       if (error?.code === 'LUMEN_STORAGE') {
-        send(res, 503, { error: { code: 'storage', message: 'Lumen Cloud could not persist the change. Nothing was saved.' } });
+        send(req, res, 503, { error: { code: 'storage', message: 'Lumen Cloud could not persist the change. Nothing was saved.' } });
         return;
       }
-      console.error('[lumen-cloud]', error);
-      send(res, 500, { error: { code: 'internal', message: 'Lumen Cloud hit an unexpected fault.' } });
+      logger.error('[lumen-cloud]', error);
+      send(req, res, 500, { error: { code: 'internal', message: 'Lumen Cloud hit an unexpected fault.' } });
     }
-  };
+  }
+
+  lumenCloud.limiter = gate.limiter;
+  return lumenCloud;
 }
