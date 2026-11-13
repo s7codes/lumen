@@ -1,0 +1,25 @@
+# Lumen edge proxy. Caddy obtains and renews the certificate for DOMAIN,
+# redirects HTTP to HTTPS, serves HTTP/3 on 443/udp and proxies every path to
+# the app container on the Compose network.
+#
+# reverse_proxy already forwards what the app trusts with LUMEN_TRUST_PROXY=1:
+# Host unchanged, X-Forwarded-For set to the client address, X-Forwarded-Proto
+# and X-Forwarded-Host. Values a client sends itself are ignored (there are no
+# trusted_proxies here), so no header_up lines are needed.
+#
+# Server-Sent Events (POST /api/concierge/stream) reach the browser frame by
+# frame: Caddy flushes every text/event-stream response immediately. A global
+# flush_interval -1 is deliberately not set: it would also stop Caddy from
+# cancelling the upstream request when a visitor closes the stream, so an
+# abandoned answer would keep its LLM call running to the end.
+
+{$DOMAIN:lumen.s7codes.dev} {
+	reverse_proxy app:4173 {
+		# Hold requests while the app restarts (docker compose up -d --build)
+		# instead of answering 502. A failed connection is always retried.
+		lb_try_duration 10s
+	}
+
+	# The app sends its own security headers, HSTS included.
+	header -Server
+}

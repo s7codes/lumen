@@ -1,0 +1,15 @@
+# The build context is an allowlist: everything is ignored except what the
+# image is built from. Local state (node_modules, dist, playwright-report,
+# test-results, the .git history and .github workflows, server/.data) and
+# secrets (.env, .env.*) therefore never reach the daemon or a layer, and
+# neither does any file added to the working tree later.
+*
+!package.json
+!package-lock.json
+!index.html
+!vite.config.js
+!LICENSE
+!public
+!src
+!server
+server/.data
