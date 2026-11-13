@@ -1,14 +1,37 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v7.1.0-e8923a)
+![Release](https://img.shields.io/badge/release-v7.2.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v7.1.0**, an architectural-visualisation pass over `/room-3d` and a
+Current release: **v7.2.0**, a realism pass over the WebGL2 room engine and a warmer
+cart. Every window now lets light in. A window facing the sun lays six sunlit gobo
+patches and shafts across the room along a ray held at an architectural angle, so the
+14:30 sun grazing the west wall still throws a bold 2 x 3 frame grid well out across the
+floor. A window facing away from the sun (the east one at 14:30, the west one in the
+morning) is a skylight portal: a cooler, softer sky gobo and a faint air wash. Each
+window's floor light is drawn by a custom GLSL soft-penumbra shader whose mullion and
+sash shadow lines are crisp by the glass and widen deeper in the room, and each window
+carries a soft 3D portal spot light. Sub-parts are sculpted: pillows, mattress, duvet,
+cushions and headboard channels take lush rounded fillets, timber and metal a crisp
+micro-bevel, and vases, bowls, lamp shades and bases are turned on a lathe. The bed
+gains one draped duvet, a turned-down sheet, a runner and four pitched pillows; the sofa
+filleted cushions and angled accents; the desk an ultrawide display lit with an
+architectural viewport, a cantilevered task lamp and a five-star chair. Windows gain
+casing linings, a bevelled oak sill over a shadow line, casement sashes and espagnolette
+handles. Studio IBL is always on at 0.42 under ACES filmic grading at exposure 1.08:
+prefiltered for the whole room on a GPU, evaluated in closed form on the specular
+materials of a software rasteriser, which also drops MSAA, so the E2E suite pays no
+extra frame cost. The cart drawer is now a warm basalt panel: a Your Cart heading with an
+item-count pill, a centred empty state that points to the catalog and the 3D planner,
+product drawings on every line, rounded steppers and a champagne Proceed to Checkout
+button, with the driver telemetry kept for Specs mode.
+
+v7.1.0 was an architectural-visualisation pass over `/room-3d` and a
 calmer studio shell. A room can now carry two or three windows at once: the **Window**
 pills in Sun & Aperture toggle West, East and South independently and `None` clears them,
 stored as a canonical `windowWalls` list while a single window keeps the exact v7.0
@@ -406,6 +429,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v7.2.0  | WebGL2 realism and a warm cart: every window casts light (direct sun on a clamped architectural ray, or a skylight portal when the sun is behind the wall) as six-pane floor gobos under a custom GLSL soft-penumbra shader, air shafts and a per-window portal spot light; rounded-box fillets on upholstery, micro-bevels on millwork and metal, lathe-turned vases, bowls and lamps; a draped duvet bed with four pitched pillows, filleted sofa, lit ultrawide desk display and cantilevered lamp; window casing linings, bevelled sill, sashes and espagnolette handles; always-on studio IBL at 0.42 with ACES filmic at 1.08 (prefiltered on GPUs, analytic speculars and no MSAA on software rasterisers); live lens readout written straight to the DOM and frame-rate-aware glides; warm basalt cart drawer with an item-count pill, a centred empty state, product drawings and a champagne checkout CTA; CI root causes of the v7.1.0 run fixed |
 | v7.1.0  | ArchViz polish and calmer shell: two or three windows at once (West, East, South toggle pills, canonical `windowWalls`, v7.0 single-window records and links unchanged); luminous Nordic twilight glazing with moonlit floor patches and shafts at night; plaster reveal, deep oak sill and brushed steel mullions proud of the glass; zebra-free walnut and oak veneer and a calm wide-plank floor; procedural studio IBL environment on GPUs; ceiling shadow-gap cove and corner depth; woven area rugs, bedside ledges and lamps, coffee table, throw cushions and a task chair as drawn-only furniture vignettes; Test Room Echo with a soft wood clap and a bare-versus-damped readout; Ask Lumen pill; warm basalt Ctrl+K spotlight with Visual-mode names, subtitles and price pills |
 | v7.0.0  | Next-generation WebGL2 room engine: continuous 60 to 240 Hz walking with exact taps, ramped holds, Shift stride and one commit on release; multi-part parametric CAD sub-assemblies for all 12 parts and detailed reference furniture; procedural tileable PBR albedo, bump, normal and roughness maps for eight material families; volumetric light beams that follow DALI-2 levels and contact shadows; Sun & Aperture solar path with golden hour, window pane patches and light shafts; floor reference on any wall with offset; engine telemetry in Specs mode |
 | v6.3.0  | Lumen AI as an MCP agent: JSON-RPC 2.0 Model Context Protocol server at `POST /api/mcp` (revision 2025-06-18) with 4 resources, 3 prompts and 8 tools including live 3D room, 2D wall and cart mutation; multi-provider LLM tool-use loop (Claude Messages API, OpenAI-compatible, Gemini, Ollama) with a deterministic MCP orchestrator as the key-free path; Server-Sent Events at `POST /api/concierge/stream`; agentic workspace bus that applies tool results live as one undoable step; MCP tool trace chips in the panel |
@@ -571,7 +595,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '7.1.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '7.2.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -916,6 +940,16 @@ custom properties, so React never re-renders on pointer movement.
   **Cart (n)**. Every visible label says cart:
   **Add to Cart**, **Clear cart**, **Sync Wall to Cart**, **Sync Room to Cart** and the toasts.
   Internally the store, hook, CSS classes, test ids and storage key keep the `bag` name.
+- The drawer is a warm basalt panel (`#171513` to `#11100e` under a soft champagne top
+  light, a hairline `rgba(229, 199, 153, 0.16)` edge) headed **Your Cart** with an item-count
+  pill (`0 items`, `1 item`, `3 items`) and a round close key. Empty, it centres a glass card:
+  **Your cart is empty**, a line of guidance, a champagne **Browse Catalog** pill and an
+  **Open 3D Room Planner** pill. Each line is a rounded card with the part's drawing in its
+  finish, the name, a finish badge, round - / + keys and the line price; the summary card
+  reads the 24V load, the power supply, the subtotal and a champagne **Proceed to
+  Checkout** button above **Clear cart**. Specs mode adds each line's SKU, finish and watts,
+  the load meter and the driver utilisation; in Visual mode an empty cart hides the zeroed
+  telemetry, which stays in the DOM for Specs.
 - The cart is stored under `lumen_bag_v1` through `safeStorage`. Every read is rebuilt line
   by line: unknown products, finishes a part does not ship in and quantities outside
   1-99 are dropped, duplicates merge, and the cleaned value is written back. Other tabs
@@ -1140,6 +1174,52 @@ custom properties, so React never re-renders on pointer movement.
 - Night Ambient (2700K) or Daylight Studio. Night keeps a moonlit sun and a legible
   fill so the LED washes carry the room, daylight raises the sun and fill until the
   fixtures read as accents.
+- **Windows let light in on every wall.** Facing the sun, each of a window's six panes
+  lays a sunlit gobo patch across the floor and a shaft through the air along a ray held
+  at an architectural angle (`SUN_GOBO`: inward share at least 0.48, slant within 0.55,
+  pitch 0.32 to 0.78), so a sun grazing the wall still throws a bold 2 x 3 frame grid
+  instead of a sliver at the baseboard. Facing away from the sun by day the window is a
+  skylight portal (`SKYLIGHT`): a cooler `#dce8f7` gobo tinted a quarter toward the sun,
+  softer and falling steeply inward. At night every pane lets in a moonlit patch. Every
+  gobo is fitted to the room (`GOBO_FIT`): the pitch rises until the top of the glass
+  lands within 85% of the room's depth and the slant keeps clear of the side walls, so
+  all six panes land whole in any room at any hour. The sky eases from half strength at
+  the horizon to full by mid-morning and back, a sun-facing window never reads darker
+  than the sky, and the sun ramps in with its incidence on the wall, so the light moves
+  smoothly through sunrise and sunset. Each window's floor light is one mesh under a GLSL
+  soft-penumbra shader: per-vertex pane coordinates (`uv`, `depth`) keep the mullion and
+  sash shadow lines crisp near the glass (8% of the pane) and widen them to 28% deeper in
+  the room, with a distance falloff and a slightly warmer soft edge. Every window also
+  carries `portalLight`, a soft spot from the middle of the glass to the floor 2.2 m
+  inward, in the colour of its sun, sky or moon. On a GPU the canvas keeps a fixed pool of
+  one portal spot per glazable wall (idle slots dark), so window and lighting toggles
+  never change the spot count that three keys its shader programs on; a software
+  rasteriser folds the portals into the ambient fill. The joinery is an 8 cm plaster casing with four
+  lining returns, a bevelled 15 cm oak sill over a shadow line, a steel bead, mullions and
+  transom, six casement sashes and two brushed steel espagnolette handles.
+- **Always-on studio IBL and filmic grading.** ACES filmic tone mapping at exposure 1.08
+  and a 64 x 32 procedural studio environment at 0.42 on every renderer. On a GPU it is
+  the prefiltered `scene.environment` for the whole room. On a software rasteriser
+  (SwiftShader, llvmpipe, WARP), where three's 256 px PMREM prefilter would run on the
+  CPU at every boot, the specular materials (metal, timber, glossy ceramic, glass)
+  evaluate the same studio in closed form instead, the canvas renders without MSAA and
+  fillets use half their segments. The scene graph mirrors `data-ibl` (`studio` or
+  `analytic`), `data-ibl-tier`, `data-msaa`, `data-tone-mapping`, `data-exposure` and
+  `data-env-intensity`.
+- **Sculpted parts.** Box sub-parts carry a `bevel`: upholstery (pillows, cushions,
+  mattress, duvet, headboard, throws, arms, seats) a lush fillet of 28% of the thinnest
+  side in four segments, millwork and metal (slabs, carcasses, doors, trays, rails,
+  stiles, edges, fins, slats, beams, bodies, sills, frames, tops, legs, posts) a crisp
+  micro-bevel of at most 4 mm; trims under 6 mm stay sharp. Rounded boxes are three's
+  `RoundedBoxGeometry`, re-indexed from its source grid so they batch with plain boxes,
+  cylinders and `lathe` parts (turned vases, bowls, lamp shades and bases) in one draw
+  call per look, with UVs unrolled round each fillet so grain and weave keep their scale.
+  The bed is a channel-tufted headboard over one draped duvet, a turned-down sheet, a
+  runner and four pillows (two Oxford euro shams leaning on the headboard, two sleeping
+  pillows); the sofa has a radiused base, filleted seat and back cushions and angled
+  accent cushions; the desk an ultrawide display glowing with an amber plan and a white
+  grid, a cantilevered spun-aluminium task lamp and a five-star chair with a curved back.
+  Collision boxes, part ids and walk bounds are unchanged.
 - Technical mode adds edge outlines (hidden edges drawn faint through the solids), X / Y
   / Z axes in cm, SKU tags and clearance callouts: walkway, headroom over the furniture,
   floor and ceiling. Labels are DOM elements projected over the canvas.
@@ -1299,7 +1379,7 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
 
 ## Checkout and quote
 
-- **Configure Quote & Checkout** in the cart drawer opens `/checkout`. The BOM lists every
+- **Proceed to Checkout** in the cart drawer opens `/checkout`. The BOM lists every
   cart line plus the 24V driver sized on the connected load (60W, 150W or a multi-bus
   array of 150W units); the driver line can be excluded, which flags the quote.
 - USD, EUR (0.92) and HUF (360), persisted under `lumen_currency_v1`. Rates are exact
@@ -1669,7 +1749,17 @@ binary is cached under `~/.cache/ms-playwright` with `actions/cache@v5`, keyed o
 lockfile hash, and downloaded only on a cache miss. The HTML report is uploaded only when
 the run fails. On CI the four workers share a four-vCPU runner where WebGL falls back to
 software rasterisation, so the long 3D scenario tests get a 60 s test budget and a 10 s
-assertion budget there (30 s and 5 s locally); both are ceilings, never waits.
+assertion budget there (30 s and 5 s locally); both are ceilings, never waits. The canvas
+detects the software rasteriser before it creates its context and renders that tier
+without MSAA, with analytic studio speculars instead of a PMREM prefilter and with
+half-segment fillets, and camera glides step their exact springs up to a quarter second
+per frame, so a slow runner lands a lens move in a few frames. Long scenarios are split
+at their natural seams into tests seeded through `localStorage` (the planner's mount,
+envelope and camera passes, the inside lens, one boot per viewport width and display
+mode), and races are closed with explicit gates rather than waits: a held cloud save
+(`tests/support/cloud-gates.js`), a held engine chunk with a monotonic `data-run` on the
+boot overlay (`tests/support/engine-gates.js`), and a scroll-spy pin that ends on
+`scrollend` or three still frames instead of a timer.
 `ubuntu-latest` already carries Chromium's shared libraries and every font is
 self-hosted, so the job installs no apt packages and does not depend on Ubuntu mirrors.
 Every action is pinned to a major that declares Node 24 (`actions/checkout@v5`,
