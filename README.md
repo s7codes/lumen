@@ -1,14 +1,31 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v6.2.0-e8923a)
+![Release](https://img.shields.io/badge/release-v6.3.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v6.2.0**. Lumen AI reads like a modern assistant. Before the first
+Current release: **v6.3.0**. Lumen AI is now an agent. A standards-compliant **Model
+Context Protocol** server (JSON-RPC 2.0, revision `2025-06-18`) at `POST /api/mcp`
+exposes four resources (the catalog, the 24V bus and drivers, the six-octave acoustics and
+the caller's live workspace), three architectural prompts and eight tools, from
+`inspect_workspace` and `query_catalog` to `mutate_3d_room`, `mutate_2d_wall` and
+`manage_cart_bag`. Tell Lumen AI "Mount a Floating Shelf 110 in Walnut on the East Wall
+and set the room to Grand Loft", "Switch to the 165 cm Inside Room walkthrough lens" or
+"Add 2 Linear Lightbar 60 in Obsidian to my cart" and it calls the matching tool, shows
+the call as an `MCP // mutate_3d_room: ...` chip above the answer, and the live 3D room,
+2D wall or cart changes on screen as one step that `Ctrl+Z` undoes. With
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` or an Ollama
+`LUMEN_LLM_BASE_URL` set, a streaming LLM tool-use loop drives the same tools; without one
+(CI, offline, a static host) a deterministic MCP orchestrator plans and runs them through
+the identical `tools/call` pipeline, in the browser too. `POST /api/concierge/stream`
+streams every answer as Server-Sent Events: `tool_call`, `tool_result`, `delta` and
+`complete`.
+
+v6.2.0 made Lumen AI read like a modern assistant. Before the first
 message the panel opens on a welcome: the Lumen mark, **How can I help with your
 space?**, one line and the four route-aware starters as cards; once the thread starts the
 starters fold into one scrolling chip row docked on the composer, so the conversation
@@ -332,6 +349,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v6.3.0  | Lumen AI as an MCP agent: JSON-RPC 2.0 Model Context Protocol server at `POST /api/mcp` (revision 2025-06-18) with 4 resources, 3 prompts and 8 tools including live 3D room, 2D wall and cart mutation; multi-provider LLM tool-use loop (Claude Messages API, OpenAI-compatible, Gemini, Ollama) with a deterministic MCP orchestrator as the key-free path; Server-Sent Events at `POST /api/concierge/stream`; agentic workspace bus that applies tool results live as one undoable step; MCP tool trace chips in the panel |
 | v6.2.0  | Modern Lumen AI chat: welcome hero with starter cards that fold into a docked chip row, New chat, right-aligned warm question bubbles, avatar answers and a pill composer; every answer one lead sentence and two to four labelled bullets (35 to 65 words, at most four pills); bespoke 36 px / 28 px architectural SVG drawings of all 12 parts in both planners' palettes, module lists and Ctrl+K; a continuous lit atmosphere below the overview hero, a fixed route-aware basalt backdrop on every other route and lit Account tiles; 60 s CI budget for software-WebGL scenario tests |
 | v6.1.0  | Lumen AI understands the site itself: navigation, both planners, lenses, gizmo, room presets, modes, shortcuts and fault checks, with direct launch keys; phrasing normalisation; a local answer on any API fault (404, 5xx, unreachable, unreadable); dev API hot-reloaded through Vite's SSR module graph; stealth basalt panel with a silent locked gatekeeper; navbar Cart glyph; slim showcase launch bar with anchored keys |
 | v6.0.0  | Lumen Studio AI Concierge on every route with live-workspace retrieval over the catalog, 24V bus, DALI-2, acoustics, planners, CAD exports, pricing and fulfilment; strict support escalation gatekeeper with server-replayed transcripts; `POST /api/concierge/ask`, `POST /api/concierge/escalate`, `GET /api/tickets`; Studio Engineering Tickets on `/account` with an offline outbox; four-worker CI with a cached Playwright browser |
@@ -416,7 +434,11 @@ src/
                         useMagneticField, useModalDialog, useProjectName, useSceneShare,
                         useRoom3d, useScrollReveal, useSectionLink (glide and
                         scroll-spy), useShowcaseTheatre, useWallDrag, useWallStudio
-  lib/                  bag store and PSU sizing, wall studio geometry and history,
+  lib/                  MCP server: JSON-RPC 2.0, resources, prompts and tools
+                        (mcp-server), deterministic MCP orchestrator
+                        (mcp-orchestrator), agentic command parser (agent-intent),
+                        workspace execution bus (workspace-bus, workspace-events),
+                        bag store and PSU sizing, wall studio geometry and history,
                         room model and 2D bridge (room-3d), WebGL scene description
                         and orbit frame (room-scene), ray to wall-plane drag solver
                         (room-raycast), camera lenses and the 165 cm observer
@@ -449,7 +471,10 @@ src/
                         product-detail, checkout, studio, room3d, account, cloud,
                         command-palette, empty-state, project-diff, elevation-thumb
 server/                 Lumen Cloud HTTP API, shared with Vite dev and preview
-  app.js                request handler: routes, 64 KB JSON bodies, sessions, headers
+  app.js                request handler: routes, 64 KB JSON bodies, sessions, headers,
+                        POST /api/mcp and the SSE concierge stream
+  llm-agent.js          Lumen AI: .env loading, provider choice, streaming LLM
+                        tool-use loop over the MCP tools, deterministic fallback
   store.js              per-namespace state, account namespaces, atomic claims,
                         serialized transactions, atomic writes
   config.js             environment, data file path (dev or test), one store per process
@@ -483,7 +508,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '6.2.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '6.3.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -493,7 +518,9 @@ a fast link. Requests time out after 8 s.
 | `GET /api/quotes` | | `{ quotes }`, newest first, at most 24 |
 | `POST /api/quotes` | `{ quote: { items, currency, promo, includeDriver, grossMinor }, project }` | `201 { quote, quotes }` |
 | `POST /api/sync` | `{ mode, projects?, quotes? }` | `{ projects, quotes }` |
-| `POST /api/concierge/ask` | `{ question, workspaceContext? }` | `200 { reply: { id, question, answer, confidence, category, resolved, citations, suggestedActions, metrics } }` |
+| `POST /api/concierge/ask` | `{ question, workspaceContext? }` | `200 { reply: { id, question, answer, confidence, category, resolved, citations, suggestedActions, metrics, toolCalls, clientActions, mcpProtocol } }` |
+| `POST /api/concierge/stream` | `{ question, workspaceContext? }` | `200 text/event-stream`: `tool_call { name, arguments }`, `tool_result { name, summary, clientActions, isError }`, `delta { text }`, then `complete { reply }`; validation faults are JSON `400` before the stream opens |
+| `POST /api/mcp` | one JSON-RPC 2.0 message; workspace in `params._meta["lumen/workspace"]` | `200` JSON-RPC response, `202` for a notification, `400` with `-32700` or `-32600` for input it cannot accept, `403` for a cross-origin browser call |
 | `POST /api/concierge/escalate` | `{ email, subject, message, reason, transcript, workspaceSummary }` | `201 { ticket, tickets }`, or `400 gatekeeper_locked` without a verified unresolved or unhelpful turn |
 | `GET /api/tickets` | | `{ tickets }`, newest first, at most 12 |
 | `POST /api/test/reset` | | only with `LUMEN_TEST_RESET=1`: clears the caller's namespace |
@@ -1372,6 +1399,63 @@ conversation survives every route change and never enters the page's tab sequenc
   unreadable reply) the same engine answers on the device with the same reply id, and
   only an unreachable API moves the cloud indicator offline. No server message ever
   reaches the conversation.
+- **MCP server.** `src/lib/mcp-server.js` is a transport-free Model Context Protocol
+  endpoint, `handleMcpRequest(message, { version, workspace })`, mounted by
+  `server/app.js` at `POST /api/mcp`. It validates the JSON-RPC 2.0 envelope (`-32700`
+  parse, `-32600` invalid request, `-32601` unknown method, `-32602` invalid params,
+  `-32002` unknown resource) and answers `initialize` (protocol `2025-06-18`, server
+  `lumen-spatial-mcp`), `ping`, `notifications/initialized`, `resources/list` and
+  `resources/read` (`lumen://catalog/products`, `lumen://electrical/drivers-and-bus`,
+  `lumen://acoustics/sabine-6octave`, `lumen://workspace/live`), `prompts/list` and
+  `prompts/get` (`audit-room-3d`, `size-24v-bus`, `optimize-acoustics-rt60`), and
+  `tools/list` and `tools/call`. The eight tools carry strict JSON Schemas
+  (`additionalProperties: false`, enums for every part, finish, wall, preset, scene and
+  lens): `inspect_workspace`, `query_catalog`, `simulate_physics_and_bus`,
+  `mutate_3d_room`, `mutate_2d_wall`, `manage_cart_bag`, `lookup_studio_guide` and
+  `unlock_engineering_escalation`. Results are
+  `{ content: [{ type: 'text', text }], structuredContent, clientActions, isError }`. Tools
+  never write storage: a mutation returns the next sanitized room, wall or cart as a
+  client action (`apply_room_state` with an optional active wall, lens and module to
+  select; `apply_wall_state`; `apply_bag_items`), and a refused edit (a finish the part
+  does not ship in, a full wall) is `isError: true` with nothing changed. A remote caller
+  passes its workspace as `params._meta["lumen/workspace"]`, validated as strictly as
+  `/api/concierge/ask`; a browser `Origin` other than the host gets `403`.
+- **Agent.** `server/llm-agent.js` picks the provider from `LUMEN_LLM_PROVIDER` (`auto`
+  by default), `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` or
+  `LUMEN_LLM_BASE_URL` (Ollama or any OpenAI-compatible server) and `LUMEN_LLM_MODEL`,
+  reading the process environment first and then an optional `.env` (LLM keys only). It
+  streams the provider's Server-Sent Events over zero-dependency `fetch`, passes the
+  `tools/list` definitions, runs each requested call through `tools/call`, feeds the
+  structured result back (never the full client state) and folds the final answer to
+  plain ASCII bullets, for up to four rounds. Resolution stays decided by the question
+  text, so the escalation gate still replays it. A provider fault or a 25 s timeout falls
+  back to the deterministic orchestrator; keys never reach a log line or the client.
+- **Deterministic orchestrator.** `src/lib/mcp-orchestrator.js` is the key-free agent,
+  shared by the server and the browser's offline fallback. `src/lib/agent-intent.js`
+  turns an imperative request (mount, remove, clear, set the preset, size, furniture,
+  lighting rig, scene, lens or active wall; add, remove, clear or sync the cart) into one
+  mutation tool's arguments; a question never reads as a command, and a bespoke request
+  phrased as one still goes to studio engineering. Other questions run the inspection
+  tool for their topic (`inspect_workspace`, `query_catalog`,
+  `simulate_physics_and_bus`, `lookup_studio_guide` or
+  `unlock_engineering_escalation`) and keep the engine's answer and reply id word for
+  word. Agent replies use the `agent` category (**Agentic Workspace Action**), a lead
+  that says what changed, then Room or Wall or Cart, Power, Acoustics and Undo bullets.
+- **Workspace bus.** `executeClientActions` (`src/lib/workspace-bus.js`) rebuilds each
+  client action through `sanitizeRoomState`, `sanitizeLayout` or `sanitizeBagItems`,
+  writes it to the store the planners and the cart read, and announces it as a
+  `lumen:workspace-mutate` window event (`subscribeWorkspaceMutations`, from the
+  engine-free `workspace-events.js`). A mounted planner turns it into one history step:
+  `useRoom3d` replaces the room (keeping the camera, switching the active wall and
+  selecting the new module), `RoomPlannerPage` switches the lens and `useWallStudio`
+  imports the layout, so `Ctrl+Z` reverses the AI edit whole and an edit that changes
+  nothing leaves no empty step. The cart provider rehydrates and toasts the change; an
+  unmounted planner opens on the stored result. `useConcierge` runs the bus for every
+  reply that carries actions, except one that lands after **New chat**.
+- **Tool trace.** Every reply that ran MCP tools shows a strip of flat chips above the
+  lead (`concierge-tool-calls`), one per call: `MCP // tool_name: what it did`, with a
+  champagne left rule, or amber for a refused edit. The panel carries
+  `data-mcp="2025-06-18"`.
 - **Gatekeeper.** Bespoke fabrication outside the catalog, structural, masonry or
   wet-zone certification, onsite crew booking, freight damage and claims, B2B invoicing
   and off-topic requests resolve `false` under 0.45 and unlock contact with reason
@@ -1490,7 +1574,11 @@ loads through the dev server's SSR module graph on each request, so an edit unde
 reloaded`), the store flushes before the new one opens, and a per-process session key
 keeps every session valid across reloads. `npm run preview` serves a fixed build with one
 cloud per process. The standalone server reads `HOST`, `PORT`, `LUMEN_DATA_FILE`, `LUMEN_STORAGE`,
-`LUMEN_SESSION_SECRET` and `LUMEN_TEST_RESET`. Run one process per data file. The E2E
+`LUMEN_SESSION_SECRET` and `LUMEN_TEST_RESET`. Lumen AI reads `ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, `GEMINI_API_KEY`, `LUMEN_LLM_BASE_URL`, `LUMEN_LLM_MODEL` and
+`LUMEN_LLM_PROVIDER` from the environment or a git-ignored `.env`; with none set it runs
+the deterministic MCP orchestrator, and the E2E web server pins
+`LUMEN_LLM_PROVIDER=deterministic` so a key on the machine never reaches a test run. Run one process per data file. The E2E
 web server writes `server/.data/lumen-cloud.test.json`, so a dev server on the default
 store can stay up during a test run.
 
