@@ -1,14 +1,45 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v6.3.0-e8923a)
+![Release](https://img.shields.io/badge/release-v7.0.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v6.3.0**. Lumen AI is now an agent. A standards-compliant **Model
+Current release: **v7.0.0**, the next-generation WebGL2 engine behind `/room-3d`. Walking
+inside the room no longer waits on the keyboard's repeat: a tap of `W A S D`, the arrows
+or `Q` / `E` still steps exactly 25 cm or turns 15 deg, and a key held past 150 ms hands
+the stance to a per-frame gait that ramps (tau 0.11 s up, 0.09 s down) to 145 cm/s ahead,
+120 cm/s sideways and 78 deg/s of turn, 215 cm/s with `Shift`, slides along the floor
+reference instead of stopping dead, and commits once where it comes to rest, with zero
+React renders in between. Every one of the twelve parts is now drawn as its parametric CAD
+sub-assembly (`module.subparts`): the shelf's timber slab on a dark steel cleat with an
+aluminium LED channel and two monographs and a ceramic vessel on top, the cube's mitred
+2 cm carcass and divider, the sideboard's twin inset doors with a 6 mm reveal and steel
+pulls, the frame's nine fluted PET felt slats, the baffle's seven chamfered fins in a wave,
+the pendant's louvred beam on twin cables to a ceiling canopy, down to the hub's heat-sink
+fins and terminal blocks; the bed gains an upholstered headboard and a layered duvet, the
+desk a monitor, sketchbook and task lamp, the sofa plush back cushions, bolster arms and
+tapered oak legs. `src/lib/pbr-materials.js` synthesises deterministic, tileable albedo,
+bump, normal and roughness maps for walnut and oak grain, brushed anodised and steel
+metal, PET felt and limewash chalk, a wide-plank floor and Venetian plaster, in memory with
+zero network requests. Lit parts throw translucent volumetric beams (wall-wash fans, spot
+cones, the pendant's pyramid, the column's glow, the frame's halo) whose strength follows
+each DALI-2 level and the active scene, and every part and the floor reference sit on soft
+contact shadows. A **Sun & Aperture** group sets the local solar time from 06:00 to 21:00
+(Dawn 07:00, Noon 13:00, Golden Hour 17:30, Dusk 20:00) on a Budapest solar path: the
+daylight key light takes the sun's azimuth, elevation and colour temperature (6000K at
+noon, 2900K at golden hour, 2200K at dusk), and a mullioned window on the west, east or
+south wall lays sunlit pane patches across the floor and shafts of light through the air.
+The bed, desk or sofa now backs onto any of the four walls (`Placement`: a wall select,
+**Rotate 90 deg** and an offset slider) with its collisions, clearances and walkthrough
+footprint turning with it. Specs mode reads the engine telemetry (meshes, CAD sub-parts,
+volumetric beams, lights). Rooms that leave the new options at their defaults store, share
+and compare byte for byte as before; share links carry them in an optional `x` tuple.
+
+v6.3.0 made Lumen AI an agent. A standards-compliant **Model
 Context Protocol** server (JSON-RPC 2.0, revision `2025-06-18`) at `POST /api/mcp`
 exposes four resources (the catalog, the 24V bus and drivers, the six-octave acoustics and
 the caller's live workspace), three architectural prompts and eight tools, from
@@ -349,6 +380,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v7.0.0  | Next-generation WebGL2 room engine: continuous 60 to 240 Hz walking with exact taps, ramped holds, Shift stride and one commit on release; multi-part parametric CAD sub-assemblies for all 12 parts and detailed reference furniture; procedural tileable PBR albedo, bump, normal and roughness maps for eight material families; volumetric light beams that follow DALI-2 levels and contact shadows; Sun & Aperture solar path with golden hour, window pane patches and light shafts; floor reference on any wall with offset; engine telemetry in Specs mode |
 | v6.3.0  | Lumen AI as an MCP agent: JSON-RPC 2.0 Model Context Protocol server at `POST /api/mcp` (revision 2025-06-18) with 4 resources, 3 prompts and 8 tools including live 3D room, 2D wall and cart mutation; multi-provider LLM tool-use loop (Claude Messages API, OpenAI-compatible, Gemini, Ollama) with a deterministic MCP orchestrator as the key-free path; Server-Sent Events at `POST /api/concierge/stream`; agentic workspace bus that applies tool results live as one undoable step; MCP tool trace chips in the panel |
 | v6.2.0  | Modern Lumen AI chat: welcome hero with starter cards that fold into a docked chip row, New chat, right-aligned warm question bubbles, avatar answers and a pill composer; every answer one lead sentence and two to four labelled bullets (35 to 65 words, at most four pills); bespoke 36 px / 28 px architectural SVG drawings of all 12 parts in both planners' palettes, module lists and Ctrl+K; a continuous lit atmosphere below the overview hero, a fixed route-aware basalt backdrop on every other route and lit Account tiles; 60 s CI budget for software-WebGL scenario tests |
 | v6.1.0  | Lumen AI understands the site itself: navigation, both planners, lenses, gizmo, room presets, modes, shortcuts and fault checks, with direct launch keys; phrasing normalisation; a local answer on any API fault (404, 5xx, unreachable, unreadable); dev API hot-reloaded through Vite's SSR module graph; stealth basalt panel with a silent locked gatekeeper; navbar Cart glyph; slim showcase launch bar with anchored keys |
@@ -439,10 +471,13 @@ src/
                         (mcp-orchestrator), agentic command parser (agent-intent),
                         workspace execution bus (workspace-bus, workspace-events),
                         bag store and PSU sizing, wall studio geometry and history,
-                        room model and 2D bridge (room-3d), WebGL scene description
-                        and orbit frame (room-scene), ray to wall-plane drag solver
-                        (room-raycast), camera lenses and the 165 cm observer
-                        (room-walkthrough), guarded per-frame DOM writes
+                        room model and 2D bridge (room-3d), WebGL scene description,
+                        CAD sub-assemblies, volumetric beams and orbit frame
+                        (room-scene), procedural PBR map synthesizer (pbr-materials),
+                        solar path and daylight window (solar-path), ray to
+                        wall-plane drag solver (room-raycast), camera lenses, the
+                        165 cm observer and its continuous gait (room-walkthrough),
+                        guarded per-frame DOM writes
                         (dom-writes), Wavefront OBJ writer
                         (obj-export), 1:20 blueprint sheet compiler and SVG
                         (blueprint-sheet), AutoCAD R12 DXF writer (dxf-export),
@@ -508,7 +543,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '6.3.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '7.0.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
