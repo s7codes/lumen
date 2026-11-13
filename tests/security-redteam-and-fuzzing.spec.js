@@ -8,7 +8,8 @@ import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { test as base, expect } from '@playwright/test';
 import { createApp } from '../server/app.js';
 import { COMPRESSION_THRESHOLD_BYTES, negotiateEncoding } from '../server/compress.js';
-import { createLumenServer } from '../server/http-server.js';
+import { isSecureRequest, originMatches, resolveRequestOrigin } from '../server/forwarded.js';
+import { createLumenServer, HSTS_POLICY } from '../server/http-server.js';
 import { createConciergeAgent } from '../server/llm-agent.js';
 import {
   createRateLimiter,
@@ -164,17 +165,26 @@ async function call(origin, path, { method = 'GET', body, headers = {} } = {}) {
   return { status: res.status, headers: res.headers, text, json: () => JSON.parse(text) };
 }
 
-/** node:http without content decoding: the exact bytes and headers on the wire. */
-function rawRequest(origin, path, { method = 'GET', headers = {} } = {}) {
+/**
+ * node:http without content decoding: the exact bytes and headers on the wire. Unlike fetch it sends
+ * Host and Origin exactly as given, as a reverse proxy does; `body` goes out as JSON.
+ */
+function rawRequest(origin, path, { method = 'GET', headers = {}, body } = {}) {
+  const payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body));
+  const sent = payload ? { ...headers, 'Content-Type': 'application/json', 'Content-Length': String(payload.length) } : headers;
   return new Promise((resolve, reject) => {
-    const req = httpRequest(new URL(path, origin), { method, headers, agent: false }, (res) => {
+    const req = httpRequest(new URL(path, origin), { method, headers: sent, agent: false }, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
       res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
     });
     req.on('error', reject);
-    req.end();
+    req.end(payload);
   });
+}
+
+function jsonOf(response) {
+  return JSON.parse(response.body.toString('utf8'));
 }
 
 function listen(server) {
@@ -901,19 +911,125 @@ test.describe('production HTTP hardening', () => {
     }
   });
 
+  test('behind a trusted Docker proxy hop, HTTPS-origin writes succeed with a Bearer session, HSTS and no cookie', async () => {
+    const SITE = 'https://lumen.s7codes.dev';
+    // What Caddy forwards on the Compose bridge: Host unchanged, the client address, the browser's scheme and host.
+    const CADDY = { Host: 'lumen.s7codes.dev', 'X-Forwarded-For': '203.0.113.50', 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'lumen.s7codes.dev' };
+    const store = createStore({ file: null });
+    const stacks = [];
+    const boot = async (trustProxy, peer) => {
+      const handler = createApp({ store, version: 'redteam', agent: AGENT, env: {}, logger: SILENT, trustProxy });
+      const stack = createLumenServer({ cloud: { handler, store }, staticDir: DIST_DIR, logger: SILENT });
+      // The socket peer as the app sees it on the bridge network: Caddy's container address.
+      stack.server.on('connection', (socket) => Object.defineProperty(socket, 'remoteAddress', { value: peer, configurable: true }));
+      stacks.push(stack);
+      return listen(stack.server);
+    };
+
+    try {
+      const proxied = await boot(1, '172.18.0.2');
+      // Sign-in over the internal HTTP hop: 201, the session as a Bearer token in the body, HSTS, and no cookie at all.
+      const opened = await rawRequest(proxied, '/api/auth/session', { method: 'POST', headers: { ...CADDY, Origin: SITE }, body: CREDENTIALS });
+      expect(opened.status).toBe(201);
+      expect(opened.headers['set-cookie']).toBeUndefined();
+      const { token } = jsonOf(opened);
+      expect(token).toMatch(/^lmn1\./);
+      const auth = { ...CADDY, Origin: SITE, Authorization: `Bearer ${token}`, 'X-Lumen-Client': namespace() };
+
+      // Authenticated POST, PUT and DELETE mutations from the HTTPS origin all land in the account library.
+      const saved = await rawRequest(proxied, '/api/projects', { method: 'POST', headers: auth, body: { kind: 'wall', name: 'Proxy Wall', data: WALL } });
+      expect(saved.status).toBe(201);
+      const { project } = jsonOf(saved);
+      const revised = await rawRequest(proxied, '/api/projects', { method: 'PUT', headers: auth, body: { kind: 'wall', name: 'Proxy Wall', data: WALL } });
+      expect(revised.status).toBe(200);
+      expect(jsonOf(revised).project).toMatchObject({ id: project.id, revision: 2 });
+      const quoted = await rawRequest(proxied, '/api/quotes', { method: 'POST', headers: auth, body: QUOTE_BODY });
+      expect(quoted.status).toBe(201);
+      expect(jsonOf(quoted).quote.ref).toMatch(/^LMN-R-[0-9A-F]{8}$/);
+      const removed = await rawRequest(proxied, `/api/projects/${encodeURIComponent(project.id)}`, { method: 'DELETE', headers: auth });
+      expect(removed.status).toBe(200);
+      expect(jsonOf(removed).projects).toEqual([]);
+      const ping = await rawRequest(proxied, '/api/mcp', { method: 'POST', headers: { ...CADDY, Origin: SITE }, body: rpc('ping') });
+      expect(jsonOf(ping)).toEqual({ jsonrpc: '2.0', id: 1, result: {} });
+      const closed = await rawRequest(proxied, '/api/auth/session', { method: 'DELETE', headers: { ...CADDY, Origin: SITE, Authorization: `Bearer ${token}` } });
+      expect(closed.status).toBe(204);
+      const shell = await rawRequest(proxied, '/room-3d', { headers: CADDY });
+      expect(shell.status).toBe(200);
+      expect(shell.headers['content-type']).toBe('text/html; charset=utf-8');
+      // Every answer the browser received over HTTPS pins HTTPS for a year: the API, the stream endpoints and the shell.
+      for (const response of [opened, saved, revised, quoted, removed, ping, closed, shell]) {
+        expect(response.headers['strict-transport-security']).toBe(HSTS_POLICY);
+        expect(response.headers['set-cookie']).toBeUndefined();
+      }
+
+      // The plain-HTTP twin, a look-alike host, another site and an opaque origin are refused before the body is read.
+      for (const origin of ['http://lumen.s7codes.dev', 'https://lumen.s7codes.dev.evil.example', 'https://evil.example', 'null']) {
+        const refused = await rawRequest(proxied, '/api/projects', { method: 'POST', headers: { ...auth, Origin: origin }, body: { kind: 'wall', name: 'Forged', data: WALL } });
+        expect(refused.status, origin).toBe(403);
+        expect(jsonOf(refused).error.code, origin).toBe('forbidden_origin');
+      }
+      expect(store.read(accountNamespace(sanitizeEmail(CREDENTIALS.email))).projects).toEqual([]);
+
+      // Forwarding headers from a public peer, or with trust off, are ignored: no HSTS, and the host alone decides as before v8.1.
+      for (const [trustProxy, peer] of [
+        [1, '203.0.113.9'],
+        [0, '172.18.0.2'],
+      ]) {
+        const direct = await boot(trustProxy, peer);
+        const answer = await rawRequest(direct, '/api/auth/session', { method: 'POST', headers: { ...CADDY, Origin: SITE }, body: CREDENTIALS });
+        expect(answer.status, `${trustProxy} ${peer}`).toBe(201);
+        expect(answer.headers['strict-transport-security'], `${trustProxy} ${peer}`).toBeUndefined();
+        expect((await rawRequest(direct, '/', { headers: CADDY })).headers['strict-transport-security']).toBeUndefined();
+      }
+    } finally {
+      await Promise.all(stacks.map((stack) => stack.shutdown({ reason: 'test' })));
+    }
+
+    // The resolver itself: a rewritten Host, default ports, a client-prepended entry, IPv6 bridges and direct TLS.
+    const req = (peer, headers, encrypted = false) => ({ socket: { remoteAddress: peer, encrypted }, headers });
+    expect(resolveRequestOrigin(req('172.18.0.2', { host: 'app:4173', 'x-forwarded-proto': 'https', 'x-forwarded-host': 'lumen.s7codes.dev' }), 1)).toEqual({
+      scheme: 'https',
+      host: 'lumen.s7codes.dev',
+      origin: SITE,
+      secure: true,
+      established: true,
+      forwarded: true,
+    });
+    expect(resolveRequestOrigin(req('::ffff:10.0.0.7', { host: 'LUMEN.s7codes.dev:443', 'x-forwarded-proto': 'http, HTTPS' }), 1).origin).toBe(SITE);
+    expect(resolveRequestOrigin(req('fd00::2', { host: 'lumen.s7codes.dev', 'x-forwarded-proto': 'https' }), 1).secure).toBe(true);
+    expect(resolveRequestOrigin(req('8.8.8.8', { host: 'lumen.s7codes.dev', 'x-forwarded-proto': 'https' }), 1)).toMatchObject({ scheme: 'http', established: false, forwarded: false });
+    expect(resolveRequestOrigin(req('10.0.0.2', { host: 'evil.example/path', 'x-forwarded-host': 'a@evil.example' }), 1).host).toBeNull();
+    expect(isSecureRequest(req('127.0.0.1', { host: 'localhost:8443' }, true))).toBe(true);
+    expect(isSecureRequest(req('172.18.0.2', { 'x-forwarded-proto': 'https, http' }), 1)).toBe(false);
+    expect(isSecureRequest(req('172.18.0.2', { 'x-forwarded-proto': 'https, http' }), 2)).toBe(true);
+    expect(originMatches(SITE, req('172.18.0.2', { host: 'lumen.s7codes.dev', 'x-forwarded-proto': 'https' }), 1)).toBe(true);
+    expect(originMatches(`${SITE}:443`, req('172.18.0.2', { host: 'lumen.s7codes.dev', 'x-forwarded-proto': 'https' }), 1)).toBe(true);
+    expect(originMatches(`${SITE}/path`, req('172.18.0.2', { host: 'lumen.s7codes.dev', 'x-forwarded-proto': 'https' }), 1)).toBe(false);
+    expect(originMatches('https://user@lumen.s7codes.dev', req('127.0.0.1', { host: 'lumen.s7codes.dev' }), 0)).toBe(false);
+    expect(originMatches('ftp://lumen.s7codes.dev', req('127.0.0.1', { host: 'lumen.s7codes.dev' }), 0)).toBe(false);
+  });
+
   // eslint-disable-next-line no-empty-pattern
-  test('graceful shutdown finishes the in-flight write, refuses new connections and exits 0', async ({}, testInfo) => {
-    const dataFile = testInfo.outputPath('shutdown', 'lumen-cloud.json');
+  test('the container env boots on its data dir; shutdown finishes the in-flight write, refuses new connections and exits 0', async ({}, testInfo) => {
+    // The image's environment (Dockerfile and docker-compose.yml), on loopback and a free port instead of 0.0.0.0:4173.
+    const dataDir = testInfo.outputPath('shutdown');
+    const dataFile = join(dataDir, 'lumen-cloud.json');
     const child = spawn(process.execPath, ['server/index.js'], {
       cwd: REPO_DIR,
       env: {
         ...process.env,
+        NODE_ENV: 'production',
         HOST: '127.0.0.1',
         PORT: '0',
-        LUMEN_DATA_FILE: dataFile,
+        LUMEN_DATA_DIR: dataDir,
+        LUMEN_DATA_FILE: '',
+        LUMEN_STORE_FILE: '',
         LUMEN_STORAGE: '',
         LUMEN_STATIC_DIR: 'off',
         LUMEN_TEST_RESET: '',
+        LUMEN_TRUST_PROXY: '1',
+        // The docker-compose.yml default: refused in favour of a per-process key, and reported.
+        LUMEN_SESSION_SECRET: 'change-me-in-production',
         LUMEN_LLM_PROVIDER: 'deterministic',
       },
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
@@ -947,6 +1063,8 @@ test.describe('production HTTP hardening', () => {
 
     try {
       const [, port] = await waitFor(/on http:\/\/127\.0\.0\.1:(\d+) /);
+      expect(output).toContain(`store: ${dataFile}, 1 trusted proxy hop,`);
+      expect(output).toContain('LUMEN_SESSION_SECRET is a template placeholder');
       const origin = `http://127.0.0.1:${port}`;
       const ns = namespace();
       const payload = JSON.stringify({ kind: 'wall', name: 'Drained Wall', data: WALL });
@@ -1019,6 +1137,11 @@ test.describe('production HTTP hardening', () => {
       ['negotiateEncoding q-value', () => negotiateEncoding(`br;q=0.${fill('9')}`)],
       ['negotiateEncoding list', () => negotiateEncoding(fill('gzip;q=0.5,'))],
       ['resolveClientAddress chain', () => resolveClientAddress({ socket: { remoteAddress: '127.0.0.1' }, headers: { 'x-forwarded-for': fill('203.0.113.7, ') } }, 8)],
+      [
+        'resolveRequestOrigin forwarded chains',
+        () => resolveRequestOrigin({ socket: { remoteAddress: '10.0.0.2' }, headers: { host: fill('a'), 'x-forwarded-proto': fill('https, '), 'x-forwarded-host': fill('a.b, ') } }, 8),
+      ],
+      ['originMatches', () => originMatches(`https://${fill('a.')}`, { socket: { remoteAddress: '127.0.0.1' }, headers: { host: fill('a.') } }, 1)],
       ['normalizeAddress', () => normalizeAddress(fill(':'))],
       ['etagMatches', () => etagMatches(fill('"a", '), '"b"')],
       ['resolveStaticPath', () => resolveStaticPath(DIST_DIR, `/${fill('a/')}`)],

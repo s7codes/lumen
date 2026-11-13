@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { expect, test } from '@playwright/test';
-import { E2E_SERVER_ENV, resolveServerOptions, TEST_DATA_FILE } from '../server/config.js';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { DEFAULT_DATA_FILE, E2E_SERVER_ENV, resolveListenAddress, resolveServerOptions, TEST_DATA_FILE } from '../server/config.js';
 import {
   CLIENT_STORAGE_KEY,
   MAX_STORED_PROJECTS,
@@ -98,6 +100,23 @@ test.describe('lumen cloud http api', () => {
     expect(await response.json()).toEqual({ ok: true, version: pkg.version, storage: 'server' });
     expect(pkg.version).toBe('8.0.0');
     expect(SERVER.file.replaceAll('\\', '/').endsWith(TEST_DATA_FILE)).toBe(true);
+    // The container contract: a store on the mounted volume, an explicit file winning over the
+    // directory, every bind address from HOST and PORT, and loopback defaults everywhere else.
+    const root = new URL('../', import.meta.url);
+    const repo = fileURLToPath(root);
+    const fileFor = (env) => resolveServerOptions(root, env).file;
+    expect(fileFor({ LUMEN_DATA_DIR: '/data' })).toBe(resolve('/data', 'lumen-cloud.json'));
+    expect(fileFor({ LUMEN_DATA_DIR: '/data', LUMEN_TEST_RESET: '1' })).toBe(resolve('/data', 'lumen-cloud.test.json'));
+    expect(fileFor({ LUMEN_DATA_DIR: '/data', LUMEN_STORE_FILE: '/data/store.json' })).toBe(resolve('/data/store.json'));
+    expect(fileFor({ LUMEN_DATA_DIR: '/data', LUMEN_DATA_FILE: 'server/.data/custom.json' })).toBe(resolve(repo, 'server/.data/custom.json'));
+    expect(fileFor({ LUMEN_DATA_DIR: '/data', LUMEN_STORAGE: 'memory' })).toBeNull();
+    expect(fileFor({})).toBe(resolve(repo, DEFAULT_DATA_FILE));
+    // A shell that exports a store path never moves the E2E server off its test store.
+    expect(fileFor({ LUMEN_DATA_DIR: '/data', LUMEN_STORE_FILE: '/data/store.json', ...E2E_SERVER_ENV })).toBe(resolve(repo, TEST_DATA_FILE));
+    expect(resolveListenAddress({})).toEqual({ host: '127.0.0.1', port: 8787 });
+    expect(resolveListenAddress({ HOST: '0.0.0.0', PORT: '4173' })).toEqual({ host: '0.0.0.0', port: 4173 });
+    expect(resolveListenAddress({ HOST: ' ', PORT: '0' })).toEqual({ host: '127.0.0.1', port: 0 });
+    for (const port of ['70000', '41 73', '-1', 'http']) expect(() => resolveListenAddress({ PORT: port }), port).toThrow(/PORT must be a TCP port/);
     const headers = response.headers();
     expect(headers['x-content-type-options']).toBe('nosniff');
     expect(headers['cache-control']).toBe('no-store');
