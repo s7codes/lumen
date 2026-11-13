@@ -25,6 +25,7 @@ import {
   verifyEscalationTranscript,
 } from '../src/lib/concierge-engine.js';
 import { maxRunM } from '../src/lib/electrical.js';
+import { runDeterministicAgent } from '../src/lib/mcp-orchestrator.js';
 import { formatInt } from '../src/lib/format.js';
 import { buildQuote } from '../src/lib/quote.js';
 import { createRoomState, findRoomConflicts, mountInRoom, ROOM_STORAGE_KEY, serializeRoomState, unrolledRoom, wallCounts } from '../src/lib/room-3d.js';
@@ -377,14 +378,21 @@ test.describe('concierge engine and live workspace RAG', () => {
 
 test.describe('server concierge API', () => {
   test('POST /api/concierge/ask answers with the shared engine and refuses tampered payloads', async ({ request }) => {
+    // The MCP pipeline keeps the engine's answer word for word and adds the tool trace.
     const ok = await request.post('/api/concierge/ask', { data: { question: SHELF_PROMPT, workspaceContext: { route: '/catalog' } } });
     expect(ok.status()).toBe(200);
     expect(ok.headers()['x-content-type-options']).toBe('nosniff');
-    expect((await ok.json()).reply).toEqual(evaluateConciergeQuery(SHELF_PROMPT, { route: '/catalog' }));
+    const shelf = (await ok.json()).reply;
+    expect(shelf).toEqual(runDeterministicAgent(SHELF_PROMPT, { route: '/catalog' }).reply);
+    expect(shelf).toMatchObject(evaluateConciergeQuery(SHELF_PROMPT, { route: '/catalog' }));
+    expect(shelf.toolCalls.map((call) => call.name)).toEqual(['query_catalog']);
 
     const ctx = context('/room-3d');
     const live = await request.post('/api/concierge/ask', { data: { question: 'Audit my live 3D room & RT60', workspaceContext: ctx } });
-    expect((await live.json()).reply).toEqual(evaluateConciergeQuery('Audit my live 3D room & RT60', ctx));
+    const audit = (await live.json()).reply;
+    expect(audit).toEqual(runDeterministicAgent('Audit my live 3D room & RT60', ctx).reply);
+    expect(audit).toMatchObject(evaluateConciergeQuery('Audit my live 3D room & RT60', ctx));
+    expect(audit.clientActions).toEqual([]);
 
     const textPlain = await request.post('/api/concierge/ask', {
       headers: { 'Content-Type': 'text/plain' },
