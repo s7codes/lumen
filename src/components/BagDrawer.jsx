@@ -1,18 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext.jsx';
+import { getFinish, getProduct } from '../data/products.js';
 import { useBag } from '../hooks/useBag.js';
 import { useModalDialog } from '../hooks/useModalDialog.js';
 import { MAX_LINE_QTY } from '../lib/bag.js';
-import { formatUsd } from '../lib/format.js';
-import { ArrowRight, BagGlyph, CloseGlyph, CubeGlyph, MinusGlyph, PlusGlyph } from './icons.jsx';
+import { formatUsd, padIndex } from '../lib/format.js';
+import { ArrowRight, CloseGlyph, MinusGlyph, PlusGlyph } from './icons.jsx';
 import { ProductThumbGlyph } from './ProductThumbGlyph.jsx';
 
 const METER_SEGMENTS = 20;
 
-/** "0 items", "1 item", "3 items": the header pill, the clear prompt and its toast. */
+// The three parts an empty cart offers to add in one press: the shelf, the
+// pendant and the cube a first wall is usually built from.
+const QUICK_ADD_IDS = Object.freeze(['floating-shelf-110', 'linear-pendant-150', 'modular-cube-36']);
+const QUICK_ADD = QUICK_ADD_IDS.map((id) => getProduct(id)).filter(Boolean);
+
+/** "0 items", "1 item", "3 items": the header counter, the clear prompt and its toast. */
 function itemCount(count) {
   return `${count} ${count === 1 ? 'item' : 'items'}`;
+}
+
+/** Width x height x depth, the order every spec sheet in the catalog uses. */
+function dimensions({ w, h, d }) {
+  return `${w} x ${h} x ${d} cm`;
 }
 
 function Stepper({ label, qty, onStep }) {
@@ -45,9 +56,10 @@ function Stepper({ label, qty, onStep }) {
   );
 }
 
-// One cart line on its own card: the part drawing in the line's finish, the
-// name and a finish badge, then quantity and Remove. The SKU / finish / load
-// line stays in the DOM for Specs mode and the planner sync checks.
+// One cart line as a full-width row between hairlines: the part drawing in the
+// line's finish, the name over a finish and load subtitle, the line total, then
+// quantity and Remove. The SKU / finish / load line stays in the DOM for Specs
+// mode and the planner sync checks.
 function BagLine({ line, onStep, onRemove }) {
   const { product, finish } = line;
   const label = `${product.name}, ${finish.label}`;
@@ -67,7 +79,7 @@ function BagLine({ line, onStep, onRemove }) {
             style={{ '--swatch': finish.hex, '--swatch-hi': finish.highlight, '--swatch-lo': finish.shade }}
             aria-hidden="true"
           />
-          {finish.label}
+          {`${finish.label} / ${product.watts > 0 ? `${product.watts} W` : 'Passive'}`}
         </p>
       </div>
       <p className="bag-line__meta">{`${product.sku} / ${finish.label} / ${product.watts} W`}</p>
@@ -83,27 +95,72 @@ function BagLine({ line, onStep, onRemove }) {
   );
 }
 
-function EmptyCart({ onNavigate }) {
+// An empty cart reads like the first page of a specification: a left-aligned
+// note and the two routes in, then three signature parts that each go into the
+// cart in their default finish with one press.
+function EmptyCart({ onNavigate, onQuickAdd }) {
   return (
-    <div className="bag-empty">
-      <span className="bag-empty__emblem" aria-hidden="true">
-        <BagGlyph testId={null} />
-      </span>
-      <h3 className="bag-empty__title">Your cart is empty</h3>
-      <p className="bag-empty__copy">
-        Explore our modular lighting and shelving or design your space in 3D to build your system.
-      </p>
-      <div className="bag-empty__actions">
-        <Link to="/catalog" className="bag-pill bag-pill--primary" onClick={onNavigate}>
-          Browse Catalog
-          <ArrowRight />
-        </Link>
-        <Link to="/room-3d" className="bag-pill bag-pill--ghost" onClick={onNavigate}>
-          <CubeGlyph />
-          Open 3D Room Planner
-        </Link>
-      </div>
-    </div>
+    <>
+      <section className="bag-empty" aria-labelledby="bag-empty-title">
+        <h3 id="bag-empty-title" className="bag-empty__title">
+          Your cart is empty
+        </h3>
+        <p className="bag-empty__copy">
+          Select individual luminaires and shelves from the catalog, or push a complete wall or room specification
+          from the planners.
+        </p>
+        <div className="bag-empty__actions">
+          <Link to="/catalog" className="bag-key bag-key--primary" onClick={onNavigate}>
+            Browse Catalog
+            <ArrowRight />
+          </Link>
+          <Link to="/room-3d" className="bag-key bag-key--outline" onClick={onNavigate}>
+            Open 3D Room Planner
+          </Link>
+        </div>
+      </section>
+      <section className="bag-quick" data-testid="bag-quick-add" aria-labelledby="bag-quick-title">
+        <header className="bag-quick__header">
+          <h3 id="bag-quick-title" className="bag-quick__title">
+            Signature Starting Modules
+          </h3>
+          <span className="bag-quick__tally" aria-hidden="true">
+            {padIndex(QUICK_ADD.length)}
+          </span>
+        </header>
+        <ul className="bag-quick__list">
+          {QUICK_ADD.map((product, index) => {
+            const finish = getFinish(product.defaultFinish);
+            return (
+              <li key={product.id} className="bag-quick__row" data-testid="bag-quick-row" data-product={product.id}>
+                <span className="bag-quick__index" aria-hidden="true">
+                  {padIndex(index + 1)}
+                </span>
+                <ProductThumbGlyph product={product} finish={finish.id} size="sm" className="bag-quick__thumb" />
+                <div className="bag-quick__info">
+                  <p className="bag-quick__name">{product.name}</p>
+                  <p className="bag-quick__dims" data-testid="bag-quick-dims">
+                    {dimensions(product.dimsCm)}
+                  </p>
+                </div>
+                <span className="bag-quick__price" data-testid="bag-quick-price">
+                  {formatUsd(product.priceUsd)}
+                </span>
+                <button
+                  type="button"
+                  className="bag-key bag-key--add"
+                  aria-label={`Add ${product.name}, ${finish.label} to cart`}
+                  onClick={() => onQuickAdd(product.id, finish.id)}
+                >
+                  <PlusGlyph />
+                  Add
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    </>
   );
 }
 
@@ -118,10 +175,11 @@ function LoadMeter({ psu }) {
   );
 }
 
-// The summary card. The 24V block (load, power supply, meter and note) is
-// always rendered: Visual mode shows the two rows of a filled cart, Specs mode
-// adds the meter and the utilisation note, and an empty cart in Visual mode
-// folds the whole card away (shell.css), so every value keeps its exact text.
+// The summary tray under a hairline. The 24V block (load, power supply, meter
+// and note) is always rendered: Visual mode shows the two rows of a filled
+// cart, Specs mode adds the meter and the utilisation note, and an empty cart
+// in Visual mode folds the whole tray away (shell.css), so every value keeps
+// its exact text.
 function BagSummary({ count, subtotalUsd, loadW, psu, onClear, onCheckout }) {
   const [armed, setArmed] = useState(false);
   const percent = Math.round(psu.utilisation * 100);
@@ -159,7 +217,7 @@ function BagSummary({ count, subtotalUsd, loadW, psu, onClear, onCheckout }) {
       {count > 0 && (
         <Link
           to="/checkout"
-          className="bag-pill bag-pill--primary bag-summary__checkout"
+          className="bag-key bag-key--primary bag-summary__checkout"
           data-testid="proceed-to-checkout"
           onClick={onCheckout}
         >
@@ -189,7 +247,7 @@ export function BagDrawer({ open, onClose, returnFocus }) {
   const panelRef = useRef(null);
   const closeRef = useRef(null);
   const listRef = useRef(null);
-  const { lines, count, subtotalUsd, loadW, psu, step, remove, clear } = useBag();
+  const { lines, count, subtotalUsd, loadW, psu, add, step, remove, clear } = useBag();
   const { addToast } = useToast();
 
   const removeLine = (line) => {
@@ -204,7 +262,8 @@ export function BagDrawer({ open, onClose, returnFocus }) {
 
   useModalDialog({ open, panelRef, initialFocusRef: closeRef, returnFocus, onClose });
 
-  // Removing a line unmounts the focused button. Keep focus inside the dialog.
+  // Removing a line, or a quick add that swaps the empty state for the list,
+  // unmounts the focused button. Keep focus inside the dialog.
   useEffect(() => {
     if (!open || !panelRef.current) return;
     if (!panelRef.current.contains(document.activeElement)) {
@@ -230,15 +289,15 @@ export function BagDrawer({ open, onClose, returnFocus }) {
       >
         <header className="bag-drawer__header">
           <div className="bag-drawer__heading">
-            <BagGlyph className="bag-drawer__glyph" testId={null} />
             <h2 id="bag-drawer-title" className="bag-drawer__title">
-              Your Cart
+              Cart
             </h2>
             <span className="bag-drawer__count" data-testid="bag-count">
               {itemCount(count)}
             </span>
           </div>
-          <button ref={closeRef} type="button" className="bag-drawer__close" aria-label="Close" onClick={onClose}>
+          <button ref={closeRef} type="button" className="bag-drawer__close" onClick={onClose}>
+            Close
             <CloseGlyph />
           </button>
         </header>
@@ -258,7 +317,7 @@ export function BagDrawer({ open, onClose, returnFocus }) {
           </div>
         ) : (
           <div className="bag-drawer__body bag-drawer__body--empty">
-            <EmptyCart onNavigate={onClose} />
+            <EmptyCart onNavigate={onClose} onQuickAdd={(id, finish) => add(id, finish, 1)} />
           </div>
         )}
 
