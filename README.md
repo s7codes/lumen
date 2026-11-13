@@ -1,14 +1,34 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v7.2.0-e8923a)
+![Release](https://img.shields.io/badge/release-v7.3.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v7.2.0**, a realism pass over the WebGL2 room engine and a warmer
+Current release: **v7.3.0**, a green CI and an editorial cart. The v7.1.0 and v7.2.0
+Actions runs failed on the homepage theatre and the inside lens, both under CPU
+starvation on the four-vCPU runner, where four software-WebGL Chromium workers pushed the
+theatre down to about 2 fps. CI now runs two workers. The theatre's act clock and
+turntable step their closed-form springs on up to 250 ms per frame, so the 7 s acts and
+the 20 deg/s yaw keep wall-clock time down to 4 fps instead of slowing with the shared
+50 ms cap. The inside lens fixes a real race: the canvas is its own React root and can
+render an older wheel commit after a newer one was handed up, and the rig used to take
+that late echo for a new lens set elsewhere and commit it back. It now matches every echo
+against the queue of commits still in flight. The cart drawer is now an editorial
+specification sheet on lifted basalt (`#1e1c19`): a plain **Cart** title with a mono item
+counter and a rectangular **Close** key; empty, a left-aligned **Your cart is empty**
+note with sharp 4px **Browse Catalog** and **Open 3D Room Planner** keys in the hero's
+mono uppercase, then **Signature Starting Modules**, three indexed rows (Floating Shelf
+110, Linear Suspension Pendant 150, Modular Cube 36) with drawing, size, price and an
+**Add** key that puts one unit in the cart. Filled lines are full-width rows between
+hairlines with a finish and load subtitle, a 4px - / + block and a full-width **Proceed
+to Checkout** key on a recessed tray. Inside `Ctrl+K` and Lumen AI, pills and bubbles
+give way to 4px tags and 6 to 10px keys, rows and wells.
+
+v7.2.0 was a realism pass over the WebGL2 room engine and a warmer
 cart. Every window now lets light in. A window facing the sun lays six sunlit gobo
 patches and shafts across the room along a ray held at an architectural angle, so the
 14:30 sun grazing the west wall still throws a bold 2 x 3 frame grid well out across the
@@ -429,6 +449,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v7.3.0  | Green CI and an editorial cart: two CI workers so software-WebGL Chromium never starves on the four-vCPU runner; the homepage theatre keeps wall-clock act and turntable time down to 4 fps (closed-form steps on up to 250 ms per frame); the inside lens matches late render echoes against its queue of in-flight wheel commits; the cart drawer as a flat basalt specification sheet with a plain Cart title, mono counter, rectangular Close key, a left-aligned empty note with sharp 4px hero-style keys, three Signature Starting Modules quick-add rows, hairline line rows, a 4px stepper block and a full-width checkout key; 4px tags and 6 to 10px keys, rows and wells inside Ctrl+K and Lumen AI |
 | v7.2.0  | WebGL2 realism and a warm cart: every window casts light (direct sun on a clamped architectural ray, or a skylight portal when the sun is behind the wall) as six-pane floor gobos under a custom GLSL soft-penumbra shader, air shafts and a per-window portal spot light; rounded-box fillets on upholstery, micro-bevels on millwork and metal, lathe-turned vases, bowls and lamps; a draped duvet bed with four pitched pillows, filleted sofa, lit ultrawide desk display and cantilevered lamp; window casing linings, bevelled sill, sashes and espagnolette handles; always-on studio IBL at 0.42 with ACES filmic at 1.08 (prefiltered on GPUs, analytic speculars and no MSAA on software rasterisers); live lens readout written straight to the DOM and frame-rate-aware glides; warm basalt cart drawer with an item-count pill, a centred empty state, product drawings and a champagne checkout CTA; CI root causes of the v7.1.0 run fixed |
 | v7.1.0  | ArchViz polish and calmer shell: two or three windows at once (West, East, South toggle pills, canonical `windowWalls`, v7.0 single-window records and links unchanged); luminous Nordic twilight glazing with moonlit floor patches and shafts at night; plaster reveal, deep oak sill and brushed steel mullions proud of the glass; zebra-free walnut and oak veneer and a calm wide-plank floor; procedural studio IBL environment on GPUs; ceiling shadow-gap cove and corner depth; woven area rugs, bedside ledges and lamps, coffee table, throw cushions and a task chair as drawn-only furniture vignettes; Test Room Echo with a soft wood clap and a bare-versus-damped readout; Ask Lumen pill; warm basalt Ctrl+K spotlight with Visual-mode names, subtitles and price pills |
 | v7.0.0  | Next-generation WebGL2 room engine: continuous 60 to 240 Hz walking with exact taps, ramped holds, Shift stride and one commit on release; multi-part parametric CAD sub-assemblies for all 12 parts and detailed reference furniture; procedural tileable PBR albedo, bump, normal and roughness maps for eight material families; volumetric light beams that follow DALI-2 levels and contact shadows; Sun & Aperture solar path with golden hour, window pane patches and light shafts; floor reference on any wall with offset; engine telemetry in Specs mode |
@@ -595,7 +616,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '7.2.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '7.3.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -940,16 +961,26 @@ custom properties, so React never re-renders on pointer movement.
   **Cart (n)**. Every visible label says cart:
   **Add to Cart**, **Clear cart**, **Sync Wall to Cart**, **Sync Room to Cart** and the toasts.
   Internally the store, hook, CSS classes, test ids and storage key keep the `bag` name.
-- The drawer is a warm basalt panel (`#171513` to `#11100e` under a soft champagne top
-  light, a hairline `rgba(229, 199, 153, 0.16)` edge) headed **Your Cart** with an item-count
-  pill (`0 items`, `1 item`, `3 items`) and a round close key. Empty, it centres a glass card:
-  **Your cart is empty**, a line of guidance, a champagne **Browse Catalog** pill and an
-  **Open 3D Room Planner** pill. Each line is a rounded card with the part's drawing in its
-  finish, the name, a finish badge, round - / + keys and the line price; the summary card
-  reads the 24V load, the power supply, the subtotal and a champagne **Proceed to
-  Checkout** button above **Clear cart**. Specs mode adds each line's SKU, finish and watts,
-  the load meter and the driver utilisation; in Visual mode an empty cart hides the zeroed
-  telemetry, which stays in the DOM for Specs.
+- The drawer is an editorial specification sheet: one flat lifted-basalt surface
+  (`#1e1c19`) behind a `rgba(255, 255, 255, 0.08)` edge, no gradient light, no floating
+  cards and no glow. The header is a plain **Cart** title with a mono item counter
+  (`0 items`, `1 item`, `3 items`) and a rectangular labelled **Close** key over one
+  full-width hairline; the navbar trigger already carries the bag glyph, so the sheet does
+  not repeat it. Empty, it opens on a left-aligned note (**Your cart is empty** at 20 px /
+  500 and one line of guidance in `#9e988e`) with the hero's own keys: a 4px amber
+  **Browse Catalog** key on a zero-blur bronze plinth and a 4px hairline **Open 3D Room
+  Planner** key, both in mono uppercase at 0.08em. Below a hairline, **Signature Starting
+  Modules** lists Floating Shelf 110, Linear Suspension Pendant 150 and Modular Cube 36 as
+  indexed full-bleed rows (`data-testid="bag-quick-add"`): the 28 px drawing, the name,
+  `W x H x D cm`, the price and a 4px **Add** key that puts one unit in the cart in the
+  part's default finish. Filled, each line is a full-width row between
+  `rgba(255, 255, 255, 0.07)` hairlines with the part's drawing in its finish, the name
+  over a finish and load subtitle (`Walnut / 16 W`, `Oak / Passive`), a 4px - / quantity / +
+  block, the line price and **Remove**; a recessed tray reads the 24V load, the power
+  supply, the subtotal and a full-width amber **Proceed to Checkout** key above
+  **Clear cart**. Specs mode adds each line's SKU, finish and watts, the load meter and the
+  driver utilisation; in Visual mode an empty cart hides the zeroed telemetry, which stays
+  in the DOM for Specs.
 - The cart is stored under `lumen_bag_v1` through `safeStorage`. Every read is rebuilt line
   by line: unknown products, finishes a part does not ship in and quantities outside
   1-99 are dropped, duplicates merge, and the cleaned value is written back. Other tabs
@@ -1495,8 +1526,8 @@ conversation survives every route change and never enters the page's tab sequenc
   `data-escalation="locked" | "unlocked"`, `data-thread="welcome" | "active"`),
   `min(400px, 100vw - 32px)` wide and `min(700px, 100dvh - 96px)` tall, in dark glass: a
   header (the Lumen mark, **Lumen AI**, a **Workspace Aware** badge, the route as a quiet
-  pill, **New chat** once the thread has started, close), the thread and a pill composer
-  (`#181715`, 999 px radius, a champagne edge on focus) with a round **Ask** key inside.
+  4px tag, **New chat** once the thread has started, close), the thread and a composer well
+  (`#181715`, 10 px radius, a champagne edge on focus) with a 6 px **Ask** key inside.
   Escape from inside closes it and focus returns to the pill. Before the first message
   the thread shows a welcome: the mark, **How can I help with your space?**, one line and
   the four route-aware starters as cards with arrows. Once the thread starts the starters
@@ -1504,9 +1535,9 @@ conversation survives every route change and never enters the page's tab sequenc
   thread keeps at least 80% of the full-height panel; **New chat** returns to the welcome
   with the gatekeeper locked again, and a reply still in flight from the old thread is
   dropped. Questions sit in warm charcoal-bronze bubbles on the right (`#2a2621`, a
-  `rgba(229, 199, 153, 0.22)` edge, 18 18 4 18 radius, at most 82% wide). Answers sit
+  `rgba(229, 199, 153, 0.22)` edge, 10 10 3 10 radius, at most 82% wide). Answers sit
   straight on the glass beside a 22 px Lumen avatar: the category, the lead sentence, the
-  bullets with their labels in bold, up to four metric pills, pill-shaped next steps (the
+  bullets with their labels in bold, up to four 4px metric tags, 6px next-step keys (the
   first a champagne cap) and, on resolved answers, an understated **Did not resolve my
   issue - request engineer** link; closing notices read as a champagne-ruled callout.
   Confidence and sources show in Specs mode only. A fresh answer streams in once, top to
@@ -1641,7 +1672,7 @@ conversation survives every route change and never enters the page's tab sequenc
   Quote, Account, each with a plain subtitle), **Products** (all 12 parts; Enter opens the
   spec sheet) and **Actions** (Switch to Specs or Visual Mode, Set Currency: USD, EUR or
   HUF, Open Cart Drawer). In Visual mode a product row shows its drawing, its name, a
-  plain subtitle (`Lighting - 150 x 12 cm`) and a price pill; its SKU, a page's path and
+  plain subtitle (`Lighting - 150 x 12 cm`) on a 6px row and a 4px price tag; its SKU, a page's path and
   a part's 24V load stay in the DOM for search and show only in Specs mode. The footer is
   one line, `Up/Down to navigate - Enter to open - Esc to close`, and the result count
   is announced to screen readers rather than shown. A label prefix outranks a word start, which outranks any other match, and
@@ -1743,13 +1774,17 @@ store can stay up during a test run.
 
 `.github/workflows/ci.yml` runs on pushes to `main` and on pull requests to `main` and
 `develop`: `npm ci`, the Playwright Chromium binary, `npm run build`, then
-`npx playwright test` against the built bundle on four parallel workers (every browser
+`npx playwright test` against the built bundle on two parallel workers (every browser
 context owns its `X-Lumen-Client` namespace in the isolated test store). The browser
 binary is cached under `~/.cache/ms-playwright` with `actions/cache@v5`, keyed on the
 lockfile hash, and downloaded only on a cache miss. The HTML report is uploaded only when
-the run fails. On CI the four workers share a four-vCPU runner where WebGL falls back to
-software rasterisation, so the long 3D scenario tests get a 60 s test budget and a 10 s
-assertion budget there (30 s and 5 s locally); both are ceilings, never waits. The canvas
+the run fails. The runner has four vCPUs and no GPU, so every Chromium rasterises WebGL and
+canvas through SwiftShader, which spreads over several cores by itself: four workers
+starved one another (the v7.2.0 run saw the homepage theatre at about 2 fps) for no gain in
+throughput, so CI runs two, and the job has a 30 minute ceiling. The long 3D scenario
+tests get a 60 s test budget and a 10 s assertion budget there (30 s and 5 s locally);
+both are ceilings, never waits. The homepage theatre steps its closed-form springs on up
+to 250 ms per frame, so its act clock keeps wall-clock time down to 4 fps. The canvas
 detects the software rasteriser before it creates its context and renders that tier
 without MSAA, with analytic studio speculars instead of a PMREM prefilter and with
 half-segment fillets, and camera glides step their exact springs up to a quarter second
@@ -1768,8 +1803,9 @@ Every action is pinned to a major that declares Node 24 (`actions/checkout@v5`,
 runner raises no Node 20 deprecation warning.
 Releases push `develop` and `main` at the same SHA; triggering pushes on `main` only, with
 `concurrency` grouped by ref and `cancel-in-progress`, yields one run per release. The
-local build and full suite are the release gate; after a push, one query to the GitHub
-Actions API confirms the run was dispatched and records its id.
+local build and full suite are the release gate; after a push the release waits for the
+GitHub Actions run on `main` to finish and records its id only once it concludes
+`success`.
 
 ## Workflow
 
