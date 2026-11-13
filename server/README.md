@@ -5,23 +5,27 @@ Lumen Cloud HTTP API. Node only, no dependencies: `node:http`, `node:fs`, `node:
 
 | File | Role |
 | ---- | ---- |
-| `app.js` | Request handler `(req, res)`: routes, per-route rate-limit tiers, 64 KB JSON bodies, Brotli or gzip JSON over 1 KB, signed sessions, session-bound library resolution and guest claim, Studio AI concierge, SSE stream and escalation gatekeeper, `POST /api/mcp`, security headers |
+| `app.js` | Request handler `(req, res)`: routes, per-route rate-limit tiers, the same-origin guard on every write, 64 KB JSON bodies, Brotli or gzip JSON over 1 KB, session-bound library resolution and guest claim, Studio AI concierge, SSE stream and escalation gatekeeper, `POST /api/mcp`, security headers |
+| `session.js` | HMAC-SHA256 session tokens (`lmn1.<claims>.<mac>`) compared with `timingSafeEqual`, 12-hour expiry, revocation, Bearer parsing, `LUMEN_SESSION_SECRET` resolution |
+| `forwarded.js` | The origin the browser addressed: scheme and host from a TLS socket or a trusted hop's `X-Forwarded-Proto` and `X-Forwarded-Host`, and the Origin comparison built on it |
 | `rate-limit.js` | Memory-bounded GCRA rate limiter (one timestamp per bucket, idle sweep, LRU eviction at `maxEntries`), client address resolution with trusted proxy hops, IPv6 keyed by /64 |
 | `compress.js` | `Accept-Encoding` negotiation with q-values, synchronous JSON compression, threadpool compression for static files |
 | `static.js` | Build server for production: immutable `/assets/*`, `no-cache` shell and SPA fallback with strong ETags and `304`, precompressed text, traversal-proof path resolution |
-| `http-server.js` | Production composition (API on `/api`, the build everywhere else) and graceful shutdown |
+| `http-server.js` | Production composition (API on `/api`, the build everywhere else), HSTS on HTTPS responses, graceful shutdown |
 | `llm-agent.js` | Lumen AI agent: `.env` loading, provider choice, streaming LLM tool-use loop over the MCP tools (Claude Messages API, OpenAI-compatible, Gemini, Ollama), deterministic MCP orchestrator fallback |
 | `store.js` | Projects, quotes and engineering tickets per `X-Lumen-Client` or `acct-` account namespace, FIFO mutex with a bounded write queue, atomic two-namespace claims, atomic temp-file + rename writes |
-| `config.js` | Environment, data file path (dev or test store), static directory, one store and handler per process |
-| `index.js` | Standalone server for `npm run server`: listen, precompress the build, drain on `SIGTERM`, `SIGINT` or an IPC `shutdown` message |
+| `config.js` | Environment, store path (file, data directory, dev or test store), static directory, listen address, one store and handler per process |
+| `index.js` | Standalone server for `npm start` and `npm run server`: listen, precompress the build, drain on `SIGTERM`, `SIGINT` or an IPC `shutdown` message |
 
 The same handler runs in three places:
 
 - `npm run dev` and `npm run preview`: mounted on `/api` by the `lumen:cloud-api` plugin
   in `vite.config.js`, same origin as the app, so `connect-src 'self'` covers it.
-- `npm run server`: standalone on `http://127.0.0.1:8787`, the API on `/api` and the
-  production build from `dist/` on every other path (`LUMEN_STATIC_DIR=off` serves the
-  API only).
+- `npm start` (or `npm run server`): standalone on `http://127.0.0.1:8787`, the API on
+  `/api` and the production build from `dist/` on every other path
+  (`LUMEN_STATIC_DIR=off` serves the API only).
+- The container image (`Dockerfile`): the same standalone server on `0.0.0.0:4173` with
+  the store on the `/data` volume, behind Caddy (`docker-compose.yml`, `Caddyfile`).
 
 Validation is not duplicated here. The handler imports the browser's own rules from
 `src/lib/` (`cloud-records`, `wall-studio`, `room-3d`, `quote`, `bag`,
@@ -49,16 +53,17 @@ Environment:
 
 | Variable | Effect |
 | -------- | ------ |
-| `HOST`, `PORT` | Standalone bind address, default `127.0.0.1:8787`; `PORT=0` takes a free port and logs it |
-| `LUMEN_TRUST_PROXY` | Reverse-proxy hops in front of the server: `1` behind Caddy or Nginx, `2` behind a CDN and a proxy, unset or `0` when clients connect directly |
+| `HOST`, `PORT` | Standalone bind address, default `127.0.0.1:8787` (the image sets `0.0.0.0:4173`); `PORT=0` takes a free port and logs it, and a `PORT` that is not a TCP port stops the start |
+| `LUMEN_TRUST_PROXY` | Reverse-proxy hops in front of the server: `1` behind Caddy or Nginx, `2` behind a CDN and a proxy, unset or `0` when clients connect directly. Only then are `X-Forwarded-For`, `-Proto` and `-Host` read |
 | `LUMEN_RATE_LIMIT_MAX` | Read budget per client per minute, default `600`; auth, AI and write budgets scale with it; `off` disables the limiter |
 | `LUMEN_STATIC_DIR` | Build the standalone server serves beside `/api`, default `dist`; `off` serves the API only |
-| `LUMEN_DATA_FILE` | Store path relative to the repository root, default `server/.data/lumen-cloud.json`, or `server/.data/lumen-cloud.test.json` with `LUMEN_TEST_RESET=1` |
+| `LUMEN_STORE_FILE` | Store file, absolute or relative to the repository root; `LUMEN_DATA_FILE` is the same setting under its original name. Default `server/.data/lumen-cloud.json`, or `server/.data/lumen-cloud.test.json` with `LUMEN_TEST_RESET=1` |
+| `LUMEN_DATA_DIR` | Directory for the default store file when no file is named: `/data` (the image default) stores `/data/lumen-cloud.json` |
 | `LUMEN_STORAGE=memory` | Keep state in memory only |
-| `LUMEN_SESSION_SECRET` | 32+ characters; otherwise each process signs with a random key |
-| `LUMEN_TEST_RESET=1` | Expose `POST /api/test/reset` and default to the test store (the Playwright web server sets it, with an explicit `LUMEN_DATA_FILE`) |
+| `LUMEN_SESSION_SECRET` | 32+ characters (`openssl rand -hex 32`); anything shorter, or a template placeholder such as the Compose default `change-me-in-production`, is refused with a warning and each process signs with a random key |
+| `LUMEN_TEST_RESET=1` | Expose `POST /api/test/reset` and default to the test store (the Playwright web server sets it, with an explicit `LUMEN_DATA_FILE`, and blanks `LUMEN_STORE_FILE` and `LUMEN_DATA_DIR`) |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` | Lumen AI provider key; the first one set wins under `LUMEN_LLM_PROVIDER=auto` |
-| `LUMEN_LLM_BASE_URL` | Ollama or another OpenAI-compatible server, no key needed |
+| `LUMEN_LLM_BASE_URL` | Ollama or another OpenAI-compatible server, no key needed; `OLLAMA_BASE_URL` is read when it is unset |
 | `LUMEN_LLM_MODEL` | Model id override |
 | `LUMEN_LLM_PROVIDER` | `auto` (default), `deterministic`, `anthropic`, `openai`, `gemini` or `ollama`; the Playwright web server pins `deterministic` |
 
@@ -109,10 +114,32 @@ append the address they saw, so a client that prepends a fake address changes no
 honoured only when the peer itself is on loopback or a private network. A proxy on the
 host that forwards addresses while `LUMEN_TRUST_PROXY` is unset is logged once.
 
+## Reverse proxy and HTTPS
+
+Behind Caddy the TLS session ends at the proxy: the app sees plain HTTP from the Caddy
+container's private bridge address, while the browser addressed `https://<domain>`.
+`forwarded.js` recovers that origin. With `LUMEN_TRUST_PROXY` set and a peer on loopback or a
+private network, `X-Forwarded-Proto` and `X-Forwarded-Host` are walked from the right, one
+entry per trusted hop, exactly like `X-Forwarded-For`; from any other peer they are ignored and
+the socket decides. Caddy forwards all three by default (and replaces any value a client sent),
+keeps `Host` unchanged, and flushes `text/event-stream` responses frame by frame.
+
+- Same-origin guard (v8.1.0): every `POST`, `PUT` and `DELETE` that carries an `Origin` header
+  must name the origin the request was sent to, or it is refused with `403 forbidden_origin`
+  before the body is read. With the scheme established (a TLS socket, or a trusted
+  `X-Forwarded-Proto`) scheme and host must both match, so `http://<domain>` cannot write to the
+  HTTPS deployment. Over plain HTTP with no trusted forwarding the host alone decides, as before.
+  Requests without `Origin` (curl, MCP clients, server to server) are unaffected.
+- `Strict-Transport-Security: max-age=31536000` goes out on every response the browser received
+  over HTTPS (`http-server.js`), never over plain HTTP.
+- Sessions travel only as `Authorization: Bearer`: the API sets no cookies, so there is no
+  `Secure` flag to infer from the proxy and no ambient credential a cross-site page could use.
+
 ## Production
 
-`npm run build && LUMEN_TRUST_PROXY=1 LUMEN_SESSION_SECRET=... npm run server` behind
-Caddy or Nginx serves the whole platform from one process and one origin:
+`npm run build && LUMEN_TRUST_PROXY=1 LUMEN_SESSION_SECRET=... npm start` behind Caddy or
+Nginx, or `docker compose up -d --build` with the kit in the repository root, serves the whole
+platform from one process and one origin:
 
 - Hashed bundles under `/assets/*`: `Cache-Control: public, max-age=31536000, immutable`.
   `index.html`, the SPA fallback (any extensionless path) and the unhashed root files:
