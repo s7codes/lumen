@@ -4,63 +4,106 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { useBag } from '../hooks/useBag.js';
 import { useModalDialog } from '../hooks/useModalDialog.js';
 import { MAX_LINE_QTY } from '../lib/bag.js';
-import { formatUsd, padIndex } from '../lib/format.js';
-import { ArrowRight } from './icons.jsx';
+import { formatUsd } from '../lib/format.js';
+import { ArrowRight, BagGlyph, CloseGlyph, CubeGlyph, MinusGlyph, PlusGlyph } from './icons.jsx';
+import { ProductThumbGlyph } from './ProductThumbGlyph.jsx';
 
 const METER_SEGMENTS = 20;
+
+/** "0 items", "1 item", "3 items": the header pill, the clear prompt and its toast. */
+function itemCount(count) {
+  return `${count} ${count === 1 ? 'item' : 'items'}`;
+}
 
 function Stepper({ label, qty, onStep }) {
   const atMin = qty <= 1;
   const atMax = qty >= MAX_LINE_QTY;
   return (
-    <div className="stepper" role="group" aria-label={`Quantity, ${label}`}>
+    <div className="bag-stepper" role="group" aria-label={`Quantity, ${label}`}>
       <button
         type="button"
-        className="stepper__button"
+        className="bag-stepper__key"
         aria-label={`Decrease ${label}`}
         aria-disabled={atMin}
         onClick={() => !atMin && onStep(-1)}
       >
-        -
+        <MinusGlyph />
       </button>
-      <span className="stepper__value mono" data-testid="bag-line-qty">
+      <span className="bag-stepper__value" data-testid="bag-line-qty">
         {qty}
       </span>
       <button
         type="button"
-        className="stepper__button"
+        className="bag-stepper__key"
         aria-label={`Increase ${label}`}
         aria-disabled={atMax}
         onClick={() => !atMax && onStep(1)}
       >
-        +
+        <PlusGlyph />
       </button>
     </div>
   );
 }
 
+// One cart line on its own card: the part drawing in the line's finish, the
+// name and a finish badge, then quantity and Remove. The SKU / finish / load
+// line stays in the DOM for Specs mode and the planner sync checks.
 function BagLine({ line, onStep, onRemove }) {
   const { product, finish } = line;
   const label = `${product.name}, ${finish.label}`;
   return (
     <li className="bag-line" data-testid="bag-line" data-line={line.key}>
-      <span
-        className="bag-line__swatch"
-        style={{ '--swatch': finish.hex, '--swatch-hi': finish.highlight, '--swatch-lo': finish.shade }}
-        aria-hidden="true"
+      <ProductThumbGlyph
+        product={product}
+        finish={finish.id}
+        lit={product.watts > 0}
+        className="bag-line__thumb"
       />
       <div className="bag-line__info">
         <p className="bag-line__name">{product.name}</p>
-        <p className="bag-line__meta mono">
-          {product.sku} / {finish.label} / {product.watts} W
+        <p className="bag-line__finish">
+          <span
+            className="bag-line__swatch"
+            style={{ '--swatch': finish.hex, '--swatch-hi': finish.highlight, '--swatch-lo': finish.shade }}
+            aria-hidden="true"
+          />
+          {finish.label}
         </p>
       </div>
-      <p className="bag-line__total mono">{formatUsd(line.lineUsd)}</p>
+      <p className="bag-line__meta">{`${product.sku} / ${finish.label} / ${product.watts} W`}</p>
+      <p className="bag-line__price">
+        <span className="bag-line__total">{formatUsd(line.lineUsd)}</span>
+        {line.qty > 1 && <span className="bag-line__each">{`${formatUsd(product.priceUsd)} each`}</span>}
+      </p>
       <Stepper label={label} qty={line.qty} onStep={onStep} />
       <button type="button" className="bag-line__remove" aria-label={`Remove ${label}`} onClick={onRemove}>
         Remove
       </button>
     </li>
+  );
+}
+
+function EmptyCart({ onNavigate }) {
+  return (
+    <div className="bag-empty">
+      <span className="bag-empty__emblem" aria-hidden="true">
+        <BagGlyph testId={null} />
+      </span>
+      <h3 className="bag-empty__title">Your cart is empty</h3>
+      <p className="bag-empty__copy">
+        Explore our modular lighting and shelving or design your space in 3D to build your system.
+      </p>
+      <div className="bag-empty__actions">
+        <Link to="/catalog" className="bag-pill bag-pill--primary" onClick={onNavigate}>
+          Browse Catalog
+          <ArrowRight />
+        </Link>
+        <Link to="/room-3d" className="bag-pill bag-pill--ghost" onClick={onNavigate}>
+          <CubeGlyph />
+          Open 3D Room Planner
+        </Link>
+      </div>
+    </div>
   );
 }
 
@@ -75,6 +118,10 @@ function LoadMeter({ psu }) {
   );
 }
 
+// The summary card. The 24V block (load, power supply, meter and note) is
+// always rendered: Visual mode shows the two rows of a filled cart, Specs mode
+// adds the meter and the utilisation note, and an empty cart in Visual mode
+// folds the whole card away (shell.css), so every value keeps its exact text.
 function BagSummary({ count, subtotalUsd, loadW, psu, onClear, onCheckout }) {
   const [armed, setArmed] = useState(false);
   const percent = Math.round(psu.utilisation * 100);
@@ -85,33 +132,38 @@ function BagSummary({ count, subtotalUsd, loadW, psu, onClear, onCheckout }) {
   }
 
   return (
-    <footer className="drawer__footer bag-summary">
-      <dl className="bag-summary__rows">
-        <div className="bag-summary__row">
+    <footer className="bag-summary">
+      <div className="bag-summary__power">
+        <dl className="bag-summary__rows">
+          <div className="bag-summary__row">
+            <dt>24V System Load</dt>
+            <dd data-testid="bag-load">{`${loadW} W`}</dd>
+          </div>
+          <div className="bag-summary__row bag-summary__row--psu">
+            <dt>Power Supply</dt>
+            <dd data-testid="bag-psu">{psu.label}</dd>
+          </div>
+        </dl>
+        <LoadMeter psu={psu} />
+        <p className="bag-summary__note" data-testid="bag-psu-note">
+          {note}
+        </p>
+      </div>
+      <dl className="bag-summary__total">
+        <div className="bag-summary__row bag-summary__row--subtotal">
           <dt>Subtotal</dt>
           <dd data-testid="bag-subtotal">{formatUsd(subtotalUsd)}</dd>
         </div>
-        <div className="bag-summary__row">
-          <dt>24V System Load</dt>
-          <dd data-testid="bag-load">{loadW} W</dd>
-        </div>
-        <div className="bag-summary__row bag-summary__row--psu">
-          <dt>PSU</dt>
-          <dd data-testid="bag-psu">{psu.label}</dd>
-        </div>
       </dl>
-      <LoadMeter psu={psu} />
-      <p className="bag-summary__note mono" data-testid="bag-psu-note">
-        {note}
-      </p>
+      {count > 0 && <p className="bag-summary__fineprint">VAT and trade codes are applied at checkout.</p>}
       {count > 0 && (
         <Link
           to="/checkout"
-          className="button button--primary bag-summary__checkout"
+          className="bag-pill bag-pill--primary bag-summary__checkout"
           data-testid="proceed-to-checkout"
           onClick={onCheckout}
         >
-          Configure Quote & Checkout
+          Proceed to Checkout
           <ArrowRight />
         </Link>
       )}
@@ -126,7 +178,7 @@ function BagSummary({ count, subtotalUsd, loadW, psu, onClear, onCheckout }) {
             else setArmed(true);
           }}
         >
-          {armed ? `Confirm: clear ${count} ${count === 1 ? 'item' : 'items'}` : 'Clear cart'}
+          {armed ? `Confirm: clear ${itemCount(count)}` : 'Clear cart'}
         </button>
       )}
     </footer>
@@ -147,7 +199,7 @@ export function BagDrawer({ open, onClose, returnFocus }) {
 
   const clearBag = () => {
     clear();
-    addToast(`Cart cleared: ${count} ${count === 1 ? 'item' : 'items'} removed.`, 'info');
+    addToast(`Cart cleared: ${itemCount(count)} removed.`, 'info');
   };
 
   useModalDialog({ open, panelRef, initialFocusRef: closeRef, returnFocus, onClose });
@@ -162,33 +214,37 @@ export function BagDrawer({ open, onClose, returnFocus }) {
 
   if (!open) return null;
 
+  const filled = lines.length > 0;
+
   return (
     <div className="drawer-root">
       <div className="drawer-scrim" onClick={onClose} aria-hidden="true" />
       <aside
         id="bag-drawer"
         ref={panelRef}
-        className="drawer"
+        className="drawer bag-drawer"
         role="dialog"
         aria-modal="true"
         aria-labelledby="bag-drawer-title"
+        data-state={filled ? 'filled' : 'empty'}
       >
-        <header className="drawer__header">
-          <div>
-            <p className="index-label">
-              <span className="index-label__num">{padIndex(count)}</span> / Items
-            </p>
-            <h2 id="bag-drawer-title" className="drawer__title">
-              Cart
+        <header className="bag-drawer__header">
+          <div className="bag-drawer__heading">
+            <BagGlyph className="bag-drawer__glyph" testId={null} />
+            <h2 id="bag-drawer-title" className="bag-drawer__title">
+              Your Cart
             </h2>
+            <span className="bag-drawer__count" data-testid="bag-count">
+              {itemCount(count)}
+            </span>
           </div>
-          <button ref={closeRef} type="button" className="drawer__close" onClick={onClose}>
-            Close
+          <button ref={closeRef} type="button" className="bag-drawer__close" aria-label="Close" onClick={onClose}>
+            <CloseGlyph />
           </button>
         </header>
 
-        {lines.length > 0 ? (
-          <div className="drawer__body drawer__body--lines">
+        {filled ? (
+          <div className="bag-drawer__body">
             <ul ref={listRef} className="bag-lines" aria-label="Cart contents" tabIndex={-1}>
               {lines.map((line) => (
                 <BagLine
@@ -201,15 +257,8 @@ export function BagDrawer({ open, onClose, returnFocus }) {
             </ul>
           </div>
         ) : (
-          <div className="drawer__body">
-            <p className="drawer__empty">Your cart is empty.</p>
-            <p className="drawer__hint">
-              Systems configured in the planners are added here as a complete parts list: fixtures,
-              rail lengths, drivers and mounting hardware.
-            </p>
-            <Link to="/catalog" className="button" onClick={onClose}>
-              Browse catalog
-            </Link>
+          <div className="bag-drawer__body bag-drawer__body--empty">
+            <EmptyCart onNavigate={onClose} />
           </div>
         )}
 

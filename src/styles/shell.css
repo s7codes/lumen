@@ -332,7 +332,12 @@
   }
 }
 
-/* Bag drawer */
+/* Cart drawer. The panel slides in from the right on warm basalt: a two-stop
+   gradient under a soft champagne top light, edged by a champagne hairline.
+   Lines sit on rounded cards with the part drawing, and the summary closes
+   the panel on its own card with a champagne checkout key. Depth comes from
+   hairlines and zero-blur plinths, never a glow. Visual mode reads like a
+   store; Specs mode adds SKUs, the driver meter and the utilisation note. */
 
 .drawer-root {
   position: fixed;
@@ -343,10 +348,12 @@
 .drawer-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(8, 8, 7, 0.72);
+  background: rgba(9, 8, 6, 0.7);
   animation: drawer-fade var(--duration-base) var(--ease-out);
 }
 
+/* Geometry and the single finite entrance animation stay on the dialog
+   element itself: specs wait on its own getAnimations() before measuring. */
 .drawer {
   position: absolute;
   top: 0;
@@ -355,25 +362,102 @@
   display: flex;
   flex-direction: column;
   width: min(420px, 100%);
-  background: var(--bg-surface);
-  border-left: 1px solid var(--border-strong);
   animation: drawer-slide var(--duration-slow) var(--ease-out);
 }
 
-.drawer__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-5);
-  border-bottom: 1px solid var(--border-hairline);
+.bag-drawer {
+  --cart-champagne: #e5c799;
+  --cart-champagne-hi: #eed8b3;
+  --cart-plinth: #7a5c37;
+  --cart-amber: #e8923a;
+  --cart-ink: #1b1611;
+  --cart-text: #f4f1ea;
+  --cart-text-soft: #d6cfc3;
+  --cart-text-muted: #9a9286;
+  --cart-hairline: rgba(229, 199, 153, 0.12);
+  --cart-pad: var(--space-5);
+
+  border-left: 1px solid rgba(229, 199, 153, 0.16);
+  background:
+    radial-gradient(130% 42% at 50% 0%, rgba(229, 199, 153, 0.09) 0%, rgba(229, 199, 153, 0.03) 48%, rgba(229, 199, 153, 0) 100%),
+    linear-gradient(180deg, #171513 0%, #11100e 100%);
+  color: var(--cart-text);
 }
 
-.drawer__title {
-  margin-top: var(--space-2);
-  font-size: var(--text-lg);
+.bag-drawer__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 20px var(--cart-pad) var(--space-4);
+  border-bottom: 1px solid var(--cart-hairline);
+}
+
+.bag-drawer__heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bag-drawer__glyph {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--cart-champagne);
+}
+
+.bag-drawer__title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  color: var(--cart-text);
+}
+
+.bag-drawer__count {
+  flex: none;
+  padding: 3px 10px;
+  border: 1px solid rgba(229, 199, 153, 0.24);
+  border-radius: 999px;
+  background: rgba(229, 199, 153, 0.08);
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: var(--tracking-heading);
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--cart-champagne);
+}
+
+/* The cart's own round close key. .drawer__close below stays the square key
+   of the sign-in, project diff and blueprint dialogs. */
+.bag-drawer__close {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--cart-text-soft);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.bag-drawer__close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.bag-drawer__close:hover {
+  border-color: rgba(229, 199, 153, 0.34);
+  background: rgba(229, 199, 153, 0.1);
+  color: var(--cart-text);
 }
 
 .drawer__close {
@@ -393,112 +477,368 @@
   border-color: var(--border-strong);
 }
 
-.drawer__body {
+/* The only scroller: header and summary stay put around it. */
+.bag-drawer__body {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-4);
   min-height: 0;
-  padding: var(--space-6) var(--space-5);
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(229, 199, 153, 0.2) transparent;
 }
 
-.drawer__body--lines {
-  align-items: stretch;
-  gap: 0;
-  padding: 0;
+/* Lines scrolling past an edge fade out instead of being cut. The fades sit
+   inside the list padding, so a list that fits, or one scrolled to either
+   end, shows every card whole. */
+.bag-drawer[data-state='filled'] .bag-drawer__body {
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14px, #000 calc(100% - 16px), transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0, #000 14px, #000 calc(100% - 16px), transparent 100%);
 }
 
-.drawer__empty {
-  font-size: var(--text-md);
-}
-
-.drawer__hint {
-  max-width: 34ch;
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-}
-
-.drawer__footer {
+/* Auto margins centre the empty card and fall back to the top edge when the
+   panel is too short, so nothing is pushed out of reach above the scroll. */
+.bag-drawer__body--empty {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5) var(--space-5);
-  border-top: 1px solid var(--border-strong);
-  background: var(--bg-elevated);
+  padding: var(--space-5) var(--cart-pad);
 }
 
-/* Bag lines */
+/* Empty state: a warm glass card that points at the catalog and the planner. */
+.bag-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-block: auto;
+  padding: 36px 24px 28px;
+  border: 1px solid rgba(229, 199, 153, 0.14);
+  border-radius: 20px;
+  background:
+    radial-gradient(90% 60% at 50% 0%, rgba(229, 199, 153, 0.1) 0%, rgba(229, 199, 153, 0) 100%),
+    rgba(255, 255, 255, 0.025);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  text-align: center;
+}
+
+.bag-empty__emblem {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 6px;
+  border: 1px solid rgba(229, 199, 153, 0.22);
+  border-radius: 18px;
+  background: radial-gradient(circle at 50% 30%, rgba(229, 199, 153, 0.16) 0%, rgba(229, 199, 153, 0.03) 75%);
+  color: var(--cart-champagne);
+}
+
+.bag-empty__emblem svg {
+  width: 26px;
+  height: 26px;
+}
+
+.bag-empty__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: var(--cart-text);
+}
+
+.bag-empty__copy {
+  max-width: 31ch;
+  font-size: 13.5px;
+  line-height: 1.55;
+  text-wrap: balance;
+  color: var(--cart-text-soft);
+}
+
+.bag-empty__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 264px;
+  margin-top: 10px;
+}
+
+/* Pill keys. The champagne key rests on a hard bronze plinth and lifts 1 px
+   on hover (zero blur); the ghost key is a champagne hairline on glass. */
+.bag-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding-inline: 20px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-base) var(--ease-out),
+    translate var(--duration-base) var(--ease-out);
+}
+
+.bag-pill svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  transition: transform var(--duration-slow) var(--ease-out);
+}
+
+.bag-pill--primary {
+  border-color: var(--cart-champagne);
+  background: var(--cart-champagne);
+  box-shadow: 0 2px 0 var(--cart-plinth);
+  color: var(--cart-ink);
+}
+
+.bag-pill--primary:hover {
+  border-color: var(--cart-champagne-hi);
+  background: var(--cart-champagne-hi);
+  box-shadow: 0 3px 0 var(--cart-plinth);
+  translate: 0 -1px;
+}
+
+.bag-pill--primary:hover svg {
+  transform: translateX(3px);
+}
+
+.bag-pill--primary:active {
+  box-shadow: 0 1px 0 var(--cart-plinth);
+  translate: 0 1px;
+}
+
+.bag-pill--ghost {
+  border-color: rgba(229, 199, 153, 0.26);
+  background: rgba(255, 255, 255, 0.03);
+  font-weight: 500;
+  color: var(--cart-text);
+}
+
+.bag-pill--ghost svg {
+  color: var(--cart-champagne);
+}
+
+.bag-pill--ghost:hover {
+  border-color: rgba(229, 199, 153, 0.5);
+  background: rgba(229, 199, 153, 0.08);
+}
+
+/* Cart lines: one rounded card per line */
 
 .bag-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--space-4) var(--cart-pad);
   outline: none;
 }
 
 .bag-line {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
   grid-template-areas:
-    'swatch info total'
-    'swatch stepper remove';
+    'thumb info total'
+    'thumb stepper remove';
   align-items: center;
-  gap: var(--space-3) var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--border-hairline);
+  gap: 10px 14px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color var(--duration-fast) var(--ease-out);
 }
 
-.bag-line__swatch {
-  grid-area: swatch;
+/* Specs mode gives the SKU line a full-width row of its own. */
+:root[data-mode='technical'] .bag-line {
+  grid-template-areas:
+    'thumb info total'
+    'thumb meta meta'
+    'thumb stepper remove';
+}
+
+.bag-line:hover {
+  border-color: rgba(229, 199, 153, 0.2);
+}
+
+/* The part drawing (ProductThumbGlyph) scales its 36-unit tile to the thumb
+   track. The .product-thumb rule in studio.css only loads with the planners. */
+.bag-line__thumb {
+  grid-area: thumb;
+  flex: none;
   align-self: start;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-xs);
-  background: linear-gradient(135deg, var(--swatch-hi) 0%, var(--swatch) 45%, var(--swatch-lo) 100%);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+  width: 52px;
+  height: 52px;
 }
 
 .bag-line__info {
   grid-area: info;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   min-width: 0;
 }
 
 .bag-line__name {
   font-size: var(--text-sm);
   font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  overflow-wrap: break-word;
+  text-wrap: balance;
+  color: var(--cart-text);
 }
 
+.bag-line__finish {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--cart-text-soft);
+}
+
+.bag-line__swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, var(--swatch-hi) 0%, var(--swatch) 45%, var(--swatch-lo) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+/* Specs mode only: SKU / finish / load in mono. The text always renders. */
 .bag-line__meta {
-  margin-top: 2px;
-  font-size: var(--text-2xs);
+  grid-area: meta;
+  display: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
-  color: var(--text-muted);
+  color: var(--cart-text-muted);
+}
+
+:root[data-mode='technical'] .bag-line__meta {
+  display: block;
+}
+
+.bag-line__price {
+  grid-area: total;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  align-self: start;
+  text-align: right;
 }
 
 .bag-line__total {
-  grid-area: total;
-  align-self: start;
-  font-size: var(--text-xs);
-  text-align: right;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  color: var(--cart-text);
+}
+
+.bag-line__each {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--cart-text-muted);
 }
 
 .bag-line__remove {
   grid-area: remove;
   justify-self: end;
   height: 28px;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--text-muted);
-  transition: color var(--duration-fast) var(--ease-out);
+  margin-inline-end: -8px;
+  padding-inline: 8px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--cart-text-muted);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 
 .bag-line__remove:hover {
-  color: var(--lumen-amber-soft);
+  background: rgba(229, 199, 153, 0.08);
+  color: var(--cart-champagne);
 }
+
+/* Quantity: round - / + keys in one pill. aria-disabled keeps a bound key
+   focusable, so it dims instead of dropping out of the focus trap. */
+.bag-stepper {
+  grid-area: stepper;
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 2px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.bag-stepper__key {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  color: var(--cart-text-soft);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.bag-stepper__key svg {
+  width: 12px;
+  height: 12px;
+}
+
+.bag-stepper__key:hover:not([aria-disabled='true']) {
+  background: rgba(229, 199, 153, 0.14);
+  color: var(--cart-text);
+}
+
+.bag-stepper__key[aria-disabled='true'] {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.bag-stepper__value {
+  min-width: 24px;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--cart-text);
+}
+
+/* Product detail quantity stepper (the cart uses .bag-stepper above) */
 
 .stepper {
   grid-area: stepper;
@@ -539,88 +879,203 @@
   line-height: 26px;
 }
 
-/* Bag summary: financial and electrical totals */
+/* Summary card: the 24V block, the subtotal and the checkout key */
+
+.bag-summary {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 var(--cart-pad) var(--cart-pad);
+  padding: var(--space-4) var(--space-4) 12px;
+  border: 1px solid var(--cart-hairline);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0.02) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* An empty cart in Visual mode has nothing to total: the card folds away and
+   the empty state owns the panel. Specs mode keeps the zeroed 24V readout.
+   Written per mode on purpose: .tech-only would lose to this file's display
+   rules, which load after base.css. */
+:root:not([data-mode='technical']) .bag-drawer[data-state='empty'] .bag-summary {
+  display: none;
+}
+
+.bag-summary__power {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
 .bag-summary__rows {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 6px;
 }
 
 .bag-summary__row {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-4);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font-size: 13px;
+  line-height: 1.4;
   font-variant-numeric: tabular-nums;
 }
 
 .bag-summary__row dt {
-  color: var(--text-muted);
   white-space: nowrap;
+  color: var(--cart-text-muted);
 }
 
 .bag-summary__row dd {
   text-align: right;
-  color: var(--text-primary);
+  color: var(--cart-text-soft);
 }
 
 .bag-summary__row--psu dd {
-  color: var(--lumen-amber-soft);
+  color: var(--cart-champagne);
+}
+
+.bag-summary__total {
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.bag-summary__row--subtotal dt {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--cart-text);
+}
+
+.bag-summary__row--subtotal dd {
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--cart-text);
+}
+
+.bag-summary__fineprint {
+  margin-top: -4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--cart-text-muted);
+}
+
+/* Specs mode: the driver meter and the utilisation note join the 24V rows,
+   and the readings switch to mono. */
+.load-meter,
+.bag-summary__note {
+  display: none;
+}
+
+:root[data-mode='technical'] .load-meter {
+  display: grid;
+}
+
+:root[data-mode='technical'] .bag-summary__note {
+  display: block;
+}
+
+:root[data-mode='technical'] .bag-summary__power dd {
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 
 .load-meter {
-  display: grid;
   grid-template-columns: repeat(20, minmax(0, 1fr));
   gap: 2px;
-  height: 8px;
+  height: 6px;
 }
 
 .load-meter__segment {
-  border-radius: 1px;
-  background: var(--bg-raised);
-  box-shadow: inset 0 0 0 1px var(--border-hairline);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .load-meter__segment[data-on] {
-  background: var(--lumen-amber);
-  box-shadow: none;
+  background: var(--cart-amber);
 }
 
 .bag-summary__note {
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--cart-text-muted);
+}
+
+.bag-summary__checkout {
+  width: 100%;
+  height: 46px;
+  margin-top: 2px;
 }
 
 .bag-summary__clear {
-  align-self: flex-start;
-  height: 28px;
-  padding-inline: var(--space-3);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--text-secondary);
+  align-self: center;
+  height: 30px;
+  margin-top: -2px;
+  padding-inline: 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--cart-text-muted);
   transition:
+    background-color var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out);
 }
 
 .bag-summary__clear:hover {
-  border-color: var(--border-strong);
-  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--cart-text-soft);
 }
 
 .bag-summary__clear[data-armed] {
-  border-color: var(--lumen-amber);
+  border-color: rgba(232, 146, 58, 0.6);
+  background: rgba(232, 146, 58, 0.1);
   color: var(--lumen-amber-soft);
+}
+
+/* Keyboard focus: a crisp amber ring that follows each key's round shape. */
+.bag-drawer__close:focus-visible,
+.bag-pill:focus-visible,
+.bag-stepper__key:focus-visible,
+.bag-line__remove:focus-visible,
+.bag-summary__clear:focus-visible {
+  outline: 2px solid var(--cart-amber);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+@media (max-width: 419px) {
+  .bag-drawer {
+    --cart-pad: var(--space-4);
+  }
+
+  .bag-line {
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    column-gap: 12px;
+  }
+
+  .bag-line__thumb {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bag-pill--primary:hover,
+  .bag-pill--primary:active {
+    translate: none;
+  }
+
+  .bag-pill--primary:hover svg {
+    transform: none;
+  }
 }
 
 @keyframes drawer-fade {
@@ -944,11 +1399,6 @@
   .workspace-layout {
     grid-template-columns: minmax(0, 1fr);
   }
-}
-
-.bag-summary__checkout {
-  justify-content: space-between;
-  width: 100%;
 }
 
 /* Route fallback: centered in the main frame while a workspace chunk loads */

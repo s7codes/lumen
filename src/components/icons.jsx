@@ -36,6 +36,24 @@ export function PlusGlyph() {
   );
 }
 
+/** The plus glyph's crossbar alone: the decrease key of a quantity stepper. */
+export function MinusGlyph({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <path d="M2.5 8h11" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
+    </svg>
+  );
+}
+
+/** Two crossed strokes for a dialog close key. The key itself carries the name "Close". */
+export function CloseGlyph({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
+    </svg>
+  );
+}
+
 // Three faders with square caps: the camera settings trigger.
 export function FaderGlyph() {
   return (
@@ -124,9 +142,10 @@ export function SearchGlyph({ className }) {
  * handle loop, drawn on the same 16-unit grid and 1.25 stroke as SearchGlyph
  * so the two navbar keys carry one visual weight at 14 x 14.
  */
-export function BagGlyph({ className }) {
+/** The cart glyph. Only the navbar pill carries the `bag-glyph` test hook; the drawer's copies pass testId={null}. */
+export function BagGlyph({ className, testId = 'bag-glyph' }) {
   return (
-    <svg className={className} viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false" data-testid="bag-glyph">
+    <svg className={className} viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false" data-testid={testId ?? undefined}>
       <path d="M2.75 5.75h10.5l-.75 8H3.5l-.75-8Z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="miter" />
       <path d="M5.75 7.5V4.25a2.25 2.25 0 0 1 4.5 0V7.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" />
     </svg>
