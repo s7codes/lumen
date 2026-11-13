@@ -178,6 +178,9 @@ test.describe('command palette', () => {
     await expect(price).toBeVisible();
     await expect(price).toHaveText(`${pendant.watts} W / ${formatUsd(pendant.priceUsd)}`);
     expect(await price.evaluate((el) => el.innerText.trim())).toBe('$420');
+    // Hardware radii inside the panel: a 6px row and a 4px price tag, no pills.
+    await expect(row).toHaveCSS('border-top-left-radius', '6px');
+    await expect(price).toHaveCSS('border-top-left-radius', '4px');
     // The SKU and the wattage stay in the DOM for search, out of sight in Visual mode.
     const code = row.getByTestId('command-palette-code');
     await expect(code).toHaveText('LMN-PD-150');
@@ -251,8 +254,15 @@ test.describe('command palette', () => {
     await expect(items.first()).toHaveText(/Switch to Visual Mode/);
     await input.fill('cart');
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('dialog', { name: 'Cart' })).toBeVisible();
+    const cart = page.getByRole('dialog', { name: 'Cart' });
+    await expect(cart).toBeVisible();
     await expect(palette(page)).toHaveCount(0);
+    // The drawer it opens is the editorial sheet: a plain title, no second bag icon, sharp keys only.
+    await expect(cart.getByRole('heading', { level: 2 })).toHaveText('Cart');
+    await expect(cart.getByTestId('bag-glyph')).toHaveCount(0);
+    await expect(cart.getByRole('button', { name: 'Close' })).toHaveCSS('border-top-left-radius', '4px');
+    const radii = await cart.evaluate((el) => [...el.querySelectorAll('a, button')].map((key) => parseFloat(getComputedStyle(key).borderTopLeftRadius)));
+    expect(Math.max(...radii)).toBeLessThanOrEqual(4);
 
     expect(errors).toEqual([]);
     expect(await readCspViolations(page)).toEqual([]);

@@ -7,9 +7,19 @@ import {
   sanitizeBagItems,
   summarizeBag,
 } from '../src/lib/bag.js';
+import { FINISHES, PRODUCTS } from '../src/data/products.js';
 import { collectRuntimeErrors, horizontalOverflow, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
 const STORAGE_KEY = `lumen:${BAG_STORAGE_KEY}`;
+// The empty cart's signature parts, in the order the sheet lists them.
+const QUICK_ADD = ['floating-shelf-110', 'linear-pendant-150', 'modular-cube-36'].map((id) =>
+  PRODUCTS.find((product) => product.id === id),
+);
+
+function quickAddLabel(product) {
+  const finish = FINISHES.find((entry) => entry.id === product.defaultFinish);
+  return `Add ${product.name}, ${finish.label} to cart`;
+}
 
 async function addFromCatalog(page, name, finish) {
   const card = page.getByRole('article', { name });
@@ -258,41 +268,105 @@ test.describe('bag drawer', () => {
     await expect(close).toBeFocused();
   });
 
-  test('an empty cart opens on warm basalt with a guided empty state and Specs-only telemetry', async ({ page }) => {
+  test('an empty cart reads as an editorial sheet: a left-aligned note, sharp keys, quick-add rows and Specs-only telemetry', async ({
+    page,
+  }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/');
     await expect(page.locator('html')).toHaveAttribute('data-mode', 'architectural');
 
     const drawer = await openBag(page);
-    // Warm basalt: a champagne top light over a two-stop gradient, a champagne hairline edge, no glow.
-    await expect(drawer).toHaveCSS(
-      'background-image',
-      /^radial-gradient\(.+\), linear-gradient\(rgb\(23, 21, 19\)( 0%)?, rgb\(17, 16, 14\)( 100%)?\)$/,
-    );
-    await expect(drawer).toHaveCSS('border-left-color', 'rgba(229, 199, 153, 0.16)');
+    // One flat sheet of lifted basalt behind a neutral hairline edge: no gradient light, no glow.
+    await expect(drawer).toHaveCSS('background-color', 'rgb(30, 28, 25)');
+    await expect(drawer).toHaveCSS('background-image', 'none');
+    await expect(drawer).toHaveCSS('border-left-color', 'rgba(255, 255, 255, 0.08)');
     await expect(drawer).toHaveCSS('box-shadow', 'none');
-    await expect(drawer.getByTestId('bag-count')).toHaveText('0 items');
 
+    // Header: the plain title and a mono counter, no second bag icon, a rectangular labelled Close key.
+    const header = drawer.locator('.bag-drawer__header');
+    await expect(header).toHaveCSS('border-bottom-color', 'rgba(255, 255, 255, 0.08)');
+    await expect(drawer.getByRole('heading', { level: 2 })).toHaveText('Cart');
+    await expect(drawer.getByTestId('bag-glyph')).toHaveCount(0);
+    const count = drawer.getByTestId('bag-count');
+    await expect(count).toHaveText('0 items');
+    await expect(count).toHaveCSS('font-family', /IBM Plex Mono/);
     const close = drawer.getByRole('button', { name: 'Close' });
+    await expect(close).toHaveText('Close');
+    await expect(close).toHaveCSS('border-top-left-radius', '4px');
+
+    // The note: left-aligned under the header, no floating card and no emblem tile.
     const catalog = drawer.getByRole('link', { name: 'Browse Catalog' });
     const planner = drawer.getByRole('link', { name: 'Open 3D Room Planner' });
+    const heading = drawer.getByRole('heading', { name: 'Your cart is empty' });
     await expect(close).toBeFocused();
-    await expect(drawer.getByRole('heading', { name: 'Your cart is empty' })).toBeVisible();
+    await expect(heading).toBeVisible();
+    await expect(heading).toHaveCSS('font-size', '20px');
+    await expect(heading).toHaveCSS('font-weight', '500');
+    await expect(heading).toHaveCSS('color', 'rgb(244, 241, 234)');
     await expect(
-      drawer.getByText('Explore our modular lighting and shelving or design your space in 3D to build your system.'),
-    ).toBeVisible();
+      drawer.getByText(
+        'Select individual luminaires and shelves from the catalog, or push a complete wall or room specification from the planners.',
+      ),
+    ).toHaveCSS('color', 'rgb(158, 152, 142)');
+    const note = drawer.locator('.bag-empty');
+    await expect(note).toHaveCSS('border-top-style', 'none');
+    await expect(note).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    const sheet = await drawer.boundingBox();
+    const headingBox = await heading.boundingBox();
+    const catalogBox = await catalog.boundingBox();
+    // 1 px edge plus the 24 px sheet margin.
+    expect(headingBox.x - sheet.x).toBeCloseTo(25, 0);
+    expect(catalogBox.x).toBeCloseTo(headingBox.x, 0);
+
+    // The two routes in: sharp 4px keys with mono uppercase labels, as on the hero.
     await expect(catalog).toHaveAttribute('href', '/catalog');
     await expect(planner).toHaveAttribute('href', '/room-3d');
+    for (const key of [catalog, planner]) {
+      await expect(key).toHaveCSS('border-top-left-radius', '4px');
+      await expect(key).toHaveCSS('font-family', /IBM Plex Mono/);
+      await expect(key).toHaveCSS('text-transform', 'uppercase');
+      await expect(key).toHaveCSS('letter-spacing', '0.96px');
+    }
+    await expect(catalog).toHaveCSS('background-color', 'rgb(232, 146, 58)');
+    await expect(planner).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.16)');
+    await expect(planner).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    // Nothing on the sheet is a pill or a bubble.
+    const radii = await drawer.evaluate((el) => [...el.querySelectorAll('a, button')].map((key) => parseFloat(getComputedStyle(key).borderTopLeftRadius)));
+    expect(Math.max(...radii)).toBeLessThanOrEqual(4);
     await expect(drawer.getByTestId('proceed-to-checkout')).toHaveCount(0);
     await expect(drawer.getByRole('button', { name: 'Clear cart' })).toHaveCount(0);
 
-    // The trap runs Close, the two pills, then back to Close.
-    await page.keyboard.press('Tab');
-    await expect(catalog).toBeFocused();
-    await page.keyboard.press('Tab');
-    await expect(planner).toBeFocused();
-    await page.keyboard.press('Tab');
-    await expect(close).toBeFocused();
+    // Below a hairline: three signature parts, each an indexed row with its drawing, size and price.
+    const quick = drawer.getByTestId('bag-quick-add');
+    await expect(quick).toBeVisible();
+    await expect(quick).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.07)');
+    await expect(quick.getByRole('heading', { name: 'Signature Starting Modules' })).toBeVisible();
+    const rows = quick.getByTestId('bag-quick-row');
+    await expect(rows).toHaveCount(QUICK_ADD.length);
+    const adds = [];
+    for (const [index, product] of QUICK_ADD.entries()) {
+      const row = rows.nth(index);
+      const { w, h, d } = product.dimsCm;
+      await expect(row).toHaveAttribute('data-product', product.id);
+      await expect(row).toContainText(product.name);
+      await expect(row.getByTestId('bag-quick-dims')).toHaveText(`${w} x ${h} x ${d} cm`);
+      await expect(row.getByTestId('bag-quick-price')).toHaveText(`$${product.priceUsd}`);
+      await expect(row).toHaveCSS('border-bottom-color', 'rgba(255, 255, 255, 0.07)');
+      await expect(row).toHaveCSS('border-top-left-radius', '0px');
+      const glyph = row.getByTestId('product-thumb-glyph');
+      await expect(glyph).toHaveAttribute('data-size', 'sm');
+      await expect(glyph).toHaveAttribute('data-finish', product.defaultFinish);
+      const add = row.getByRole('button', { name: quickAddLabel(product) });
+      await expect(add).toHaveText('Add');
+      await expect(add).toHaveCSS('border-top-left-radius', '4px');
+      adds.push(add);
+    }
+
+    // The trap runs Close, the two routes, the three Add keys, then back to Close.
+    for (const key of [catalog, planner, ...adds, close]) {
+      await page.keyboard.press('Tab');
+      await expect(key).toBeFocused();
+    }
 
     // Visual mode: an empty cart keeps its 24V readout in the DOM, out of sight.
     const telemetry = [drawer.getByTestId('bag-load'), drawer.getByTestId('bag-psu'), drawer.getByTestId('bag-psu-note')];
@@ -314,12 +388,64 @@ test.describe('bag drawer', () => {
     await expect(drawer.getByTestId('bag-psu-note')).toHaveText('Passive parts only, no driver load');
     await expect(drawer.getByRole('heading', { name: 'Your cart is empty' })).toBeVisible();
 
-    // A pill closes the drawer on its way to the route.
+    // A route key closes the drawer on its way to the route.
     await catalog.click();
     await expect(drawer).toHaveCount(0);
     await expect(page).toHaveURL(/\/catalog$/);
     expect(errors).toEqual([]);
     expect(await readCspViolations(page)).toEqual([]);
+  });
+
+  test('a quick-add row puts one part in the cart and hands the sheet to hairline line rows', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.goto('/');
+    const drawer = await openBag(page);
+    const pendant = QUICK_ADD.find((product) => product.id === 'linear-pendant-150');
+    const finish = FINISHES.find((entry) => entry.id === pendant.defaultFinish);
+
+    await drawer.getByRole('button', { name: quickAddLabel(pendant) }).click();
+    await expect(drawer).toHaveAttribute('data-state', 'filled');
+    await expect(page.getByTestId('toast-message').last()).toHaveText(`${pendant.name}, ${finish.label} added to cart.`);
+    expect(JSON.parse(await readStoredBag(page))).toEqual([{ id: pendant.id, finish: pendant.defaultFinish, qty: 1 }]);
+    await expect(drawer.getByTestId('bag-quick-add')).toHaveCount(0);
+    await expect(drawer.getByTestId('bag-count')).toHaveText('1 item');
+    await expect(drawer.getByTestId('bag-subtotal')).toHaveText(`$${pendant.priceUsd}`);
+    await expect(drawer.getByTestId('bag-load')).toHaveText(`${pendant.watts} W`);
+    // The pressed key is gone, so focus stays in the dialog on the new list.
+    await expect(drawer.getByRole('list', { name: 'Cart contents' })).toBeFocused();
+
+    // A filled line is a full-width row between hairlines, not a floating card.
+    const line = drawer.getByTestId('bag-line');
+    await expect(line).toHaveCount(1);
+    await expect(line).toHaveAttribute('data-line', `${pendant.id}:${pendant.defaultFinish}`);
+    await expect(line.getByTestId('bag-line-qty')).toHaveText('1');
+    await expect(line).toHaveCSS('border-top-left-radius', '0px');
+    await expect(line).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(line).toHaveCSS('border-bottom-color', 'rgba(255, 255, 255, 0.07)');
+    const sheet = await drawer.boundingBox();
+    const row = await line.boundingBox();
+    expect(row.x).toBeCloseTo(sheet.x + 1, 0);
+    expect(row.width).toBeCloseTo(sheet.width - 1, 0);
+    await expect(line.locator('.bag-line__finish')).toHaveText(`${finish.label} / ${pendant.watts} W`);
+    await expect(line.locator('.bag-line__finish')).toHaveCSS('border-top-style', 'none');
+    await expect(line.getByRole('group', { name: `Quantity, ${pendant.name}, ${finish.label}` })).toHaveCSS(
+      'border-top-left-radius',
+      '4px',
+    );
+    const checkout = drawer.getByTestId('proceed-to-checkout');
+    await expect(checkout).toHaveText('Proceed to Checkout');
+    await expect(checkout).toHaveCSS('border-top-left-radius', '4px');
+    await expect(checkout).toHaveCSS('background-color', 'rgb(232, 146, 58)');
+    await expect(checkout).toHaveCSS('text-transform', 'uppercase');
+    await expect(drawer.locator('.bag-summary')).toHaveCSS('border-top-left-radius', '0px');
+
+    // Taking the line out brings the quick-add rows back.
+    await drawer.getByRole('button', { name: `Remove ${pendant.name}, ${finish.label}`, exact: true }).click();
+    await expect(drawer).toHaveAttribute('data-state', 'empty');
+    await expect(drawer.getByTestId('bag-quick-row')).toHaveCount(QUICK_ADD.length);
+    await expect(drawer.getByRole('button', { name: 'Close' })).toBeFocused();
+    expect(await readStoredBag(page)).toBeNull();
+    expect(errors).toEqual([]);
   });
 });
 

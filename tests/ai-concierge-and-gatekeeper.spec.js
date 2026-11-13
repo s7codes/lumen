@@ -1002,8 +1002,8 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     await expect(question).toHaveCSS('background-color', 'rgb(42, 38, 33)');
     await expect(question).toHaveCSS('color', 'rgb(244, 241, 234)');
     await expect(question).toHaveCSS('border-top-color', 'rgba(229, 199, 153, 0.22)');
-    await expect(question).toHaveCSS('border-top-left-radius', '18px');
-    await expect(question).toHaveCSS('border-bottom-right-radius', '4px');
+    await expect(question).toHaveCSS('border-top-left-radius', '10px');
+    await expect(question).toHaveCSS('border-bottom-right-radius', '3px');
     await expect(reply).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     const avatar = reply.getByTestId('concierge-avatar');
     await expect(avatar.getByTestId('lumen-mark')).toBeVisible();
@@ -1094,7 +1094,7 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     expect(geometry).toMatchObject({ dock: 0, rows: 1 });
     expect(geometry.share).toBeGreaterThanOrEqual(0.8);
 
-    // The question: a warm bubble on the right. The composer: one pill with a round send key.
+    // The question: a warm bubble on the right. The composer: one 10px well with a 6px send key, no pills.
     const bubble = await page.getByTestId('concierge-question').first().evaluate((el) => {
       const body = el.closest('.concierge-panel__body');
       const style = getComputedStyle(body);
@@ -1112,13 +1112,14 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     await expect(field).toHaveCSS('border-top-color', 'rgba(229, 199, 153, 0.5)');
     await input.blur();
     await expect(field).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.14)');
-    expect(Number.parseFloat(await field.evaluate((el) => getComputedStyle(el).borderTopLeftRadius))).toBeGreaterThanOrEqual(20);
+    await expect(field).toHaveCSS('border-top-left-radius', '10px');
     await input.focus();
     await expect(field).toHaveCSS('border-top-color', 'rgba(229, 199, 153, 0.5)');
     const send = page.getByTestId('concierge-send');
     await expect(send).toHaveAccessibleName('Ask');
     await expect(send).toHaveCSS('width', '32px');
-    await expect(send).toHaveCSS('border-top-left-radius', '999px');
+    await expect(send).toHaveCSS('border-top-left-radius', '6px');
+    await expect(prompts.getByTestId('concierge-quick-prompt').first()).toHaveCSS('border-top-left-radius', '6px');
 
     // A chip asks straight from the bar; New chat clears the thread back to the welcome.
     await prompts.getByTestId('concierge-quick-prompt').filter({ hasText: 'How do I walk inside at 165 cm?' }).click();
