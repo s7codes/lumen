@@ -89,10 +89,19 @@ function withWallCode(tuple, item) {
 // written only when one is set, so every room without them encodes byte for
 // byte as it always has and older readers simply ignore the extra key.
 const ROOM_EXTRA_KEYS = Object.freeze(['solarHour', 'windowWall', 'furnitureWall', 'furnitureOffsetCm']);
+// Two or three windows share the window slot as one short string, "west+east"
+// (15 characters at most), so `x` keeps its four slots: a v7.0 reader still
+// opens the link and simply shows its default window.
+const WINDOW_JOIN = '+';
+
+function packedValue(room, key) {
+  if (key === 'windowWall' && Array.isArray(room.windowWalls)) return room.windowWalls.join(WINDOW_JOIN);
+  return room[key] ?? null;
+}
 
 function packRoom(state) {
   const { room, camera, items } = state;
-  const extra = ROOM_EXTRA_KEYS.map((key) => room[key] ?? null);
+  const extra = ROOM_EXTRA_KEYS.map((key) => packedValue(room, key));
   return {
     w: [room.widthCm, room.depthCm, room.heightCm, room.furniture, room.lighting],
     ...(extra.some((value) => value !== null) ? { x: extra } : {}),
@@ -120,7 +129,13 @@ function isRoomExtra(extra) {
 
 /** The optional room keys from `x`; values are left to sanitizeRoom. */
 function unpackRoomExtra(extra) {
-  const entries = ROOM_EXTRA_KEYS.map((key, i) => [key, extra[i]]).filter(([, value]) => value !== null);
+  const entries = ROOM_EXTRA_KEYS.map((key, i) => [key, extra[i]])
+    .filter(([, value]) => value !== null)
+    .map(([key, value]) =>
+      key === 'windowWall' && typeof value === 'string' && value.includes(WINDOW_JOIN)
+        ? ['windowWalls', value.split(WINDOW_JOIN)]
+        : [key, value],
+    );
   return Object.fromEntries(entries);
 }
 

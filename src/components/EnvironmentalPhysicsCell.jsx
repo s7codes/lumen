@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { playAcousticAudition, stopAcousticAudition, synthesizeAcousticProfile } from '../lib/acoustic-audition.js';
+import {
+  echoReadout,
+  playAcousticAudition,
+  stopAcousticAudition,
+  synthesizeAcousticProfile,
+} from '../lib/acoustic-audition.js';
 import { formatInt } from '../lib/format.js';
 import { formatEnvironmentalPhysics } from '../lib/room-physics.js';
 
@@ -39,9 +44,12 @@ function PlayGlyph() {
 }
 
 /**
- * Audition key and decay curve. A take remounts the curve (keyed by its
- * count), so the CSS sweep restarts on every press; React only re-renders at
- * the start and end of a take.
+ * Room echo test: a key that plays the room's decay, the decay curve, and a
+ * plain comparison against the same room bare. A faint dashed marker on the
+ * curve shows where the bare room's echo would end, beside the amber RT60
+ * hairline, so the panels' effect is visible at a glance. A take remounts the
+ * curve (keyed by its count), so the CSS sweep restarts on every press; React
+ * only re-renders at the start and end of a take.
  */
 function AcousticAudition({ physics }) {
   const profile = useMemo(() => synthesizeAcousticProfile(physics), [physics]);
@@ -65,6 +73,8 @@ function AcousticAudition({ physics }) {
   };
 
   const last = profile.envelope.length - 1;
+  const echo = echoReadout(profile);
+  const at = (sec) => Math.min(0.995, sec / profile.windowSec).toFixed(3);
   return (
     <span className="audition" data-testid="acoustic-audition">
       <button
@@ -72,11 +82,12 @@ function AcousticAudition({ physics }) {
         className="audition__key"
         data-testid="audition-room-acoustics"
         data-playing={take.playing || undefined}
-        title={`Play the room's decay: RT60 ${profile.rt60Sec.toFixed(2)} s at 500 Hz`}
+        aria-label="Test Room Echo (Audition RT60)"
+        title={`Play a soft clap and hear the room's echo: RT60 ${profile.rt60Sec.toFixed(2)} s at 500 Hz`}
         onClick={audition}
       >
         <PlayGlyph />
-        Audition RT60
+        Test Room Echo
       </button>
       <span
         key={take.count}
@@ -86,12 +97,14 @@ function AcousticAudition({ physics }) {
         data-damping-pct={profile.dampingPct}
         data-duration={profile.durationSec.toFixed(2)}
         data-clarity-db={profile.clarityDb.toFixed(1)}
+        data-baseline-rt60={profile.baselineRt60Sec.toFixed(2)}
         data-state={take.playing ? 'playing' : 'idle'}
         data-takes={take.count}
         data-audio={take.audio ?? undefined}
         style={{
           '--window-sec': `${profile.windowSec}s`,
           '--rt60-at': Math.min(1, profile.rt60Sec / profile.windowSec).toFixed(3),
+          '--baseline-at': at(profile.baselineRt60Sec),
         }}
         aria-hidden="true"
       >
@@ -102,8 +115,19 @@ function AcousticAudition({ physics }) {
             style={{ '--level': level.toFixed(3), '--at': (i / last).toFixed(3) }}
           />
         ))}
+        {echo.damped && <span className="audition__baseline" data-testid="acoustic-baseline-mark" />}
         <span className="audition__mark" />
         {take.playing && <span className="audition__playhead" />}
+      </span>
+      <span
+        className="audition__readout"
+        data-testid="acoustic-echo-readout"
+        data-damped={echo.damped}
+        data-rt60={profile.rt60Sec.toFixed(2)}
+        data-baseline-rt60={profile.baselineRt60Sec.toFixed(2)}
+        data-damping-pct={profile.dampingPct}
+      >
+        {echo.text}
       </span>
     </span>
   );

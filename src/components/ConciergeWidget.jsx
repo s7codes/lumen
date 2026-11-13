@@ -21,9 +21,10 @@ function PanelLoading() {
 }
 
 /**
- * Bottom-right Studio AI dock, mounted once in the layout shell so the
- * conversation survives route changes. The panel mounts on first open and
- * then only hides, so closing never loses the session.
+ * Bottom-right Ask Lumen dock for the Lumen AI concierge, mounted once in
+ * the layout shell so the conversation survives route changes. The panel
+ * mounts on first open and then only hides, so closing never loses the
+ * session.
  */
 export function ConciergeWidget() {
   const [open, setOpen] = useState(false);
@@ -61,15 +62,15 @@ export function ConciergeWidget() {
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={loaded ? CONCIERGE_PANEL_ID : undefined}
-        aria-label="Ask Studio AI"
-        title="Ask Studio AI"
+        aria-label="Ask Lumen"
+        title="Ask Lumen AI"
         onClick={toggle}
         onPointerEnter={loadPanel}
         onFocus={loadPanel}
       >
         <LumenMark size={16} className="concierge-trigger__mark" />
         <span className="concierge-trigger__label" aria-hidden="true">
-          Ask Studio AI
+          Ask Lumen
         </span>
       </button>
     </div>

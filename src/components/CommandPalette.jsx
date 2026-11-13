@@ -146,11 +146,12 @@ function PaletteDialog({ returnFocus, onClose, onSignIn }) {
       <div className="palette-scrim" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
-        className="palette"
+        className="palette palette-modal"
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
         data-testid="command-palette"
+        data-mode={mode}
       >
         <div className="palette__search">
           <SearchGlyph className="palette__search-glyph" />
@@ -160,12 +161,12 @@ function PaletteDialog({ returnFocus, onClose, onSignIn }) {
             data-testid="command-palette-input"
             type="text"
             role="combobox"
-            aria-label="Search parts, workspaces, or commands"
+            aria-label="Search lighting, furniture, or pages"
             aria-expanded="true"
             aria-controls={listId}
             aria-autocomplete="list"
             aria-activedescendant={activeEntry ? optionId(activeEntry.id) : undefined}
-            placeholder="Search parts, workspaces, or commands..."
+            placeholder="Search lighting, furniture, or pages..."
             value={query}
             maxLength={QUERY_MAX}
             autoComplete="off"
@@ -186,7 +187,7 @@ function PaletteDialog({ returnFocus, onClose, onSignIn }) {
               <div key={group.id} className="palette__group" role="group" aria-labelledby={`${uid}-${group.id}-label`}>
                 <div id={`${uid}-${group.id}-label`} className="palette__group-label" role="presentation">
                   <span>{group.label}</span>
-                  <span className="palette__group-count">{padIndex(group.entries.length)}</span>
+                  <span className="palette__group-count tech-only">{padIndex(group.entries.length)}</span>
                 </div>
                 {group.entries.map((entry) => {
                   const i = position.get(entry.id);
@@ -219,12 +220,26 @@ function PaletteDialog({ returnFocus, onClose, onSignIn }) {
                       )}
                       <span className="palette__text">
                         <span className="palette__label">{entry.label}</span>
-                        <span className="palette__detail">{entry.detail}</span>
-                      </span>
-                      {entry.meta && (
-                        <span className="palette__meta" data-badge={entry.badge || undefined}>
-                          {entry.meta}
+                        <span className="palette__detail">
+                          <span className="palette__summary">{entry.summary}</span>
+                          {entry.detail !== entry.summary && (
+                            <span className="palette__code tech-only" data-testid="command-palette-code">
+                              {entry.detail}
+                            </span>
+                          )}
                         </span>
+                      </span>
+                      {entry.price ? (
+                        <span className="palette__meta palette__price" data-testid="command-palette-price">
+                          <span className="tech-only">{entry.metaTech}</span>
+                          {entry.price}
+                        </span>
+                      ) : (
+                        entry.meta && (
+                          <span className="palette__meta" data-badge={entry.badge || undefined}>
+                            {entry.meta}
+                          </span>
+                        )
                       )}
                     </div>
                   );
@@ -236,26 +251,14 @@ function PaletteDialog({ returnFocus, onClose, onSignIn }) {
 
         {flat.length === 0 && (
           <p className="palette__empty" role="status" data-testid="command-palette-empty">
-            No match. Try a SKU, a workspace or a currency code.
+            No match. Try a product name, a page or a currency code.
           </p>
         )}
 
-        <footer className="palette__footer">
-          <span className="palette__hint">
-            <kbd className="palette__kbd">Up</kbd>
-            <kbd className="palette__kbd">Down</kbd>
-            Move
-          </span>
-          <span className="palette__hint">
-            <kbd className="palette__kbd">Enter</kbd>
-            Run
-          </span>
-          <span className="palette__hint palette__hint--wide">
-            <kbd className="palette__kbd">Esc</kbd>
-            Close
-          </span>
-          <span className="palette__count" aria-live="polite">
-            {padIndex(flat.length)} {flat.length === 1 ? 'result' : 'results'}
+        <footer className="palette__footer" data-testid="command-palette-footer">
+          <span className="palette__hint">Up/Down to navigate - Enter to open - Esc to close</span>
+          <span className="visually-hidden" aria-live="polite" data-testid="command-palette-count">
+            {flat.length} {flat.length === 1 ? 'result' : 'results'}
           </span>
         </footer>
       </div>

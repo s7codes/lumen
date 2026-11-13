@@ -650,7 +650,7 @@ export default function ConciergePanel({ open, onClose, panelId }) {
       <form className="concierge-composer" onSubmit={onSubmit}>
         <div className="concierge-composer__field">
           <label className="visually-hidden" htmlFor={`${panelId}-input`}>
-            Ask Studio AI
+            Ask Lumen
           </label>
           <input
             ref={inputRef}

@@ -1,4 +1,4 @@
-import { PRODUCTS } from '../data/products.js';
+import { getCategory, PRODUCTS } from '../data/products.js';
 import { MODE_LABELS } from './display-mode.js';
 import { formatUsd } from './format.js';
 import { CURRENCIES } from './quote.js';
@@ -7,23 +7,33 @@ import { sanitizeText } from '../security/sanitize.js';
 export const QUERY_MAX = 64;
 
 export const WORKSPACES = Object.freeze([
-  { id: 'ws-overview', label: 'Overview', path: '/', keywords: 'home index start lumen' },
-  { id: 'ws-catalog', label: 'Catalog', path: '/catalog', keywords: 'parts products modules index browse' },
-  { id: 'ws-room', label: '3D Room Planner', path: '/room-3d', keywords: 'room planner webgl spatial 3d obj' },
-  { id: 'ws-studio', label: '2D Wall Studio', path: '/studio-2d', keywords: 'wall studio elevation 2d layout' },
-  { id: 'ws-checkout', label: 'Project Quote', path: '/checkout', keywords: 'checkout quote requisition bom' },
-  { id: 'ws-account', label: 'Account', path: '/account', keywords: 'account profile projects library orders' },
+  { id: 'ws-overview', label: 'Overview', path: '/', summary: 'The Lumen home page', keywords: 'home index start lumen' },
+  { id: 'ws-catalog', label: 'Catalog', path: '/catalog', summary: 'Browse every part', keywords: 'parts products modules index browse' },
+  { id: 'ws-room', label: '3D Room Planner', path: '/room-3d', summary: 'Plan a whole room in 3D', keywords: 'room planner webgl spatial 3d obj' },
+  { id: 'ws-studio', label: '2D Wall Studio', path: '/studio-2d', summary: 'Compose a single wall', keywords: 'wall studio elevation 2d layout' },
+  { id: 'ws-checkout', label: 'Project Quote', path: '/checkout', summary: 'Review your quote', keywords: 'checkout quote requisition bom' },
+  { id: 'ws-account', label: 'Account', path: '/account', summary: 'Projects and orders', keywords: 'account profile projects library orders' },
 ]);
 
+// Group ids are stable hooks; the labels read as plain language.
 export const GROUPS = Object.freeze([
-  { id: 'workspaces', label: 'Workspaces' },
-  { id: 'modules', label: 'Modules' },
-  { id: 'commands', label: 'Commands' },
+  { id: 'workspaces', label: 'Pages' },
+  { id: 'modules', label: 'Products' },
+  { id: 'commands', label: 'Actions' },
 ]);
+
+/** "Lighting - 150 x 12 cm": the category and the face a part shows on the wall. */
+export function productSubtitle(product) {
+  const category = getCategory(product.category)?.label ?? 'Part';
+  return `${category} - ${product.dimsCm.w} x ${product.dimsCm.h} cm`;
+}
 
 /**
  * Every palette entry for the current context. `action` is plain data the
  * palette executes; nothing here touches React, the router or storage.
+ * `summary` is the plain subtitle Visual mode shows; `detail` (a path or a
+ * SKU) and a part's wattage (`metaTech`) are Specs-mode detail, kept in the
+ * entry so search still matches them.
  */
 export function buildCommandIndex({ mode, currency, signedIn }) {
   const workspaces = WORKSPACES.map((entry) => ({
@@ -31,6 +41,7 @@ export function buildCommandIndex({ mode, currency, signedIn }) {
     group: 'workspaces',
     label: entry.label,
     detail: entry.path,
+    summary: entry.summary,
     meta: entry.path === '/account' && !signedIn ? 'Sign in' : '',
     badge: entry.path === '/account' && !signedIn,
     keywords: `${entry.path} ${entry.keywords}`,
@@ -44,7 +55,10 @@ export function buildCommandIndex({ mode, currency, signedIn }) {
     productId: product.id,
     label: product.name,
     detail: product.sku,
+    summary: productSubtitle(product),
     meta: `${product.watts} W / ${formatUsd(product.priceUsd)}`,
+    metaTech: `${product.watts} W / `,
+    price: formatUsd(product.priceUsd),
     keywords: `${product.sku} ${product.id} ${product.category} ${product.watts}w module part`,
     action: { type: 'navigate', path: `/catalog/${product.id}` },
   }));
@@ -84,8 +98,9 @@ export function buildCommandIndex({ mode, currency, signedIn }) {
 
   return [...workspaces, ...modules, ...commands].map((entry) => ({
     ...entry,
+    summary: entry.summary ?? entry.detail,
     labelText: entry.label.toLowerCase(),
-    haystack: `${entry.label} ${entry.detail} ${entry.keywords}`.toLowerCase(),
+    haystack: `${entry.label} ${entry.detail} ${entry.summary ?? ''} ${entry.keywords}`.toLowerCase(),
   }));
 }
 

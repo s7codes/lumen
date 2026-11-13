@@ -7,9 +7,13 @@ import { OCTAVE_BANDS } from './room-physics.js';
  * amplitude follows exp(-t ln(1000) / RT60) and Web Audio's setTargetAtTime
  * reproduces it exactly with time constant tau = RT60 / ln(1000).
  *
- * The sound is a short noise impulse split into the six octave bands, each
- * band ringing out on its own RT60 (a synthetic reverberation tail), under a
- * warm open D chord whose partials each sustain on the band they sound in.
+ * The sound is a soft architectural wood clap split into the six octave
+ * bands, each band ringing out on its own RT60 (a synthetic reverberation
+ * tail), under a warm open D chord whose partials each sustain on the band
+ * they sound in. The clap's character lives in its sample buffer (a short
+ * transient, two damped hardwood body modes and a pink tail), so the node
+ * graph stays six band-passes and ten partials. Levels are kept low and the
+ * upper bands eased off, so a take is never harsh or startling.
  */
 
 const LN_1000 = Math.log(1000);
@@ -36,9 +40,28 @@ export const AUDITION_CHORD = Object.freeze([
   Object.freeze({ hz: 2637.02, level: 0.006, delay: 0.27 }),
 ]);
 
-const MASTER_GAIN = 0.5;
-const IMPULSE_LEVEL = 0.32;
+const MASTER_GAIN = 0.28;
+const IMPULSE_LEVEL = 0.09;
 const ATTACK_SEC = 0.006;
+// Chord partials swell in over 25 ms, like a felt-hammer strike rather than a click.
+const CHORD_ATTACK_SEC = 0.025;
+// Per-band clap level, 125 Hz to 4 kHz: the top octaves eased off for warmth.
+export const CLAP_BAND_WEIGHTS = Object.freeze([1, 1, 0.92, 0.78, 0.58, 0.42]);
+/**
+ * The wood clap: a 6 ms noise transient, two damped body modes of a hardwood
+ * block, and a pink-noise tail for the band gains to shape into the room's
+ * reverberation, normalised to a 0.95 peak.
+ */
+export const WOOD_CLAP = Object.freeze({
+  transientSec: 0.006,
+  transient: 2.2,
+  tail: 0.4,
+  peak: 0.95,
+  modes: Object.freeze([
+    Object.freeze({ hz: 720, tauSec: 0.028, level: 0.7 }),
+    Object.freeze({ hz: 1880, tauSec: 0.012, level: 0.32 }),
+  ]),
+});
 const START_LEAD_SEC = 0.03;
 const RELEASE_PAD_SEC = 0.35;
 // Q of a one-octave band-pass: f0 / (f0 * (sqrt(2) - 1 / sqrt(2))).
@@ -111,6 +134,22 @@ export function synthesizeAcousticProfile(physics) {
   });
 }
 
+/**
+ * Plain-language echo comparison for the decay curve: the room's RT60 against
+ * the same room bare. "Echo: 1.26 s vs. 2.01 s bare (-37% reverb)" once the
+ * absorbers take at least 1 percent off; otherwise a bare-room hint.
+ */
+export function echoReadout(profile) {
+  const p = profile !== null && typeof profile === 'object' ? profile : synthesizeAcousticProfile(null);
+  if (!(p.dampingPct >= 1)) {
+    return { damped: false, text: `Bare room echo ${p.rt60Sec.toFixed(2)} s - add acoustic panels to damp` };
+  }
+  return {
+    damped: true,
+    text: `Echo: ${p.rt60Sec.toFixed(2)} s vs. ${p.baselineRt60Sec.toFixed(2)} s bare (-${p.dampingPct}% reverb)`,
+  };
+}
+
 /* ---------- playback ---------- */
 
 let active = null;
@@ -136,21 +175,53 @@ function seededNoise(seed) {
   };
 }
 
-function noiseBuffer(ctx, seconds) {
-  const length = Math.max(1, Math.round(ctx.sampleRate * seconds));
-  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
+/**
+ * The wood clap as raw samples: deterministic for a sample rate and length,
+ * peak-normalised, front-loaded (the transient and body modes ring out in
+ * the first few tens of milliseconds over a soft pink tail). Pure, so it is
+ * testable without Web Audio.
+ */
+export function woodClapSamples(sampleRate, seconds) {
+  const rate = Number.isFinite(sampleRate) && sampleRate > 0 ? sampleRate : 48000;
+  const length = Math.max(1, Math.round(rate * clampNumber(seconds, 0.01, AUDITION_DURATION.max, 1)));
+  const data = new Float32Array(length);
   const next = seededNoise(0x1a2b3c);
-  for (let i = 0; i < length; i += 1) data[i] = next();
+  // Paul Kellet's economy pink filter: equal energy per octave, so the six bands start level.
+  let b0 = 0;
+  let b1 = 0;
+  let b2 = 0;
+  let peak = 0;
+  for (let i = 0; i < length; i += 1) {
+    const white = next();
+    b0 = 0.99765 * b0 + white * 0.099046;
+    b1 = 0.963 * b1 + white * 0.2965164;
+    b2 = 0.57 * b2 + white * 1.0526913;
+    const pink = (b0 + b1 + b2 + white * 0.1848) * 0.25;
+    const t = i / rate;
+    let body = 0;
+    for (const mode of WOOD_CLAP.modes) body += Math.sin(2 * Math.PI * mode.hz * t) * Math.exp(-t / mode.tauSec) * mode.level;
+    const sample = pink * WOOD_CLAP.tail + white * Math.exp(-t / WOOD_CLAP.transientSec) * WOOD_CLAP.transient + body;
+    data[i] = sample;
+    peak = Math.max(peak, Math.abs(sample));
+  }
+  const scale = peak > 0 ? WOOD_CLAP.peak / peak : 0;
+  for (let i = 0; i < length; i += 1) data[i] *= scale;
+  return data;
+}
+
+function clapBuffer(ctx, seconds) {
+  const samples = woodClapSamples(ctx.sampleRate, seconds);
+  const buffer = ctx.createBuffer(1, samples.length, ctx.sampleRate);
+  buffer.getChannelData(0).set(samples);
   return buffer;
 }
 
-/** A gain node that rises to `level` and decays on `tauSec` from `at`. */
-function decayGain(ctx, at, level, tauSec) {
+/** A gain node that rises to `level` over `attackSec` and decays on `tauSec` from there. */
+function decayGain(ctx, at, level, tauSec, attackSec = ATTACK_SEC) {
   const gain = ctx.createGain();
   gain.gain.setValueAtTime(0, at);
-  gain.gain.linearRampToValueAtTime(level, at + ATTACK_SEC);
-  gain.gain.setTargetAtTime(0, at + ATTACK_SEC, tauSec);
+  gain.gain.linearRampToValueAtTime(level, at + attackSec);
+  gain.gain.setTargetAtTime(0, at + attackSec, tauSec);
   return gain;
 }
 
@@ -187,16 +258,16 @@ export function playAcousticAudition(physics, { audioWindow = globalThis.window 
     master.connect(limiter);
     limiter.connect(ctx.destination);
 
-    const noise = noiseBuffer(ctx, profile.durationSec);
-    for (const band of profile.bands) {
+    const clap = clapBuffer(ctx, profile.durationSec);
+    for (const [i, band] of profile.bands.entries()) {
       const src = ctx.createBufferSource();
-      src.buffer = noise;
+      src.buffer = clap;
       const filter = ctx.createBiquadFilter();
       filter.type = 'bandpass';
       filter.frequency.value = band.hz;
       filter.Q.value = OCTAVE_Q;
       src.connect(filter);
-      filter.connect(decayGain(ctx, t0, IMPULSE_LEVEL, band.tauSec)).connect(master);
+      filter.connect(decayGain(ctx, t0, IMPULSE_LEVEL * CLAP_BAND_WEIGHTS[i], band.tauSec)).connect(master);
       src.start(t0);
       src.stop(end);
     }
@@ -206,7 +277,7 @@ export function playAcousticAudition(physics, { audioWindow = globalThis.window 
       const osc = ctx.createOscillator();
       osc.type = note.hz < 200 ? 'triangle' : 'sine';
       osc.frequency.value = note.hz;
-      osc.connect(decayGain(ctx, t0 + note.delay, note.level, band.tauSec)).connect(master);
+      osc.connect(decayGain(ctx, t0 + note.delay, note.level, band.tauSec, CHORD_ATTACK_SEC)).connect(master);
       osc.start(t0 + note.delay);
       osc.stop(end);
     }

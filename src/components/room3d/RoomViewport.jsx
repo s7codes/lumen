@@ -126,7 +126,8 @@ function SceneManifest({
   walkRef,
 }) {
   const selected = scene.modules.find((module) => module.selected);
-  const { solar, window: daylightWindow, furniturePlacement: placement } = scene;
+  const { solar, windows, window: daylightWindow, furniturePlacement: placement, furnitureVignette: vignette } = scene;
+  const lightPatches = (source) => windows.reduce((sum, win) => sum + win.patches.filter((patch) => patch.light === source).length, 0);
   return (
     <div
       hidden
@@ -145,9 +146,27 @@ function SceneManifest({
       data-sun-kelvin={solar.kelvin}
       data-sun-direction={scene.rig.sun.fixed ? scene.rig.sun.from.join(' ') : undefined}
       data-window-wall={daylightWindow?.wall ?? 'none'}
-      data-sunlit={daylightWindow?.sunlit || undefined}
-      data-sun-patches={daylightWindow?.patches.length ?? 0}
+      data-window-walls={windows.length > 0 ? windows.map((win) => win.wall).join(' ') : 'none'}
+      data-window-count={windows.length}
+      data-sunlit={windows.some((win) => win.sunlit) || undefined}
+      data-sun-patches={lightPatches('sun')}
+      data-moon-patches={lightPatches('moon')}
     >
+      {windows.map((win) => (
+        <span
+          key={win.id}
+          data-testid="room-window"
+          data-wall={win.wall}
+          data-glazing-color={win.glazing.color}
+          data-glazing-base={win.glazing.base}
+          data-glazing-intensity={win.glazing.intensity}
+          data-members={win.members.length}
+          data-sunlit={win.sunlit || undefined}
+          data-moonlit={win.moonlit || undefined}
+          data-patches={win.patches.length}
+          data-shafts={win.shafts.length}
+        />
+      ))}
       {scene.modules.map((module) => (
         <span
           key={module.uid}
@@ -193,6 +212,13 @@ function SceneManifest({
       {scene.furniture.map((part) => (
         <span key={part.part} data-testid="room-furniture" data-part={part.part} data-color={part.color} />
       ))}
+      {vignette && (
+        <span
+          data-testid="room-furniture-vignette"
+          data-parts={vignette.parts.length}
+          data-kinds={[...new Set(vignette.parts.map((part) => part.kind))].join(' ')}
+        />
+      )}
       {ROOM_WALLS.map((wall) => (
         <span key={wall} data-testid="room-wall" data-wall={wall} data-visible={walls[wall]} />
       ))}

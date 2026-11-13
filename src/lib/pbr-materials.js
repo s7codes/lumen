@@ -34,8 +34,10 @@ export const PBR_MATERIALS = Object.freeze({
     bumpScale: 0.008,
     seed: 0x5a17,
     rings: 7,
-    contrast: 0.34,
-    fibre: 0.2,
+    // Fine oiled veneer: a soft late-wood figure under dense longitudinal fibre.
+    contrast: 0.11,
+    fibre: 0.12,
+    micro: 0.1,
   }),
   'wood-oak': Object.freeze({
     family: 'wood',
@@ -48,8 +50,9 @@ export const PBR_MATERIALS = Object.freeze({
     bumpScale: 0.008,
     seed: 0x0a4c,
     rings: 5,
-    contrast: 0.22,
-    fibre: 0.16,
+    contrast: 0.08,
+    fibre: 0.1,
+    micro: 0.09,
   }),
   'metal-obsidian': Object.freeze({
     family: 'metal',
@@ -110,6 +113,9 @@ export const PBR_MATERIALS = Object.freeze({
     bumpScale: 0.01,
     seed: 0xf10a,
     rows: 4,
+    // Calm Scandinavian wide plank: a faint ring figure and gentle plank-to-plank tone.
+    contrast: 0.035,
+    plankTone: 0.09,
   }),
   'wall-plaster': Object.freeze({
     family: 'plaster',
@@ -193,16 +199,19 @@ const clamp01 = (value) => Math.min(1, Math.max(0, value));
 /* Families: each returns { tone, height, rough } for a texel. */
 
 function woodTexel(spec, u, v) {
-  // u runs along the grain, v across it.
+  // u runs along the grain, v across it. The late-wood band eases in on a
+  // square curve, so the figure stays a soft veneer flame rather than zebra
+  // stripes; dense fibre and micro-fibre along u carry the timber texture.
   const flow = fbm(u, v, 2, 2, 3, spec.seed + 1) - 0.5;
   const band = 0.5 + 0.5 * Math.sin(TAU * (v * spec.rings + flow * 1.5 + 0.18 * Math.sin(TAU * u)));
-  const late = band ** 3;
+  const late = band ** 2;
   const fibre = valueNoise(u * 4, v * 64, 4, 64, spec.seed + 2);
+  const micro = valueNoise(u * 8, v * 128, 8, 128, spec.seed + 4);
   const pore = valueNoise(u * 16, v * 64, 16, 64, spec.seed + 3);
   return {
-    tone: clamp01(1 - spec.contrast * late - spec.fibre * (fibre - 0.5) - 0.05 * (pore - 0.5)),
-    height: clamp01(0.5 + 0.32 * (fibre - 0.5) - 0.16 * late + 0.1 * (pore - 0.5)),
-    rough: clamp01(spec.roughness + 0.07 * late - 0.05 * (fibre - 0.5)),
+    tone: clamp01(1 - spec.contrast * late - spec.fibre * (fibre - 0.5) - spec.micro * (micro - 0.5) - 0.04 * (pore - 0.5)),
+    height: clamp01(0.5 + 0.24 * (fibre - 0.5) + 0.16 * (micro - 0.5) - 0.06 * late + 0.08 * (pore - 0.5)),
+    rough: clamp01(spec.roughness + 0.03 * late - 0.04 * (fibre - 0.5)),
   };
 }
 
@@ -242,12 +251,13 @@ function floorTexel(spec, u, v, i, j, width, height) {
   const uu = along / width;
   const flow = fbm(uu, v, 2, 2, 2, spec.seed + row * 17) - 0.5;
   const band = 0.5 + 0.5 * Math.sin(TAU * (v * spec.rows * 3 + flow * 1.2));
+  const ring = band ** 2;
   const fibre = valueNoise(uu * 4, v * 64, 4, 64, spec.seed + 5 + row);
-  const tone = 0.86 + 0.14 * plank - 0.12 * band ** 3 - 0.12 * (fibre - 0.5);
+  const tone = 1 - spec.plankTone + spec.plankTone * plank - spec.contrast * ring - 0.08 * (fibre - 0.5);
   return {
     tone: clamp01(seam ? tone * 0.55 : tone),
-    height: seam ? 0.12 : clamp01(0.55 + 0.26 * (fibre - 0.5) - 0.1 * band ** 3),
-    rough: clamp01(seam ? 0.9 : spec.roughness + 0.08 * (plank - 0.5) + 0.05 * band ** 3),
+    height: seam ? 0.12 : clamp01(0.55 + 0.16 * (fibre - 0.5) - 0.04 * ring),
+    rough: clamp01(seam ? 0.9 : spec.roughness + 0.06 * (plank - 0.5) + 0.03 * ring),
   };
 }
 
@@ -361,6 +371,97 @@ export function contactShadowMap(size = 64) {
     }
   }
   return { width: n, height: n, data };
+}
+
+/**
+ * Inside-corner ambient falloff for a plane centred on the corner line:
+ * densest down the middle column, easing to nothing at both side edges,
+ * constant up the wall. Grey RGB, read as an alpha map.
+ */
+export function cornerShadeMap(width = 64) {
+  const n = Math.max(8, Math.min(256, Math.round(width)));
+  const rows = 4;
+  const data = new Uint8Array(n * rows * 4);
+  for (let i = 0; i < n; i += 1) {
+    const x = Math.abs(((i + 0.5) / n) * 2 - 1);
+    const level = (1 - x) ** 2.4;
+    for (let j = 0; j < rows; j += 1) grey(data, (j * n + i) * 4, level);
+  }
+  return { width: n, height: rows, data };
+}
+
+/*
+ * Procedural studio environment for image-based lighting: an 8-bit sRGB
+ * equirectangular map (u round the azimuth, row 0 at the nadir) of a warm
+ * photographic studio. A broad overhead softbox, two tall strip boxes east
+ * and west for crisp specular streaks on steel and lacquer, a warm horizon
+ * bounce off the floor and a darker floor below. Deterministic and tiny;
+ * the canvas assigns it to scene.environment at a low intensity.
+ */
+export const STUDIO_ENVIRONMENT = Object.freeze({
+  width: 128,
+  height: 64,
+  intensity: 0.35,
+  softbox: Object.freeze([1, 0.96, 0.9]),
+  dome: Object.freeze([0.42, 0.4, 0.38]),
+  horizon: Object.freeze([0.66, 0.56, 0.44]),
+  floor: Object.freeze([0.2, 0.17, 0.14]),
+});
+
+// Software rasterisers: SwiftShader (headless Chromium, no GPU), Mesa's
+// llvmpipe and softpipe, Microsoft's WARP and Basic Render Driver.
+const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render|warp\b/i;
+
+/**
+ * IBL quality tier for a WebGL renderer string: 'studio' on a GPU, 'software'
+ * on a software rasteriser, where per-pixel image-based lighting would cost
+ * several times the frame and the direct rig carries the room alone.
+ */
+export function iblTier(rendererName) {
+  return typeof rendererName === 'string' && SOFTWARE_RENDERER.test(rendererName) ? 'software' : 'studio';
+}
+
+function smoothstep(edge0, edge1, x) {
+  const t = clamp01((x - edge0) / (edge1 - edge0));
+  return t * t * (3 - 2 * t);
+}
+
+/** RGB, 0..1, of the studio environment in a direction given by azimuth and elevation in degrees. */
+export function studioEnvironmentTexel(azimuthDeg, elevationDeg) {
+  const env = STUDIO_ENVIRONMENT;
+  const e = elevationDeg;
+  // Sky dome above, floor below, a warm bounce band either side of the horizon.
+  const above = smoothstep(-6, 6, e);
+  const bounce = Math.exp(-((e - 2) ** 2) / (2 * 9 ** 2));
+  let rgb = env.floor.map((c, k) => c + (env.dome[k] - c) * above);
+  rgb = rgb.map((c, k) => c + (env.horizon[k] - c) * bounce * 0.8);
+  // The overhead softbox: a rounded square of light round the zenith.
+  const box = smoothstep(52, 64, e);
+  // Strip boxes east (90) and west (270), 18 deg wide, from 8 to 48 deg up.
+  const a = ((azimuthDeg % 360) + 360) % 360;
+  const toStrip = Math.min(Math.abs(a - 90), Math.abs(a - 270));
+  const strip = (1 - smoothstep(6, 10, toStrip)) * smoothstep(4, 10, e) * (1 - smoothstep(44, 50, e));
+  const light = Math.max(box, strip * 0.85);
+  return rgb.map((c, k) => clamp01(c + (env.softbox[k] - c) * light));
+}
+
+/** The studio environment as an RGBA buffer, deterministic and byte-identical per call. */
+export function studioEnvironmentMap() {
+  const { width, height } = STUDIO_ENVIRONMENT;
+  const data = new Uint8Array(width * height * 4);
+  for (let j = 0; j < height; j += 1) {
+    const elevation = ((j + 0.5) / height) * 180 - 90;
+    for (let i = 0; i < width; i += 1) {
+      const azimuth = ((i + 0.5) / width) * 360;
+      const rgb = studioEnvironmentTexel(azimuth, elevation);
+      const k = (j * width + i) * 4;
+      data[k] = byte(rgb[0]);
+      data[k + 1] = byte(rgb[1]);
+      data[k + 2] = byte(rgb[2]);
+      data[k + 3] = 255;
+    }
+  }
+  return { width, height, intensity: STUDIO_ENVIRONMENT.intensity, data };
 }
 
 /**

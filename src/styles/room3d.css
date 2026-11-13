@@ -677,6 +677,36 @@
   color: rgba(11, 11, 10, 0.62);
 }
 
+/* Window walls: West, East and South toggle independently; None clears them.
+   Same flat surface inversion as the other segment pills. */
+
+.room3d-windows__none {
+  appearance: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.room3d-windows__none[aria-pressed='true'] {
+  background: var(--text-primary);
+  color: var(--text-inverse);
+}
+
+.room3d-windows__none:focus-visible {
+  outline: 1px solid var(--lumen-amber);
+  outline-offset: -3px;
+}
+
+.room3d-windows__count {
+  margin: var(--space-2) 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
 .room3d-sun__readout {
   margin: var(--space-3) 0 0;
   font-size: 10px;

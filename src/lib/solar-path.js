@@ -23,6 +23,17 @@ export const SOLAR_PRESETS = Object.freeze([
 /** Walls that can take the daylight window. North never sees the sun at this latitude. */
 export const WINDOW_WALLS = Object.freeze(['none', 'west', 'east', 'south']);
 export const WINDOW_LABELS = Object.freeze({ none: 'None', west: 'West', east: 'East', south: 'South' });
+/** The walls that can be glazed at once, in canonical order, up to one window each. */
+export const GLAZED_WALLS = Object.freeze(WINDOW_WALLS.filter((wall) => wall !== 'none'));
+export const MAX_WINDOWS = GLAZED_WALLS.length;
+
+/** "No window", "West window", "2 windows" for a list of glazed walls. */
+export function windowSummary(walls) {
+  const list = Array.isArray(walls) ? walls.filter((wall) => GLAZED_WALLS.includes(wall)) : [];
+  if (list.length === 0) return 'No window';
+  if (list.length === 1) return `${WINDOW_LABELS[list[0]]} window`;
+  return `${list.length} windows`;
+}
 
 const LATITUDE_DEG = 47.5;
 const DECLINATION_DEG = 15;

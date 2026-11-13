@@ -9,7 +9,7 @@ import {
   moduleBox,
   moduleRoomBox,
   solarHourOf,
-  windowWallOf,
+  windowWallsOf,
 } from './room-3d.js';
 import {
   boxToRoom,
@@ -89,6 +89,8 @@ export const LIGHTING_RIGS = Object.freeze({
     ceiling: { color: '#c6c0b6', glow: '#1f1d1a' },
     plank: { color: '#d8b48a', opacity: 0.07 },
     crease: { color: '#0b0a09', opacity: 0.28 },
+    cove: { gap: '#14120f', crown: '#cbc4b9' },
+    cornerShade: 0.2,
   },
   daylight: {
     ambient: { color: '#fff6ea', intensity: 0.85 },
@@ -111,6 +113,8 @@ export const LIGHTING_RIGS = Object.freeze({
     ceiling: { color: '#e4dfd6', glow: null },
     plank: { color: '#6b5a44', opacity: 0.08 },
     crease: { color: '#5d574e', opacity: 0.32 },
+    cove: { gap: '#3a3631', crown: '#e9e4db' },
+    cornerShade: 0.14,
   },
 });
 
@@ -331,7 +335,100 @@ function buildEnvelope(room, rig) {
     culls: corner.walls.map((wall) => wallCull(room, wall)),
     points: [v3([corner.at[0], 0, corner.at[1]]), v3([corner.at[0], H, corner.at[1]])],
   }));
-  return { ceiling, baseboards, creases };
+  return { ceiling, baseboards, creases, coves: buildCoves(room, rig), cornerShades: buildCornerShades(room, rig) };
+}
+
+const COVE_GAP_CM = 1.2;
+const COVE_GAP_D_CM = 0.8;
+const CROWN_H_CM = 3.6;
+const CROWN_D_CM = 1.4;
+const CORNER_SHADE_CM = 44;
+
+/**
+ * A perimeter shadow-gap at the ceiling: a dark 12 mm reveal along the top of
+ * every wall over a slim plaster crown band, so the wall plane stops short of
+ * the ceiling the way a detailed gallery wall does. Each cove hides with its
+ * wall's section cut.
+ */
+function buildCoves(room, rig) {
+  const H = room.heightCm;
+  const cove = rig.cove;
+  const strip = (id, kind, look, box) => ({
+    ...slab(id, look.color, box),
+    kind,
+    geometry: 'box',
+    radius: null,
+    radiusBottom: null,
+    rotation: [0, 0, 0],
+    material: look.material,
+    roughness: look.roughness,
+    metalness: 0,
+    grain: null,
+    shadow: false,
+    emissive: null,
+    emissiveIntensity: 0,
+  });
+  return ROOM_WALLS.map((wall) => {
+    const span = wallSpanCm(room, wall);
+    const at = (box) => boxToRoom(room, wall, box);
+    return {
+      id: `cove-${wall}`,
+      wall,
+      cull: wallCull(room, wall),
+      parts: [
+        strip(`cove-${wall}-gap`, 'shadow-gap', { material: 'metal-obsidian', color: cove.gap, roughness: 0.92 }, at({
+          x0: 0,
+          x1: span,
+          y0: H - COVE_GAP_CM,
+          y1: H,
+          z0: 0,
+          z1: COVE_GAP_D_CM,
+        })),
+        strip(`cove-${wall}-crown`, 'crown', { material: 'wall-plaster', color: cove.crown, roughness: 0.84 }, at({
+          x0: 0,
+          x1: span,
+          y0: H - COVE_GAP_CM - CROWN_H_CM,
+          y1: H - COVE_GAP_CM,
+          z0: 0,
+          z1: CROWN_D_CM,
+        })),
+      ],
+    };
+  });
+}
+
+/** The walls meeting at a room-frame corner point (cm). */
+function wallsAt(room, [x, , z]) {
+  const walls = [];
+  if (z <= 0.5) walls.push('north');
+  if (x >= room.widthCm - 0.5) walls.push('east');
+  if (z >= room.depthCm - 0.5) walls.push('south');
+  if (x <= 0.5) walls.push('west');
+  return walls;
+}
+
+/**
+ * Corner ambient depth: a soft vertical falloff on each wall at every inside
+ * corner, densest on the corner line, so the room reads as a volume rather
+ * than four flat planes. A shade hides when either of its walls is cut.
+ */
+function buildCornerShades(room, rig) {
+  const H = room.heightCm;
+  return ROOM_WALLS.flatMap((wall) =>
+    [0, wallSpanCm(room, wall)].map((x, i) => {
+      const walls = wallsAt(room, wallToRoom(room, wall, [x, 0, 0]));
+      return {
+        id: `corner-shade-${wall}-${i + 1}`,
+        wall,
+        walls,
+        culls: walls.map((id) => wallCull(room, id)),
+        position: v3(wallToRoom(room, wall, [x, H / 2, 0.1])),
+        rotation: [0, WALL_ROT_Y[wall], 0],
+        size: [m(CORNER_SHADE_CM), m(H)],
+        opacity: rig.cornerShade,
+      };
+    }),
+  );
 }
 
 /** Warm plank seams along the room width, and a 50 cm scale tick row inside the floor perimeter. */
@@ -541,6 +638,12 @@ const ACCENTS = Object.freeze({
   opal: { material: 'matte-chalk', color: '#f4efe6', roughness: 0.6 },
   amber: { material: 'matte-chalk', color: '#e8923a', roughness: 0.55 },
   screen: { material: 'metal-obsidian', color: '#232b33', roughness: 0.2, metalness: 0.1 },
+  // Soft furnishings for the reference furniture vignettes.
+  rug: { material: 'felt-acoustic', color: '#9e9589' },
+  'rug-border': { material: 'felt-acoustic', color: '#6e675e' },
+  'cushion-sand': { material: 'felt-acoustic', color: '#b9a88e' },
+  'cushion-slate': { material: 'felt-acoustic', color: '#5f6a70' },
+  piping: { material: 'felt-acoustic', color: '#b3a998' },
 });
 
 const FURNITURE_LOOK = Object.freeze({
@@ -879,10 +982,45 @@ const SUBASSEMBLIES = Object.freeze({
   },
 });
 
-/* Reference furniture detail, in each piece's own frame (x from its left end, y up, z out from its wall). */
+/*
+ * Reference furniture detail, in each piece's own frame (x from its left end,
+ * y up, z out from its wall). Keys are collision part ids; each part's detail
+ * is drawn over or in place of its box. `vignette` holds the free-standing
+ * companions round the piece (an area rug, bedside ledges, a coffee table, a
+ * task chair): drawn only, never part of the collision bounds, the walk zone
+ * or the clearances. A vignette part marked `fromWall` measures z from the
+ * wall plane; `fit` clips a rug to the room, and any other vignette part that
+ * would leave the room is dropped.
+ */
 
-const FURNITURE_DETAILS = Object.freeze({
+const RUG_T_CM = 0.6;
+const RUG_BORDER_CM = 7;
+
+/** A woven area rug: a darker border band under a 0.6 cm field, never casting a shadow. */
+function rug(x0, x1, z0, z1) {
+  const b = RUG_BORDER_CM;
+  return [
+    B('rug-border', 'rug', 'rug-border', x0, x1, 0, RUG_T_CM - 0.1, z0, z1, { shadow: false, fit: true, group: 'rug' }),
+    B('rug-field', 'rug', 'rug', x0 + b, x1 - b, 0.05, RUG_T_CM, z0 + b, z1 - b, { shadow: false, fit: true, inset: b, group: 'rug' }),
+  ];
+}
+
+/** A floating oak ledge on the wall with a warm cylindrical reading lamp on it. */
+function bedsideLedge(side, x0, x1) {
+  const xm = (x0 + x1) / 2;
+  const wall = { fromWall: true, shadow: false, group: `ledge-${side}` };
+  return [
+    B(`ledge-${side}`, 'ledge', 'oak', x0, x1, 48, 51, 0, 28, { ...wall, grain: 'x' }),
+    C(`lamp-${side}-base`, 'lamp', 'brass', xm, 51.6, 16, 3.4, 1.2, 'y', { ...wall, segments: 24 }),
+    C(`lamp-${side}-stem`, 'lamp', 'brass', xm, 59.2, 16, 0.5, 14, 'y', { ...wall, segments: 12 }),
+    C(`lamp-${side}-shade`, 'lamp', 'opal', xm, 73, 16, 6, 14, 'y', { ...wall, glow: true, segments: 32 }),
+  ];
+}
+
+export const FURNITURE_DETAILS = Object.freeze({
   'bed-160': {
+    // A woven rug under the lower two thirds of the bed, oak ledges and reading lamps either side.
+    vignette: [...rug(-52, 212, 64, 262), ...bedsideLedge('left', -48, -8), ...bedsideLedge('right', 168, 208)],
     // An upholstered headboard with tufting channels rises off the oak frame.
     frame: {
       body: true,
@@ -892,6 +1030,7 @@ const FURNITURE_DETAILS = Object.freeze({
       ],
     },
     // A layered duvet drapes over the mattress sides and foot; a folded throw and a bolster sit on it.
+    // A tailored mattress: a piped welt along the exposed head end and both sides.
     mattress: {
       body: true,
       parts: [
@@ -901,12 +1040,41 @@ const FURNITURE_DETAILS = Object.freeze({
         B('duvet-foot', 'duvet', 'linen-hi', -0.5, 160.5, 28, 45, 205, 207),
         B('throw', 'throw', 'felt', 1.5, 158.5, 45, 47, 160, 188),
         C('bolster', 'bolster', 'linen', 80, 47.5, 47, 5, 136, 'x', { segments: 24 }),
+        B('welt-head', 'piping', 'piping', 3, 157, 41.2, 42, 2.6, 3.2, { shadow: false }),
+        B('welt-left', 'piping', 'piping', 2.6, 3.2, 32, 33, 3, 42, { shadow: false }),
+        B('welt-right', 'piping', 'piping', 156.8, 157.4, 32, 33, 3, 42, { shadow: false }),
       ],
     },
-    'pillow-left': { body: true, parts: [B('crown', 'pillow', 'linen-hi', 15, 71, 52, 54, 11, 41)] },
-    'pillow-right': { body: true, parts: [B('crown', 'pillow', 'linen-hi', 89, 145, 52, 54, 11, 41)] },
+    // Softer, layered pillows: a rounded crown on each, and a standing cushion in front.
+    'pillow-left': {
+      body: true,
+      parts: [
+        B('crown', 'pillow', 'linen-hi', 15, 71, 52, 54, 11, 41),
+        B('crown-soft', 'pillow', 'linen-hi', 19, 67, 54, 55.2, 15, 37, { shadow: false }),
+        B('cushion', 'pillow', 'cushion-sand', 22, 64, 45, 62, 38, 47),
+      ],
+    },
+    'pillow-right': {
+      body: true,
+      parts: [
+        B('crown', 'pillow', 'linen-hi', 89, 145, 52, 54, 11, 41),
+        B('crown-soft', 'pillow', 'linen-hi', 93, 141, 54, 55.2, 15, 37, { shadow: false }),
+        B('cushion', 'pillow', 'cushion-slate', 96, 138, 45, 62, 38, 47),
+      ],
+    },
   },
   'desk-140': {
+    // A rug under the desk and a sculpted task chair tucked in, facing the monitor.
+    vignette: [
+      ...rug(-34, 174, 18, 196),
+      C('chair-column', 'chair', 'steel', 70, 24, 82, 2.2, 36, 'y', { segments: 16, shadow: false, group: 'chair' }),
+      B('chair-base-x', 'chair', 'anodised', 46, 94, 3, 5.4, 80, 84, { shadow: false, group: 'chair' }),
+      B('chair-base-z', 'chair', 'anodised', 68, 72, 3, 5.4, 58, 106, { shadow: false, group: 'chair' }),
+      B('chair-shell', 'chair', 'anodised', 48, 92, 41, 44, 58, 104, { shadow: false, group: 'chair' }),
+      B('chair-seat', 'chair', 'cushion-slate', 49, 91, 44, 49.5, 59, 103, { shadow: false, group: 'chair' }),
+      B('chair-spine', 'chair', 'anodised', 67, 73, 44, 60, 102, 106, { shadow: false, group: 'chair' }),
+      B('chair-back', 'chair', 'cushion-slate', 51, 89, 58, 90, 101, 107, { shadow: false, group: 'chair' }),
+    ],
     // Steel A-frame trestles: two posts, a foot and a top bar each.
     'trestle-left': {
       body: false,
@@ -948,10 +1116,20 @@ const FURNITURE_DETAILS = Object.freeze({
         C('lamp-arm', 'lamp', 'steel', 18, 91, 18, 0.7, 30, 'y', { segments: 12 }),
         B('lamp-boom', 'lamp', 'steel', 18, 36, 105, 106.4, 17.3, 18.7),
         C('lamp-shade', 'lamp', 'anodised', 34, 101, 18, 3, 8, 'y', { r2: 5, segments: 24 }),
+        C('lamp-diffuser', 'lamp', 'opal', 34, 96.8, 18, 4.6, 0.4, 'y', { segments: 24, glow: true, shadow: false }),
       ],
     },
   },
   'sofa-200': {
+    // A rug in front, and a low oak and slate coffee table carrying an art book and a ceramic vessel.
+    vignette: [
+      ...rug(-32, 232, 40, 252),
+      B('table-base', 'coffee-table', 'slate', 62, 138, RUG_T_CM, 34, 130, 166, { shadow: false, group: 'table' }),
+      B('table-top', 'coffee-table', 'oak', 48, 152, 34, 38, 120, 176, { shadow: false, group: 'table', grain: 'x' }),
+      B('book-lower', 'object', 'slate', 62, 92, 38, 39.8, 130, 152, { shadow: false, group: 'table' }),
+      B('book-upper', 'object', 'ceramic', 64, 89, 39.8, 41.2, 132, 150, { shadow: false, group: 'table' }),
+      C('vessel', 'object', 'ceramic', 124, 48, 150, 3.4, 20, 'y', { r2: 5.6, segments: 32, shadow: false, group: 'table' }),
+    ],
     // Six tapered oak legs replace the plinth block.
     plinth: {
       body: false,
@@ -970,8 +1148,21 @@ const FURNITURE_DETAILS = Object.freeze({
         B('cushion-right-crown', 'cushion', 'felt-hi', 102.5, 179.5, 76, 78.5, 3, 18),
       ],
     },
-    'seat-left': { body: true, parts: [B('crown', 'cushion', 'felt-hi', 21, 97, 50, 51.8, 23, 88)] },
-    'seat-right': { body: true, parts: [B('crown', 'cushion', 'felt-hi', 103, 179, 50, 51.8, 23, 88)] },
+    // Seat crowns, each with a decorative throw cushion leaning on the back.
+    'seat-left': {
+      body: true,
+      parts: [
+        B('crown', 'cushion', 'felt-hi', 21, 97, 50, 51.8, 23, 88),
+        B('throw-cushion', 'cushion', 'cushion-sand', 26, 66, 51.8, 88, 21, 33),
+      ],
+    },
+    'seat-right': {
+      body: true,
+      parts: [
+        B('crown', 'cushion', 'felt-hi', 103, 179, 50, 51.8, 23, 88),
+        B('throw-cushion', 'cushion', 'cushion-slate', 134, 174, 51.8, 88, 21, 33),
+      ],
+    },
     // Bolster armrests on lowered arm blocks.
     'arm-left': {
       body: false,
@@ -1219,17 +1410,26 @@ function moduleRecord(item, room, rig, conflicts, selectedUid, headroom = room.h
  * in place of it (`subparts`, in the furniture's own frame on its wall);
  * `body` says whether the plain box still shows.
  */
-function furnitureRecords(furniture, room) {
-  if (!furniture) return [];
+// Furniture lamps (reading lamps, the desk lamp diffuser) glow a warm 2700K at night.
+const FURNITURE_LAMP_COLOR = hex(kelvinToRgb(2700));
+
+function furnitureContext(furniture, room, rig, daylight) {
   const { wall, x0, z0 } = furniture.frame;
-  const details = FURNITURE_DETAILS[furniture.id] ?? {};
-  const ctx = {
+  return {
     uid: `furniture-${furniture.id}`,
     place: (point) => wallToRoom(room, wall, [x0 + point[0], point[1], z0 + point[2]]),
     rotY: WALL_ROT_Y[wall],
     room,
-    lit: false,
+    lit: !daylight,
+    lightColor: FURNITURE_LAMP_COLOR,
+    emissive: rig.emissive,
   };
+}
+
+function furnitureRecords(furniture, room, rig, daylight) {
+  if (!furniture) return [];
+  const details = FURNITURE_DETAILS[furniture.id] ?? {};
+  const ctx = furnitureContext(furniture, room, rig, daylight);
   return furniture.parts.map((p) => {
     const look = FURNITURE_LOOK[p.tone] ?? FURNITURE_LOOK.felt;
     const pbr = PBR_MATERIALS[look.material];
@@ -1248,13 +1448,71 @@ function furnitureRecords(furniture, room) {
   });
 }
 
+/**
+ * A vignette spec brought into the furniture frame and kept inside the room:
+ * `fromWall` z is measured from the wall plane, a `fit` rug is clipped to the
+ * walls (its field keeps its border inset), and any other part that would
+ * leave the room is dropped. Null when nothing is left to draw.
+ */
+function fitVignette(spec, frame, span) {
+  const shiftZ = spec.fromWall ? -frame.z0 : 0;
+  // The room's walls in the furniture frame; a rug keeps 1 cm clear of them.
+  const lo = { x: -frame.x0, z: -frame.z0 };
+  const hi = { x: span - frame.x0, z: frame.reach - frame.z0 };
+  if (spec.geometry === 'cylinder') {
+    const [cx, cy, cz] = spec.at;
+    const z = cz + shiftZ;
+    const r = Math.max(spec.r, spec.r2);
+    if (cx - r < lo.x || cx + r > hi.x || z - r < lo.z || z + r > hi.z) return null;
+    return { ...spec, at: [cx, cy, z] };
+  }
+  const box = { ...spec.box, z0: spec.box.z0 + shiftZ, z1: spec.box.z1 + shiftZ };
+  if (spec.fit) {
+    const inset = 1 + (spec.inset ?? 0);
+    const fitted = {
+      ...box,
+      x0: Math.max(box.x0, lo.x + inset),
+      x1: Math.min(box.x1, hi.x - inset),
+      z0: Math.max(box.z0, lo.z + inset),
+      z1: Math.min(box.z1, hi.z - inset),
+    };
+    return fitted.x1 - fitted.x0 > 4 && fitted.z1 - fitted.z0 > 4 ? { ...spec, box: fitted } : null;
+  }
+  if (box.x0 < lo.x || box.x1 > hi.x || box.z0 < lo.z || box.z1 > hi.z) return null;
+  return { ...spec, box };
+}
+
+/**
+ * The free-standing companions round the floor reference (rug, ledges and
+ * lamps, coffee table, task chair) as sub-parts in the room. Drawn only: the
+ * collision parts, bounds and walk zone never see them.
+ */
+function furnitureVignette(furniture, room, rig, daylight) {
+  const specs = furniture ? FURNITURE_DETAILS[furniture.id]?.vignette : null;
+  if (!specs) return null;
+  const ctx = furnitureContext(furniture, room, rig, daylight);
+  const span = wallSpanCm(room, furniture.frame.wall);
+  const fitted = specs.map((spec) => ({ spec, fit: fitVignette(spec, furniture.frame, span) }));
+  // A group goes whole or not at all: a lamp never floats where its ledge was dropped.
+  const dropped = new Set(fitted.filter(({ spec, fit }) => !fit && spec.group).map(({ spec }) => spec.group));
+  const parts = fitted
+    .filter(({ spec, fit }) => fit && !dropped.has(spec.group))
+    .map(({ fit }) => placeSubpart(fit, { ...ctx, uid: `${ctx.uid}-vignette` }));
+  return { id: `${furniture.id}-vignette`, wall: furniture.frame.wall, parts };
+}
+
+// Floor overlays sit just above a 0.6 cm rug: the contact shadow under the
+// furniture, then the sun and moon patches through the windows.
+const FURNITURE_AO_Y_M = 0.0068;
+const FLOOR_LIGHT_Y_M = 0.008;
+
 /** Soft contact shadow under the whole floor reference, in metres. */
 function furnitureOcclusion(furniture) {
   if (!furniture) return null;
   const { bounds } = furniture;
   const pad = 12;
   return {
-    position: [m((bounds.x0 + bounds.x1) / 2), 0.002, m((bounds.z0 + bounds.z1) / 2)],
+    position: [m((bounds.x0 + bounds.x1) / 2), FURNITURE_AO_Y_M, m((bounds.z0 + bounds.z1) / 2)],
     rotation: [-Math.PI / 2, 0, 0],
     size: [m(bounds.x1 - bounds.x0 + 2 * pad), m(bounds.z1 - bounds.z0 + 2 * pad)],
     opacity: 0.55,
@@ -1267,6 +1525,34 @@ const WINDOW_SILL_CM = 85;
 const MULLION_CM = 4;
 const FRAME_CM = 6;
 const INWARD = Object.freeze({ north: [0, 1], east: [-1, 0], south: [0, -1], west: [1, 0] });
+
+/*
+ * Window joinery, each member a full sub-part look. The casing is a plaster
+ * reveal standing 5 cm off the wall, so the glass reads recessed behind it;
+ * a 15 cm deep oak sill and a brushed champagne-steel glazing frame, mullions
+ * and transom (1.5 to 4.5 cm proud of the glass) keep the six panes crisp
+ * against the glazing in daylight and at night alike.
+ */
+export const WINDOW_FRAME = Object.freeze({
+  reveal: Object.freeze({ material: 'wall-plaster', color: '#7a736a', roughness: 0.86, metalness: 0 }),
+  sill: Object.freeze({ material: 'wood-oak', color: '#b89c74', roughness: 0.5, metalness: 0 }),
+  mullion: Object.freeze({ material: 'metal-steel', color: '#857e75', roughness: 0.32, metalness: 0.45 }),
+});
+const REVEAL_DEPTH_CM = 5;
+const SILL_DEPTH_CM = 15;
+const BEAD_CM = 2.5;
+const BAR_Z = Object.freeze([1.5, 4.5]);
+
+/*
+ * The glass itself. Daylight carries the sky the sun paints; at night the
+ * pane holds a luminous Nordic twilight over a deep blue base instead of a
+ * black hole in the wall, and lets a cool moonlit sky into the room.
+ */
+export const NIGHT_GLAZING = Object.freeze({ color: '#2d4263', base: '#1a273b', intensity: 0.88 });
+const DAY_GLAZING_BASE = '#0f1114';
+// Diffuse moonlit sky through each window: 40 deg up, turned 14 deg off the
+// wall's normal so the patches fall at a natural slant.
+export const MOONLIGHT = Object.freeze({ color: '#8fa8c8', patchOpacity: 0.14, shaftOpacity: 0.05, elevationDeg: 40, skewDeg: 14 });
 
 function mix(a, b, t) {
   const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
@@ -1303,11 +1589,80 @@ function clipToFloor(points, W, D) {
 }
 
 /**
- * The daylight window on its wall, as a glazed opening framed by jambs, a
- * head, a deep sill, two mullions and a transom. With the sun up on the
- * window's side, each pane throws a sunlit patch across the floor (the pane
- * projected along the sun, clipped to the floor) and a shaft of light through
- * the air from the pane to where its corners land, inside the room.
+ * Light through a window's six panes along `light` (the unit vector from the
+ * room toward the source): each pane lands as a patch on the floor (projected
+ * along the light, clipped to the floor) and a shaft through the air from the
+ * glass to where its corners land, inside the room.
+ */
+function paneLight(room, panes, place, light, look) {
+  const [lx, ly, lz] = light;
+  const { widthCm: W, depthCm: D } = room;
+  const travel = (p) => {
+    // Along -light from a point on the glass: to the floor, or out through the room's far side.
+    const limits = [p[1] / ly];
+    if (lx < -1e-9) limits.push((W - p[0]) / -lx);
+    if (lx > 1e-9) limits.push(p[0] / lx);
+    if (lz < -1e-9) limits.push((D - p[2]) / -lz);
+    if (lz > 1e-9) limits.push(p[2] / lz);
+    return Math.max(0, Math.min(...limits));
+  };
+  const along = (p, t) => [p[0] - lx * t, p[1] - ly * t, p[2] - lz * t];
+  const patches = [];
+  const shafts = [];
+  for (const [i, pane] of panes.entries()) {
+    const corners = [
+      [pane.px0, pane.py1],
+      [pane.px1, pane.py1],
+      [pane.px1, pane.py0],
+      [pane.px0, pane.py0],
+    ].map(([a, y]) => place([a, y, 0.2]));
+    const floor = clipToFloor(
+      corners.map((p) => {
+        const q = along(p, p[1] / ly);
+        return [q[0], q[2]];
+      }),
+      W,
+      D,
+    );
+    if (floor.length >= 3) {
+      patches.push({
+        id: `${look.source}-patch-${i + 1}`,
+        light: look.source,
+        points: floor.map(([x, z]) => [m(x), FLOOR_LIGHT_Y_M, m(z)]),
+        color: look.color,
+        opacity: look.patchOpacity,
+      });
+    }
+    shafts.push({
+      id: `${look.source}-shaft-${i + 1}`,
+      kind: 'shaft',
+      light: look.source,
+      geometry: 'prism',
+      from: corners.map(v3),
+      to: corners.map((p) => v3(along(p, travel(p)))),
+      color: look.color,
+      opacity: look.shaftOpacity,
+    });
+  }
+  return { patches, shafts };
+}
+
+/** Unit vector toward the moonlit sky outside a wall: up 40 deg, slanted 14 deg off the outward normal. */
+function moonDirection(wall) {
+  const [nx, nz] = INWARD[wall];
+  const e = MOONLIGHT.elevationDeg * DEG;
+  const s = MOONLIGHT.skewDeg * DEG;
+  const ox = -nx * Math.cos(s) + nz * Math.sin(s);
+  const oz = -nz * Math.cos(s) - nx * Math.sin(s);
+  return [ox * Math.cos(e), Math.sin(e), oz * Math.cos(e)];
+}
+
+/**
+ * One window on its wall, as a glazed opening in a plaster reveal with a deep
+ * oak sill, a steel glazing frame, two mullions and a transom. With the sun up
+ * on the window's side, each pane throws a sunlit patch across the floor and a
+ * shaft of light through the air. At night the glass holds a twilight sky and
+ * every pane lets in a soft, cool moonlit patch and a faint shaft instead.
  */
 function buildWindow(room, wall, solar, daylight) {
   const span = wallSpanCm(room, wall);
@@ -1320,25 +1675,44 @@ function buildWindow(room, wall, solar, daylight) {
   const y1 = head;
   const rotY = WALL_ROT_Y[wall];
   const place = (point) => wallToRoom(room, wall, point);
-  const bar = (id, bx0, bx1, by0, by1, bz1) => ({
-    id: `window-${id}`,
-    size: [m(bx1 - bx0), m(by1 - by0), m(bz1)],
-    position: v3(place([(bx0 + bx1) / 2, (by0 + by1) / 2, bz1 / 2])),
+  const bar = (id, look, bx0, bx1, by0, by1, bz0, bz1, extra = {}) => ({
+    id: `window-${wall}-${id}`,
+    kind: id.split('-')[0],
+    geometry: 'box',
+    radius: null,
+    radiusBottom: null,
+    size: [m(bx1 - bx0), m(by1 - by0), m(bz1 - bz0)],
+    position: v3(place([(bx0 + bx1) / 2, (by0 + by1) / 2, (bz0 + bz1) / 2])),
     rotation: [0, rotY, 0],
+    ...WINDOW_FRAME[look],
+    grain: extra.grain ?? null,
+    shadow: extra.shadow !== false,
+    emissive: null,
+    emissiveIntensity: 0,
   });
   const third = width / 3;
   const transom = y0 + (y1 - y0) * 0.72;
   const m1 = x0 + third;
   const m2 = x0 + 2 * third;
   const h2 = MULLION_CM / 2;
+  const [bz0, bz1] = BAR_Z;
   const members = [
-    bar('head', x0 - FRAME_CM, x1 + FRAME_CM, y1, y1 + FRAME_CM, 4),
-    bar('sill', x0 - FRAME_CM - 2, x1 + FRAME_CM + 2, y0 - 4, y0, 9),
-    bar('jamb-left', x0 - FRAME_CM, x0, y0, y1, 4),
-    bar('jamb-right', x1, x1 + FRAME_CM, y0, y1, 4),
-    bar('mullion-1', m1 - h2, m1 + h2, y0, y1, 3),
-    bar('mullion-2', m2 - h2, m2 + h2, y0, y1, 3),
-    bar('transom', x0, x1, transom - h2, transom + h2, 3),
+    // The plaster reveal: head, jambs and an apron under the sill, 5 cm off the wall.
+    bar('head', 'reveal', x0 - FRAME_CM, x1 + FRAME_CM, y1, y1 + FRAME_CM, 0, REVEAL_DEPTH_CM),
+    bar('jamb-left', 'reveal', x0 - FRAME_CM, x0, y0, y1, 0, REVEAL_DEPTH_CM),
+    bar('jamb-right', 'reveal', x1, x1 + FRAME_CM, y0, y1, 0, REVEAL_DEPTH_CM),
+    bar('apron', 'reveal', x0 - FRAME_CM, x1 + FRAME_CM, y0 - 12, y0 - 4.5, 0, 2),
+    // A deep oak sill running past the reveal on both sides.
+    bar('sill', 'sill', x0 - FRAME_CM - 3, x1 + FRAME_CM + 3, y0 - 4.5, y0, 0, SILL_DEPTH_CM, { grain: 'x' }),
+    // The steel glazing frame round the glass.
+    bar('bead-head', 'mullion', x0, x1, y1 - BEAD_CM, y1, 0.3, 1.8, { grain: 'x' }),
+    bar('bead-foot', 'mullion', x0, x1, y0, y0 + BEAD_CM, 0.3, 1.8, { grain: 'x' }),
+    bar('bead-left', 'mullion', x0, x0 + BEAD_CM, y0 + BEAD_CM, y1 - BEAD_CM, 0.3, 1.8, { grain: 'y' }),
+    bar('bead-right', 'mullion', x1 - BEAD_CM, x1, y0 + BEAD_CM, y1 - BEAD_CM, 0.3, 1.8, { grain: 'y' }),
+    // Mullions and transom standing proud of the glass.
+    bar('mullion-1', 'mullion', m1 - h2, m1 + h2, y0, y1, bz0, bz1, { grain: 'y' }),
+    bar('mullion-2', 'mullion', m2 - h2, m2 + h2, y0, y1, bz0, bz1, { grain: 'y' }),
+    bar('transom', 'mullion', x0, x1, transom - h2, transom + h2, bz0, bz1, { grain: 'x' }),
   ];
   const columns = [
     [x0, m1 - h2],
@@ -1351,69 +1725,51 @@ function buildWindow(room, wall, solar, daylight) {
   ];
   const panes = rows.flatMap(([py0, py1]) => columns.map(([px0, px1]) => ({ px0, px1, py0, py1 })));
 
-  const sky = daylight ? (solar.up ? mix('#dbe7f2', solar.color, 0.3) : '#53627a') : '#141c26';
   const glazing = {
-    id: 'window-glazing',
+    id: `window-${wall}-glazing`,
     size: [m(width), m(y1 - y0)],
     position: v3(place([(x0 + x1) / 2, (y0 + y1) / 2, 0.15])),
     rotation: [0, rotY, 0],
-    color: sky,
-    intensity: daylight ? Number((solar.up ? 0.5 + 0.6 * solar.strength : 0.32).toFixed(3)) : 0.18,
+    color: daylight ? (solar.up ? mix('#dbe7f2', solar.color, 0.3) : '#53627a') : NIGHT_GLAZING.color,
+    base: daylight ? DAY_GLAZING_BASE : NIGHT_GLAZING.base,
+    intensity: daylight ? Number((solar.up ? 0.5 + 0.6 * solar.strength : 0.32).toFixed(3)) : NIGHT_GLAZING.intensity,
   };
 
   const [nx, nz] = INWARD[wall];
   const [lx, ly, lz] = solar.direction;
   const sunlit = daylight && solar.up && ly > 0.02 && lx * nx + lz * nz < -0.02;
-  const patches = [];
-  const shafts = [];
+  const moonlit = !daylight;
+  let light = { patches: [], shafts: [] };
   if (sunlit) {
-    const { widthCm: W, depthCm: D } = room;
-    const travel = (p) => {
-      // Along -sun from a point on the glass: to the floor, or out through the room's far side.
-      const limits = [p[1] / ly];
-      if (lx < -1e-9) limits.push((W - p[0]) / -lx);
-      if (lx > 1e-9) limits.push(p[0] / lx);
-      if (lz < -1e-9) limits.push((D - p[2]) / -lz);
-      if (lz > 1e-9) limits.push(p[2] / lz);
-      return Math.max(0, Math.min(...limits));
-    };
-    const along = (p, t) => [p[0] - lx * t, p[1] - ly * t, p[2] - lz * t];
-    const strength = solar.strength;
-    for (const [i, pane] of panes.entries()) {
-      const corners = [
-        [pane.px0, pane.py1],
-        [pane.px1, pane.py1],
-        [pane.px1, pane.py0],
-        [pane.px0, pane.py0],
-      ].map(([a, y]) => place([a, y, 0.2]));
-      const floor = clipToFloor(
-        corners.map((p) => {
-          const q = along(p, p[1] / ly);
-          return [q[0], q[2]];
-        }),
-        W,
-        D,
-      );
-      if (floor.length >= 3) {
-        patches.push({
-          id: `sun-patch-${i + 1}`,
-          points: floor.map(([x, z]) => [m(x), 0.003, m(z)]),
-          color: solar.color,
-          opacity: Number((0.34 * strength).toFixed(4)),
-        });
-      }
-      shafts.push({
-        id: `sun-shaft-${i + 1}`,
-        kind: 'shaft',
-        geometry: 'prism',
-        from: corners.map(v3),
-        to: corners.map((p) => v3(along(p, travel(p)))),
-        color: solar.color,
-        opacity: Number((0.15 * strength).toFixed(4)),
-      });
-    }
+    light = paneLight(room, panes, place, solar.direction, {
+      source: 'sun',
+      color: solar.color,
+      patchOpacity: Number((0.34 * solar.strength).toFixed(4)),
+      shaftOpacity: Number((0.15 * solar.strength).toFixed(4)),
+    });
+  } else if (moonlit) {
+    light = paneLight(room, panes, place, moonDirection(wall), {
+      source: 'moon',
+      color: MOONLIGHT.color,
+      patchOpacity: MOONLIGHT.patchOpacity,
+      shaftOpacity: MOONLIGHT.shaftOpacity,
+    });
   }
-  return { wall, cull: wallCull(room, wall), x0, x1, y0, y1, glazing, members, patches, shafts, sunlit };
+  return {
+    id: `window-${wall}`,
+    wall,
+    cull: wallCull(room, wall),
+    x0,
+    x1,
+    y0,
+    y1,
+    glazing,
+    members,
+    patches: light.patches,
+    shafts: light.shafts,
+    sunlit,
+    moonlit,
+  };
 }
 
 /**
@@ -1509,32 +1865,39 @@ export function buildScene({ state, conflicts = new Map(), selectedUid = null, t
   const lights = modules.flatMap((module) => module.lights.map((light) => ({ ...light, uid: module.uid })));
   const rig = fillRig(base, lights.length === 0);
   const layout = furnitureLayout(room);
-  const furniture = furnitureRecords(layout, room);
+  const furniture = furnitureRecords(layout, room, base, daylight);
+  const vignette = furnitureVignette(layout, room, base, daylight);
   const furnitureAo = furnitureOcclusion(layout);
-  const windowWall = windowWallOf(room);
-  const window = windowWall === 'none' ? null : buildWindow(room, windowWall, solar, daylight);
+  // Every glazed wall builds its own window; `window` stays the primary one for older readers.
+  const windows = windowWallsOf(room).map((wall) => buildWindow(room, wall, solar, daylight));
   const shell = buildShell(room, rig);
   const envelope = buildEnvelope(room, rig);
   const edges = technical || wireframe;
 
   const submeshes =
     modules.reduce((sum, module) => sum + module.subparts.length, 0) +
-    furniture.reduce((sum, part) => sum + part.subparts.length, 0);
-  const volumetrics = modules.reduce((sum, module) => sum + module.volumetrics.length, 0) + (window ? window.shafts.length : 0);
+    furniture.reduce((sum, part) => sum + part.subparts.length, 0) +
+    (vignette ? vignette.parts.length : 0);
+  const volumetrics =
+    modules.reduce((sum, module) => sum + module.volumetrics.length, 0) +
+    windows.reduce((sum, win) => sum + win.shafts.length, 0);
   // Drawn meshes: sub-parts batch by look, one draw call per look.
   const meshes =
     shell.surfaces.length +
     shell.poche.length +
     envelope.baseboards.length +
     1 +
+    envelope.coves.reduce((sum, cove) => sum + lookCount(cove.parts), 0) +
+    envelope.cornerShades.length +
     furniture.reduce((sum, part) => sum + (part.body ? 1 : 0) + lookCount(part.subparts), 0) +
     (furnitureAo ? 1 : 0) +
+    (vignette ? lookCount(vignette.parts) : 0) +
     modules.reduce(
       (sum, module) => sum + (lookCount(module.subparts) || 1) + module.emitters.length + 1 + (module.aoFloor ? 1 : 0),
       0,
     ) +
     volumetrics +
-    (window ? 2 + window.patches.length : 0);
+    windows.reduce((sum, win) => sum + 1 + lookCount(win.members) + win.patches.length, 0);
 
   return {
     lighting: room.lighting,
@@ -1548,10 +1911,12 @@ export function buildScene({ state, conflicts = new Map(), selectedUid = null, t
     scaleTicks: buildScaleTicks(room),
     modules,
     furniture,
+    furnitureVignette: vignette,
     furnitureAo,
     furniturePlacement: layout ? { wall: layout.wall, offsetCm: layout.offsetCm, bounds: layout.bounds } : null,
     solar,
-    window,
+    windows,
+    window: windows[0] ?? null,
     lights,
     wireframe: wireframe && !technical,
     technical,

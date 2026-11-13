@@ -2420,14 +2420,37 @@
   }
 }
 
-/* RT60 audition: a compact key beside the energy decay curve (dB, on the
-   spectrum's 2.5 s axis). A take sweeps a playhead across it in real time and
-   each sample lights as the sound reaches it; the hairline marks RT60. */
+/* Room echo test: a compact key beside the energy decay curve (dB, on the
+   spectrum's 2.5 s axis), with a plain bare-versus-current readout beneath.
+   A take sweeps a playhead across the curve in real time and each sample
+   lights as the sound reaches it; the amber hairline marks this room's RT60
+   and a faint dashed one where the bare room's echo would end. */
 .audition {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
+  gap: 6px var(--space-3);
   margin-top: 6px;
+}
+
+.audition__readout {
+  flex: 1 0 100%;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.audition__readout[data-damped='false'] {
+  color: var(--text-muted);
+}
+
+.audition__baseline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--baseline-at) * 100%);
+  width: 0;
+  border-left: 1px dashed rgba(242, 238, 231, 0.34);
 }
 
 .audition__key {

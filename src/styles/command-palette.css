@@ -116,30 +116,46 @@
   animation: palette-fade var(--duration-base) var(--ease-out);
 }
 
+/* Spotlight: the Lumen AI panel's warm basalt glass, a hairline champagne
+   edge and a champagne light along the top; depth from a zero-blur plinth,
+   never a glow. Visual mode shows names, a plain subtitle and a price;
+   SKUs, paths and wattage stay in the DOM as Specs-mode detail (.tech-only). */
 .palette {
   --palette-top: clamp(64px, 14vh, 144px);
+  --palette-champagne: #e5c799;
 
   position: absolute;
   top: var(--palette-top);
   left: 50%;
   display: flex;
   flex-direction: column;
-  width: min(640px, calc(100vw - 32px));
-  max-height: min(580px, calc(100svh - var(--palette-top) - 24px));
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--bento-radius);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.015) 100%),
-    rgba(13, 12, 11, 0.74);
+  width: min(540px, calc(100vw - 32px));
+  max-height: min(560px, calc(100svh - var(--palette-top) - 24px));
+  border: 1px solid rgba(229, 199, 153, 0.18);
+  border-radius: 16px;
+  background: rgba(18, 17, 15, 0.96);
   -webkit-backdrop-filter: blur(24px);
   backdrop-filter: blur(24px);
   box-shadow:
-    0 40px 120px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    inset 0 1px 0 rgba(229, 199, 153, 0.16),
+    0 3px 0 rgba(0, 0, 0, 0.45);
+  color: #e6e2da;
   overflow: hidden;
   transform: translateX(-50%);
   transform-origin: 50% 0;
   animation: palette-in 520ms var(--ease-cinematic) both;
+}
+
+/* The champagne top-edge light: brightest at the centre, gone at the corners. */
+.palette::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 18%;
+  left: 18%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(229, 199, 153, 0.6), transparent);
+  pointer-events: none;
 }
 
 .palette__search {
@@ -147,9 +163,9 @@
   flex: none;
   align-items: center;
   gap: var(--space-3);
-  height: 60px;
-  padding-inline: var(--space-5);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  height: 58px;
+  padding-inline: 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .palette__search-glyph {
@@ -166,14 +182,15 @@
   border: 0;
   background: transparent;
   font-family: var(--font-sans);
-  font-size: var(--text-md);
+  font-size: 15px;
   letter-spacing: -0.01em;
-  color: var(--text-primary);
+  color: #f4f1ea;
+  caret-color: var(--palette-champagne);
   outline: none;
 }
 
 .palette__input::placeholder {
-  color: var(--text-muted);
+  color: #8f877b;
 }
 
 .palette__list {
@@ -197,12 +214,18 @@
 .palette__group-label {
   display: flex;
   justify-content: space-between;
-  padding: var(--space-3) var(--space-3) var(--space-2);
+  padding: var(--space-3) var(--space-3) 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: #8f877b;
+}
+
+:root[data-mode='technical'] .palette__group-label {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-muted);
 }
 
 .palette__group-count {
@@ -227,9 +250,9 @@
 }
 
 .palette__option[data-active] {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-primary);
+  border-color: rgba(229, 199, 153, 0.2);
+  background: rgba(229, 199, 153, 0.07);
+  color: #f4f1ea;
 }
 
 .palette__glyph {
@@ -283,14 +306,29 @@
 }
 
 .palette__detail {
+  display: flex;
+  gap: var(--space-2);
+  min-width: 0;
   overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+  color: #b9b2a6;
+}
+
+.palette__summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Specs mode only: the SKU or path, set in mono after the plain subtitle. */
+.palette__code {
+  flex: none;
   font-family: var(--font-mono);
   font-size: 10px;
+  line-height: 1.6;
   letter-spacing: var(--tracking-label);
-  text-overflow: ellipsis;
   text-transform: uppercase;
-  white-space: nowrap;
-  color: var(--text-muted);
+  color: #8f877b;
 }
 
 .palette__meta {
@@ -300,6 +338,24 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: var(--text-secondary);
+}
+
+/* A clean price pill; in Specs mode the wattage rides in front of it. */
+.palette__price {
+  padding: 3px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: #e6e2da;
+}
+
+.palette__option[data-active] .palette__price {
+  border-color: rgba(229, 199, 153, 0.34);
+  color: #f0dcb8;
 }
 
 .palette__meta[data-badge] {
@@ -318,29 +374,23 @@
   color: var(--text-secondary);
 }
 
+/* One calm line of keyboard help; the result count is spoken, not shown. */
 .palette__footer {
   display: flex;
   flex: none;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-5);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--text-muted);
+  justify-content: center;
+  padding: 10px 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: #8f877b;
 }
 
 .palette__hint {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.palette__count {
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .palette__kbd {
@@ -370,10 +420,7 @@
 
   .palette__footer {
     padding-inline: var(--space-4);
-  }
-
-  .palette__hint--wide {
-    display: none;
+    font-size: 11px;
   }
 }
 

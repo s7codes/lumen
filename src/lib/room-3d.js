@@ -1,7 +1,7 @@
 import { getProduct, productHasFinish } from '../data/products.js';
 import { isOneOf, safeStorage } from '../security/sanitize.js';
 import { dimPatch, recordChanged, sanitizeDimPct, withDimPct } from './dimming.js';
-import { sanitizeSolarHour, SOLAR_HOUR, WINDOW_WALLS } from './solar-path.js';
+import { GLAZED_WALLS, MAX_WINDOWS, sanitizeSolarHour, SOLAR_HOUR, WINDOW_WALLS } from './solar-path.js';
 import {
   boxToRoom,
   boxToWall,
@@ -108,6 +108,9 @@ export const DEFAULT_ROOM = Object.freeze({
  * - windowWall: the daylight window. When unset it follows the lighting: a
  *   west window in Daylight Studio, none at night. A chosen wall, or 'none',
  *   holds through lighting changes.
+ * - windowWalls: two or three glazed walls at once, in canonical west, east,
+ *   south order. A single window, or none, always stores as `windowWall`, so
+ *   one-window rooms keep the exact v7.0 record; the two keys never coexist.
  * - furnitureWall: the wall the floor reference backs onto (north).
  * - furnitureOffsetCm: its slide along that wall from centre (0).
  */
@@ -221,10 +224,45 @@ export function furnitureSlackCm(room) {
   return Math.max(0, Math.floor((wallSpanCm(room, furnitureWallOf(room)) - spec.w) / 2));
 }
 
-/** The daylight window in effect: the chosen wall, or by default west in daylight and none at night. */
+/**
+ * Untrusted window list to its canonical form: distinct glazed walls in
+ * west, east, south order. Null when it is not a list, or when a non-empty
+ * list names no glazed wall at all (so garbage never reads as "no windows");
+ * an empty list is an explicit "none".
+ */
+export function sanitizeWindowWalls(value) {
+  if (!Array.isArray(value)) return null;
+  const scanned = value.slice(0, 8);
+  const picked = new Set(scanned.filter((wall) => isOneOf(wall, GLAZED_WALLS)));
+  if (scanned.length > 0 && picked.size === 0) return null;
+  return GLAZED_WALLS.filter((wall) => picked.has(wall)).slice(0, MAX_WINDOWS);
+}
+
+/** Every glazed wall in effect, canonical order: the chosen set, or the single window rule below. */
+export function windowWallsOf(room) {
+  const many = sanitizeWindowWalls(room?.windowWalls);
+  if (many && many.length > 1) return many;
+  const one = windowWallOf(room);
+  return one === 'none' ? [] : [one];
+}
+
+/**
+ * The primary daylight window: the first of several, else the chosen wall,
+ * or by default west in daylight and none at night.
+ */
 export function windowWallOf(room) {
+  const many = sanitizeWindowWalls(room?.windowWalls);
+  if (many && many.length > 1) return many[0];
   if (isOneOf(room?.windowWall, WINDOW_WALLS)) return room.windowWall;
   return room?.lighting === 'daylight' ? 'west' : 'none';
+}
+
+/** Room patch that toggles one glazed wall in or out of the windows in effect; 'none' clears them all. */
+export function toggleWindowPatch(room, wall) {
+  if (wall === 'none') return { windowWalls: [] };
+  if (!isOneOf(wall, GLAZED_WALLS)) return {};
+  const current = windowWallsOf(room);
+  return { windowWalls: current.includes(wall) ? current.filter((id) => id !== wall) : [...current, wall] };
 }
 
 /** Local solar hour in effect. */
@@ -245,7 +283,12 @@ export function sanitizeRoom(input) {
     const hour = sanitizeSolarHour(source.solarHour);
     if (hour !== SOLAR_HOUR.initial) room.solarHour = hour;
   }
-  if (isOneOf(source.windowWall, WINDOW_WALLS)) room.windowWall = source.windowWall;
+  // A window list, when one is given, wins over the single key; one or no
+  // window folds back onto `windowWall`, so the record keeps its v7.0 shape.
+  const windows = sanitizeWindowWalls(source.windowWalls);
+  if (windows && windows.length > 1) room.windowWalls = windows;
+  else if (windows) room.windowWall = windows[0] ?? 'none';
+  else if (isOneOf(source.windowWall, WINDOW_WALLS)) room.windowWall = source.windowWall;
   // Placement belongs to a piece of furniture: with none chosen there is nothing to place.
   if (room.furniture !== 'none') {
     if (isRoomWall(source.furnitureWall) && source.furnitureWall !== DEFAULT_FURNITURE_WALL) {
@@ -549,10 +592,25 @@ function pullInside(items, room) {
   return changed ? next : items;
 }
 
-// Optional envelope keys come and go, so equality checks both key sets.
+function sameEntry(a, b) {
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((value, i) => value === b[i]);
+  return a === b;
+}
+
+/** Shallow record equality that reads a list value (the window walls) by its entries. */
+export function sameRoom(a, b) {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => sameEntry(a[key], b[key]));
+}
+
+// Optional envelope keys come and go, so equality checks both key sets. A
+// legacy single-window patch replaces a window list rather than losing to it.
 export function updateRoom(state, patch) {
-  const room = sanitizeRoom({ ...state.room, ...(isRecord(patch) ? patch : {}) });
-  if (!recordChanged(room, state.room)) return state;
+  const changes = isRecord(patch) ? patch : {};
+  const { windowWalls: _held, ...single } = state.room;
+  const base = Object.hasOwn(changes, 'windowWall') && !Object.hasOwn(changes, 'windowWalls') ? single : state.room;
+  const room = sanitizeRoom({ ...base, ...changes });
+  if (sameRoom(room, state.room)) return state;
   return { ...state, room, items: pullInside(state.items, room) };
 }
 
@@ -679,7 +737,7 @@ export function serializeRoomState(state) {
   return {
     format: ROOM_FORMAT,
     version: ROOM_VERSION,
-    room: { ...state.room },
+    room: { ...state.room, ...(state.room.windowWalls ? { windowWalls: [...state.room.windowWalls] } : {}) },
     camera: { ...state.camera },
     items: state.items.map(stripLock),
   };

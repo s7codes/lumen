@@ -13,17 +13,19 @@ import {
   ROOM_WIDTH,
   roomSizePreset,
   solarHourOf,
+  toggleWindowPatch,
   WALL_LABELS,
-  windowWallOf,
+  windowWallsOf,
 } from '../../lib/room-3d.js';
 import {
   formatSolarHour,
+  GLAZED_WALLS,
   SOLAR_HOUR,
   SOLAR_PRESETS,
   solarPreset,
   solarState,
   WINDOW_LABELS,
-  WINDOW_WALLS,
+  windowSummary,
 } from '../../lib/solar-path.js';
 import { MAX_WALL_ITEMS } from '../../lib/wall-studio.js';
 import { clampNumber } from '../../security/sanitize.js';
@@ -160,20 +162,62 @@ function CommitRange({ label, value, min, max, step, format, onCommit, testId, d
 const signedCm = (value) => `${value > 0 ? '+' : ''}${value} cm`;
 
 /**
- * Sun & Aperture: local solar time with four quick presets, and the wall
- * the daylight window sits in. The sun moves in Daylight Studio; at night
- * the window stays dark.
+ * Window wall pills: West, East and South each toggle a window in or out,
+ * so two or three glazed walls can stand at once; None clears them all.
+ * Each wall is a real checkbox and None a pressed-state button, so the
+ * group reads correctly to assistive technology.
+ */
+function WindowToggles({ room, onRoom }) {
+  const walls = windowWallsOf(room);
+  const count = walls.length;
+  return (
+    <fieldset className="studio-segment room3d-segment room3d-windows" data-testid="room-window-walls" data-count={count}>
+      <legend className="field__label">Window</legend>
+      <div className="studio-segment__track" data-columns={2}>
+        <button
+          type="button"
+          className="studio-segment__option room3d-windows__none"
+          aria-pressed={count === 0}
+          data-testid="room-window-none"
+          onClick={() => onRoom(toggleWindowPatch(room, 'none'))}
+        >
+          {WINDOW_LABELS.none}
+        </button>
+        {GLAZED_WALLS.map((wall) => (
+          <label key={wall} className="studio-segment__option">
+            <input
+              type="checkbox"
+              name="room-window"
+              value={wall}
+              checked={walls.includes(wall)}
+              data-testid={`room-window-${wall}`}
+              onChange={() => onRoom(toggleWindowPatch(room, wall))}
+            />
+            <span>{WINDOW_LABELS[wall]}</span>
+          </label>
+        ))}
+      </div>
+      <p className="room3d-windows__count" data-testid="room-window-count" aria-live="polite">
+        {count === 0 ? 'No windows' : `${count} active ${count === 1 ? 'window' : 'windows'}`}
+      </p>
+    </fieldset>
+  );
+}
+
+/**
+ * Sun & Aperture: local solar time with four quick presets, and the walls
+ * the windows sit in. The sun moves in Daylight Studio; at night every
+ * window holds a moonlit twilight sky.
  */
 function SunAperture({ room, onRoom }) {
   const hour = solarHourOf(room);
   const preset = solarPreset(hour);
-  const windowWall = windowWallOf(room);
   const solar = solarState(hour);
   const daylight = room.lighting === 'daylight';
   return (
     <Disclosure
       label="Sun & Aperture"
-      summary={`${formatSolarHour(hour)} / ${windowWall === 'none' ? 'No window' : `${WINDOW_LABELS[windowWall]} window`}`}
+      summary={`${formatSolarHour(hour)} / ${windowSummary(windowWallsOf(room))}`}
       testId="room-solar-controls"
     >
       <CommitRange
@@ -201,13 +245,7 @@ function SunAperture({ room, onRoom }) {
           </button>
         ))}
       </div>
-      <Segment
-        legend="Window"
-        name="room-window"
-        options={WINDOW_WALLS.map((id) => ({ id, label: WINDOW_LABELS[id] }))}
-        value={windowWall}
-        onChange={(next) => onRoom({ windowWall: next })}
-      />
+      <WindowToggles room={room} onRoom={onRoom} />
       <p
         className="room3d-sun__readout mono"
         data-testid="room-solar-readout"

@@ -10,6 +10,7 @@ import {
   CylinderGeometry,
   DataTexture,
   DoubleSide,
+  EquirectangularReflectionMapping,
   Euler,
   Float32BufferAttribute,
   LinearFilter,
@@ -30,7 +31,15 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { formatInt } from '../../lib/format.js';
 import { fieldImage, isoLuxContours } from '../../lib/illuminance-field.js';
-import { contactShadowMap, faceUvTransform, PBR_MATERIALS, synthesizeMaterial } from '../../lib/pbr-materials.js';
+import {
+  contactShadowMap,
+  cornerShadeMap,
+  faceUvTransform,
+  iblTier,
+  PBR_MATERIALS,
+  studioEnvironmentMap,
+  synthesizeMaterial,
+} from '../../lib/pbr-materials.js';
 import { CAMERA_PITCH, CAMERA_YAW, ROOM_WALLS, sameCamera, sanitizeCamera, WALL_HEADING, wrapYaw } from '../../lib/room-3d.js';
 import { intersectRayWithWall } from '../../lib/room-raycast.js';
 import {
@@ -83,7 +92,8 @@ const SELECT_COLOR = '#e8923a';
 const FAULT_COLOR = '#c8553d';
 const CALLOUT_COLORS = { ok: '#f0b273', tight: '#e08a74' };
 const ISO_COLORS = { 100: '#d6a06e', 250: '#f0b273', 500: '#f6efe4' };
-const FLOOR_LUX_LIFT = 0.004;
+// The lux grid floats just above a 0.6 cm area rug and the sun patches on it.
+const FLOOR_LUX_LIFT = 0.0095;
 const DEG = Math.PI / 180;
 const noRaycast = () => null;
 
@@ -907,6 +917,29 @@ function createPbrLibrary(gl) {
       }
       return cache.get('contact');
     },
+    corner() {
+      if (!cache.has('corner')) {
+        const shade = cornerShadeMap(64);
+        cache.set('corner', texture(shade.data, shade.width, shade.height, false));
+      }
+      return cache.get('corner');
+    },
+    /** The procedural studio environment, an sRGB equirectangular map three.js prefilters for IBL. */
+    environment() {
+      if (!cache.has('environment')) {
+        const env = studioEnvironmentMap();
+        const map = new DataTexture(env.data, env.width, env.height, RGBAFormat);
+        map.mapping = EquirectangularReflectionMapping;
+        map.colorSpace = SRGBColorSpace;
+        map.magFilter = LinearFilter;
+        map.minFilter = LinearFilter;
+        map.generateMipmaps = false;
+        map.needsUpdate = true;
+        textures.push(map);
+        cache.set('environment', { map, intensity: env.intensity });
+      }
+      return cache.get('environment');
+    },
     dispose() {
       for (const map of textures) map.dispose();
       textures.length = 0;
@@ -920,6 +953,48 @@ function PbrProvider({ children }) {
   const library = useMemo(() => createPbrLibrary(gl), [gl]);
   useEffect(() => () => library.dispose(), [library]);
   return <PbrContext.Provider value={library}>{children}</PbrContext.Provider>;
+}
+
+/** The unmasked renderer string, read once per context; RENDERER first, the debug extension only where it is masked. */
+function rendererName(gl) {
+  const ctx = gl.getContext();
+  const plain = String(ctx.getParameter(ctx.RENDERER) ?? '');
+  if (plain && !/^webkit webgl$/i.test(plain)) return plain;
+  const debug = ctx.getExtension('WEBGL_debug_renderer_info');
+  return debug ? String(ctx.getParameter(debug.UNMASKED_RENDERER_WEBGL) ?? plain) : plain;
+}
+
+/**
+ * Image-based lighting from the procedural studio environment: timber,
+ * steel, ceramic and glass pick up soft physical reflections of an overhead
+ * softbox and a warm horizon bounce. A quality tier: on a software
+ * rasteriser (SwiftShader, llvmpipe, WARP) per-pixel IBL costs several times
+ * the frame, so the room keeps its direct rig there. The wireframe view keeps
+ * plain smoked glass, so the environment comes off with it. The tier in use
+ * is written straight to the scene graph mirror as data-ibl.
+ */
+function StudioEnvironment({ enabled, manifestRef }) {
+  const pbr = useContext(PbrContext);
+  const gl = useThree((state) => state.gl);
+  const scene = useThree((state) => state.scene);
+  const invalidate = useThree((state) => state.invalidate);
+  const tier = useMemo(() => iblTier(rendererName(gl)), [gl]);
+  const active = enabled && tier === 'studio' && Boolean(pbr);
+  useEffect(() => {
+    setData(manifestRef?.current, 'ibl', active ? 'studio' : enabled ? tier : 'off');
+    if (!active) return undefined;
+    const env = pbr.environment();
+    const previous = { map: scene.environment, intensity: scene.environmentIntensity };
+    scene.environment = env.map;
+    scene.environmentIntensity = env.intensity;
+    invalidate();
+    return () => {
+      scene.environment = previous.map;
+      scene.environmentIntensity = previous.intensity;
+      invalidate();
+    };
+  }, [active, enabled, tier, pbr, scene, invalidate, manifestRef]);
+  return null;
 }
 
 /** A geometry built once per shape and disposed when the shape changes or the mesh goes. */
@@ -1311,39 +1386,32 @@ function SunPatch({ patch }) {
   );
 }
 
-const WINDOW_FRAME = Object.freeze({
-  geometry: 'box',
-  material: 'metal-obsidian',
-  color: '#3d3832',
-  roughness: 0.5,
-  metalness: 0.3,
-  grain: null,
-  shadow: true,
-  emissive: null,
-  emissiveIntensity: 0,
-});
-
-/** The daylight window: glazing, frame, mullions and the sun it lets in. */
+/**
+ * One window: the glazing (a twilight sky at night, the sun's sky by day),
+ * its plaster reveal, oak sill and steel bars, and the sun or moonlight it
+ * lets in. Every member record carries its own look.
+ */
 function WindowLayer({ win, wire }) {
   const { glazing } = win;
-  const members = useMemo(() => win.members.map((bar) => ({ ...WINDOW_FRAME, ...bar })), [win.members]);
   return (
-    <group name="daylight-window">
+    <group name={`window-${win.wall}`}>
       <Cullable cull={win.cull}>
         <mesh position={glazing.position} rotation={glazing.rotation} raycast={noRaycast}>
           <planeGeometry args={glazing.size} />
           <meshStandardMaterial
-            color="#0f1114"
+            color={glazing.base}
             emissive={glazing.color}
             emissiveIntensity={glazing.intensity}
             roughness={0.08}
             metalness={0.2}
+            envMapIntensity={0.6}
             polygonOffset
             polygonOffsetFactor={-1}
             polygonOffsetUnits={-1}
+            {...glass(wire)}
           />
         </mesh>
-        <PartBatches parts={members} wire={wire} />
+        <PartBatches parts={win.members} wire={wire} />
         {!wire && win.shafts.map((shaft) => <SunShaft key={shaft.id} shaft={shaft} />)}
       </Cullable>
       {!wire && win.patches.map((patch) => <SunPatch key={patch.id} patch={patch} />)}
@@ -1403,12 +1471,46 @@ function Shell({ shell, wire, onBackground }) {
   );
 }
 
-/** Baseboards and, at eye level only, the ceiling. */
+/** A soft vertical falloff at an inside corner, laid on one wall. */
+function CornerShade({ shade }) {
+  const pbr = useContext(PbrContext);
+  const alpha = pbr ? pbr.corner() : null;
+  if (!alpha) return null;
+  return (
+    <mesh position={shade.position} rotation={shade.rotation} raycast={noRaycast} renderOrder={1}>
+      <planeGeometry args={shade.size} />
+      <meshBasicMaterial
+        color="#000000"
+        alphaMap={alpha}
+        transparent
+        opacity={shade.opacity}
+        depthWrite={false}
+        polygonOffset
+        polygonOffsetFactor={-2}
+        polygonOffsetUnits={-2}
+        toneMapped={false}
+      />
+    </mesh>
+  );
+}
+
+/** Baseboards, the ceiling shadow-gap cove, corner depth and, at eye level only, the ceiling. */
 function Envelope({ envelope, showCeiling, wire, onBackground }) {
   const { ceiling } = envelope;
   return (
     <group>
       {showCeiling && <ShellSurface surface={ceiling} wire={wire} name="surface-ceiling" onClick={onBackground} />}
+      {envelope.coves.map((cove) => (
+        <Cullable key={cove.id} cull={cove.cull}>
+          <PartBatches parts={cove.parts} wire={wire} />
+        </Cullable>
+      ))}
+      {!wire &&
+        envelope.cornerShades.map((shade) => (
+          <Cullable key={shade.id} culls={shade.culls}>
+            <CornerShade shade={shade} />
+          </Cullable>
+        ))}
       {envelope.baseboards.map((board) => (
         <Cullable key={board.id} cull={board.cull}>
           <Subpart
@@ -1907,7 +2009,9 @@ const SceneGraph = memo(function SceneGraph({ scene, floorLux, heading, cameraMo
 
       <Shell shell={scene.shell} wire={wire} onBackground={onBackground} />
       <Envelope envelope={scene.envelope} showCeiling={cameraMode === 'inside'} wire={wire} onBackground={onBackground} />
-      {scene.window && <WindowLayer win={scene.window} wire={wire} />}
+      {scene.windows.map((win) => (
+        <WindowLayer key={win.id} win={win} wire={wire} />
+      ))}
       {!wire && scene.furnitureAo && <ContactShadow plane={scene.furnitureAo} />}
       <Segments points={scene.planks} color={scene.rig.plank.color} opacity={scene.rig.plank.opacity} />
       <Segments points={scene.grid} color={scene.rig.grid.color} opacity={scene.technical ? 0.16 : scene.rig.grid.opacity} />
@@ -1919,6 +2023,11 @@ const SceneGraph = memo(function SceneGraph({ scene, floorLux, heading, cameraMo
       {scene.furniture.map((part) => (
         <FurnitureMesh key={part.part} part={part} wire={wire} edges={scene.edges} ink={ink} />
       ))}
+      {scene.furnitureVignette && (
+        <group name={scene.furnitureVignette.id}>
+          <PartBatches parts={scene.furnitureVignette.parts} wire={wire} />
+        </group>
+      )}
       {scene.modules.map((module) => (
         <ModuleMesh
           key={module.uid}
@@ -1990,6 +2099,7 @@ export default function RoomCanvas({
         api={api}
       />
       <PbrProvider>
+        <StudioEnvironment enabled={!scene.wireframe} manifestRef={manifestRef} />
         <SceneGraph
           scene={scene}
           floorLux={floorLux}
