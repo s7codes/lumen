@@ -9,7 +9,7 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000, ke
 
 server.listen(PORT, HOST, () => {
   const storage = cloud.file ? cloud.file : 'memory';
-  console.log(`Lumen Cloud API v${cloud.version} on http://${HOST}:${PORT}/api (store: ${storage})`);
+  console.log(`Lumen Cloud API v${cloud.version} on http://${HOST}:${PORT}/api (store: ${storage}, Lumen AI: ${cloud.agent.provider})`);
 });
 
 let closing = false;

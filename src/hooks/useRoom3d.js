@@ -9,6 +9,8 @@ import {
   mountInRoom,
   persistRoomState,
   removeRoomItem,
+  sanitizeRoomState,
+  serializeRoomState,
   updateCamera,
   updateRoom,
   updateRoomItem,
@@ -18,6 +20,7 @@ import {
 } from '../lib/room-3d.js';
 import { applyLightingSceneToRoom, getLightingScene } from '../lib/lighting-scenes.js';
 import { commitHistory, createHistory, MAX_WALL_ITEMS, redoHistory, undoHistory } from '../lib/wall-studio.js';
+import { subscribeWorkspaceMutations } from '../lib/workspace-events.js';
 
 function init() {
   return {
@@ -48,6 +51,12 @@ function travel(store, history, text) {
   if (history === store.history) return store;
   const camera = store.history.present.camera;
   return withNotice({ ...store, history: { ...history, present: { ...history.present, camera } } }, text);
+}
+
+// Content equality: an AI edit that only switches the lens or wall rebuilds an
+// identical room, and must not leave an empty step in the undo history.
+function sameRoom(a, b) {
+  return JSON.stringify(serializeRoomState(a)) === JSON.stringify(serializeRoomState(b));
 }
 
 function plural(count, word) {
@@ -176,8 +185,17 @@ function roomReducer(store, action) {
       return withNotice({ ...withState(store, result.state), selectedUid: null }, text);
     }
 
-    case 'replace':
-      return withNotice({ ...withState(store, action.state), selectedUid: null }, action.text);
+    // A shared scene, or a Lumen AI edit: one history step, so Ctrl+Z reverses it whole.
+    // An AI edit keeps the current camera and may turn to a wall and select its new module.
+    case 'replace': {
+      const next = action.keepCamera ? { ...action.state, camera: state.camera } : action.state;
+      const committed = action.keepCamera && sameRoom(next, state) ? store : withState(store, next);
+      const room = committed.history.present;
+      const selectUid = action.selectUid ?? (action.keepCamera ? store.selectedUid : null);
+      const selectedUid = selectUid && room.items.some((item) => item.uid === selectUid) ? selectUid : null;
+      const activeWall = isRoomWall(action.activeWall) ? action.activeWall : store.activeWall;
+      return withNotice({ ...committed, selectedUid, activeWall }, action.text);
+    }
 
     case 'notice':
       return withNotice(store, action.text, action.tone);
@@ -196,6 +214,20 @@ export function useRoom3d() {
   useEffect(() => {
     persistRoomState(state);
   }, [state]);
+
+  // Lumen AI mutations land live, as one undoable step.
+  useEffect(
+    () =>
+      subscribeWorkspaceMutations(
+        (action) => {
+          const next = sanitizeRoomState(action.state);
+          if (!next) return;
+          dispatch({ type: 'replace', state: next, text: action.notice, activeWall: action.activeWall, selectUid: action.selectUid, keepCamera: true });
+        },
+        ['apply_room_state'],
+      ),
+    [],
+  );
 
   const actions = useMemo(
     () => ({

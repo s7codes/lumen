@@ -16,6 +16,8 @@ import {
   moveModules,
   persistLayout,
   redoHistory,
+  sanitizeLayout,
+  serializeLayout,
   removeItem,
   removeModules,
   undoHistory,
@@ -23,6 +25,7 @@ import {
   updateModules,
   updateWall,
 } from '../lib/wall-studio.js';
+import { subscribeWorkspaceMutations } from '../lib/workspace-events.js';
 
 function init() {
   return { history: createHistory(loadLayout()), selectedUids: [], notice: { text: '', tone: 'info', serial: 0 } };
@@ -175,6 +178,10 @@ function studioReducer(state, action) {
       );
 
     case 'import':
+      // A Lumen AI edit identical to the wall on screen leaves no empty undo step.
+      if (action.agent && JSON.stringify(serializeLayout(action.layout)) === JSON.stringify(serializeLayout(layout))) {
+        return withNotice(state, action.message);
+      }
       return withNotice({ ...commit(state, action.layout), selectedUids: [] }, action.message);
 
     case 'notice':
@@ -204,6 +211,19 @@ export function useWallStudio() {
   useEffect(() => {
     persistLayout(layout);
   }, [layout]);
+
+  // Lumen AI mutations land live, as one undoable step.
+  useEffect(
+    () =>
+      subscribeWorkspaceMutations(
+        (action) => {
+          const next = sanitizeLayout(action.state);
+          if (next) dispatch({ type: 'import', layout: next, message: action.notice, agent: true });
+        },
+        ['apply_wall_state'],
+      ),
+    [],
+  );
 
   const actions = useMemo(
     () => ({

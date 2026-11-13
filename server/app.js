@@ -14,10 +14,12 @@ import {
   serializeProjectRecord,
   TICKET_QUEUED,
 } from '../src/lib/cloud-records.js';
-import { evaluateConciergeQuery, validateConciergeAsk, validateEscalationRequest } from '../src/lib/concierge-engine.js';
+import { validateConciergeAsk, validateEscalationRequest } from '../src/lib/concierge-engine.js';
+import { handleMcpRequest, JSONRPC_ERRORS, MCP_PROTOCOL_VERSION } from '../src/lib/mcp-server.js';
 import { isProjectId, PROJECT_KINDS, projectIdFor, sanitizeProjectName } from '../src/lib/project-library.js';
 import { buildQuote, CURRENCY_CODES, resolvePromo, sanitizeProject, validateProject } from '../src/lib/quote.js';
 import { isOneOf, safeJsonParse } from '../src/security/sanitize.js';
+import { createConciergeAgent } from './llm-agent.js';
 import { ACCOUNT_PREFIX, accountNamespace, isClientNamespace } from './store.js';
 
 export const MAX_BODY_BYTES = 64 * 1024;
@@ -35,6 +37,8 @@ const TOKEN_PATTERN = /^lmn1\.([A-Za-z0-9_-]{16,512})\.([A-Za-z0-9_-]{43})$/;
 const BEARER_PATTERN = /^Bearer ([^\s]{1,700})$/;
 const BEARER_SCHEME = /^Bearer\s/i;
 const NOTHING_CLAIMED = Object.freeze({ projects: 0, quotes: 0 });
+// MCP revisions this endpoint speaks; a client that names another gets a 400.
+const MCP_PROTOCOL_HEADERS = Object.freeze([MCP_PROTOCOL_VERSION, '2025-03-26']);
 
 const SECURITY_HEADERS = Object.freeze({
   'X-Content-Type-Options': 'nosniff',
@@ -55,6 +59,13 @@ export class HttpError extends Error {
 }
 
 const invalid = (message, extra) => new HttpError(400, 'invalid', message, extra);
+
+// A body that is not JSON at all: JSON-RPC answers it with a parse error, REST with a 400.
+class MalformedJsonError extends HttpError {
+  constructor() {
+    super(400, 'invalid', 'Request body is not valid JSON, or nests deeper than 32 levels.');
+  }
+}
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -83,6 +94,13 @@ function send(res, status, payload, headers = {}) {
 /* Request body: strict JSON, 64 KB, prototype keys stripped by safeJsonParse. */
 
 function readJsonBody(req) {
+  return readJsonValue(req).then((body) => {
+    if (!isRecord(body)) throw invalid('Request body must be a JSON object.');
+    return body;
+  });
+}
+
+function readJsonValue(req) {
   const type = req.headers['content-type'];
   if (typeof type !== 'string' || !JSON_CONTENT_TYPE.test(type.trim())) {
     return Promise.reject(new HttpError(415, 'unsupported_media_type', 'Send the request body as application/json.'));
@@ -141,11 +159,33 @@ function readJsonBody(req) {
         return;
       }
       const body = safeJsonParse(text, { fallback: MALFORMED, maxLength: MAX_BODY_BYTES });
-      if (body === MALFORMED) settle(reject, invalid('Request body is not valid JSON, or nests deeper than 32 levels.'));
-      else if (!isRecord(body)) settle(reject, invalid('Request body must be a JSON object.'));
+      if (body === MALFORMED) settle(reject, new MalformedJsonError());
       else settle(resolve, body);
     });
   });
+}
+
+/**
+ * DNS-rebinding guard for the MCP and streaming endpoints: a browser call
+ * must come from this origin. Callers without an Origin header (curl, an
+ * MCP client, server to server) are unaffected.
+ */
+function requireSameOrigin(req) {
+  const origin = req.headers.origin;
+  if (origin === undefined) return;
+  let host = null;
+  try {
+    host = new URL(origin).host;
+  } catch {
+    host = null;
+  }
+  if (!host || host !== req.headers.host) {
+    throw new HttpError(403, 'forbidden_origin', 'Cross-origin calls to this endpoint are refused.');
+  }
+}
+
+function sseFrame(event, data) {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
 function requireNamespace(req) {
@@ -304,7 +344,7 @@ function mergeLibraries(account, guest) {
   };
 }
 
-function createHandlers({ store, version, sessions }) {
+function createHandlers({ store, version, sessions, agent }) {
   const projectsOf = (id) => store.read(id).projects;
   const quotesOf = (id) => store.read(id).quotes.map(publicQuote);
   const ticketsOf = (id) => store.read(id).tickets;
@@ -510,12 +550,81 @@ function createHandlers({ store, version, sessions }) {
       return [200, { projects: projectsOf(id), quotes: quotesOf(id) }];
     },
 
-    /** Stateless: the same engine the browser falls back to offline answers here. */
+    /**
+     * Stateless: the Lumen AI agent answers through the MCP pipeline (an LLM
+     * when one is configured, else the deterministic orchestrator the browser
+     * also falls back to offline). The reply carries toolCalls and clientActions.
+     */
     async askConcierge(req) {
       const body = await readJsonBody(req);
       const { question, context, error } = validateConciergeAsk(body);
       if (error) throw invalid(error);
-      return [200, { reply: evaluateConciergeQuery(question, context) }];
+      return [200, { reply: await agent.ask(question, context) }];
+    },
+
+    /**
+     * Same answer as /ask, streamed as Server-Sent Events: tool_call and
+     * tool_result as each MCP tool runs, delta chunks of the answer text,
+     * then complete with the full reply. Validation faults are plain JSON
+     * errors, sent before the stream opens.
+     */
+    async streamConcierge(req, res) {
+      requireSameOrigin(req);
+      const body = await readJsonBody(req);
+      const { question, context, error } = validateConciergeAsk(body);
+      if (error) throw invalid(error);
+      const controller = new AbortController();
+      res.on('close', () => {
+        if (!res.writableFinished) controller.abort();
+      });
+      res.writeHead(200, {
+        ...SECURITY_HEADERS,
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-store, no-transform',
+        'X-Accel-Buffering': 'no',
+      });
+      const write = (event, data) => {
+        if (!res.writableEnded && !res.destroyed) res.write(sseFrame(event, data));
+      };
+      res.write(': lumen-mcp-stream\n\n');
+      try {
+        const reply = await agent.ask(question, context, { onEvent: write, signal: controller.signal });
+        write('complete', { reply });
+      } catch (fault) {
+        if (!controller.signal.aborted) {
+          console.error('[lumen-cloud]', fault);
+          write('error', { code: 'internal', message: 'Lumen AI could not finish this answer.' });
+        }
+      }
+      res.end();
+      return null;
+    },
+
+    /**
+     * Model Context Protocol over HTTP (JSON-RPC 2.0, one message per POST).
+     * Requests get 200 with the JSON-RPC response, notifications 202 with no
+     * body; input the server cannot accept (not JSON, not one JSON-RPC
+     * object, an unknown protocol revision) gets 400 with an id-less error.
+     */
+    async mcp(req) {
+      requireSameOrigin(req);
+      const revision = req.headers['mcp-protocol-version'];
+      if (revision !== undefined && !MCP_PROTOCOL_HEADERS.includes(revision)) {
+        return [400, { jsonrpc: '2.0', id: null, error: { code: JSONRPC_ERRORS.invalidRequest, message: 'Unsupported MCP-Protocol-Version.' } }];
+      }
+      let message;
+      try {
+        message = await readJsonValue(req);
+      } catch (error) {
+        if (error instanceof MalformedJsonError) {
+          return [400, { jsonrpc: '2.0', id: null, error: { code: JSONRPC_ERRORS.parse, message: 'Parse error: the body is not valid JSON.' } }];
+        }
+        throw error;
+      }
+      const response = handleMcpRequest(message, { version });
+      if (response === null) return [202];
+      const refused = response.error && (response.error.code === JSONRPC_ERRORS.invalidRequest || response.error.code === JSONRPC_ERRORS.parse);
+      return [refused ? 400 : 200, response];
     },
 
     /**
@@ -570,6 +679,8 @@ function buildRoutes(handlers, testReset) {
     { path: '/api/quotes', methods: { GET: handlers.listQuotes, POST: handlers.submitQuote } },
     { path: '/api/sync', methods: { POST: handlers.sync } },
     { path: '/api/concierge/ask', methods: { POST: handlers.askConcierge } },
+    { path: '/api/concierge/stream', methods: { POST: handlers.streamConcierge } },
+    { path: '/api/mcp', methods: { POST: handlers.mcp } },
     { path: '/api/concierge/escalate', methods: { POST: handlers.escalate } },
     { path: '/api/tickets', methods: { GET: handlers.listTickets } },
   ];
@@ -602,11 +713,12 @@ function resolveSecret(secret) {
 /**
  * Lumen Cloud request handler: `(req, res) => Promise<void>` for node:http,
  * Vite (dev and preview) or any connect-style host. Every response is JSON
- * with nosniff and no-store, including errors.
+ * with nosniff and no-store, including errors, except the Server-Sent Events
+ * of POST /api/concierge/stream.
  */
-export function createApp({ store, version, testReset = false, sessionSecret } = {}) {
+export function createApp({ store, version, testReset = false, sessionSecret, agent = createConciergeAgent({ version }) } = {}) {
   const sessions = createSessions(resolveSecret(sessionSecret));
-  const routes = buildRoutes(createHandlers({ store, version, sessions }), testReset);
+  const routes = buildRoutes(createHandlers({ store, version, sessions, agent }), testReset);
 
   return async function lumenCloud(req, res) {
     try {
@@ -623,7 +735,10 @@ export function createApp({ store, version, testReset = false, sessionSecret } =
         const allow = Object.keys(matched.route.methods).join(', ');
         throw new HttpError(405, 'method_not_allowed', `Use ${allow} on this endpoint.`, { allow });
       }
-      const [status, payload] = await handler(req, ...matched.params);
+      const result = await handler(req, ...matched.params, res);
+      // A streaming handler wrote its own headers and frames and ended the response.
+      if (res.headersSent) return;
+      const [status, payload] = result;
       send(res, status, payload);
     } catch (error) {
       if (res.headersSent) {

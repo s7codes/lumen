@@ -1,5 +1,5 @@
 import { CATEGORIES, FINISHES, getProduct, PRODUCTS, STOCK_LABELS } from '../data/products.js';
-import { clampNumber, isOneOf, isSafeInternalPath, sanitizeMultilineText, sanitizeText } from '../security/sanitize.js';
+import { clampNumber, isOneOf, isSafeInternalPath, safeJsonParse, sanitizeMultilineText, sanitizeText } from '../security/sanitize.js';
 import { PASSWORD_MIN, sanitizeEmail } from './auth.js';
 import { sanitizeBagItems } from './bag.js';
 import { computeBusTopology, CONDUCTOR_LABEL, DROP_LIMIT_PCT } from './bus-topology.js';
@@ -46,7 +46,7 @@ import {
 } from './room-3d.js';
 import { OCTAVE_ALPHA, OCTAVE_BANDS, OCTAVE_LABELS, STI_GRADES, TASK_TARGET_LUX, computeEnvironmentalPhysics } from './room-physics.js';
 import { AXIS_LOCK_LABELS } from './room-raycast.js';
-import { CAMERA_MODE_LABELS, EYE_HEIGHT_CM, INSIDE_FOV, INSIDE_FOV_DEG } from './room-walkthrough.js';
+import { CAMERA_MODE_LABELS, CAMERA_MODES, EYE_HEIGHT_CM, INSIDE_FOV, INSIDE_FOV_DEG } from './room-walkthrough.js';
 import {
   EYE_DATUM_CM,
   findConflicts,
@@ -100,6 +100,7 @@ export const CONCIERGE_CATEGORIES = Object.freeze({
   concierge: 'Studio Concierge',
   engineering: 'Studio Engineering Review',
   unrecognized: 'Outside Automated Scope',
+  agent: 'Agentic Workspace Action',
 });
 const CATEGORY_IDS = Object.keys(CONCIERGE_CATEGORIES);
 // Replies that answer the inquiry itself; only these can be marked as not resolving it.
@@ -276,6 +277,11 @@ function normalize(text) {
     .replace(/[^a-z0-9.%+/-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()} `;
+}
+
+/** The folded, lower-cased form every matcher reads, padded with one space at each end. */
+export function normalizeQuestion(text) {
+  return normalize(sanitizeQuestion(text));
 }
 
 // Catalog phrases that would otherwise read as bespoke or onsite requests.
@@ -602,6 +608,11 @@ function matchProducts(norm) {
     .sort((a, b) => a.at - b.at || b.weight - a.weight)
     .map((hit) => hit.product)
     .slice(0, 3);
+}
+
+/** Up to three catalog parts named in the text, in the order they appear. */
+export function matchCatalogProducts(text) {
+  return matchProducts(normalizeQuestion(text));
 }
 
 function firstIndex(text, product) {
@@ -2264,6 +2275,22 @@ export function evaluateConciergeQuery(question, workspaceContext) {
   return assemble(text, verdict, sections, { gateNote: analysis.contact && SUBSTANTIVE.has(verdict.category) });
 }
 
+/**
+ * Builds a reply in the concierge format from parts another module wrote:
+ * the agent orchestrator's action summaries, or an LLM's answer text.
+ * `verdict` is `{ category, resolved, confidence }`.
+ */
+export function composeReply(question, verdict, { lead = '', bullets = [], tail = [], metrics = [], citations = [], actions = [] } = {}) {
+  const text = sanitizeQuestion(question);
+  const category = isOneOf(verdict?.category, CATEGORY_IDS) ? verdict.category : 'concierge';
+  const reply = assemble(
+    text,
+    { category, resolved: verdict?.resolved !== false, confidence: round(clampNumber(verdict?.confidence, 0, 1, 0.66), 2) },
+    [section({ lead: sanitizeMultilineText(lead, { maxLength: ANSWER_MAX }), bullets, tail }, { metrics, citations, actions })],
+  );
+  return reply;
+}
+
 /** Only a resolved answer to the inquiry itself can be marked as not resolving it. */
 export function canMarkUnhelpful(reply) {
   return Boolean(reply) && reply.resolved === true && SUBSTANTIVE.has(reply.category);
@@ -2366,6 +2393,78 @@ const METRIC_LABEL_MAX = 32;
 const METRIC_VALUE_MAX = 64;
 const CITATION_ID = /^[a-z]+:[a-z0-9-]{1,64}$/;
 
+export const MAX_TOOL_CALLS = 8;
+export const MAX_CLIENT_ACTIONS = 4;
+export const MCP_PROTOCOL = '2025-06-18';
+const TOOL_NAME = /^[a-z][a-z0-9_]{1,63}$/;
+const MODULE_UID = /^m[0-9]{1,4}$/;
+const TOOL_ARGUMENTS_MAX = 2048;
+
+function sanitizeToolArguments(value) {
+  if (!isRecord(value)) return {};
+  let text;
+  try {
+    text = JSON.stringify(value);
+  } catch {
+    return {};
+  }
+  if (typeof text !== 'string' || text.length > TOOL_ARGUMENTS_MAX) return {};
+  const parsed = safeJsonParse(text, { fallback: null, maxDepth: 4, maxLength: TOOL_ARGUMENTS_MAX });
+  return isRecord(parsed) ? parsed : {};
+}
+
+/** MCP tool trace from an untrusted reply: names, display summaries and bounded arguments only. */
+export function sanitizeToolCalls(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .slice(0, MAX_TOOL_CALLS)
+    .map((entry) => {
+      if (!isRecord(entry) || typeof entry.name !== 'string' || !TOOL_NAME.test(entry.name)) return null;
+      return {
+        name: entry.name,
+        arguments: sanitizeToolArguments(entry.arguments),
+        summary: sanitizeText(entry.summary, { maxLength: 160 }),
+        status: entry.status === 'error' ? 'error' : 'completed',
+      };
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Workspace mutations from an untrusted reply. Each state is rebuilt through
+ * its canonical sanitizer; an action whose state does not survive is dropped.
+ */
+export function sanitizeClientActions(input) {
+  if (!Array.isArray(input)) return [];
+  const out = [];
+  for (const entry of input.slice(0, MAX_CLIENT_ACTIONS)) {
+    if (!isRecord(entry)) continue;
+    const notice = sanitizeText(entry.notice, { maxLength: 240 });
+    if (entry.type === 'apply_room_state') {
+      const state = sanitizeRoomState(entry.state);
+      if (!state) continue;
+      out.push({
+        type: entry.type,
+        state,
+        ...(isOneOf(entry.activeWall, ROOM_WALLS) ? { activeWall: entry.activeWall } : {}),
+        ...(isOneOf(entry.cameraMode, CAMERA_MODES) ? { cameraMode: entry.cameraMode } : {}),
+        ...(typeof entry.selectUid === 'string' && MODULE_UID.test(entry.selectUid) && state.items.some((item) => item.uid === entry.selectUid)
+          ? { selectUid: entry.selectUid }
+          : {}),
+        notice,
+      });
+    } else if (entry.type === 'apply_wall_state') {
+      const state = sanitizeLayout(entry.state);
+      if (state) out.push({ type: entry.type, state, notice });
+    } else if (entry.type === 'apply_bag_items') {
+      if (!Array.isArray(entry.items)) continue;
+      const items = sanitizeBagItems(entry.items);
+      if (items.length === entry.items.length) out.push({ type: entry.type, items, notice });
+    }
+  }
+  return out;
+}
+
 /** Rebuilds a reply from an untrusted response. Returns null unless every required field is sound. */
 export function sanitizeConciergeReply(input) {
   if (!isRecord(input)) return null;
@@ -2397,7 +2496,17 @@ export function sanitizeConciergeReply(input) {
       const value = sanitizeText(entry.value, { maxLength: METRIC_VALUE_MAX });
       return label && value ? { label, value } : null;
     }),
+    ...agentFields(input),
   };
+}
+
+// Present only on replies from the MCP pipeline, so a plain engine reply round-trips unchanged.
+function agentFields(input) {
+  const out = {};
+  if (input.mcpProtocol === MCP_PROTOCOL) out.mcpProtocol = MCP_PROTOCOL;
+  if (input.toolCalls !== undefined) out.toolCalls = sanitizeToolCalls(input.toolCalls);
+  if (input.clientActions !== undefined) out.clientActions = sanitizeClientActions(input.clientActions);
+  return out;
 }
 
 /* Quick prompts and workspace summary */

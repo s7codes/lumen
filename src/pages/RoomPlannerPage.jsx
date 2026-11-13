@@ -60,6 +60,7 @@ import {
   WALL_LOOK_HEADING,
 } from '../lib/room-walkthrough.js';
 import { aggregateBagLines, summarizeWall } from '../lib/wall-studio.js';
+import { subscribeWorkspaceMutations } from '../lib/workspace-events.js';
 import '../styles/pages.css';
 import '../styles/studio.css';
 import '../styles/room3d.css';
@@ -158,6 +159,18 @@ export default function RoomPlannerPage() {
       return sameStance(next, current) ? current : next;
     });
   }, [room]);
+
+  // A Lumen AI edit may switch the lens; the room and wall arrive through useRoom3d.
+  useEffect(
+    () =>
+      subscribeWorkspaceMutations(
+        (action) => {
+          if (action.cameraMode) setCameraMode(sanitizeCameraMode(action.cameraMode));
+        },
+        ['apply_room_state'],
+      ),
+    [],
+  );
 
   const onInsideFov = useCallback((deg) => setInsideFov(sanitizeInsideFov(deg)), []);
   const onEngineReady = useCallback(() => setEngineReady(true), []);

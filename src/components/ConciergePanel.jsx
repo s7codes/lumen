@@ -5,7 +5,7 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { useConcierge } from '../hooks/useConcierge.js';
 import { sanitizeEmail } from '../lib/auth.js';
 import { sanitizeTicketMessage, sanitizeTicketSubject, TICKET_LIMITS, TICKET_QUEUED } from '../lib/cloud-records.js';
-import { canMarkUnhelpful, CONCIERGE_CATEGORIES, QUESTION_MAX, routeLabel } from '../lib/concierge-engine.js';
+import { canMarkUnhelpful, CONCIERGE_CATEGORIES, MCP_PROTOCOL, QUESTION_MAX, routeLabel } from '../lib/concierge-engine.js';
 import { isSafeInternalPath } from '../security/sanitize.js';
 import { ArrowRight, LumenMark } from './icons.jsx';
 
@@ -94,6 +94,34 @@ function AnswerBody({ text }) {
   });
 }
 
+/**
+ * The MCP tools Lumen AI ran for this answer, in order: one flat chip per
+ * call, "MCP // tool: what it did". A refused edit reads in amber.
+ */
+function ToolTrace({ calls }) {
+  return (
+    <ol className="concierge-tools" data-testid="concierge-tool-calls" aria-label="MCP tool calls">
+      {calls.map((call, i) => (
+        <li
+          key={`${call.name}-${i}`}
+          className="concierge-tool"
+          data-testid="concierge-tool-call"
+          data-tool-name={call.name}
+          data-status={call.status}
+          title={call.summary || call.name}
+        >
+          <span className="concierge-tool__proto" aria-hidden="true">
+            MCP //
+          </span>
+          <span className="visually-hidden">MCP tool </span>
+          <span className="concierge-tool__name">{call.name}</span>
+          {call.summary && <span className="concierge-tool__summary">: {call.summary}</span>}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 // The body streams in once, top to bottom; the flag lands on the element
 // itself (never through React state), so reopening the panel never replays it.
 function markRevealed(event) {
@@ -113,6 +141,7 @@ function ReplyTurn({ turn, pathname, onUnhelpful, onNavigate, latestRef }) {
       className="concierge-msg concierge-msg--ai"
       data-testid="concierge-reply"
       data-kind={kind}
+      data-client-actions={reply.clientActions?.length || undefined}
       data-reply-id={reply.id}
       data-category={reply.category}
       data-resolved={String(reply.resolved)}
@@ -139,6 +168,7 @@ function ReplyTurn({ turn, pathname, onUnhelpful, onNavigate, latestRef }) {
             </span>
           )}
         </p>
+        {reply.toolCalls?.length > 0 && <ToolTrace calls={reply.toolCalls} />}
         <div className="concierge-msg__body">
           <AnswerBody text={reply.answer} />
         </div>
@@ -507,6 +537,7 @@ export default function ConciergePanel({ open, onClose, panelId }) {
       role="dialog"
       aria-label="Lumen Studio AI Concierge"
       data-testid="concierge-panel"
+      data-mcp={MCP_PROTOCOL}
       data-escalation={concierge.escalation}
       data-escalation-reason={concierge.escalationReason ?? undefined}
       data-state={pending ? 'pending' : 'idle'}

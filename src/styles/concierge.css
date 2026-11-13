@@ -503,6 +503,51 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   min-width: 0;
 }
 
+/* MCP tool trace: flat chips above the answer, no glow */
+.concierge-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+/* Inline text flow, not flex: the tool name stays whole and the summary wraps under it. */
+.concierge-tool {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 3px 9px;
+  border: 1px solid var(--concierge-hairline);
+  border-left: 2px solid var(--concierge-warm-edge);
+  border-radius: 6px;
+  background: var(--concierge-raised);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--concierge-soft);
+}
+.concierge-tool[data-status='error'] {
+  border-left-color: #e8923a;
+}
+.concierge-tool__proto {
+  margin-right: 6px;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--concierge-champagne);
+}
+.concierge-tool__name {
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--concierge-ink);
+}
+.concierge-tool__summary {
+  color: var(--concierge-soft);
+}
+
 .concierge-msg__meta {
   display: flex;
   flex-wrap: wrap;

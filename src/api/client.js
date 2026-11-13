@@ -544,18 +544,22 @@ export function loadQuotes() {
 
 /* Studio AI concierge */
 
-// The engine and the catalog math behind it load only with the concierge,
-// never with the entry bundle.
+// The engine, the MCP orchestrator and the catalog math behind them load only
+// with the concierge, never with the entry bundle.
 function loadEngine() {
-  return import('../lib/concierge-engine.js');
+  return Promise.all([import('../lib/concierge-engine.js'), import('../lib/mcp-orchestrator.js')]).then(([engine, agent]) => ({
+    ...engine,
+    answerLocally: (question, context) => agent.runDeterministicAgent(question, context).reply,
+  }));
 }
 
 /**
  * Asks the Studio AI concierge. The server answers over HTTP; whenever it
  * cannot (unreachable, a static host, a 404 from a dev server started on an
  * older checkout, a 5xx, a refused or unreadable reply) the same
- * deterministic engine answers on this device, so the visitor always gets the
- * reply and never a transport fault. Resolves with `{ reply, transport }`.
+ * deterministic MCP orchestrator answers on this device, tool calls and
+ * workspace actions included, so the visitor always gets the reply and never
+ * a transport fault. Resolves with `{ reply, transport }`.
  */
 export function askConcierge(question, workspaceContext) {
   return roundTrip(async (trip) => {
@@ -569,7 +573,7 @@ export function askConcierge(question, workspaceContext) {
       // that answered without this route is still the cloud for everything else.
       if (error instanceof OfflineError) goOffline(trip, error);
     }
-    return { reply: engine.evaluateConciergeQuery(question, workspaceContext), transport: 'local' };
+    return { reply: engine.answerLocally(question, workspaceContext), transport: 'local' };
   });
 }
 

@@ -15,6 +15,7 @@ import {
 import { getCurrencyCode } from '../lib/currency-store.js';
 import { loadRoomState, serializeRoomState } from '../lib/room-3d.js';
 import { loadLayout, serializeLayout } from '../lib/wall-studio.js';
+import { executeClientActions } from '../lib/workspace-bus.js';
 
 /**
  * Live workspace snapshot for the concierge, read at question time from the
@@ -54,9 +55,10 @@ export function useConcierge(route) {
     };
     dispatch({ type: 'ask', question: text });
     const context = readWorkspaceContext(routeRef.current);
+    let answered = null;
     try {
-      const { reply, transport } = await askConcierge(text, context);
-      current({ type: 'reply', reply, transport });
+      answered = await askConcierge(text, context);
+      current({ type: 'reply', reply: answered.reply, transport: answered.transport });
     } catch {
       // askConcierge already answers locally on every transport fault; this is
       // the last net, and a server message never reaches the conversation.
@@ -66,6 +68,10 @@ export function useConcierge(route) {
         current({ type: 'fail', message: 'The concierge could not answer. Ask again.' });
       }
     }
+    // An agentic reply changes the live room, wall or cart through the
+    // workspace bus; a reply that lands after New chat changes nothing.
+    const actions = answered?.reply?.clientActions;
+    if (generation === generationRef.current && Array.isArray(actions) && actions.length > 0) executeClientActions(actions);
     return true;
   }, []);
 

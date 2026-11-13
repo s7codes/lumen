@@ -3,6 +3,7 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { getFinish, getProduct } from '../data/products.js';
 import { BagContext, BagDrawerContext } from '../hooks/useBag.js';
 import { BAG_STORAGE_KEY, bagReducer, loadBag, persistBag, summarizeBag } from '../lib/bag.js';
+import { subscribeWorkspaceMutations } from '../lib/workspace-events.js';
 
 export function BagProvider({ children }) {
   const [items, dispatch] = useReducer(bagReducer, undefined, loadBag);
@@ -24,6 +25,19 @@ export function BagProvider({ children }) {
   }, []);
 
   const announce = useCallback((text) => addToast(text, 'success'), [addToast]);
+
+  // Lumen AI cart edits: the lines are rebuilt by the reducer's own sanitizer.
+  useEffect(
+    () =>
+      subscribeWorkspaceMutations(
+        (action) => {
+          dispatch({ type: 'hydrate', items: action.items });
+          if (typeof action.notice === 'string' && action.notice) announce(action.notice);
+        },
+        ['apply_bag_items'],
+      ),
+    [announce],
+  );
 
   const add = useCallback(
     (id, finish, qty = 1) => {
