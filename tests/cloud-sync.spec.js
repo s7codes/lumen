@@ -31,6 +31,23 @@ function readJson(page, key) {
   return page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? 'null'), key);
 }
 
+/**
+ * Holds every POST /api/projects until the returned release is called, so a
+ * spec can inspect the pending save state without racing its 500 ms window
+ * when the machine is loaded. Released saves pass through untouched.
+ */
+async function holdProjectSaves(page) {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/projects', async (route) => {
+    if (route.request().method() === 'POST') await gate;
+    await route.continue();
+  });
+  return release;
+}
+
 test.beforeEach(async ({ page }) => {
   await installCspRecorder(page);
 });
@@ -46,6 +63,7 @@ test.describe('lumen cloud client', () => {
     await expect(save).toHaveAccessibleName('Save to Cloud');
     await expect(save).toBeEnabled();
 
+    const release = await holdProjectSaves(page);
     const started = Date.now();
     await save.click();
     await expect(save).toHaveAttribute('data-state', 'saving');
@@ -54,6 +72,7 @@ test.describe('lumen cloud client', () => {
     await expect(save.locator('.cloud-save__ring')).toBeVisible();
     // Nothing is written until the round trip resolves.
     expect(await readJson(page, PROJECTS_KEY)).toBeNull();
+    release();
 
     await expect(save).toHaveAttribute('data-state', 'saved');
     expect(Date.now() - started).toBeGreaterThanOrEqual(LATENCY_MS.min - 50);
@@ -68,10 +87,14 @@ test.describe('lumen cloud client', () => {
     await expect(save).toHaveAttribute('data-state', 'idle', { timeout: 5000 });
     await expect(save).toHaveAccessibleName('Save to Cloud');
 
-    // A burst of clicks while in flight commits exactly one revision.
+    // A burst of clicks while in flight commits exactly one revision. The save is held
+    // in flight for the whole burst, so no click can land after it settles.
+    const releaseBurst = await holdProjectSaves(page);
     await save.click();
+    await expect(save).toHaveAttribute('data-state', 'saving');
     await save.click({ force: true }).catch(() => {});
     await save.dispatchEvent('click');
+    releaseBurst();
     await expect(save).toHaveAttribute('data-state', 'saved');
     expect((await readJson(page, PROJECTS_KEY))[0].revision).toBe(2);
 
@@ -88,6 +111,7 @@ test.describe('lumen cloud client', () => {
     await seed(page, [[WALL_KEY, JSON.stringify(serializeLayout(WALL))]]);
     await page.reload();
     const idleWidth = await save.evaluate((el) => el.getBoundingClientRect().width);
+    const release = await holdProjectSaves(page);
     await save.click();
     await expect(save).toHaveAttribute('data-state', 'saving');
     expect(await save.evaluate((el) => el.getBoundingClientRect().width)).toBeCloseTo(idleWidth, 0);
@@ -98,6 +122,7 @@ test.describe('lumen cloud client', () => {
       animation: getComputedStyle(el).animationName,
     }));
     expect(ring).toEqual({ shadow: 'none', animation: 'cloud-save-spin' });
+    release();
     await expect(save).toHaveAttribute('data-state', 'saved');
 
     for (const width of [360, 1280]) {

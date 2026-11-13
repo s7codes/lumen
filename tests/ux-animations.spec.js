@@ -134,11 +134,19 @@ test.describe('scroll reveal', () => {
     await expect.poll(async () => (await revealState(cells)).every((cell) => cell.settled)).toBe(true);
     expect(await cells.first().evaluate((el) => getComputedStyle(el).willChange)).toBe('auto');
 
-    // Walk the rest of the page: every reveal target ends up at rest.
+    // Walk the rest of the page: every reveal target ends up at rest. Each stop holds
+    // for two animation frames, so the observer gets a rendering pass at every
+    // position however few frames a loaded runner draws.
     const total = await page.evaluate(() => document.documentElement.scrollHeight);
     for (let y = 0; y <= total; y += 400) {
-      await page.evaluate((top) => window.scrollTo(0, top), y);
-      await page.waitForTimeout(40);
+      await page.evaluate(
+        (top) =>
+          new Promise((resolve) => {
+            window.scrollTo(0, top);
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+          }),
+        y,
+      );
     }
     const all = page.locator(REVEAL_TARGETS);
     await expect.poll(async () => (await revealState(all)).every((cell) => cell.revealed !== null)).toBe(true);

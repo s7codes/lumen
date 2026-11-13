@@ -721,13 +721,15 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await expectCurrent(overview, 'page');
     await expectIdle(room);
 
-    // A click hands the underline over at once and holds it for the whole glide.
+    // A click hands the underline over at once and holds it for the whole glide. Sampling
+    // runs for 900 ms and at least six frames, so a loaded runner drawing few frames a
+    // second still proves the hold frame by frame.
     const samples = await page.evaluate(async () => {
       const link = document.querySelector('[data-testid="nav-3d-showcase"]');
       const seen = [];
       link.click();
       const until = performance.now() + 900;
-      while (performance.now() < until) {
+      while (performance.now() < until || seen.length < 6) {
         await new Promise((resolve) => requestAnimationFrame(resolve));
         seen.push(`${link.getAttribute('aria-current')} ${window.scrollY > 0}`);
       }

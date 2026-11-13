@@ -30,10 +30,12 @@ const WALL = { widthCm: 300, heightCm: 250, slope: false, snap: false, surface: 
 const SEED = { format: 'lumen.wall', version: 1, wall: WALL, items: ITEMS };
 const SIZE = Object.fromEntries(ITEMS.map((item) => [item.uid, getProduct(item.productId).dimsCm]));
 
+// Seeded from the overview, which never writes the wall key: seeding on the studio
+// itself races its mount-time save, which can land after the seed on a loaded runner.
 async function openSeededStudio(page) {
-  await page.goto('/studio-2d');
+  await page.goto('/');
   await page.evaluate(([key, value]) => localStorage.setItem(key, value), [WALL_KEY, JSON.stringify(SEED)]);
-  await page.reload();
+  await page.goto('/studio-2d');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
   await expect(page.getByTestId('wall-module')).toHaveCount(4);
   // Raw mouse gestures do not scroll, so bring the whole elevation on screen.
