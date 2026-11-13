@@ -1,12 +1,15 @@
 export const MAX_FRAME_DT = 0.05;
 
 /**
- * Seconds elapsed between two rAF timestamps, clamped to [0, MAX_FRAME_DT].
+ * Seconds elapsed between two rAF timestamps, clamped to [0, maxDt].
  * A rAF timestamp can precede the performance.now() taken when the loop was
  * armed, and a backgrounded tab can return after seconds, so both ends clamp.
+ * Loops built only from the closed-form steps below may pass a wider cap: they
+ * stay exact at any dt, so a slow frame keeps wall-clock time instead of
+ * stretching it.
  */
-export function frameDelta(now, lastTime) {
-  return Math.min(Math.max((now - lastTime) / 1000, 0), MAX_FRAME_DT);
+export function frameDelta(now, lastTime, maxDt = MAX_FRAME_DT) {
+  return Math.min(Math.max((now - lastTime) / 1000, 0), maxDt);
 }
 
 /**

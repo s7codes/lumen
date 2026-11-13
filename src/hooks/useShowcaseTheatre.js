@@ -35,6 +35,12 @@ const PRESENCE_RATE = 5;
 const LIGHT_RATE = 3;
 const SHELF_RATE = 26;
 const MAX_DPR = 2;
+// Every motion here is a closed-form spring, an exponential approach or a
+// function of the act clock, so one long frame is as exact as many short ones.
+// The 7 s acts and the 20 deg/s turntable therefore keep wall-clock time down
+// to 4 fps (a software-raster runner, a busy laptop) instead of slowing with
+// the shared 50 ms cap; past that the cap still absorbs a resumed tab.
+const THEATRE_MAX_DT = 0.25;
 // Reduced motion shows one still per act, taken mid-choreography.
 const STILL_T = 1.6;
 const CAM_KEYS = ['yaw', 'pitch', 'dist', 'tx', 'ty', 'tz', 'fov'];
@@ -243,7 +249,7 @@ export function useShowcaseTheatre({ stageRef, canvasRef, onAct }) {
     };
 
     const loop = (now) => {
-      const dt = frameDelta(now, s.last);
+      const dt = frameDelta(now, s.last, THEATRE_MAX_DT);
       s.last = now;
       step(dt);
       s.frame = requestAnimationFrame(loop);

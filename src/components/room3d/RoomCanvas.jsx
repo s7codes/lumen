@@ -119,6 +119,8 @@ const LOOK_DEG_PER_PX = 0.22;
 const LOOK_THRESHOLD_PX = 4;
 // One wheel notch (100 px of deltaY) swings the inside lens 4 deg.
 const FOV_DEG_PER_WHEEL_PX = 0.04;
+// Lens commits awaiting their render; a handful covers any realistic lag.
+const FOV_IN_FLIGHT_MAX = 8;
 const WHEEL_LINE_PX = 16;
 const WHEEL_PAGE_PX = 400;
 
@@ -379,10 +381,15 @@ function WalkRig({ room, walk, insideFov, api }) {
   const aspect = size.width / Math.max(1, size.height);
   const aspectRef = useRef(aspect);
   aspectRef.current = aspect;
-  // The live lens: the wheel writes here between commits. `committed` is the
-  // last value this rig handed up, so the echo of its own commit is told apart
-  // from a new value set elsewhere (keys, reset), which replaces the live one.
-  const fovLens = useRef({ fov: insideFov, committed: insideFov, timer: 0 });
+  // The live lens: the wheel writes here between commits. `inFlight` holds the
+  // values this rig has handed up that have not rendered back yet, oldest
+  // first. The canvas is its own React root, so under load it can render an
+  // older commit after a newer one was handed up: an echo is matched against
+  // the whole queue, never the last commit alone. Any other value was set
+  // elsewhere (keys, reset) and replaces the live one. `handed` is the value
+  // React holds as far as this rig knows: a commit equal to it never renders,
+  // so it never joins the queue.
+  const fovLens = useRef({ fov: insideFov, handed: insideFov, inFlight: [], timer: 0 });
   const pose = useRef(null);
   const velocity = useRef(Object.fromEntries(POSE_KEYS.map((key) => [key, 0])));
   const look = useRef(null);
@@ -434,12 +441,18 @@ function WalkRig({ room, walk, insideFov, api }) {
   }, [lens, target, apply, invalidate]);
 
   // A wheel tick that lands between a commit and its re-render must not be
-  // pulled back to the older committed value.
+  // pulled back to an older committed value, however late that echo arrives.
   useLayoutEffect(() => {
     const state = fovLens.current;
-    if (insideFov === state.committed) return;
+    const echo = state.inFlight.indexOf(insideFov);
+    if (echo >= 0) {
+      // Renders land in commit order, so every older value is superseded.
+      state.inFlight.splice(0, echo + 1);
+      return;
+    }
+    state.handed = insideFov;
+    state.inFlight.length = 0;
     state.fov = insideFov;
-    state.committed = insideFov;
   }, [insideFov]);
 
   useEffect(() => {
@@ -455,7 +468,11 @@ function WalkRig({ room, walk, insideFov, api }) {
     const state = fovLens.current;
     const commit = () => {
       state.timer = 0;
-      state.committed = state.fov;
+      if (state.fov !== state.handed) {
+        state.inFlight.push(state.fov);
+        if (state.inFlight.length > FOV_IN_FLIGHT_MAX) state.inFlight.shift();
+        state.handed = state.fov;
+      }
       api.commitFov(state.fov);
     };
     const onWheel = (event) => {

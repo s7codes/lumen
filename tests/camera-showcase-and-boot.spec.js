@@ -835,8 +835,8 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await expect.poll(() => fillScale(page, 'orbit')).toBeGreaterThan(0.2);
     await expect(page.getByTestId('showcase-readout')).toHaveText('24V DC daisy chain / 5 nodes / 2700K');
 
-    // After one act the stage moves on by itself to the eye-level sweep. The act clock runs
-    // on frame dt clamped at 50 ms, so a slow software-raster runner stretches it: wait wide.
+    // After one act the stage moves on by itself to the eye-level sweep. The act clock keeps
+    // wall-clock time down to 4 fps (its dt caps at 250 ms); below that it stretches: wait wide.
     await expect(stage).toHaveAttribute('data-act', 'inside', { timeout: 20_000 });
     await expect(page.getByTestId('showcase-pillar-inside')).toHaveAttribute('data-active', 'true');
     await expect(page.getByTestId('showcase-readout')).toHaveText(/^Eye 165 cm \/ FOV 78 deg \/ \d+ lx$/);

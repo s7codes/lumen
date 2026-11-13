@@ -119,6 +119,10 @@ test.describe('ambient light spring', () => {
     expect(frameDelta(1004.1667, 1000)).toBeCloseTo(1 / 240, 6);
     expect(frameDelta(995, 1000)).toBe(0);
     expect(frameDelta(4000, 1000)).toBe(0.05);
+    // A closed-form loop (the showcase theatre) may widen the cap; both ends still clamp.
+    expect(frameDelta(1200, 1000, 0.25)).toBeCloseTo(0.2, 6);
+    expect(frameDelta(4000, 1000, 0.25)).toBe(0.25);
+    expect(frameDelta(995, 1000, 0.25)).toBe(0);
     expect(stepSpring(0.5, 0.2, 0.1, 0, K, C)).toEqual([0.5, 0.2]);
   });
 
