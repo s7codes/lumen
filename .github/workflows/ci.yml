@@ -87,7 +87,11 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Generate a session secret
-        run: echo "LUMEN_SESSION_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          secret=$(openssl rand -hex 32)
+          # Throwaway, but masked so it never appears in a log line.
+          echo "::add-mask::$secret"
+          echo "LUMEN_SESSION_SECRET=$secret" >> "$GITHUB_ENV"
 
       - name: Validate the Compose file and the Caddyfile
         run: |

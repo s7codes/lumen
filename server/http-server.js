@@ -40,7 +40,8 @@ export function createLumenServer({ cloud, staticDir = null, logger = console })
     if (closing) res.setHeader('Connection', 'close');
     // setHeader merges into the writeHead of whichever handler answers: static, JSON or the SSE stream.
     if (isSecureRequest(req, trustHops)) res.setHeader('Strict-Transport-Security', HSTS_POLICY);
-    if (serveStatic && !isApiPath(req.url)) {
+    // A Host the API would refuse (DNS rebinding) gets its invalid_host answer for the app shell too.
+    if (serveStatic && !isApiPath(req.url) && cloud.handler.knowsHost?.(req) !== false) {
       serveStatic(req, res);
       return;
     }

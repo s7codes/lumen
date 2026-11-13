@@ -55,6 +55,9 @@ function resolveDataFile(root, env, testReset) {
  *   LUMEN_TRUST_PROXY     reverse-proxy hops in front of the server (1 behind
  *                         Caddy or Nginx); X-Forwarded-For, -Proto and -Host
  *                         are read only when set, and only from a private peer
+ *   DOMAIN, LUMEN_ALLOWED_HOSTS   hostnames the Host header may name beside
+ *                         loopback and the production domains (comma-separated
+ *                         in LUMEN_ALLOWED_HOSTS); any other host is refused
  *   LUMEN_RATE_LIMIT_MAX  read budget per client per minute (default 600);
  *                         auth, AI and write budgets scale with it; off disables
  *   LUMEN_STATIC_DIR      built app the standalone server serves beside /api,

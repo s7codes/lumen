@@ -7,7 +7,7 @@ Lumen Cloud HTTP API. Node only, no dependencies: `node:http`, `node:fs`, `node:
 | ---- | ---- |
 | `app.js` | Request handler `(req, res)`: routes, per-route rate-limit tiers, the same-origin guard on every write, 64 KB JSON bodies, Brotli or gzip JSON over 1 KB, session-bound library resolution and guest claim, Studio AI concierge, SSE stream and escalation gatekeeper, `POST /api/mcp`, security headers |
 | `session.js` | HMAC-SHA256 session tokens (`lmn1.<claims>.<mac>`) compared with `timingSafeEqual`, 12-hour expiry, revocation, Bearer parsing, `LUMEN_SESSION_SECRET` resolution |
-| `forwarded.js` | The origin the browser addressed: scheme and host from a TLS socket or a trusted hop's `X-Forwarded-Proto` and `X-Forwarded-Host`, and the Origin comparison built on it |
+| `forwarded.js` | The origin the browser addressed: scheme and host from a TLS socket or a trusted hop's `X-Forwarded-Proto` and `X-Forwarded-Host`, the Origin comparison built on it, and the `Host` allowlist that guards against DNS rebinding |
 | `rate-limit.js` | Memory-bounded GCRA rate limiter (one timestamp per bucket, idle sweep, LRU eviction at `maxEntries`), client address resolution with trusted proxy hops, IPv6 keyed by /64 |
 | `compress.js` | `Accept-Encoding` negotiation with q-values, synchronous JSON compression, threadpool compression for static files |
 | `static.js` | Build server for production: immutable `/assets/*`, `no-cache` shell and SPA fallback with strong ETags and `304`, precompressed text, traversal-proof path resolution |
@@ -55,6 +55,7 @@ Environment:
 | -------- | ------ |
 | `HOST`, `PORT` | Standalone bind address, default `127.0.0.1:8787` (the image sets `0.0.0.0:4173`); `PORT=0` takes a free port and logs it, and a `PORT` that is not a TCP port stops the start |
 | `LUMEN_TRUST_PROXY` | Reverse-proxy hops in front of the server: `1` behind Caddy or Nginx, `2` behind a CDN and a proxy, unset or `0` when clients connect directly. Only then are `X-Forwarded-For`, `-Proto` and `-Host` read |
+| `DOMAIN`, `LUMEN_ALLOWED_HOSTS` | Hostnames the `Host` header may name beside `localhost`, `127.0.0.1`, `[::1]`, `lumen.s7codes.dev` and `s7codes.dev`: the host in `DOMAIN` and a comma-separated list (ports are ignored). Any other host gets `421 invalid_host`, a missing or malformed one `400`, before any route runs |
 | `LUMEN_RATE_LIMIT_MAX` | Read budget per client per minute, default `600`; auth, AI and write budgets scale with it; `off` disables the limiter |
 | `LUMEN_STATIC_DIR` | Build the standalone server serves beside `/api`, default `dist`; `off` serves the API only |
 | `LUMEN_STORE_FILE` | Store file, absolute or relative to the repository root; `LUMEN_DATA_FILE` is the same setting under its original name. Default `server/.data/lumen-cloud.json`, or `server/.data/lumen-cloud.test.json` with `LUMEN_TEST_RESET=1` |
@@ -130,6 +131,10 @@ keeps `Host` unchanged, and flushes `text/event-stream` responses frame by frame
   `X-Forwarded-Proto`) scheme and host must both match, so `http://<domain>` cannot write to the
   HTTPS deployment. Over plain HTTP with no trusted forwarding the host alone decides, as before.
   Requests without `Origin` (curl, MCP clients, server to server) are unaffected.
+- Host guard: a DNS-rebinding page reaches the server under the attacker's own name, so the raw
+  `Host` header (never `X-Forwarded-Host`, which a script on the rebound origin could set) must
+  be on the allowlist above. A proxy that rewrites `Host` to its upstream name (`app:4173`)
+  needs that name in `LUMEN_ALLOWED_HOSTS`; Caddy keeps `Host` unchanged and needs nothing.
 - `Strict-Transport-Security: max-age=31536000` goes out on every response the browser received
   over HTTPS (`http-server.js`), never over plain HTTP.
 - Sessions travel only as `Authorization: Bearer`: the API sets no cookies, so there is no

@@ -9,7 +9,7 @@ by the Docker Compose and Caddy kit in this repository.
 
 | Playwright E2E | Rendering | AI integration | Backend |
 | --- | --- | --- | --- |
-| 332 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
+| 333 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
 
 Current release: **v8.1.0**, the production deployment release. Behind Caddy the API now resolves
 the browser's real origin from a trusted hop's `X-Forwarded-Proto` and `X-Forwarded-Host`, guards
@@ -138,6 +138,8 @@ comes from the same code everywhere.
   4096 buckets with idle sweep and LRU eviction, and `429` with `Retry-After` before a body is read.
 - Proxy trust (`LUMEN_TRUST_PROXY`): `X-Forwarded-For`, `-Proto` and `-Host` are read only from a
   loopback or private peer, right to left, one entry per trusted hop.
+- A DNS-rebinding guard ahead of every route: the `Host` header must name loopback, the production
+  domains, `DOMAIN` or a host in `LUMEN_ALLOWED_HOSTS`, or the request gets `421 invalid_host`.
 - A same-origin guard on every `POST`, `PUT` and `DELETE`. Behind Caddy the expected origin is
   `https://<host>`, so the plain-HTTP twin is refused, and every HTTPS response carries HSTS.
 - Sessions are HMAC-SHA256 Bearer tokens compared with `timingSafeEqual`: 12 hours, revocable, never
@@ -181,7 +183,7 @@ docker compose ps            # app healthy, then caddy running
 | `Dockerfile` | Node 24 Alpine, two stages: `npm ci` and `vite build`, then a runtime with no `node_modules`, run as `node`, with a `HEALTHCHECK` on `/api/health` |
 | `docker-compose.yml` | `app` on the bridge network only (read-only root, no capabilities, `/data` volume, 20 s drain) and `caddy` on `80`, `443` and `443/udp`, started once the app is healthy |
 | `Caddyfile` | Automatic HTTPS for `{$DOMAIN:lumen.s7codes.dev}`, a reverse proxy that holds requests through app restarts; SSE is flushed frame by frame |
-| `.env.example` | `DOMAIN`, `LUMEN_TRUST_PROXY`, `LUMEN_SESSION_SECRET` and the optional LLM provider keys |
+| `.env.example` | `DOMAIN`, `LUMEN_ALLOWED_HOSTS`, `LUMEN_TRUST_PROXY`, `LUMEN_SESSION_SECRET` and the optional LLM provider keys |
 
 - Update: `git pull && docker compose up -d --build`. The old container drains in-flight requests
   on `SIGTERM`, and Caddy holds new ones for up to 10 s until the new container answers.
@@ -236,32 +238,6 @@ with `Authorization: Bearer <token>` it uses the account library. Errors are
 | `lumen://electrical/drivers-and-bus` | Driver schedule, loop resistance, the 3% drop limit, run lengths and DALI-2 scene levels |
 | `lumen://acoustics/sabine-6octave` | Octave absorption coefficients from 125 Hz to 4 kHz, part NRC values, `STI` grades |
 | `lumen://workspace/live` | A sanitized snapshot of the caller's 3D room, 2D wall and cart, with computed telemetry |
-
-## 6. Release History
-
-| Version | Date | Headline |
-| --- | --- | --- |
-| v1.0.0 to v1.0.1 | 2026-11-11 | Async Lumen Cloud client, revisioned project saves, cloud requisitions, lazy planner chunks |
-| v1.1.0 to v1.2.0 | 2026-11-11 | Named 12-project library, Ctrl+K palette, `.OBJ` export, 24V bus overlay, `?scene=` share links |
-| v2.0.0 | 2026-11-11 | Zero-dependency Node.js API in `server/`, atomic JSON persistence, HMAC-signed sessions, offline mirror |
-| v3.0.0 | 2026-11-11 | Account-bound `acct-` libraries with guest claim; Sabine `RT60` and lumen-method lux engines |
-| v3.1.0 to v3.2.0 | 2026-11-11 | Point-by-point lux field and Iso-Lux map, six-octave `RT60` with `STI`, 12-part catalog, MIT license |
-| v3.3.0 to v3.4.0 | 2026-11-11 | CAD multi-select, marquee, align and distribute, smart guides; `1:20` ISO blueprint, `.SVG` and `.DXF` R12 |
-| v3.5.0 | 2026-11-11 | Per-module DALI-2 dimming across physics, lux, bus and WebGL; four lighting scenes; 3D undo |
-| v4.0.0 | 2026-11-11 | Four-wall 360-degree room with per-wall mounting, corner collisions and an unrolled 24V run |
-| v4.1.0 | 2026-11-11 | A/B project diff engine and comparison dialog; spin-free number fields |
-| v4.2.0 | 2026-11-12 | Part mass, first-fit-decreasing crate packing, freight class and dispatch waves |
-| v5.0.0 | 2026-11-12 | Full-viewport 3D workstation: orbit, 165 cm and elevation lenses, ray-to-wall drag, transform gizmo |
-| v5.1.0 to v5.3.0 | 2026-11-12 | 360-degree orbit, room presets, 2D canvas showcase theatre, Web Audio `RT60` audition, `.PNG` render card |
-| v6.0.0 | 2026-11-12 | Studio AI Concierge on the live workspace, server-replayed escalation gatekeeper, engineering tickets |
-| v6.1.0 to v6.2.0 | 2026-11-12 | Concierge answers locally on API faults, hot-reloaded dev API, redesigned chat and part glyphs |
-| v6.3.0 | 2026-11-13 | MCP server (JSON-RPC 2.0, `2025-06-18`) with 8 tools, multi-provider LLM agent, SSE endpoint |
-| v7.0.0 | 2026-11-13 | WebGL2 room engine: continuous `WASD` gait, CAD sub-assemblies, procedural PBR, volumetric beams, solar path |
-| v7.1.0 to v7.3.0 | 2026-11-13 | Multi-window daylight, GLSL soft-penumbra gobos, dual-tier IBL, ACES filmic tone mapping, cart redesign |
-| v8.0.0 | 2026-11-13 | Red-team hardening: GCRA rate limits, bounded FIFO store mutex, MCP depth cap, production static server |
-| v8.1.0 | 2026-11-13 | Proxy-aware HTTPS origins and HSTS, same-origin guard on every write, Docker Compose + Caddy kit verified in CI |
-
-Major releases are tagged `v1.0.0` to `v8.0.0`; minor releases ship on `main` without a tag.
 
 ## License
 

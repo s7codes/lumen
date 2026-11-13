@@ -20,7 +20,7 @@ import { isProjectId, PROJECT_KINDS, projectIdFor, sanitizeProjectName } from '.
 import { buildQuote, CURRENCY_CODES, resolvePromo, sanitizeProject, validateProject } from '../src/lib/quote.js';
 import { isOneOf, safeJsonParse } from '../src/security/sanitize.js';
 import { compressSync, isCompressible, negotiateEncoding } from './compress.js';
-import { originMatches } from './forwarded.js';
+import { checkHost, originMatches, resolveAllowedHosts } from './forwarded.js';
 import { createConciergeAgent } from './llm-agent.js';
 import {
   createRateLimiter,
@@ -209,6 +209,20 @@ function requireSameOrigin(req, trustHops) {
   if (origin === undefined || originMatches(origin, req, trustHops)) return;
   discardBody(req);
   throw new HttpError(403, 'forbidden_origin', 'Cross-origin calls to this endpoint are refused.');
+}
+
+/**
+ * DNS-rebinding guard, ahead of every route: a page on an attacker's name
+ * rebound to this server's address is answered only when its Host is one this
+ * deployment serves (server/forwarded.js). A valid but unlisted host is 421
+ * Misdirected Request, a missing or malformed one 400; both drain the body.
+ */
+function requireKnownHost(req, allowedHosts) {
+  const verdict = checkHost(req, allowedHosts);
+  if (verdict === 'ok') return;
+  discardBody(req);
+  if (verdict === 'unknown') throw new HttpError(421, 'invalid_host', 'This server does not answer for the requested host.');
+  throw new HttpError(400, 'invalid_host', 'The Host header is missing or malformed.');
 }
 
 function sseFrame(event, data) {
@@ -749,11 +763,16 @@ function createRateGate({ options, trustHops, logger }) {
  *   supplies the client address (X-Forwarded-For) for rate limiting and the
  *   browser's scheme and host (X-Forwarded-Proto, X-Forwarded-Host) for the
  *   same-origin guard.
+ * - `allowedHosts`: hostnames beyond loopback, the production domains and
+ *   DOMAIN that the Host header may name (an array or a comma-separated
+ *   string); undefined reads `LUMEN_ALLOWED_HOSTS`. Any other Host is refused
+ *   before route dispatch with `invalid_host`.
  * - `sessionSecret`: the HMAC key; undefined reads `LUMEN_SESSION_SECRET`.
  * - `env`: where those defaults are read, `process.env` unless given.
  * - `logger`: `{ warn, error }`, the console unless given.
- * The handler exposes its limiter as `handler.limiter` (null when disabled)
- * and its resolved hop count as `handler.trustHops`.
+ * The handler exposes its limiter as `handler.limiter` (null when disabled),
+ * its resolved hop count as `handler.trustHops`, and `handler.knowsHost(req)`
+ * for a server that answers other paths itself (the static app).
  */
 export function createApp({
   store,
@@ -763,10 +782,12 @@ export function createApp({
   agent = createConciergeAgent({ version }),
   rateLimit,
   trustProxy,
+  allowedHosts,
   env = process.env,
   logger = console,
 } = {}) {
   const trustHops = resolveTrustProxy(trustProxy, env);
+  const hosts = resolveAllowedHosts(allowedHosts, env);
   const sessions = createSessions(resolveSessionSecret(sessionSecret, env, logger));
   const routes = buildRoutes(createHandlers({ store, version, sessions, agent, logger }), testReset);
   const gate = createRateGate({ options: resolveRateLimitOptions(rateLimit, env), trustHops, logger });
@@ -782,6 +803,7 @@ export function createApp({
       const matched = findRoute(routes, pathname);
       // Limited before anything else is resolved, so 404, 405 and malformed probes spend budget too.
       gate.admit(req, res, matched?.route ?? null);
+      requireKnownHost(req, hosts);
       if (pathname === null) throw invalid('The request URL is not valid.');
       if (!matched) throw new HttpError(404, 'not_found', 'No Lumen Cloud endpoint at this path.');
       const handler = matched.route.methods[req.method];
@@ -821,5 +843,6 @@ export function createApp({
 
   lumenCloud.limiter = gate.limiter;
   lumenCloud.trustHops = trustHops;
+  lumenCloud.knowsHost = (req) => checkHost(req, hosts) === 'ok';
   return lumenCloud;
 }

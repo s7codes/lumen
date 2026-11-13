@@ -8,7 +8,15 @@ import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { test as base, expect } from '@playwright/test';
 import { createApp } from '../server/app.js';
 import { COMPRESSION_THRESHOLD_BYTES, negotiateEncoding } from '../server/compress.js';
-import { isSecureRequest, originMatches, resolveRequestOrigin } from '../server/forwarded.js';
+import {
+  checkHost,
+  DEFAULT_ALLOWED_HOSTS,
+  hostnameOf,
+  isSecureRequest,
+  originMatches,
+  resolveAllowedHosts,
+  resolveRequestOrigin,
+} from '../server/forwarded.js';
 import { createLumenServer, HSTS_POLICY } from '../server/http-server.js';
 import { createConciergeAgent } from '../server/llm-agent.js';
 import {
@@ -1007,6 +1015,71 @@ test.describe('production HTTP hardening', () => {
     expect(originMatches(`${SITE}/path`, req('172.18.0.2', { host: 'lumen.s7codes.dev', 'x-forwarded-proto': 'https' }), 1)).toBe(false);
     expect(originMatches('https://user@lumen.s7codes.dev', req('127.0.0.1', { host: 'lumen.s7codes.dev' }), 0)).toBe(false);
     expect(originMatches('ftp://lumen.s7codes.dev', req('127.0.0.1', { host: 'lumen.s7codes.dev' }), 0)).toBe(false);
+  });
+
+  test('a DNS-rebinding Host is refused with invalid_host before any route, on the API and the app shell alike', async () => {
+    const store = createStore({ file: null });
+    // A custom deployment: DOMAIN names the Caddy site, LUMEN_ALLOWED_HOSTS an alias (with a port) and one entry that is not a host.
+    const env = { DOMAIN: 'studio.example.org', LUMEN_ALLOWED_HOSTS: 'www.studio.example.org:443, not a host' };
+    const handler = createApp({ store, version: 'redteam', agent: AGENT, env, logger: SILENT });
+    const stack = createLumenServer({ cloud: { handler, store }, staticDir: DIST_DIR, logger: SILENT });
+    try {
+      const origin = await listen(stack.server);
+      const { port } = new URL(origin);
+
+      // Loopback with and without a port, the production domains (any case, a trailing root dot), DOMAIN and the alias.
+      for (const host of [`127.0.0.1:${port}`, `localhost:${port}`, 'LOCALHOST', '[::1]:4173', 'lumen.s7codes.dev', 'Lumen.S7codes.dev.:443', 's7codes.dev', 'studio.example.org', 'www.studio.example.org:8443']) {
+        const health = await rawRequest(origin, '/api/health', { headers: { Host: host } });
+        expect(health.status, host).toBe(200);
+      }
+      expect((await rawRequest(origin, '/room-3d', { headers: { Host: 'lumen.s7codes.dev' } })).status).toBe(200);
+
+      // The rebound name, look-alikes and subdomains: 421 on every path, static or API, matched or not.
+      const REBIND = 'evil-rebind.attacker.example:4173';
+      const ns = namespace();
+      for (const host of [REBIND, 'lumen.s7codes.dev.evil.example', 'evil.s7codes.dev', 'localhost.attacker.example', '127.0.0.1.nip.io', '0.0.0.0']) {
+        for (const path of ['/api/health', '/api/projects', '/api/no-such-route', '/', '/room-3d', '/assets/missing.js']) {
+          const refused = await rawRequest(origin, path, { headers: { Host: host, 'X-Lumen-Client': ns } });
+          expect(refused.status, `${host} ${path}`).toBe(421);
+          expect(refused.headers['content-type']).toBe('application/json; charset=utf-8');
+          expect(jsonOf(refused), `${host} ${path}`).toEqual({ error: { code: 'invalid_host', message: 'This server does not answer for the requested host.' } });
+        }
+      }
+
+      // A same-origin write from the rebound page, X-Forwarded-Host spoofed to the real domain: refused before the body is read.
+      const forged = await rawRequest(origin, '/api/projects', {
+        method: 'POST',
+        headers: { Host: REBIND, Origin: `http://${REBIND}`, 'X-Forwarded-Host': 'lumen.s7codes.dev', 'X-Lumen-Client': ns },
+        body: { kind: 'wall', name: 'Rebound Wall', data: WALL },
+      });
+      expect(forged.status).toBe(421);
+      expect(jsonOf(forged).error.code).toBe('invalid_host');
+      expect(store.read(ns).projects).toEqual([]);
+
+      // Hosts that carry more than a hostname are malformed: 400.
+      for (const host of ['a@lumen.s7codes.dev', 'lumen.s7codes.dev/path', 'localhost:99999', 'local host']) {
+        const malformed = await rawRequest(origin, '/api/health', { headers: { Host: host } });
+        expect(malformed.status, host).toBe(400);
+        expect(jsonOf(malformed), host).toEqual({ error: { code: 'invalid_host', message: 'The Host header is missing or malformed.' } });
+      }
+    } finally {
+      await stack.shutdown({ reason: 'test' });
+    }
+
+    // The pure pieces: hostname parsing, the allowlist resolver and the verdicts.
+    expect(hostnameOf('LUMEN.s7codes.dev:443')).toBe('lumen.s7codes.dev');
+    expect(hostnameOf('[::1]:8787')).toBe('[::1]');
+    expect(hostnameOf('localhost.')).toBe('localhost');
+    for (const bad of [undefined, '', ' ', '.', 'a@b', 'a/b', 'a b', 'h:70000', `${'a'.repeat(256)}`, `l${C(0xf6)}men.dev`]) expect(hostnameOf(bad), String(bad)).toBeNull();
+    expect([...resolveAllowedHosts(undefined, {})]).toEqual(DEFAULT_ALLOWED_HOSTS);
+    expect([...resolveAllowedHosts(undefined, { DOMAIN: 'Lumen.Example.com', LUMEN_ALLOWED_HOSTS: ' a.example , ,b.example:8080' })]).toEqual([...DEFAULT_ALLOWED_HOSTS, 'a.example', 'b.example', 'lumen.example.com']);
+    // An explicit option replaces LUMEN_ALLOWED_HOSTS; DOMAIN and the defaults always stay.
+    const explicit = resolveAllowedHosts(['c.example'], { DOMAIN: 'd.example', LUMEN_ALLOWED_HOSTS: 'a.example' });
+    expect([...explicit]).toEqual([...DEFAULT_ALLOWED_HOSTS, 'c.example', 'd.example']);
+    expect(checkHost({ headers: { host: 'c.example:4173' } }, explicit)).toBe('ok');
+    expect(checkHost({ headers: { host: 'a.example' } }, explicit)).toBe('unknown');
+    expect(checkHost({ headers: {} }, explicit)).toBe('malformed');
+    expect(checkHost(undefined, explicit)).toBe('malformed');
   });
 
   // eslint-disable-next-line no-empty-pattern

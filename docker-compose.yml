@@ -25,6 +25,9 @@ services:
       PORT: '4173'
       # Caddy is the one trusted hop: X-Forwarded-For, -Proto and -Host are read from it only.
       LUMEN_TRUST_PROXY: ${LUMEN_TRUST_PROXY:-1}
+      # The Host names the app answers beside loopback and the production domains (DNS-rebinding guard).
+      DOMAIN: ${DOMAIN:-lumen.s7codes.dev}
+      LUMEN_ALLOWED_HOSTS: ${LUMEN_ALLOWED_HOSTS:-}
       # A placeholder or anything under 32 characters is refused in favour of a per-process key.
       LUMEN_SESSION_SECRET: ${LUMEN_SESSION_SECRET:-change-me-in-production}
       LUMEN_DATA_DIR: /data

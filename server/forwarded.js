@@ -124,3 +124,61 @@ export function originMatches(originHeader, req, trustHops = 0) {
   const host = canonicalHost(view.host, scheme);
   return host !== null && host === url.host;
 }
+
+/**
+ * Hostnames the server answers for whatever the environment says: loopback for
+ * local runs, health checks and E2E, and the production domains. DOMAIN and
+ * LUMEN_ALLOWED_HOSTS add to these (resolveAllowedHosts).
+ */
+export const DEFAULT_ALLOWED_HOSTS = Object.freeze(['localhost', '127.0.0.1', '[::1]', 'lumen.s7codes.dev', 's7codes.dev']);
+
+/**
+ * The hostname of one Host value: lower case, the optional `:port` and one
+ * trailing root dot dropped, IPv6 literals kept in brackets. Null when the
+ * value is missing or could carry more than a host (a path, credentials, a
+ * port out of range, non-ASCII), so it can never be matched loosely.
+ */
+export function hostnameOf(value) {
+  const host = typeof value === 'string' ? hostEntry(value) : null;
+  if (host === null) return null;
+  try {
+    const url = new URL(`http://${host}`);
+    if (url.hostname === '' || url.pathname !== '/' || url.username !== '' || url.password !== '') return null;
+    const name = url.hostname.endsWith('.') ? url.hostname.slice(0, -1) : url.hostname;
+    return name === '' ? null : name;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The Host allowlist: DEFAULT_ALLOWED_HOSTS, the host in DOMAIN (the one Caddy
+ * serves), and `allowedHosts` (an array or a comma-separated string), which
+ * reads LUMEN_ALLOWED_HOSTS when undefined. Entries may carry a port; entries
+ * that are not a hostname are dropped.
+ */
+export function resolveAllowedHosts(allowedHosts, env = process.env) {
+  const extra = allowedHosts === undefined ? env?.LUMEN_ALLOWED_HOSTS : allowedHosts;
+  const listed = Array.isArray(extra) ? extra : typeof extra === 'string' ? extra.split(',') : [];
+  const hosts = new Set(DEFAULT_ALLOWED_HOSTS);
+  for (const entry of [...listed, typeof env?.DOMAIN === 'string' ? env.DOMAIN : '']) {
+    const name = typeof entry === 'string' && entry.trim() !== '' ? hostnameOf(entry) : null;
+    if (name !== null) hosts.add(name);
+  }
+  return hosts;
+}
+
+/**
+ * DNS-rebinding guard: how the request's own Host header stands against
+ * `allowed`. A rebinding page reaches this server under the attacker's name,
+ * and the browser sends that name as Host, so only names this deployment
+ * serves are answered. Returns 'ok', 'unknown' (a valid host that is not
+ * listed) or 'malformed' (missing or not a host). The raw Host is
+ * checked, never X-Forwarded-Host: a script on a rebound origin is same-origin
+ * there and may set any header a proxy would.
+ */
+export function checkHost(req, allowed) {
+  const name = hostnameOf(req?.headers?.host);
+  if (name === null) return 'malformed';
+  return allowed.has(name) ? 'ok' : 'unknown';
+}
