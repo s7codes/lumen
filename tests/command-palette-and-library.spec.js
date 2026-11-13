@@ -14,6 +14,7 @@ import {
   serializeRoomState,
 } from '../src/lib/room-3d.js';
 import { layoutFromPreset, serializeLayout, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
+import { holdProjectSaves } from './support/cloud-gates.js';
 import {
   collectRuntimeErrors,
   horizontalOverflow,
@@ -50,12 +51,19 @@ function lastToast(page) {
   return page.getByTestId('toast-message').last();
 }
 
+/**
+ * Saves under `name`. The request is held in flight until the pending state
+ * has been read, so a loaded runner cannot finish the 500 ms round trip
+ * before the first check lands.
+ */
 async function saveNamed(page, testId, name) {
   const input = page.getByTestId('project-name-input');
   await input.fill(name);
   const save = page.getByTestId(testId);
+  const release = await holdProjectSaves(page);
   await save.click();
   await expect(save).toHaveAttribute('data-state', 'saving');
+  release();
   await expect(save).toHaveAttribute('data-state', 'saved');
 }
 

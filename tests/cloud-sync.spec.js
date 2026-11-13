@@ -4,6 +4,7 @@ import { SESSION_STORAGE_KEY } from '../src/lib/auth.js';
 import { padIndex } from '../src/lib/format.js';
 import { createRoomState, importFromWallStudio, ROOM_STORAGE_KEY, serializeRoomState } from '../src/lib/room-3d.js';
 import { layoutFromPreset, serializeLayout, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
+import { holdProjectSaves } from './support/cloud-gates.js';
 import {
   collectRuntimeErrors,
   horizontalOverflow,
@@ -29,23 +30,6 @@ async function seed(page, entries) {
 
 function readJson(page, key) {
   return page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? 'null'), key);
-}
-
-/**
- * Holds every POST /api/projects until the returned release is called, so a
- * spec can inspect the pending save state without racing its 500 ms window
- * when the machine is loaded. Released saves pass through untouched.
- */
-async function holdProjectSaves(page) {
-  let release;
-  const gate = new Promise((resolve) => {
-    release = resolve;
-  });
-  await page.route('**/api/projects', async (route) => {
-    if (route.request().method() === 'POST') await gate;
-    await route.continue();
-  });
-  return release;
 }
 
 test.beforeEach(async ({ page }) => {

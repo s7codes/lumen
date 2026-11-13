@@ -39,6 +39,8 @@ function Monogram() {
  * bar and percentage are written per frame straight to the DOM; React only
  * hears about the three step changes. The phase is mirrored onto `revealRef`
  * as `data-boot`, which settles the workstation in as the overlay lifts.
+ * `data-run` counts the replays and only ever goes up, so a replay that has
+ * already cleared itself still reads as started.
  */
 export function StudioBootOverlay({ ready, replay = 0, revealRef = null }) {
   const [phase, setPhase] = useState(() => (reducedMotion() ? 'done' : 'booting'));
@@ -123,6 +125,7 @@ export function StudioBootOverlay({ ready, replay = 0, revealRef = null }) {
       className="studio-boot"
       data-testid="studio-boot-overlay"
       data-state={phase}
+      data-run={run.id}
       data-step={Math.min(step, STEPS.length)}
       role="status"
       aria-label="Lumen Spatial Engine"

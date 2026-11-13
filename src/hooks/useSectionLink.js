@@ -14,7 +14,8 @@ const SECTION_STATE_KEY = 'lumenSection';
  */
 const READING_LINE = 0.45;
 const END_SLACK_PX = 2;
-const SCROLL_SETTLE_MS = 180;
+// Without scrollend, a glide has landed once the page holds still for this many frames in a row.
+const SETTLE_FRAMES = 3;
 const USER_INPUT = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
 
 const spy = { sections: new Map(), measured: null, pinned: null, listeners: new Set(), detach: null };
@@ -72,21 +73,36 @@ function attachSpy() {
 }
 
 /**
- * Holds `id` as the current section until the glide settles (scrollend, or
- * no scroll for SCROLL_SETTLE_MS) or the user takes over the page.
+ * Holds `id` as the current section until the glide lands or the user takes
+ * over the page. The browser's scrollend marks the landing where it exists.
+ * Elsewhere the first scroll event starts a per-frame watch on window.scrollY
+ * that lands once the page holds still for SETTLE_FRAMES frames in a row.
+ * Both paths count events and frames, never milliseconds: a device drawing a
+ * few frames a second delivers one scroll step per frame, so a wall-clock
+ * timer would fire between two steps and drop the pin mid-glide.
  */
 function pinSection(id) {
   releasePin?.();
   const before = currentSection();
   spy.pinned = id;
-  let timer = 0;
+  const hasScrollEnd = 'onscrollend' in window;
+  let frame = 0;
+  let lastY = Number.NaN;
+  let still = 0;
 
+  const watch = () => {
+    const y = window.scrollY;
+    still = y === lastY ? still + 1 : 0;
+    lastY = y;
+    if (still >= SETTLE_FRAMES) release();
+    else frame = requestAnimationFrame(watch);
+  };
   const onScroll = () => {
-    window.clearTimeout(timer);
-    timer = window.setTimeout(release, SCROLL_SETTLE_MS);
+    if (frame === 0) frame = requestAnimationFrame(watch);
   };
   function release() {
-    window.clearTimeout(timer);
+    cancelAnimationFrame(frame);
+    frame = 0;
     window.removeEventListener('scroll', onScroll);
     window.removeEventListener('scrollend', release);
     for (const type of USER_INPUT) window.removeEventListener(type, release, true);
@@ -97,8 +113,8 @@ function pinSection(id) {
     if (currentSection() !== id) emit();
   }
 
-  window.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('scrollend', release);
+  if (hasScrollEnd) window.addEventListener('scrollend', release);
+  else window.addEventListener('scroll', onScroll, { passive: true });
   for (const type of USER_INPUT) window.addEventListener(type, release, { capture: true, passive: true });
   releasePin = release;
   if (currentSection() !== before) emit();

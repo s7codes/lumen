@@ -50,6 +50,7 @@ import {
   SNAP_CM,
   STAGE_ROOM,
 } from '../src/lib/showcase-scene.js';
+import { holdEngineChunk } from './support/engine-gates.js';
 import { collectRuntimeErrors, horizontalOverflow, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
 const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
@@ -68,6 +69,23 @@ function walkState(page) {
 
 function bootOverlay(page) {
   return page.getByTestId('studio-boot-overlay');
+}
+
+/** The boot plate's frame once its own transitions have finished, read in that same task. */
+function bootFrame(boot) {
+  return boot.evaluate(async (el) => {
+    await Promise.all(el.getAnimations().map((animation) => animation.finished.catch(() => null)));
+    const box = el.getBoundingClientRect();
+    return {
+      state: el.dataset.state,
+      x: box.x,
+      y: box.y,
+      height: box.height,
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      // The pointer passes straight through to the navbar underneath.
+      navbarUnder: Boolean(document.elementFromPoint(24, 24)?.closest('header.navbar')),
+    };
+  });
 }
 
 async function openRoom(page) {
@@ -489,40 +507,45 @@ test.describe('navbar order and the overview 3D showcase', () => {
     expect(errors).toEqual([]);
   });
 
-  test('the full-screen boot never takes the pointer, skips on Enter Studio Now and keeps the page free of overflow', async ({
-    page,
-  }) => {
-    const errors = collectRuntimeErrors(page);
-    for (const width of [360, 1024]) {
+  for (const width of [360, 1024]) {
+    test(`the full-screen boot never takes the pointer, skips on Enter Studio Now and keeps the page free of overflow at ${width}px`, async ({
+      page,
+    }) => {
+      const errors = collectRuntimeErrors(page);
+      const held = { state: 'booting', x: 0, y: 0, height: 800, overflow: 0, navbarUnder: true };
       await page.setViewportSize({ width, height: 800 });
+      // A held engine never reports ready, so the boot and its replays stay up until Enter Studio
+      // Now: no step races the overlay's wall-clock hold.
+      const releaseEngine = await holdEngineChunk(page);
       await openRoom(page);
       const boot = bootOverlay(page);
-      await expect(boot).toHaveAttribute('data-state', 'done', { timeout: 20_000 });
-      await page.getByTestId('replay-studio-boot').click();
       await expect(boot).toHaveAttribute('data-state', 'booting');
-      // A replay pulls focus back in from the lifted 1.025 scale, then holds the full window. The
-      // replay lasts 1.4 s, so wait for the overlay's own transitions to finish and read the frame
-      // in that same task, rather than polling a transient state on coarse intervals.
-      const frame = await boot.evaluate(async (el) => {
-        await Promise.all(el.getAnimations().map((animation) => animation.finished.catch(() => null)));
-        const box = el.getBoundingClientRect();
-        return {
-          state: el.dataset.state,
-          x: box.x,
-          y: box.y,
-          height: box.height,
-          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-          // The pointer passes straight through to the navbar underneath.
-          navbarUnder: Boolean(document.elementFromPoint(24, 24)?.closest('header.navbar')),
-        };
-      });
-      expect(frame).toEqual({ state: 'booting', x: 0, y: 0, height: 800, overflow: 0, navbarUnder: true });
+      await expect(boot).toHaveAttribute('data-run', '0');
+      expect(await bootFrame(boot)).toEqual(held);
       await page.getByTestId('skip-studio-boot').click();
       await expect(boot).toHaveAttribute('data-state', 'done');
       await expect(boot).toBeHidden();
-    }
-    expect(errors).toEqual([]);
-  });
+
+      // A replay pulls focus back in from the lifted 1.025 scale, then holds the full window.
+      await page.getByTestId('replay-studio-boot').click();
+      await expect(boot).toHaveAttribute('data-run', '1');
+      await expect(boot).toHaveAttribute('data-state', 'booting');
+      expect(await bootFrame(boot)).toEqual(held);
+      await page.getByTestId('skip-studio-boot').click();
+      await expect(boot).toHaveAttribute('data-state', 'done');
+      await expect(boot).toBeHidden();
+
+      // Released, the engine boots. A replay on the ready engine clears itself, and the run
+      // counter only goes up, so it proves the replay started however briefly it showed.
+      releaseEngine();
+      await rendererOf(page);
+      await page.getByTestId('replay-studio-boot').click();
+      await expect(boot).toHaveAttribute('data-run', '2');
+      await expect(boot).toHaveAttribute('data-state', 'done', { timeout: 20_000 });
+      await expect(boot).toBeHidden();
+      expect(errors).toEqual([]);
+    });
+  }
 });
 
 test.describe('calm 2D wall studio', () => {

@@ -13,6 +13,7 @@ import {
   updateItem,
   WALL_STORAGE_KEY,
 } from '../src/lib/wall-studio.js';
+import { holdProjectSaves } from './support/cloud-gates.js';
 import {
   collectRuntimeErrors,
   horizontalOverflow,
@@ -55,6 +56,7 @@ const PLANNERS = [
     fields: { 'room-width': '300', 'room-depth': '280', 'room-height': '250' },
     save: 'save-room-to-cloud',
     sync: 'sync-room-to-bag',
+    settle: settleWorkstation,
   },
 ];
 
@@ -63,6 +65,17 @@ async function seed(page, entries) {
   await page.evaluate((pairs) => {
     for (const [key, value] of pairs) localStorage.setItem(key, JSON.stringify(value));
   }, entries);
+}
+
+/**
+ * The room planner's engine boot lifts with a 0.99 to 1 settle scale on the
+ * workstation. Two box reads that straddle a frame of it disagree by a pixel,
+ * so layout is measured once the workstation has landed at full size.
+ */
+async function settleWorkstation(page) {
+  const workstation = page.locator('.room3d-workstation');
+  await expect(workstation).toHaveAttribute('data-boot', 'done', { timeout: 20_000 });
+  await expect.poll(() => workstation.evaluate((el) => getComputedStyle(el).transform)).toBe('none');
 }
 
 function wallModule(page, uid) {
@@ -182,6 +195,7 @@ test.describe('ui polish regression guards', () => {
       const save = page.getByTestId(planner.save);
       const sync = page.getByTestId(planner.sync);
       await expect(save).toHaveAccessibleName('Save to Cloud');
+      await planner.settle?.(page);
 
       const a = await save.boundingBox();
       const b = await sync.boundingBox();
@@ -205,12 +219,15 @@ test.describe('ui polish regression guards', () => {
       const cart = await measureKey(sync, 'svg', 'svg');
       expect(cart.iconMid).toBeLessThanOrEqual(1.5);
 
-      // The key holds its width and keeps the unit centred while saving.
+      // The key holds its width and keeps the unit centred while saving. The save is held in
+      // flight until the busy key has been measured, so a loaded runner cannot finish it first.
+      const release = await holdProjectSaves(page);
       await save.click();
       await expect(save).toHaveAttribute('data-state', 'saving');
       expect((await save.boundingBox()).width).toBeCloseTo(a.width, 0);
       const busy = await measureKey(save, '.cloud-save__icon', '.cloud-save__label');
       expect(busy.sideDelta).toBeLessThanOrEqual(2);
+      release();
       await expect(save).toHaveAttribute('data-state', 'saved');
 
       // Stacked on a phone, the keys still never overlap.

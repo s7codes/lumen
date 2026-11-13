@@ -8,11 +8,13 @@ import {
   CAMERA_ZOOM,
   createRoomState,
   furnitureLayout,
+  importFromWallStudio,
   ROOM_FORMAT,
   ROOM_STORAGE_KEY,
   ROOM_VERSION,
   sanitizeCamera,
   sanitizeRoomState,
+  serializeRoomState,
 } from '../src/lib/room-3d.js';
 import { buildScene, cameraFrame, cameraFromPosition, cameraPosition, orbitLimits } from '../src/lib/room-scene.js';
 import { aggregateBagLines, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
@@ -29,6 +31,20 @@ const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
 const WALL_KEY = `lumen:${WALL_STORAGE_KEY}`;
 const BAG_KEY = `lumen:${BAG_STORAGE_KEY}`;
 
+// The editing scenario runs as three tests, each opening on the room the one before it stores.
+const EDITED_PAIR = [
+  { uid: 'm1', productId: 'floating-shelf-110', finish: 'oak', xCm: 40, yCm: 120, led: true },
+  { uid: 'm2', productId: 'corner-floor-column-140', finish: 'walnut', xCm: 151, yCm: 0, led: true },
+];
+const EDITED_ROOM = createRoomState(undefined, EDITED_PAIR);
+const SOFA_ROOM = createRoomState(
+  { widthCm: 400, depthCm: 360, heightCm: 300, furniture: 'sofa-200', lighting: 'night' },
+  [EDITED_PAIR[0], { ...EDITED_PAIR[1], xCm: 20 }],
+);
+// The default 2D composition loaded into the room, with the bed: nine modules and a furniture vignette.
+const IMPORTED = importFromWallStudio(createRoomState()).state;
+const BED_ROOM = { ...IMPORTED, room: { ...IMPORTED.room, furniture: 'bed-160' } };
+
 const MARK_GEOMETRY = {
   spine: { x: '3', y: '3', width: '4', height: '18' },
   base: { x: '3', y: '17', width: '18', height: '4' },
@@ -39,6 +55,22 @@ const MARK_GEOMETRY = {
 async function openRoom(page) {
   await page.goto('/room-3d');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+}
+
+/**
+ * Stores `state` as the room, plus any `extra` storage entries, before the
+ * planner's first script runs, then opens it. The init script goes once the
+ * page is up, so a reload reads back what the planner stored itself.
+ */
+async function openSeededRoom(page, state, extra = []) {
+  const seed = await page.addInitScript(
+    (pairs) => {
+      for (const [key, value] of pairs) localStorage.setItem(key, value);
+    },
+    [[ROOM_KEY, JSON.stringify(serializeRoomState(state))], ...extra],
+  );
+  await openRoom(page);
+  await seed.dispose();
 }
 
 // The navbar 3D Room link opens the overview showcase; its launch key enters the planner.
@@ -138,6 +170,17 @@ async function expectCamera(page, camera) {
 
 function readStoredRoom(page) {
   return page.evaluate((key) => JSON.parse(localStorage.getItem(key)), ROOM_KEY);
+}
+
+/** Polls the stored envelope and modules until they match `state`: the room one scenario hands to the next. */
+async function expectStoredRoom(page, state) {
+  const { room, items } = serializeRoomState(state);
+  await expect
+    .poll(async () => {
+      const stored = await readStoredRoom(page);
+      return { room: stored.room, items: stored.items };
+    })
+    .toEqual({ room, items });
 }
 
 /**
@@ -282,7 +325,9 @@ test.describe('brand mark and display mode switch', () => {
 });
 
 test.describe('room planner', () => {
-  test('mounts, edits and persists modules, envelope, reference, lighting and camera', async ({ page }) => {
+  test('mounts two modules, picks one in the scene, refinishes it, clamps its X and Y and switches its LED channel', async ({
+    page,
+  }) => {
     const errors = collectRuntimeErrors(page);
     await openRoom(page);
 
@@ -340,6 +385,20 @@ test.describe('room planner', () => {
     await expect(shelf).toHaveAttribute('data-led', 'true');
     await expect(roomLights(page, 'm1')).toHaveCount(1);
 
+    // Done hands the inspector back to the outliner; the edited pair is stored for the next scenario.
+    await inspector(page).getByRole('button', { name: 'Done' }).click();
+    await expect(page.getByTestId('room-module-list')).toBeVisible();
+    await expectStoredRoom(page, EDITED_ROOM);
+    expect(errors).toEqual([]);
+  });
+
+  test('the envelope clamps to its range, the sofa reference flags the column inside its base and a move clears it', async ({
+    page,
+  }) => {
+    const errors = collectRuntimeErrors(page);
+    await openSeededRoom(page, EDITED_ROOM);
+    await expect(page.getByTestId('room-modules')).toHaveText('02');
+
     await openDimensions(page, 'room-dimensions');
     await commitField(page, 'room-width', 1200);
     await expect(page.getByTestId('room-width')).toHaveValue('900');
@@ -353,15 +412,24 @@ test.describe('room planner', () => {
     await expect(viewport(page)).toHaveAttribute('data-furniture', 'sofa-200');
     await expect(page.getByTestId('room-furniture')).toHaveCount(furnitureLayout({ widthCm: 400, depthCm: 360, furniture: 'sofa-200' }).parts.length);
     await expect(page.getByTestId('room-conflict-count')).toHaveText('1 conflict');
-    await inspector(page).getByRole('button', { name: 'Done' }).click();
     await page.getByTestId('room-module-list').getByRole('button', { name: /Corner Floor Column 140/ }).click();
     await expect(inspector(page).getByTestId('room-inspector-status')).toHaveText('Collides with Modular Sofa 200cm');
     await commitField(page, 'room-module-x', 20);
     await expect(inspector(page).getByTestId('room-inspector-status')).toHaveText('Clear');
     await expect(page.getByTestId('room-conflict-count')).toHaveText('0 conflicts');
+    await expectStoredRoom(page, SOFA_ROOM);
+    expect(errors).toEqual([]);
+  });
 
-    await page.getByRole('radio', { name: 'Daylight Studio' }).check();
-    await expect(viewport(page)).toHaveAttribute('data-lighting', 'daylight');
+  test('camera presets glide and read out in the night room, then Daylight Studio, and the room persists through a reload', async ({
+    page,
+  }) => {
+    const errors = collectRuntimeErrors(page);
+    await openSeededRoom(page, SOFA_ROOM);
+    await expect(page.getByTestId('room-label')).toHaveText('Viewport / Room 400 x 360 x 300 cm');
+    // The five glides and the readout settle draw the night room, before Daylight Studio
+    // brings in the window joinery, sun patches and shafts.
+    await expect(viewport(page)).toHaveAttribute('data-lighting', 'night');
 
     await page.getByRole('button', { name: 'Front Elevation' }).click();
     await expectCamera(page, { yaw: 0, pitch: 8, zoom: 1.1 });
@@ -377,6 +445,9 @@ test.describe('room planner', () => {
     await expectCamera(page, { yaw: -34, pitch: 14, zoom: 1.35 });
     await expect(viewport(page)).toHaveAttribute('data-preset', 'custom');
     await expect(page.getByTestId('camera-readout')).toHaveText('Yaw -34.0 / Pitch 14.0 / Zoom 1.35x');
+
+    await page.getByRole('radio', { name: 'Daylight Studio' }).check();
+    await expect(viewport(page)).toHaveAttribute('data-lighting', 'daylight');
 
     const expected = {
       format: ROOM_FORMAT,
@@ -852,30 +923,25 @@ test.describe('scene description', () => {
 });
 
 test.describe('runtime guards', () => {
-  test('room planner boots clean from 360px to 1600px in both modes with zero overflow or CSP errors', async ({
-    page,
-  }) => {
-    const errors = collectRuntimeErrors(page);
-    await installCspRecorder(page);
-    await openRoom(page);
-    await page.getByTestId('import-from-wall-studio').click();
-    await page.getByRole('radio', { name: 'Low Platform Bed 160cm' }).check();
-    await page.getByTestId('room-module-list').locator('[data-uid="m2"]').click();
-
-    for (const mode of ['architectural', 'technical']) {
-      await storeDisplayMode(page, mode);
-      for (const width of VIEWPORT_WIDTHS) {
+  // One boot per test: the imported room, the bed and the display mode are stored and the
+  // viewport is sized before the first navigation, so no live WebGL canvas is ever resized.
+  for (const mode of ['architectural', 'technical']) {
+    for (const width of VIEWPORT_WIDTHS) {
+      test(`room planner boots clean at ${width}px in ${mode} mode with zero overflow or CSP errors`, async ({ page }) => {
+        const errors = collectRuntimeErrors(page);
+        await installCspRecorder(page);
         await page.setViewportSize({ width, height: 900 });
-        await page.goto('/room-3d');
+        await openSeededRoom(page, BED_ROOM, [['lumen:display-mode', JSON.stringify(mode)]]);
         await expect(page.locator('html')).toHaveAttribute('data-mode', mode);
         await expect(page.getByTestId('room-module')).toHaveCount(9);
+        await expect(viewport(page)).toHaveAttribute('data-furniture', 'bed-160');
         await rendererOf(page);
         expect(await horizontalOverflow(page), `${mode} at ${width}px`).toBeLessThanOrEqual(0);
-      }
-      expect(await readCspViolations(page), `CSP violations in ${mode} mode`).toEqual([]);
+        expect(await readCspViolations(page), `CSP violations in ${mode} mode`).toEqual([]);
+        expect(errors).toEqual([]);
+      });
     }
-    expect(errors).toEqual([]);
-  });
+  }
 
   test('the WebGL canvas boots on the production CSP with no violations', async ({ page }) => {
     const errors = collectRuntimeErrors(page);

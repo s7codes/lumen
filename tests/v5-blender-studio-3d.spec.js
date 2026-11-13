@@ -25,6 +25,7 @@ import {
   WALL_BUFFER_CM,
   WALL_LOOK_HEADING,
 } from '../src/lib/room-walkthrough.js';
+import { holdEngineChunk } from './support/engine-gates.js';
 import { collectRuntimeErrors, horizontalOverflow, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
 const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
@@ -34,6 +35,9 @@ const ENGINE_LABEL = `LUMEN SPATIAL ENGINE v${RELEASE.split('.').slice(0, 2).joi
 const ROOM = { widthCm: 320, depthCm: 280, heightCm: 250 };
 const EYE = [160, 165, 154];
 const SHELF = { xCm: 105, yCm: 146, productId: 'floating-shelf-110' };
+// The inside-lens scenarios open on the shelf the orbit scenario mounts, the last one with the sofa too.
+const SHELF_ROOM = mountInRoom(createRoomState(), SHELF.productId).state;
+const SHELF_SOFA_ROOM = { ...SHELF_ROOM, room: { ...SHELF_ROOM.room, furniture: 'sofa-200' } };
 
 function viewport(page) {
   return page.getByTestId('room-viewport');
@@ -54,6 +58,20 @@ function walkState(page) {
 async function openRoom(page) {
   await page.goto('/room-3d');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+}
+
+/**
+ * Stores `state` as the room before the planner's first script runs, then
+ * opens it. The init script goes once the page is up, so a reload reads back
+ * what the planner stored itself.
+ */
+async function openSeededRoom(page, state) {
+  const seed = await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [
+    ROOM_KEY,
+    JSON.stringify(serializeRoomState(state)),
+  ]);
+  await openRoom(page);
+  await seed.dispose();
 }
 
 async function mount(page, name) {
@@ -484,12 +502,12 @@ test.describe('direct 3D manipulation on the wall', () => {
 });
 
 test.describe('inside-room 360 degree lens', () => {
-  test('stands inside at 165 cm with all four walls and the ceiling around the eye, turns to each wall and walks', async ({
+  test('orbit cuts the near wall away; inside, the eye stands at 165 cm with all four walls and the ceiling around it and turns to each wall', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
     await openRoom(page);
-    const renderer = await rendererOf(page);
+    await rendererOf(page);
     await mount(page, 'Floating Shelf 110');
     await expect(walkState(page)).toHaveAttribute('data-camera-mode', 'orbit');
 
@@ -541,6 +559,26 @@ test.describe('inside-room 360 degree lens', () => {
       await expect(page.getByTestId('viewport-compass'), wall).toHaveAttribute('data-azimuth', String(heading));
     }
 
+    // The two scenarios below open on this same stored room.
+    const seeded = serializeRoomState(SHELF_ROOM);
+    const kept = await readStoredRoom(page);
+    expect({ room: kept.room, items: kept.items }).toEqual({ room: seeded.room, items: seeded.items });
+    expect(errors).toEqual([]);
+    expect(await readCspViolations(page)).toEqual([]);
+  });
+
+  test('inside, the walk pad and keys step within the wall buffer, the sofa stops the walk and a drag turns the head', async ({
+    page,
+  }) => {
+    const errors = collectRuntimeErrors(page);
+    await openSeededRoom(page, SHELF_ROOM);
+    const renderer = await rendererOf(page);
+    await expect(page.getByTestId('room-module')).toHaveCount(1);
+    await page.getByTestId('camera-mode-walkthrough').click();
+    const state = walkState(page);
+    await expect(state).toHaveAttribute('data-camera-mode', 'inside');
+    await expect(state).toHaveAttribute('data-heading-deg', '0');
+
     // Step buttons walk; the wall buffer holds the eye 32 cm off the north wall.
     for (let i = 0; i < 8; i += 1) await page.getByTestId('walk-forward').click();
     await expect(state).toHaveAttribute('data-z-cm', '32');
@@ -575,6 +613,19 @@ test.describe('inside-room 360 degree lens', () => {
       await page.mouse.up();
       await expect.poll(async () => Number(await state.getAttribute('data-heading-deg'))).toBeGreaterThan(30);
     }
+    expect(errors).toEqual([]);
+    expect(await readCspViolations(page)).toEqual([]);
+  });
+
+  test('from inside, Wall Elevation looks dead-on at the active wall from outside the opposite one and Orbit brings the presets back', async ({
+    page,
+  }) => {
+    const errors = collectRuntimeErrors(page);
+    await openSeededRoom(page, SHELF_SOFA_ROOM);
+    await rendererOf(page);
+    await expect(viewport(page)).toHaveAttribute('data-furniture', 'sofa-200');
+    await page.getByTestId('camera-mode-walkthrough').click();
+    await expect(walkState(page)).toHaveAttribute('data-camera-mode', 'inside');
 
     // Wall Elevation then looks dead-on at the active wall from outside the opposite one.
     await page.getByTestId('wall-tab-north').click();
@@ -631,31 +682,41 @@ test.describe('inside-room 360 degree lens', () => {
 test.describe('studio boot, zen viewport and skip link', () => {
   test('the engine boot clears itself, never takes the pointer and replays on request', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
+    // A held engine never reports ready, so the boot and every replay stay up until Enter Studio
+    // Now or the release: no step races the overlay's wall-clock hold.
+    const releaseEngine = await holdEngineChunk(page);
     await openRoom(page);
     const boot = page.getByTestId('studio-boot-overlay');
     await expect(boot).toHaveCount(1);
-    await expect(boot).toHaveAttribute('data-state', 'done', { timeout: 20_000 });
+    await expect(boot).toHaveAttribute('data-state', 'booting');
+    await expect(boot).toHaveAttribute('data-run', '0');
+    await page.getByTestId('skip-studio-boot').click();
+    await expect(boot).toHaveAttribute('data-state', 'done');
     expect(await boot.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe('none');
     await expect(boot).toBeHidden();
 
     const replay = page.getByTestId('replay-studio-boot');
     await replay.click();
+    await expect(boot).toHaveAttribute('data-run', '1');
     await expect(boot).toHaveAttribute('data-state', 'booting');
     await expect(boot).toBeVisible();
     await page.getByTestId('skip-studio-boot').click();
     await expect(boot).toHaveAttribute('data-state', 'done');
 
     await replay.click();
+    await expect(boot).toHaveAttribute('data-run', '2');
     await expect(boot).toHaveAttribute('data-state', 'booting');
     await expect(boot).toContainText(ENGINE_LABEL);
     await expect(boot).toContainText('01 / WebGL2 Shader Pipeline');
     await expect(boot).toContainText('02 / 4-Wall Raycast & Gizmo Solver');
     await expect(boot).toContainText('03 / 24V Photometric Kernel');
-    // The stage under it stays live while it plays, and it clears on its own.
+    // The stage under it stays live while it plays, and it clears on its own once the engine is ready.
     await page.getByTestId('camera-settings-toggle').click();
     await expect(page.getByTestId('camera-settings-toggle')).toHaveAttribute('aria-expanded', 'true');
     await page.keyboard.press('Escape');
-    await expect(boot).toHaveAttribute('data-state', 'done');
+    await expect(boot).toHaveAttribute('data-state', 'booting');
+    releaseEngine();
+    await expect(boot).toHaveAttribute('data-state', 'done', { timeout: 20_000 });
 
     // Under reduced motion it never plays at all.
     await page.emulateMedia({ reducedMotion: 'reduce' });
