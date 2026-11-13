@@ -1,32 +1,27 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v7.3.0-e8923a)
+![Release](https://img.shields.io/badge/release-v8.0.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v7.3.0**, a green CI and an editorial cart. The v7.1.0 and v7.2.0
-Actions runs failed on the homepage theatre and the inside lens, both under CPU
-starvation on the four-vCPU runner, where four software-WebGL Chromium workers pushed the
-theatre down to about 2 fps. CI now runs two workers. The theatre's act clock and
-turntable step their closed-form springs on up to 250 ms per frame, so the 7 s acts and
-the 20 deg/s yaw keep wall-clock time down to 4 fps instead of slowing with the shared
-50 ms cap. The inside lens fixes a real race: the canvas is its own React root and can
-render an older wheel commit after a newer one was handed up, and the rig used to take
-that late echo for a new lens set elsewhere and commit it back. It now matches every echo
-against the queue of commits still in flight. The cart drawer is now an editorial
-specification sheet on lifted basalt (`#1e1c19`): a plain **Cart** title with a mono item
-counter and a rectangular **Close** key; empty, a left-aligned **Your cart is empty**
-note with sharp 4px **Browse Catalog** and **Open 3D Room Planner** keys in the hero's
-mono uppercase, then **Signature Starting Modules**, three indexed rows (Floating Shelf
-110, Linear Suspension Pendant 150, Modular Cube 36) with drawing, size, price and an
-**Add** key that puts one unit in the cart. Filled lines are full-width rows between
-hairlines with a finish and load subtitle, a 4px - / + block and a full-width **Proceed
-to Checkout** key on a recessed tray. Inside `Ctrl+K` and Lumen AI, pills and bubbles
-give way to 4px tags and 6 to 10px keys, rows and wells.
+Current release: **v8.0.0**, Operation Red-Team: a white-box security and production
+backend release. Every `/api` route now spends a per-client budget from a memory-bounded
+GCRA rate limiter (auth, AI, write and read tiers; `429` with `Retry-After` and
+`X-RateLimit-*` headers; at most 4096 buckets, idle ones swept and the rest evicted least
+recently used), keyed by the address a trusted Caddy or Nginx hop appended
+(`LUMEN_TRUST_PROXY`), never by a header a client can forge. Store writes run through a
+bounded FIFO mutex, so 30 concurrent saves and 30 concurrent quotes hold the 12-project
+and 24-quote caps exactly, with no lost update and no `500`. MCP refuses batches and
+messages nested deeper than 12 levels and answers a tool fault with `-32603`; free text
+loses bidi overrides, C1 controls and lone surrogates; a DXF label can no longer
+reassemble a `%%` control code. `npm run server` now serves the build itself: Brotli and
+gzip over 1 KB, immutable hashed assets, a revalidated SPA shell with strong ETags and
+`304`, traversal-proof paths and a graceful drain on `SIGTERM`. A 15-test red-team suite
+attacks each defense through its real entry point.
 
 v7.2.0 was a realism pass over the WebGL2 room engine and a warmer
 cart. Every window now lets light in. A window facing the sun lays six sunlit gobo
@@ -449,6 +444,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v8.0.0  | Operation Red-Team: memory-bounded GCRA rate limiting on every API route (auth, AI, write and read tiers, `429` with `Retry-After` and `X-RateLimit-*`, a 4096-bucket table with idle sweep and LRU eviction, generous on loopback, IPv6 keyed by /64); client addresses from trusted `X-Forwarded-For` hops only (`LUMEN_TRUST_PROXY`); a bounded FIFO store mutex with `503 busy` backpressure and guest-first namespace eviction; an MCP depth cap of 12, explicit batch refusal and `-32603` for tool faults; bidi override, C1 and lone-surrogate stripping in free text; `%%` folding in DXF labels; a standalone production server with Brotli and gzip, immutable assets, strong ETags and `304`, traversal-proof static paths and a graceful `SIGTERM` drain; a white-box red-team, concurrency and fuzzing suite |
 | v7.3.0  | Green CI and an editorial cart: two CI workers so software-WebGL Chromium never starves on the four-vCPU runner; the homepage theatre keeps wall-clock act and turntable time down to 4 fps (closed-form steps on up to 250 ms per frame); the inside lens matches late render echoes against its queue of in-flight wheel commits; the cart drawer as a flat basalt specification sheet with a plain Cart title, mono counter, rectangular Close key, a left-aligned empty note with sharp 4px hero-style keys, three Signature Starting Modules quick-add rows, hairline line rows, a 4px stepper block and a full-width checkout key; 4px tags and 6 to 10px keys, rows and wells inside Ctrl+K and Lumen AI |
 | v7.2.0  | WebGL2 realism and a warm cart: every window casts light (direct sun on a clamped architectural ray, or a skylight portal when the sun is behind the wall) as six-pane floor gobos under a custom GLSL soft-penumbra shader, air shafts and a per-window portal spot light; rounded-box fillets on upholstery, micro-bevels on millwork and metal, lathe-turned vases, bowls and lamps; a draped duvet bed with four pitched pillows, filleted sofa, lit ultrawide desk display and cantilevered lamp; window casing linings, bevelled sill, sashes and espagnolette handles; always-on studio IBL at 0.42 with ACES filmic at 1.08 (prefiltered on GPUs, analytic speculars and no MSAA on software rasterisers); live lens readout written straight to the DOM and frame-rate-aware glides; warm basalt cart drawer with an item-count pill, a centred empty state, product drawings and a champagne checkout CTA; CI root causes of the v7.1.0 run fixed |
 | v7.1.0  | ArchViz polish and calmer shell: two or three windows at once (West, East, South toggle pills, canonical `windowWalls`, v7.0 single-window records and links unchanged); luminous Nordic twilight glazing with moonlit floor patches and shafts at night; plaster reveal, deep oak sill and brushed steel mullions proud of the glass; zebra-free walnut and oak veneer and a calm wide-plank floor; procedural studio IBL environment on GPUs; ceiling shadow-gap cove and corner depth; woven area rugs, bedside ledges and lamps, coffee table, throw cushions and a task chair as drawn-only furniture vignettes; Test Room Echo with a soft wood clap and a bare-versus-damped readout; Ask Lumen pill; warm basalt Ctrl+K spotlight with Visual-mode names, subtitles and price pills |
@@ -579,14 +575,19 @@ src/
                         product-detail, checkout, studio, room3d, account, cloud,
                         command-palette, empty-state, project-diff, elevation-thumb
 server/                 Lumen Cloud HTTP API, shared with Vite dev and preview
-  app.js                request handler: routes, 64 KB JSON bodies, sessions, headers,
-                        POST /api/mcp and the SSE concierge stream
+  app.js                request handler: routes, rate-limit tiers, 64 KB JSON bodies,
+                        sessions, headers, JSON compression, POST /api/mcp and the SSE
+                        concierge stream
+  rate-limit.js         memory-bounded GCRA limiter, trusted-proxy client addresses
+  compress.js           Accept-Encoding negotiation, Brotli and gzip
+  static.js             production build server: immutable assets, ETags and 304
+  http-server.js        production composition (API and build) and graceful shutdown
   llm-agent.js          Lumen AI: .env loading, provider choice, streaming LLM
                         tool-use loop over the MCP tools, deterministic fallback
   store.js              per-namespace state, account namespaces, atomic claims,
-                        serialized transactions, atomic writes
-  config.js             environment, data file path (dev or test), one store per process
-  index.js              standalone server (npm run server)
+                        FIFO-serialized transactions with a bounded queue, atomic writes
+  config.js             environment, data and build paths, one store per process
+  index.js              standalone server (npm run server): app and API, drains on SIGTERM
   .data/                runtime stores, git-ignored: lumen-cloud.json (dev),
                         lumen-cloud.test.json (preview under Playwright)
 tests/                  Playwright specs, named by architectural domain
@@ -616,7 +617,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '7.3.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '8.0.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -648,7 +649,16 @@ a fast link. Requests time out after 8 s.
   `409 stale`. The server issues the `LMN-R-XXXXXXXX` reference from `node:crypto`.
 - Errors are JSON `{ error: { code, message } }`: `400 invalid`, `400 gatekeeper_locked`, `401 unauthorized`,
   `404 not_found`, `405 method_not_allowed` (with `Allow`), `409 quota` or `stale`,
-  `413 payload_too_large`, `415 unsupported_media_type`, `503 storage`.
+  `413 payload_too_large`, `415 unsupported_media_type`, `429 RATE_LIMITED` (with
+  `Retry-After` and `retryAfterSec`), `503 storage` or `busy` (with `Retry-After: 1`).
+- Every route except `GET /api/health` spends one unit from a per-client budget before
+  its body is read: `auth` (sign-in and sign-out, 20 a minute), `ai` (ask, stream and MCP,
+  30), `write` (every other mutation, 120) and `read` (every GET, 600), refilled
+  continuously. Answers carry `X-RateLimit-Limit`, `X-RateLimit-Remaining` and
+  `X-RateLimit-Reset` (epoch seconds). Callers on loopback get 50 times the budget, so a
+  dev server and parallel Playwright workers never see a `429`; see Security.
+- JSON bodies over 1 KB go out as Brotli or gzip when `Accept-Encoding` allows it, and
+  every JSON answer carries `Vary: Accept-Encoding`. The SSE stream is never compressed.
 
 ### Session-bound libraries
 
@@ -682,14 +692,18 @@ a fast link. Requests time out after 8 s.
   overrides it, `LUMEN_STORAGE=memory` skips disk). With `LUMEN_TEST_RESET=1`, which the
   Playwright web server sets together with an explicit `LUMEN_DATA_FILE`, the default is
   `server/.data/lumen-cloud.test.json`, so a dev server and an E2E run never race on
-  one file. Mutations run one at a time against
-  a draft; the snapshot is written to a temp file, flushed and renamed over the live
-  file, and only then committed to memory and answered. A failed write leaves the file
-  and the served state untouched and answers `503 storage`. Renames retry briefly when
-  Windows, OneDrive or a scanner holds the file.
+  one file. Mutations run one at a time through a FIFO mutex against
+  a draft, so each one reads the snapshot its predecessor committed: a quota is never
+  checked against a stale count and no concurrent write is lost. The snapshot is written
+  to a temp file, flushed and renamed over the live file, and only then committed to
+  memory and answered. A failed write leaves the file and the served state untouched and
+  answers `503 storage`. At most 256 writes may wait for the lock; past that a write is
+  refused at once with `503 busy`. Renames retry briefly when Windows, OneDrive or a
+  scanner holds the file.
 - Every record read from disk passes the same validators as a request body. An
-  unreadable store is moved aside, never overwritten. At most 512 namespaces are kept,
-  least recently written first out.
+  unreadable store is moved aside, never overwritten. At most 512 namespaces are kept:
+  browser-profile libraries go before signed-in account libraries, least recently
+  written first.
 
 ### Client contract
 
@@ -1738,6 +1752,30 @@ conversation survives every route change and never enters the page's tab sequenc
   forged transcript answers `400 gatekeeper_locked`. Concierge replies are rebuilt by
   `sanitizeConciergeReply` on the client, and every suggested action must pass
   `isSafeInternalPath` before it reaches the router.
+- Rate limiting (`server/rate-limit.js`) is GCRA: one timestamp per client and tier, a
+  denied request spends nothing, and the table holds at most 4096 buckets (refilled ones
+  swept first, then least recently used out), so a flood of spoofed addresses costs
+  bounded memory. Clients are keyed by IPv4 address or IPv6 /64. `createApp({ rateLimit })`
+  takes `false` or an explicit `{ tiers, maxEntries, loopbackScale }` policy;
+  `LUMEN_RATE_LIMIT_MAX` scales the defaults, `off` disables them.
+- Client addresses: without `LUMEN_TRUST_PROXY` the socket peer is the client and
+  `X-Forwarded-For` is ignored. With it, the header is read from the right, one entry
+  per trusted hop, only when the peer itself is on loopback or a private network, so a
+  client that prepends a fake address keeps its own bucket. A proxy on the host that
+  forwards addresses while the setting is off is logged once.
+- `POST /api/mcp` refuses JSON-RPC batches of any size and messages nested deeper than
+  12 levels with `-32600`, checks every tool argument against its schema (finite numbers
+  in range, known enums, no prototype keys) and answers a fault inside a tool with
+  `-32603` rather than an HTTP `500`.
+- `sanitizeText` also drops C1 controls and the bidi embeddings, overrides and isolates of
+  the Trojan Source set, turns lone surrogates into `U+FFFD` and never splits a surrogate
+  pair at its length cap. DXF labels fold any run of `%` to one, so `%%%%c` cannot
+  reassemble a `%%c` control code; OBJ names stay single tokens and SVG text stays escaped.
+- The standalone server refuses static paths over 1 KB or 16 segments outright, decodes
+  the rest once, refuses dot segments, dotfiles, backslashes, colons and NUL, and serves
+  only files inside the build. On `SIGTERM` it
+  stops accepting connections, finishes the requests in flight (at most 10 s), flushes
+  the store and exits `0`.
 
 ## Development
 
@@ -1749,7 +1787,7 @@ npx playwright install chromium   # first run only
 npm run dev                       # http://127.0.0.1:5173 (also http://localhost:5173)
 npm run build
 npm run preview                   # http://localhost:4173
-npm run server                    # API only, http://127.0.0.1:8787/api
+npm run server                    # build and API, http://127.0.0.1:8787
 npx playwright test               # builds, serves preview, runs the E2E suite
 ```
 
@@ -1762,13 +1800,33 @@ loads through the dev server's SSR module graph on each request, so an edit unde
 reloaded`), the store flushes before the new one opens, and a per-process session key
 keeps every session valid across reloads. `npm run preview` serves a fixed build with one
 cloud per process. The standalone server reads `HOST`, `PORT`, `LUMEN_DATA_FILE`, `LUMEN_STORAGE`,
-`LUMEN_SESSION_SECRET` and `LUMEN_TEST_RESET`. Lumen AI reads `ANTHROPIC_API_KEY`,
+`LUMEN_SESSION_SECRET`, `LUMEN_TEST_RESET`, `LUMEN_TRUST_PROXY`, `LUMEN_RATE_LIMIT_MAX` and
+`LUMEN_STATIC_DIR` (the build it serves beside `/api`, default `dist`, `off` for the API
+only). Lumen AI reads `ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LUMEN_LLM_BASE_URL`, `LUMEN_LLM_MODEL` and
 `LUMEN_LLM_PROVIDER` from the environment or a git-ignored `.env`; with none set it runs
 the deterministic MCP orchestrator, and the E2E web server pins
 `LUMEN_LLM_PROVIDER=deterministic` so a key on the machine never reaches a test run. Run one process per data file. The E2E
 web server writes `server/.data/lumen-cloud.test.json`, so a dev server on the default
 store can stay up during a test run.
+
+## Deployment
+
+One Node process serves the whole platform on one origin, so the strict
+`connect-src 'self'` CSP covers the API. On a VPS behind Caddy or Nginx:
+
+```
+npm ci && npm run build
+HOST=127.0.0.1 PORT=8787 LUMEN_TRUST_PROXY=1 LUMEN_SESSION_SECRET=<32+ random characters> npm run server
+```
+
+Caddy needs one line, `reverse_proxy 127.0.0.1:8787`, inside the site block; it sets
+`X-Forwarded-For` itself and flushes the SSE stream on `X-Accel-Buffering: no`. Nginx
+needs `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` and
+`proxy_set_header Host $host;`. Hashed bundles are served immutable for a year, the
+shell revalidates with a strong ETag, and text over 1 KB is precompressed with Brotli and
+gzip after start. Stop the process with `SIGTERM` (or an IPC `shutdown` message under
+PM2 on Windows): it drains open requests and flushes the store before exiting `0`.
 
 ## Continuous integration
 
@@ -1812,8 +1870,9 @@ GitHub Actions run on `main` to finish and records its id only once it concludes
 - `main` holds releases, `develop` integrates, each milestone lands on a short-lived
   `feat/*` branch. Once `develop` and `main` are pushed, the feature branch is deleted
   locally and on `origin`, so only `main` and `develop` stay published.
-- Only major releases are tagged: `v1.0.0`, `v2.0.0`, `v3.0.0`, `v4.0.0`, `v5.0.0`, `v6.0.0`. Minor and patch
-  releases ship untagged and are recorded in the release history above.
+- Only major releases are tagged: `v1.0.0`, `v2.0.0`, `v3.0.0`, `v4.0.0`, `v5.0.0`, `v6.0.0`,
+  `v7.0.0`, `v8.0.0`. Minor and patch releases ship untagged and are recorded in the
+  release history above.
 - Releases advance `develop` and `main` by pointer (`git branch -f`) from the finished
   feature branch, never by switching back first, so no working-tree directories are
   deleted on synced (OneDrive) folders.
