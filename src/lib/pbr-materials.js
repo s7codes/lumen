@@ -395,13 +395,14 @@ export function cornerShadeMap(width = 64) {
  * equirectangular map (u round the azimuth, row 0 at the nadir) of a warm
  * photographic studio. A broad overhead softbox, two tall strip boxes east
  * and west for crisp specular streaks on steel and lacquer, a warm horizon
- * bounce off the floor and a darker floor below. Deterministic and tiny;
- * the canvas assigns it to scene.environment at a low intensity.
+ * bounce off the floor and a darker floor below. Deterministic and tiny:
+ * 64 x 32 texels, built in well under a millisecond once per canvas, which
+ * assigns it to scene.environment at a low intensity on every renderer.
  */
 export const STUDIO_ENVIRONMENT = Object.freeze({
-  width: 128,
-  height: 64,
-  intensity: 0.35,
+  width: 64,
+  height: 32,
+  intensity: 0.42,
   softbox: Object.freeze([1, 0.96, 0.9]),
   dome: Object.freeze([0.42, 0.4, 0.38]),
   horizon: Object.freeze([0.66, 0.56, 0.44]),
@@ -413,9 +414,12 @@ export const STUDIO_ENVIRONMENT = Object.freeze({
 const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render|warp\b/i;
 
 /**
- * IBL quality tier for a WebGL renderer string: 'studio' on a GPU, 'software'
- * on a software rasteriser, where per-pixel image-based lighting would cost
- * several times the frame and the direct rig carries the room alone.
+ * Quality tier for a WebGL renderer string: 'studio' on a GPU, 'software' on
+ * a software rasteriser, where every pixel, MSAA sample and prefilter tap is
+ * paid for on the CPU. The canvas keeps image-based lighting on both: a GPU
+ * prefilters the studio environment for the whole room, a software tier
+ * evaluates the same studio in closed form on its specular materials only,
+ * renders without MSAA and tessellates fillets at half the segments.
  */
 export function iblTier(rendererName) {
   return typeof rendererName === 'string' && SOFTWARE_RENDERER.test(rendererName) ? 'software' : 'studio';

@@ -18,6 +18,7 @@ import {
   sanitizeWallId,
   WALL_HEADING,
   WALL_ROT_Y,
+  wallDirToRoom,
   wallOf,
   wallSpanCm,
   wallToRoom,
@@ -617,11 +618,18 @@ function feltRecord(shape, box) {
  * The module record keeps its single bounding primitive for picking,
  * collisions and every existing reader; `subparts` is what the canvas draws.
  *
- * A subpart: { id, kind, geometry: 'box' | 'cylinder', size (metres, in the
- * part's own frame: x along the wall, y up, z out), radius, radiusBottom,
- * position (room metres, centre), rotation ([x, y, z], Euler order YXZ: a
- * cylinder's axis turned first, then the wall's quarter turn), material (a
- * PBR family key), color, roughness, metalness, grain, shadow, emissive }.
+ * A subpart: { id, kind, geometry: 'box' | 'cylinder' | 'lathe', size
+ * (metres, in the part's own frame: x along the wall, y up, z out), radius,
+ * radiusBottom, position (room metres, centre), rotation ([x, y, z], Euler
+ * order YXZ: a cylinder's axis turned first, then the wall's quarter turn; a
+ * box's tilt about the along-wall axis and roll about its own depth axis),
+ * material (a PBR family key), color, roughness, metalness, grain, shadow,
+ * emissive }. A box also carries `bevel` ({ radius in metres, segments } or
+ * null): upholstery is drawn with a lush rounded fillet, millwork and metal
+ * with a crisp micro-bevel that catches a specular line along every seam. A
+ * lathe is a turned solid (vase, bowl, spun shade) round a vertical axis
+ * through its centre, `profile` holding [radius, height] pairs in metres
+ * measured from that centre.
  */
 
 const ACCENTS = Object.freeze({
@@ -644,7 +652,51 @@ const ACCENTS = Object.freeze({
   'cushion-sand': { material: 'felt-acoustic', color: '#b9a88e' },
   'cushion-slate': { material: 'felt-acoustic', color: '#5f6a70' },
   piping: { material: 'felt-acoustic', color: '#b3a998' },
+  sheet: { material: 'felt-acoustic', color: '#efe9de' },
+  // Glazed stoneware and porcelain read glossier than the chalk family default.
+  porcelain: { material: 'matte-chalk', color: '#e6e0d6', roughness: 0.34 },
+  celadon: { material: 'matte-chalk', color: '#a9b5a2', roughness: 0.3 },
+  // Bookcloth covers and the cream page block of architectural monographs.
+  pages: { material: 'matte-chalk', color: '#e8dfcc', roughness: 0.92 },
+  oxblood: { material: 'matte-chalk', color: '#6b3a30', roughness: 0.7 },
+  sage: { material: 'matte-chalk', color: '#7c8775', roughness: 0.7 },
+  // Spun aluminium lamp shades and a lit studio display.
+  spun: { material: 'metal-steel', color: '#c3c5c4', roughness: 0.26, metalness: 0.7 },
+  display: { material: 'metal-obsidian', color: '#1b2128', roughness: 0.16, metalness: 0.1 },
 });
+
+/*
+ * Edge treatment. Upholstery kinds in a fibre look take a lush rounded
+ * fillet, a fixed share of the part's thinnest side, so every pillow,
+ * mattress, duvet and cushion has loft. Millwork and metal kinds take a crisp
+ * micro-bevel of at most 4 mm. Parts thinner than 6 mm stay sharp: a bevel
+ * there would be invisible and cost triangles. A spec can force 'soft',
+ * 'micro', 'none' or a radius in cm with `round`.
+ */
+const SOFT_KINDS = new Set(['pillow', 'cushion', 'mattress', 'duvet', 'headboard', 'throw', 'arm', 'seat']);
+const MILLWORK_KINDS = new Set([
+  'slab', 'carcass', 'door', 'tray', 'rail', 'stile', 'edge', 'fin', 'slat', 'beam', 'body', 'sill', 'frame', 'top', 'leg', 'post',
+]);
+export const BEVEL = Object.freeze({
+  soft: Object.freeze({ ratio: 0.28, segments: 4 }),
+  micro: Object.freeze({ maxM: 0.004, ratio: 0.12, segments: 2, minSizeM: 0.006 }),
+  custom: Object.freeze({ segments: 3 }),
+});
+
+/** Bevel for a box sub-part of `size` metres, or null for a sharp box. */
+export function subpartBevel(kind, size, round = null, material = null) {
+  if (round === 'none') return null;
+  const least = Math.min(...size);
+  if (!(least > 0)) return null;
+  if (typeof round === 'number' && round > 0) {
+    return { radius: Number(Math.min(least / 2, round * CM).toFixed(5)), segments: BEVEL.custom.segments };
+  }
+  const soft = round === 'soft' || (round === null && SOFT_KINDS.has(kind) && material === 'felt-acoustic');
+  if (soft) return { radius: Number((least * BEVEL.soft.ratio).toFixed(5)), segments: BEVEL.soft.segments };
+  const micro = round === 'micro' || (round === null && MILLWORK_KINDS.has(kind));
+  if (!micro || least < BEVEL.micro.minSizeM) return null;
+  return { radius: Number(Math.min(BEVEL.micro.maxM, least * BEVEL.micro.ratio).toFixed(5)), segments: BEVEL.micro.segments };
+}
 
 const FURNITURE_LOOK = Object.freeze({
   shadow: { material: 'metal-obsidian', roughness: 0.86, metalness: 0.08 },
@@ -668,7 +720,11 @@ function lookCount(parts) {
   return new Set(parts.map(subpartLookKey)).size;
 }
 
-/** Wall-frame box spec, cm. */
+/**
+ * Wall-frame box spec, cm. `extra.tilt` turns it about the along-wall axis
+ * through its centre (negative leans its top back toward the wall), `roll`
+ * about its own depth axis and `yaw` about the vertical, all in degrees.
+ */
 function B(id, kind, tone, x0, x1, y0, y1, z0, z1, extra = {}) {
   return { id, kind, tone, geometry: 'box', box: { x0, x1, y0, y1, z0, z1 }, ...extra };
 }
@@ -676,6 +732,72 @@ function B(id, kind, tone, x0, x1, y0, y1, z0, z1, extra = {}) {
 /** Wall-frame cylinder spec, cm: centre, radius, length along `axis` ('y' up, 'z' out of the wall, 'x' along it). */
 function C(id, kind, tone, cx, cy, cz, r, len, axis = 'y', extra = {}) {
   return { id, kind, tone, geometry: 'cylinder', at: [cx, cy, cz], r, r2: extra.r2 ?? r, len, axis, ...extra };
+}
+
+/** Wall-frame lathe spec, cm: a turned solid on a vertical axis at (cx, cz), its profile [radius, height] from the base at cy. */
+function L(id, kind, tone, cx, cy, cz, profile, extra = {}) {
+  return { id, kind, tone, geometry: 'lathe', at: [cx, cy, cz], profile, ...extra };
+}
+
+/** A closed profile, base to rim and back down the inside: a vase that tapers from a belly to a flared lip. */
+function vaseProfile(h, belly = 5.4) {
+  const k = belly / 5.4;
+  return [
+    [0, 0],
+    [3 * k, 0],
+    [3.4 * k, 0.04 * h],
+    [4.8 * k, 0.2 * h],
+    [belly, 0.4 * h],
+    [5 * k, 0.6 * h],
+    [3.4 * k, 0.78 * h],
+    [2.2 * k, 0.88 * h],
+    [2.5 * k, 0.96 * h],
+    [2.8 * k, h],
+    [2.3 * k, h],
+    [1.9 * k, 0.93 * h],
+    [0, 0.93 * h],
+  ];
+}
+
+/** A shallow turned bowl on a foot ring, `r` cm across the rim, `h` cm tall. */
+function bowlProfile(r, h) {
+  return [
+    [0, 0],
+    [0.36 * r, 0],
+    [0.4 * r, 0.09 * h],
+    [0.66 * r, 0.24 * h],
+    [0.89 * r, 0.56 * h],
+    [r, 0.94 * h],
+    [0.97 * r, h],
+    [0.9 * r, 0.92 * h],
+    [0.73 * r, 0.52 * h],
+    [0.43 * r, 0.3 * h],
+    [0, 0.25 * h],
+  ];
+}
+
+/**
+ * An architectural monograph lying flat, spine out: two bookcloth boards, the
+ * spine and a cream page block inset between them, so the pages read on the
+ * head and tail. Four sub-parts, `h` cm thick.
+ */
+function book(id, tone, x0, x1, y0, h, z0, z1, extra = {}) {
+  const board = 0.25;
+  const spine = 0.35;
+  return [
+    B(`${id}-board-low`, 'object', tone, x0, x1, y0, y0 + board, z0, z1, extra),
+    B(`${id}-board-high`, 'object', tone, x0, x1, y0 + h - board, y0 + h, z0, z1, extra),
+    B(`${id}-spine`, 'object', tone, x0, x1, y0 + board, y0 + h - board, z1 - spine, z1, { ...extra, shadow: false }),
+    B(`${id}-pages`, 'object', 'pages', x0 + 0.3, x1 - 0.3, y0 + board, y0 + h - board, z0 + 0.3, z1 - spine, { ...extra, shadow: false }),
+  ];
+}
+
+/** A book standing upright on its tail, spine out: a cover wrap and the page block it shows on top. */
+function standingBook(id, tone, x0, x1, y0, h, z0, z1) {
+  return [
+    B(`${id}-cover`, 'object', tone, x0, x1, y0, y0 + h, z0, z1),
+    B(`${id}-pages`, 'object', 'pages', x0 + 0.25, x1 - 0.25, y0 + h, y0 + h + 0.05, z0 + 0.3, z1 - 0.4, { shadow: false }),
+  ];
 }
 
 function lookOf(tone, ctx) {
@@ -687,10 +809,14 @@ function lookOf(tone, ctx) {
 
 const AXIS_TURN = Object.freeze({ y: [0, 0], z: [Math.PI / 2, 0], x: [0, Math.PI / 2] });
 
+/** Degrees to radians, rounded so the records stay byte-stable. */
+const rad = (deg) => (deg ? Number((deg * DEG).toFixed(6)) : 0);
+
 function placeSubpart(spec, ctx) {
   const look = lookOf(spec.tone, ctx);
   const pbr = PBR_MATERIALS[look.material];
-  const glowing = spec.glow === true && ctx.lit;
+  // Furniture lamps glow at night; a lit display glows by day too, in its own colour.
+  const glowing = (spec.glow === true && ctx.lit) || spec.glow === 'always';
   const base = {
     id: `${ctx.uid}-${spec.id}`,
     kind: spec.kind,
@@ -700,18 +826,39 @@ function placeSubpart(spec, ctx) {
     metalness: look.metalness ?? pbr.metalness,
     grain: spec.grain ?? null,
     shadow: spec.shadow !== false,
-    emissive: glowing ? ctx.lightColor : null,
-    emissiveIntensity: glowing ? Number((ctx.emissive * 0.5).toFixed(3)) : 0,
+    emissive: glowing ? (spec.glowColor ?? ctx.lightColor) : null,
+    emissiveIntensity: glowing ? Number((spec.glowIntensity ?? ctx.emissive * 0.5).toFixed(3)) : 0,
   };
   if (spec.geometry === 'box') {
     const b = spec.box;
+    const size = [m(b.x1 - b.x0), m(b.y1 - b.y0), m(b.z1 - b.z0)];
     return {
       ...base,
       geometry: 'box',
       radius: null,
       radiusBottom: null,
-      size: [m(b.x1 - b.x0), m(b.y1 - b.y0), m(b.z1 - b.z0)],
+      size,
+      bevel: subpartBevel(spec.kind, size, spec.round ?? null, look.material),
       position: v3(ctx.place([(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2])),
+      rotation: [rad(spec.tilt), ctx.rotY + rad(spec.yaw), rad(spec.roll)],
+    };
+  }
+  if (spec.geometry === 'lathe') {
+    const heights = spec.profile.map(([, y]) => y);
+    const yMin = Math.min(...heights);
+    const height = Math.max(...heights) - yMin;
+    const rMax = Math.max(...spec.profile.map(([r]) => r));
+    const [cx, cy, cz] = spec.at;
+    const mid = yMin + height / 2;
+    return {
+      ...base,
+      geometry: 'lathe',
+      radius: m(rMax),
+      radiusBottom: null,
+      segments: spec.segments ?? 32,
+      profile: spec.profile.map(([r, y]) => [m(r), m(y - mid)]),
+      size: [m(2 * rMax), m(height), m(2 * rMax)],
+      position: v3(ctx.place([cx, cy + mid, cz])),
       rotation: [0, ctx.rotY, 0],
     };
   }
@@ -725,21 +872,39 @@ function placeSubpart(spec, ctx) {
     segments: spec.segments ?? 24,
     size: [m(span), m(spec.len), m(span)],
     position: v3(ctx.place(spec.at)),
-    rotation: [ax, ctx.rotY, az],
+    rotation: [ax, ctx.rotY + rad(spec.yaw), az],
   };
 }
 
-/** Curated objects on a shelf top, scaled to the clear height above it, or none when it is tight. */
+/**
+ * Curated objects on a shelf top, scaled to the clear height above it, or
+ * none when it is tight: a stack of two monographs, a run of upright books
+ * with their spines out where the shelf is long and tall enough, and a turned
+ * porcelain amphora.
+ */
 function shelfObjects(b, headroom) {
   const { x0, x1, y1, z1 } = b;
   const clear = headroom - 1.5;
   if (clear < 6) return [];
   const objects = [
-    B('monograph-1', 'object', 'slate', x0 + 12, x0 + 36, y1, y1 + 3.2, z1 - 20, z1 - 3),
-    B('monograph-2', 'object', 'linen', x0 + 13.5, x0 + 34, y1 + 3.2, y1 + 5.6, z1 - 18.5, z1 - 4.5),
+    ...book('monograph-1', 'slate', x0 + 12, x0 + 36, y1, 3.2, z1 - 20, z1 - 3),
+    ...book('monograph-2', 'linen', x0 + 13.5, x0 + 34, y1 + 3.2, 2.4, z1 - 18.5, z1 - 4.5),
   ];
-  const vessel = Math.min(16, clear);
-  if (vessel >= 8) objects.push(C('vessel', 'object', 'ceramic', x1 - 22, y1 + vessel / 2, z1 - 12, 5.2, vessel, 'y', { segments: 32 }));
+  if (clear >= 26 && x1 - x0 >= 90) {
+    const spines = [
+      ['slate', 2.6, 23],
+      ['oxblood', 3.2, 24.5],
+      ['sage', 2.2, 22],
+      ['linen', 2.8, 24],
+    ];
+    let x = x0 + 44;
+    for (const [i, [tone, w, h]] of spines.entries()) {
+      objects.push(...standingBook(`spine-${i + 1}`, tone, x, x + w, y1, h, z1 - 21, z1 - 4));
+      x += w + 0.15;
+    }
+  }
+  const vessel = Math.min(18, clear);
+  if (vessel >= 8) objects.push(L('vessel', 'object', 'porcelain', x1 - 22, y1, z1 - 12, vaseProfile(vessel), { segments: 32 }));
   return objects;
 }
 
@@ -768,13 +933,14 @@ const SUBASSEMBLIES = Object.freeze({
       B('side-left', 'carcass', 'finish', x0, x0 + t, y0 + t, y1 - t, 0, z1, { grain: 'y' }),
       B('side-right', 'carcass', 'finish', x1 - t, x1, y0 + t, y1 - t, 0, z1, { grain: 'y' }),
       B('back', 'back-panel', 'finish-shade', x0 + t, x1 - t, y0 + t, y1 - t, 0, 1.2, { grain: 'y' }),
-      B('divider', 'divider', 'finish', x0 + t, x1 - t, ym - 0.75, ym + 0.75, 1.2, z1 - 2, { grain: 'x' }),
-      B('book-1', 'object', 'slate', x0 + 4, x0 + 13, y0 + t, y0 + t + 2.4, 6, z1 - 8),
-      B('book-2', 'object', 'linen', x0 + 4.6, x0 + 12.4, y0 + t + 2.4, y0 + t + 4.2, 7, z1 - 9),
-      C('vessel', 'object', 'ceramic', x1 - 10, ym + 0.75 + 4.5, z1 / 2 + 2, 3.2, 9, 'y', { segments: 24 }),
+      B('divider', 'divider', 'finish', x0 + t, x1 - t, ym - 0.75, ym + 0.75, 1.2, z1 - 2, { grain: 'x', round: 'micro' }),
+      ...book('book-1', 'slate', x0 + 4, x0 + 13, y0 + t, 2.4, 6, z1 - 8),
+      ...book('book-2', 'oxblood', x0 + 4.6, x0 + 12.4, y0 + t + 2.4, 1.8, 7, z1 - 9),
+      L('vessel', 'object', 'celadon', x1 - 10, ym + 0.75, z1 / 2 + 2, vaseProfile(9, 3.4), { segments: 28 }),
     ];
   },
-  // Carcass over a recessed shadow-line plinth, twin inset doors with a 6 mm reveal, steel pulls, tray top.
+  // Carcass over a recessed shadow-line plinth, twin inset doors with a 6 mm reveal, recessed
+  // finger pulls behind slim steel handles, and a bevelled tray top.
   sideboard(b) {
     const { x0, x1, y0, y1, z1 } = b;
     const xm = (x0 + x1) / 2;
@@ -787,8 +953,10 @@ const SUBASSEMBLIES = Object.freeze({
       B('door-left', 'door', 'finish', x0 + 0.6, xm - 0.3, y0 + plinth + 0.6, y1 - 2, z1 - door, z1, { grain: 'y' }),
       B('door-right', 'door', 'finish', xm + 0.3, x1 - 0.6, y0 + plinth + 0.6, y1 - 2, z1 - door, z1, { grain: 'y' }),
       B('reveal', 'reveal', 'shadow', xm - 0.3, xm + 0.3, y0 + plinth + 0.6, y1 - 2, z1 - door - 0.4, z1 - 0.2, { shadow: false }),
-      B('handle-left', 'handle', 'steel', xm - 3.2, xm - 2.4, y1 - 15, y1 - 5, z1, z1 + 1.4),
-      B('handle-right', 'handle', 'steel', xm + 2.4, xm + 3.2, y1 - 15, y1 - 5, z1, z1 + 1.4),
+      B('pull-left', 'pull-recess', 'shadow', xm - 4.8, xm - 1.6, y1 - 16.5, y1 - 3.5, z1 - 0.3, z1 + 0.02, { shadow: false }),
+      B('pull-right', 'pull-recess', 'shadow', xm + 1.6, xm + 4.8, y1 - 16.5, y1 - 3.5, z1 - 0.3, z1 + 0.02, { shadow: false }),
+      B('handle-left', 'handle', 'steel', xm - 3.2, xm - 2.4, y1 - 15, y1 - 5, z1, z1 + 1.4, { round: 'micro' }),
+      B('handle-right', 'handle', 'steel', xm + 2.4, xm + 3.2, y1 - 15, y1 - 5, z1, z1 + 1.4, { round: 'micro' }),
       B('top', 'tray', 'finish', x0, x1, y1 - 1.4, y1, 0, z1, { grain: 'x' }),
       B('tray-back', 'tray', 'finish', x0, x1, y1, y1 + 1.6, 0, 1.2, { grain: 'x' }),
       B('tray-left', 'tray', 'finish', x0, x0 + 1.2, y1, y1 + 1.6, 1.2, z1, { grain: 'z' }),
@@ -1005,84 +1173,190 @@ function rug(x0, x1, z0, z1) {
   ];
 }
 
-/** A floating oak ledge on the wall with a warm cylindrical reading lamp on it. */
+/**
+ * A floating, micro-bevelled oak ledge on the wall with a reading lamp on it:
+ * a spun-metal dome base, a slim brass stem and a turned opal shade that
+ * glows warm at night.
+ */
 function bedsideLedge(side, x0, x1) {
   const xm = (x0 + x1) / 2;
   const wall = { fromWall: true, shadow: false, group: `ledge-${side}` };
   return [
-    B(`ledge-${side}`, 'ledge', 'oak', x0, x1, 48, 51, 0, 28, { ...wall, grain: 'x' }),
-    C(`lamp-${side}-base`, 'lamp', 'brass', xm, 51.6, 16, 3.4, 1.2, 'y', { ...wall, segments: 24 }),
-    C(`lamp-${side}-stem`, 'lamp', 'brass', xm, 59.2, 16, 0.5, 14, 'y', { ...wall, segments: 12 }),
-    C(`lamp-${side}-shade`, 'lamp', 'opal', xm, 73, 16, 6, 14, 'y', { ...wall, glow: true, segments: 32 }),
+    B(`ledge-${side}`, 'ledge', 'oak', x0, x1, 48, 51, 0, 28, { ...wall, grain: 'x', round: 'micro' }),
+    L(`lamp-${side}-base`, 'lamp', 'spun', xm, 51, 16, [[0, 0], [4.4, 0], [4.5, 0.5], [3.6, 1.5], [1.2, 2.5], [0.7, 2.7], [0, 2.7]], {
+      ...wall,
+      segments: 32,
+    }),
+    C(`lamp-${side}-stem`, 'lamp', 'brass', xm, 60.2, 16, 0.45, 13, 'y', { ...wall, segments: 12 }),
+    L(`lamp-${side}-shade`, 'lamp', 'opal', xm, 66.4, 16, [[0, 0.3], [5.9, 0], [6.5, 0.9], [6.6, 2.4], [6.2, 7.2], [5.4, 11.6], [4.9, 13], [0, 13.2]], {
+      ...wall,
+      glow: true,
+      segments: 36,
+    }),
+  ];
+}
+
+/**
+ * Pillows for one side of the bed, `x0` the pillow part's left end: a large
+ * Oxford euro sham (58 x 50 x 15 cm) leaning back 16 deg against the
+ * headboard channels with its flat 2 cm flange in the same plane, and a
+ * sleeping pillow in front, its back end raised onto the sham. The sham sits
+ * 1 cm lower and closer to the wall than its sharp box would, the clearance
+ * its 4.2 cm fillet rounds off the contact corners, so its curve rests on the
+ * mattress and the channels.
+ */
+function pillowSet(tone, x0) {
+  return [
+    B('euro', 'pillow', tone, x0 + 2, x0 + 60, 41.6, 91.6, 16.6, 31.6, { tilt: -16 }),
+    B('euro-flange', 'pillow', tone, x0, x0 + 62, 39.6, 93.6, 23.3, 24.9, { tilt: -16, shadow: false }),
+    B('sleeper', 'pillow', 'linen-hi', x0 + 1, x0 + 61, 43.6, 56.6, 37, 73, { tilt: 12 }),
+  ];
+}
+
+const VIEWPORT_AMBER = '#e8b06a';
+const VIEWPORT_INK = '#d7e0ea';
+
+/**
+ * The illuminated architectural viewport on the studio display: an amber
+ * room plan on the left and a fine white elevation grid on the right, each a
+ * hairline a touch proud of the lit screen, glowing day and night.
+ */
+function viewportGraphics(x0, x1, y0, y1, z) {
+  const line = (id, color, intensity, ax0, ax1, ay0, ay1) =>
+    B(id, 'monitor', 'display', ax0, ax1, ay0, ay1, z, z + 0.06, { shadow: false, glow: 'always', glowColor: color, glowIntensity: intensity });
+  const px0 = x0 + 7;
+  const px1 = x0 + 33;
+  const py0 = y0 + 5;
+  const py1 = y1 - 5;
+  const parts = [
+    line('plan-north', VIEWPORT_AMBER, 1.1, px0, px1, py1 - 0.4, py1),
+    line('plan-south', VIEWPORT_AMBER, 1.1, px0, px1, py0, py0 + 0.4),
+    line('plan-west', VIEWPORT_AMBER, 1.1, px0, px0 + 0.4, py0, py1),
+    line('plan-east', VIEWPORT_AMBER, 1.1, px1 - 0.4, px1, py0, py1),
+    line('plan-module', VIEWPORT_AMBER, 1.1, px0 + 4, px0 + 13, py1 - 4.5, py1 - 2.5),
+  ];
+  for (let i = 1; i <= 3; i += 1) {
+    parts.push(line(`grid-row-${i}`, VIEWPORT_INK, 0.55, x0 + 40, x1 - 5, y0 + i * 7.5 - 0.12, y0 + i * 7.5 + 0.12));
+  }
+  for (let i = 0; i < 4; i += 1) {
+    const gx = x0 + 43 + i * 7.5;
+    parts.push(line(`grid-col-${i + 1}`, VIEWPORT_INK, 0.55, gx, gx + 0.24, y0 + 3.5, y1 - 3.5));
+  }
+  return parts;
+}
+
+/**
+ * Five micro-bevelled cast legs radiating from the task chair's gas column at
+ * (cx, cz), turned 18 deg so none points straight at the desk.
+ */
+function chairStar(cx, cz) {
+  return [0, 1, 2, 3, 4].map((i) => {
+    const deg = i * 72 + 18;
+    const x = cx + Math.cos(deg * DEG) * 12.5;
+    const z = cz + Math.sin(deg * DEG) * 12.5;
+    return B(`chair-leg-${i + 1}`, 'chair', 'anodised', x - 12.5, x + 12.5, 2.2, 5, z - 1.3, z + 1.3, {
+      shadow: false,
+      group: 'chair',
+      round: 'micro',
+      yaw: -deg,
+    });
+  });
+}
+
+// The desk lamp's cantilever: from the pivot on its column out over the sketchbook.
+const DESK_LAMP = Object.freeze({ pivot: [9, 13], head: [32, 46], boomY: 113.4 });
+
+function deskLamp() {
+  const { pivot, head, boomY } = DESK_LAMP;
+  const dx = head[0] - pivot[0];
+  const dz = head[1] - pivot[1];
+  const length = Math.hypot(dx, dz);
+  const yaw = Math.atan2(dz, dx) / DEG;
+  const mx = (pivot[0] + head[0]) / 2;
+  const mz = (pivot[1] + head[1]) / 2;
+  return [
+    L('lamp-base', 'lamp', 'anodised', pivot[0], 74, pivot[1], [[0, 0], [6.2, 0], [6.4, 0.6], [5.6, 1.8], [1.4, 2.4], [0, 2.4]], { segments: 32 }),
+    C('lamp-arm', 'lamp', 'steel', pivot[0], 94.2, pivot[1], 0.7, 35.6, 'y', { segments: 12 }),
+    L('lamp-pivot', 'lamp', 'anodised', pivot[0], 112, pivot[1], [[0, 0], [1.4, 0.2], [1.6, 1.4], [1.4, 2.6], [0, 2.8]], { segments: 20 }),
+    B('lamp-boom', 'lamp', 'steel', mx - length / 2, mx + length / 2, boomY - 0.7, boomY + 0.7, mz - 0.8, mz + 0.8, {
+      round: 'micro',
+      yaw: -Number(yaw.toFixed(3)),
+    }),
+    L('lamp-shade', 'lamp', 'spun', head[0], 104, head[1], [[0, 0.2], [4.8, 0], [5, 0.5], [4.2, 2.6], [2.4, 6.2], [1.2, 8.4], [0, 8.6]], {
+      segments: 36,
+    }),
+    C('lamp-diffuser', 'lamp', 'opal', head[0], 103.9, head[1], 4.5, 0.4, 'y', { segments: 28, glow: true, shadow: false }),
   ];
 }
 
 export const FURNITURE_DETAILS = Object.freeze({
   'bed-160': {
-    // A woven rug under the lower two thirds of the bed, oak ledges and reading lamps either side.
+    // A woven rug under the lower two thirds of the bed, oak ledges and spun-metal reading lamps either side.
     vignette: [...rug(-52, 212, 64, 262), ...bedsideLedge('left', -48, -8), ...bedsideLedge('right', 168, 208)],
-    // An upholstered headboard with tufting channels rises off the oak frame.
+    // A micro-bevelled oak frame and a channel-tufted upholstered headboard: six padded channels on a felt back.
     frame: {
-      body: true,
+      body: false,
       parts: [
-        B('headboard', 'headboard', 'felt-hi', 0, 160, 24, 86, 0, 9, { grain: 'y' }),
-        ...[40, 80, 120].map((x, i) => B(`tuft-${i + 1}`, 'tuft', 'shadow', x - 0.3, x + 0.3, 28, 82, 9, 9.3, { shadow: false })),
+        B('frame', 'frame', 'oak', 0, 160, 8, 24, 0, 206, { grain: 'z' }),
+        B('headboard-back', 'headboard', 'felt', 0, 160, 8, 106, 0, 4, { grain: 'y' }),
+        ...[0, 1, 2, 3, 4, 5].map((i) => {
+          const w = (160 - 2 - 0.8 * 5) / 6;
+          const x = 1 + i * (w + 0.8);
+          return B(`channel-${i + 1}`, 'headboard', 'felt-hi', x, x + w, 26, 103, 3, 11, { grain: 'y' });
+        }),
       ],
     },
-    // A layered duvet drapes over the mattress sides and foot; a folded throw and a bolster sit on it.
-    // A tailored mattress: a piped welt along the exposed head end and both sides.
+    // A rounded, piped mattress under one plush duvet draped over its sides and foot, a crisp sheet
+    // turned down at the head and a textured runner throw across the foot.
     mattress: {
-      body: true,
+      body: false,
       parts: [
-        B('duvet', 'duvet', 'linen-hi', 1.5, 158.5, 41.5, 45, 42, 205),
-        B('duvet-left', 'duvet', 'linen-hi', -0.5, 1.5, 28, 45, 42, 205),
-        B('duvet-right', 'duvet', 'linen-hi', 158.5, 160.5, 28, 45, 42, 205),
-        B('duvet-foot', 'duvet', 'linen-hi', -0.5, 160.5, 28, 45, 205, 207),
-        B('throw', 'throw', 'felt', 1.5, 158.5, 45, 47, 160, 188),
-        C('bolster', 'bolster', 'linen', 80, 47.5, 47, 5, 136, 'x', { segments: 24 }),
-        B('welt-head', 'piping', 'piping', 3, 157, 41.2, 42, 2.6, 3.2, { shadow: false }),
-        B('welt-left', 'piping', 'piping', 2.6, 3.2, 32, 33, 3, 42, { shadow: false }),
-        B('welt-right', 'piping', 'piping', 156.8, 157.4, 32, 33, 3, 42, { shadow: false }),
+        B('mattress', 'mattress', 'linen', 3, 157, 24, 41.5, 3, 203),
+        B('welt-left', 'piping', 'piping', 2.4, 3.2, 32, 33, 8, 198, { shadow: false }),
+        B('welt-right', 'piping', 'piping', 156.8, 157.6, 32, 33, 8, 198, { shadow: false }),
+        B('duvet', 'duvet', 'linen-hi', 0, 160, 29, 46, 84, 206),
+        B('sheet-fold', 'sheet', 'sheet', 0.4, 159.6, 43.5, 48, 79, 93, { round: 'soft' }),
+        B('throw', 'throw', 'felt', -1.5, 161.5, 36, 48.2, 152, 184),
       ],
     },
-    // Softer, layered pillows: a rounded crown on each, and a standing cushion in front.
-    'pillow-left': {
-      body: true,
-      parts: [
-        B('crown', 'pillow', 'linen-hi', 15, 71, 52, 54, 11, 41),
-        B('crown-soft', 'pillow', 'linen-hi', 19, 67, 54, 55.2, 15, 37, { shadow: false }),
-        B('cushion', 'pillow', 'cushion-sand', 22, 64, 45, 62, 38, 47),
-      ],
-    },
-    'pillow-right': {
-      body: true,
-      parts: [
-        B('crown', 'pillow', 'linen-hi', 89, 145, 52, 54, 11, 41),
-        B('crown-soft', 'pillow', 'linen-hi', 93, 141, 54, 55.2, 15, 37, { shadow: false }),
-        B('cushion', 'pillow', 'cushion-slate', 96, 138, 45, 62, 38, 47),
-      ],
-    },
+    // Four sculpted pillows: two euro shams leaning on the headboard, two sleeping pillows in front.
+    'pillow-left': { body: false, parts: pillowSet('cushion-sand', 12) },
+    'pillow-right': { body: false, parts: pillowSet('cushion-slate', 86) },
   },
   'desk-140': {
-    // A rug under the desk and a sculpted task chair tucked in, facing the monitor.
+    // A rug under the desk and an ergonomic task chair tucked in: a five-star base, gas column,
+    // moulded shell, upholstered seat and a back curving round the sitter on two angled wings.
     vignette: [
       ...rug(-34, 174, 18, 196),
-      C('chair-column', 'chair', 'steel', 70, 24, 82, 2.2, 36, 'y', { segments: 16, shadow: false, group: 'chair' }),
-      B('chair-base-x', 'chair', 'anodised', 46, 94, 3, 5.4, 80, 84, { shadow: false, group: 'chair' }),
-      B('chair-base-z', 'chair', 'anodised', 68, 72, 3, 5.4, 58, 106, { shadow: false, group: 'chair' }),
-      B('chair-shell', 'chair', 'anodised', 48, 92, 41, 44, 58, 104, { shadow: false, group: 'chair' }),
-      B('chair-seat', 'chair', 'cushion-slate', 49, 91, 44, 49.5, 59, 103, { shadow: false, group: 'chair' }),
-      B('chair-spine', 'chair', 'anodised', 67, 73, 44, 60, 102, 106, { shadow: false, group: 'chair' }),
-      B('chair-back', 'chair', 'cushion-slate', 51, 89, 58, 90, 101, 107, { shadow: false, group: 'chair' }),
+      ...chairStar(70, 82),
+      C('chair-column', 'chair', 'steel', 70, 24.5, 82, 1.6, 39, 'y', { segments: 20, shadow: false, group: 'chair' }),
+      B('chair-shell', 'chair', 'anodised', 47, 93, 42, 45, 59, 105, { shadow: false, group: 'chair', round: 2 }),
+      B('chair-seat', 'chair', 'cushion-slate', 48, 92, 44.5, 50.5, 60, 104, { shadow: false, group: 'chair', round: 'soft' }),
+      B('chair-spine', 'chair', 'anodised', 67, 73, 44, 66, 103, 107, { shadow: false, group: 'chair', round: 'micro', tilt: 8 }),
+      B('chair-back', 'chair', 'cushion-slate', 56, 84, 58, 92, 102, 107.5, { shadow: false, group: 'chair', round: 'soft', tilt: 10 }),
+      B('chair-wing-left', 'chair', 'cushion-slate', 47, 57, 60, 90, 100, 105.5, {
+        shadow: false,
+        group: 'chair',
+        round: 'soft',
+        tilt: 10,
+        yaw: -20,
+      }),
+      B('chair-wing-right', 'chair', 'cushion-slate', 83, 93, 60, 90, 100, 105.5, {
+        shadow: false,
+        group: 'chair',
+        round: 'soft',
+        tilt: 10,
+        yaw: 20,
+      }),
     ],
-    // Steel A-frame trestles: two posts, a foot and a top bar each.
+    // Steel A-frame trestles: two posts, a foot and a top bar each, every edge micro-bevelled.
     'trestle-left': {
       body: false,
       parts: [
         B('post-back', 'post', 'steel', 8, 12, 2, 69, 8, 12),
         B('post-front', 'post', 'steel', 8, 12, 2, 69, 58, 62),
-        B('foot', 'foot', 'steel', 8, 12, 0, 2, 6, 64),
-        B('bar', 'bar', 'steel', 8, 12, 69, 71, 6, 64),
+        B('foot', 'foot', 'steel', 8, 12, 0, 2, 6, 64, { round: 'micro' }),
+        B('bar', 'bar', 'steel', 8, 12, 69, 71, 6, 64, { round: 'micro' }),
       ],
     },
     'trestle-right': {
@@ -1090,8 +1364,8 @@ export const FURNITURE_DETAILS = Object.freeze({
       parts: [
         B('post-back', 'post', 'steel', 128, 132, 2, 69, 8, 12),
         B('post-front', 'post', 'steel', 128, 132, 2, 69, 58, 62),
-        B('foot', 'foot', 'steel', 128, 132, 0, 2, 6, 64),
-        B('bar', 'bar', 'steel', 128, 132, 69, 71, 6, 64),
+        B('foot', 'foot', 'steel', 128, 132, 0, 2, 6, 64, { round: 'micro' }),
+        B('bar', 'bar', 'steel', 128, 132, 69, 71, 6, 64, { round: 'micro' }),
       ],
     },
     // A steel cable tray hangs from the rail under the top.
@@ -1102,33 +1376,40 @@ export const FURNITURE_DETAILS = Object.freeze({
         B('tray-lip', 'cable-tray', 'steel', 30, 110, 64.3, 69, 15.2, 16),
       ],
     },
-    // On the oak top: a monitor on its stand, a sketchbook and pencil, a task lamp.
+    // On the micro-bevelled oak top: an ultrawide studio display lit with an architectural viewport,
+    // a sketchbook and pencil under a cantilevered task lamp, and a porcelain cup.
     top: {
-      body: true,
+      body: false,
       parts: [
-        B('monitor-base', 'monitor', 'steel', 62, 78, 74, 74.8, 8, 20),
-        B('monitor-neck', 'monitor', 'steel', 68.5, 71.5, 74.8, 84, 11.6, 13.6),
-        B('monitor-panel', 'monitor', 'anodised', 46, 94, 83, 111, 10, 11.6),
-        B('monitor-screen', 'monitor', 'screen', 47, 93, 84, 110, 11.6, 11.7, { shadow: false }),
-        B('sketchbook', 'object', 'linen', 100, 130, 74, 75.4, 30, 52),
-        C('pencil', 'object', 'oak', 115, 75.8, 49, 0.35, 14, 'x', { segments: 8, shadow: false }),
-        C('lamp-base', 'lamp', 'anodised', 18, 75, 18, 6, 2, 'y', { segments: 24 }),
-        C('lamp-arm', 'lamp', 'steel', 18, 91, 18, 0.7, 30, 'y', { segments: 12 }),
-        B('lamp-boom', 'lamp', 'steel', 18, 36, 105, 106.4, 17.3, 18.7),
-        C('lamp-shade', 'lamp', 'anodised', 34, 101, 18, 3, 8, 'y', { r2: 5, segments: 24 }),
-        C('lamp-diffuser', 'lamp', 'opal', 34, 96.8, 18, 4.6, 0.4, 'y', { segments: 24, glow: true, shadow: false }),
+        B('top', 'top', 'oak', 0, 140, 71, 74, 0, 70, { grain: 'x' }),
+        // The stand rises behind the display: its neck meets the panel's back face, clear of the screen.
+        L('monitor-base', 'monitor', 'steel', 70, 74, 11, [[0, 0], [9.5, 0], [9.8, 0.35], [9.2, 0.9], [2, 1.1], [0, 1.1]], { segments: 40 }),
+        B('monitor-neck', 'monitor', 'steel', 68.6, 71.4, 75, 98, 7.6, 10, { round: 'micro' }),
+        B('monitor-panel', 'monitor', 'anodised', 33, 107, 84, 116, 10, 12.6, { round: 'micro' }),
+        B('monitor-screen', 'monitor', 'display', 34, 106, 85, 115, 12.6, 12.7, {
+          shadow: false,
+          glow: 'always',
+          glowColor: '#8ea3b8',
+          glowIntensity: 0.55,
+        }),
+        ...viewportGraphics(34, 106, 85, 115, 12.7),
+        ...book('sketchbook', 'linen', 18, 48, 74, 1.4, 34, 56),
+        C('pencil', 'object', 'oak', 40, 75.8, 53, 0.35, 14, 'x', { segments: 8, shadow: false }),
+        L('cup', 'object', 'porcelain', 118, 74, 40, [[0, 0], [2.2, 0], [2.6, 0.4], [3.2, 5.8], [3, 6.2], [2.7, 5.9], [0, 5.6]], { segments: 28 }),
+        ...deskLamp(),
       ],
     },
   },
   'sofa-200': {
-    // A rug in front, and a low oak and slate coffee table carrying an art book and a ceramic vessel.
+    // A rug in front, and a low micro-bevelled oak and slate coffee table carrying two monographs
+    // and a turned porcelain bowl.
     vignette: [
       ...rug(-32, 232, 40, 252),
-      B('table-base', 'coffee-table', 'slate', 62, 138, RUG_T_CM, 34, 130, 166, { shadow: false, group: 'table' }),
-      B('table-top', 'coffee-table', 'oak', 48, 152, 34, 38, 120, 176, { shadow: false, group: 'table', grain: 'x' }),
-      B('book-lower', 'object', 'slate', 62, 92, 38, 39.8, 130, 152, { shadow: false, group: 'table' }),
-      B('book-upper', 'object', 'ceramic', 64, 89, 39.8, 41.2, 132, 150, { shadow: false, group: 'table' }),
-      C('vessel', 'object', 'ceramic', 124, 48, 150, 3.4, 20, 'y', { r2: 5.6, segments: 32, shadow: false, group: 'table' }),
+      B('table-base', 'coffee-table', 'slate', 62, 138, RUG_T_CM, 34, 130, 166, { shadow: false, group: 'table', round: 'micro' }),
+      B('table-top', 'coffee-table', 'oak', 48, 152, 34, 38, 120, 176, { shadow: false, group: 'table', grain: 'x', round: 'micro' }),
+      ...book('monograph', 'slate', 60, 92, 38, 2.4, 128, 152, { shadow: false, group: 'table' }),
+      ...book('catalogue', 'oxblood', 63, 89, 40.4, 1.6, 130, 150, { shadow: false, group: 'table' }),
+      L('bowl', 'object', 'porcelain', 124, 38, 150, bowlProfile(9, 7), { shadow: false, group: 'table', segments: 40 }),
     ],
     // Six tapered oak legs replace the plinth block.
     plinth: {
@@ -1138,44 +1419,47 @@ export const FURNITURE_DETAILS = Object.freeze({
         C(`leg-front-${i + 1}`, 'leg', 'oak', x, 3, 80, 2.2, 6, 'y', { r2: 1.4, segments: 16, grain: 'y' }),
       ]),
     },
-    // Two plush back cushions with a softened crown.
+    // The upholstered base, softly radiused all round.
+    base: {
+      body: false,
+      parts: [B('base', 'seat', 'felt', 0.5, 199.5, 6, 40, 0.5, 91.5, { round: 4 })],
+    },
+    // Two plush back cushions with deep fillets, leaning back a touch.
     back: {
       body: false,
       parts: [
-        B('cushion-left', 'cushion', 'felt-hi', 18.5, 99.5, 44, 76, 1, 20),
-        B('cushion-left-crown', 'cushion', 'felt-hi', 20.5, 97.5, 76, 78.5, 3, 18),
-        B('cushion-right', 'cushion', 'felt-hi', 100.5, 181.5, 44, 76, 1, 20),
-        B('cushion-right-crown', 'cushion', 'felt-hi', 102.5, 179.5, 76, 78.5, 3, 18),
+        B('cushion-left', 'cushion', 'felt-hi', 18.5, 99.5, 42, 80, 1.5, 21.5, { tilt: -7 }),
+        B('cushion-right', 'cushion', 'felt-hi', 100.5, 181.5, 42, 80, 1.5, 21.5, { tilt: -7 }),
       ],
     },
-    // Seat crowns, each with a decorative throw cushion leaning on the back.
+    // Deep seat cushions, each with an angled accent cushion leaning on the back.
     'seat-left': {
-      body: true,
+      body: false,
       parts: [
-        B('crown', 'cushion', 'felt-hi', 21, 97, 50, 51.8, 23, 88),
-        B('throw-cushion', 'cushion', 'cushion-sand', 26, 66, 51.8, 88, 21, 33),
+        B('seat', 'cushion', 'felt-hi', 19, 99, 39, 52, 21, 91),
+        B('throw-cushion', 'cushion', 'cushion-sand', 26, 68, 50, 90, 21, 35, { tilt: -12, roll: 5 }),
       ],
     },
     'seat-right': {
-      body: true,
+      body: false,
       parts: [
-        B('crown', 'cushion', 'felt-hi', 103, 179, 50, 51.8, 23, 88),
-        B('throw-cushion', 'cushion', 'cushion-slate', 134, 174, 51.8, 88, 21, 33),
+        B('seat', 'cushion', 'felt-hi', 101, 181, 39, 52, 21, 91),
+        B('throw-cushion', 'cushion', 'cushion-slate', 132, 174, 50, 90, 21, 35, { tilt: -12, roll: -5 }),
       ],
     },
-    // Bolster armrests on lowered arm blocks.
+    // Rounded arm blocks under bolster rolls.
     'arm-left': {
       body: false,
       parts: [
-        B('block', 'arm', 'felt', 0, 18, 40, 54, 0, 92),
-        C('bolster', 'bolster', 'felt', 9, 54, 46, 8, 88, 'z', { segments: 24 }),
+        B('block', 'arm', 'felt', 0, 18, 40, 56, 0, 92),
+        C('bolster', 'bolster', 'felt', 9, 56, 46, 7.5, 86, 'z', { segments: 28 }),
       ],
     },
     'arm-right': {
       body: false,
       parts: [
-        B('block', 'arm', 'felt', 182, 200, 40, 54, 0, 92),
-        C('bolster', 'bolster', 'felt', 191, 54, 46, 8, 88, 'z', { segments: 24 }),
+        B('block', 'arm', 'felt', 182, 200, 40, 56, 0, 92),
+        C('bolster', 'bolster', 'felt', 191, 56, 46, 7.5, 86, 'z', { segments: 28 }),
       ],
     },
   },
@@ -1426,14 +1710,37 @@ function furnitureContext(furniture, room, rig, daylight) {
   };
 }
 
+/**
+ * A detail box kept inside the room the way furnitureLayout clips the
+ * collision boxes: trimmed to the wall planes in the furniture frame (a bed
+ * in a shallow room ends at the far wall, a throw pushed to the side stops at
+ * it). Turned boxes, cylinders and lathes never reach a wall and pass as they
+ * are; a box trimmed to nothing is dropped.
+ */
+function fitDetail(spec, frame, span) {
+  if (spec.geometry !== 'box' || spec.tilt || spec.yaw || spec.roll) return spec;
+  const b = spec.box;
+  const box = {
+    ...b,
+    x0: Math.max(b.x0, -frame.x0),
+    x1: Math.min(b.x1, span - frame.x0),
+    z0: Math.max(b.z0, -frame.z0),
+    z1: Math.min(b.z1, frame.reach - frame.z0),
+  };
+  if (box.x0 === b.x0 && box.x1 === b.x1 && box.z0 === b.z0 && box.z1 === b.z1) return spec;
+  return box.x1 - box.x0 > 0.1 && box.z1 - box.z0 > 0.1 ? { ...spec, box } : null;
+}
+
 function furnitureRecords(furniture, room, rig, daylight) {
   if (!furniture) return [];
   const details = FURNITURE_DETAILS[furniture.id] ?? {};
   const ctx = furnitureContext(furniture, room, rig, daylight);
+  const span = wallSpanCm(room, furniture.frame.wall);
   return furniture.parts.map((p) => {
     const look = FURNITURE_LOOK[p.tone] ?? FURNITURE_LOOK.felt;
     const pbr = PBR_MATERIALS[look.material];
     const detail = Object.hasOwn(details, p.id) ? details[p.id] : null;
+    const partCtx = { ...ctx, uid: `${ctx.uid}-${p.id}` };
     return {
       part: p.id,
       color: FURNITURE_TONES[p.tone],
@@ -1443,7 +1750,12 @@ function furnitureRecords(furniture, room, rig, daylight) {
       roughness: look.roughness ?? pbr.roughness,
       metalness: look.metalness ?? pbr.metalness,
       body: detail ? detail.body : true,
-      subparts: detail ? detail.parts.map((spec) => placeSubpart(spec, { ...ctx, uid: `${ctx.uid}-${p.id}` })) : [],
+      subparts: detail
+        ? detail.parts
+            .map((spec) => fitDetail(spec, furniture.frame, span))
+            .filter(Boolean)
+            .map((spec) => placeSubpart(spec, partCtx))
+        : [],
     };
   });
 }
@@ -1459,10 +1771,10 @@ function fitVignette(spec, frame, span) {
   // The room's walls in the furniture frame; a rug keeps 1 cm clear of them.
   const lo = { x: -frame.x0, z: -frame.z0 };
   const hi = { x: span - frame.x0, z: frame.reach - frame.z0 };
-  if (spec.geometry === 'cylinder') {
+  if (spec.geometry === 'cylinder' || spec.geometry === 'lathe') {
     const [cx, cy, cz] = spec.at;
     const z = cz + shiftZ;
-    const r = Math.max(spec.r, spec.r2);
+    const r = spec.geometry === 'lathe' ? Math.max(...spec.profile.map(([radius]) => radius)) : Math.max(spec.r, spec.r2);
     if (cx - r < lo.x || cx + r > hi.x || z - r < lo.z || z + r > hi.z) return null;
     return { ...spec, at: [cx, cy, z] };
   }
@@ -1528,20 +1840,89 @@ const INWARD = Object.freeze({ north: [0, 1], east: [-1, 0], south: [0, -1], wes
 
 /*
  * Window joinery, each member a full sub-part look. The casing is a plaster
- * reveal standing 5 cm off the wall, so the glass reads recessed behind it;
- * a 15 cm deep oak sill and a brushed champagne-steel glazing frame, mullions
- * and transom (1.5 to 4.5 cm proud of the glass) keep the six panes crisp
- * against the glazing in daylight and at night alike.
+ * reveal standing 8 cm off the wall with four lighter lining faces returning
+ * to the glass, so the opening reads recessed; a 15 cm deep, bevelled oak
+ * sill with a shadow line under its nosing; a brushed champagne-steel glazing
+ * frame, mullions and transom (1.5 to 4.5 cm proud of the glass); a slim
+ * steel casement sash round each of the six panes and two brushed steel
+ * espagnolette handles on the mullions.
  */
 export const WINDOW_FRAME = Object.freeze({
   reveal: Object.freeze({ material: 'wall-plaster', color: '#7a736a', roughness: 0.86, metalness: 0 }),
+  lining: Object.freeze({ material: 'wall-plaster', color: '#8d857b', roughness: 0.9, metalness: 0 }),
   sill: Object.freeze({ material: 'wood-oak', color: '#b89c74', roughness: 0.5, metalness: 0 }),
+  shadow: Object.freeze({ material: 'metal-obsidian', color: '#1c1a17', roughness: 0.92, metalness: 0.05 }),
   mullion: Object.freeze({ material: 'metal-steel', color: '#857e75', roughness: 0.32, metalness: 0.45 }),
+  sash: Object.freeze({ material: 'metal-steel', color: '#6e6860', roughness: 0.36, metalness: 0.42 }),
+  handle: Object.freeze({ material: 'metal-steel', color: '#c4beb4', roughness: 0.22, metalness: 0.74 }),
 });
-const REVEAL_DEPTH_CM = 5;
+const REVEAL_DEPTH_CM = 8;
+const LINING_CM = 1.6;
 const SILL_DEPTH_CM = 15;
 const BEAD_CM = 2.5;
+const SASH_CM = 1.4;
+const SASH_Z = Object.freeze([0.45, 1.35]);
 const BAR_Z = Object.freeze([1.5, 4.5]);
+
+/*
+ * Direct sun through a window keeps an architectural projection whatever the
+ * hour: the ray's inward share never drops under 0.48, its slant along the
+ * wall stays within +-0.55 and its pitch between 0.32 and 0.78, so the six
+ * panes always throw a bold 2 x 3 gobo with mullion bars well out across the
+ * floor instead of a sliver against the baseboard. The sun's strength through
+ * the glass ramps in with its incidence on the wall (full from 0.25 inward),
+ * so a sun that just comes round onto a wall starts at the sky's level.
+ */
+export const SUN_GOBO = Object.freeze({
+  inwardMin: 0.48,
+  lateralMax: 0.55,
+  pitchMin: 0.32,
+  pitchMax: 0.78,
+  patch: 0.34,
+  shaft: 0.15,
+  soft: 1,
+  incidenceFull: 0.25,
+});
+
+/*
+ * Every gobo lands whole: the pitch rises until the top of the glass lands
+ * within 85% of the room's depth from the window wall (so in a shallow room
+ * or under a low sun the pitch may exceed SUN_GOBO.pitchMax), and the slant
+ * along the wall is capped so the farthest pane corner keeps 10% of the clear
+ * wall run beside the window. Applied to sun, sky and moon alike.
+ */
+export const GOBO_FIT = Object.freeze({ reach: 0.85, run: 0.9 });
+
+/*
+ * A window that does not face the sun still faces the open sky: by day it
+ * lets a diffuse skylight portal in, a cool sky gobo tinted a quarter toward
+ * the sun, falling steeply inward with a slight slant toward the sun's side,
+ * and softer edged than direct sun. The sky eases from half strength at the
+ * horizon (and all through twilight) to full once the sun's strength reaches
+ * 0.5, so it is continuous through sunrise and sunset. A sun-facing window is
+ * never darker than the sky it also faces.
+ */
+export const SKYLIGHT = Object.freeze({
+  color: '#dce8f7',
+  solarMix: 0.25,
+  inward: 0.65,
+  pitch: 0.58,
+  lateralGain: 0.35,
+  lateralMax: 0.3,
+  patchOpacity: 0.18,
+  shaftOpacity: 0.085,
+  twilight: 0.5,
+  fullAt: 0.5,
+  soft: 1.5,
+});
+
+/*
+ * Every window also carries a real 3D fill light: a soft spot from the middle
+ * of the glass aimed at the floor 2.2 m inward along its gobo, coloured to
+ * its sun, sky or moon, so furniture and walls near any window pick up
+ * directional light and specular highlights.
+ */
+export const PORTAL_LIGHT = Object.freeze({ reachCm: 220, angleDeg: 60, penumbra: 1, decay: 2, distanceCm: 620, sun: 3.4, sky: 2, moon: 0.6 });
 
 /*
  * The glass itself. Daylight carries the sky the sun paints; at night the
@@ -1552,7 +1933,7 @@ export const NIGHT_GLAZING = Object.freeze({ color: '#2d4263', base: '#1a273b', 
 const DAY_GLAZING_BASE = '#0f1114';
 // Diffuse moonlit sky through each window: 40 deg up, turned 14 deg off the
 // wall's normal so the patches fall at a natural slant.
-export const MOONLIGHT = Object.freeze({ color: '#8fa8c8', patchOpacity: 0.14, shaftOpacity: 0.05, elevationDeg: 40, skewDeg: 14 });
+export const MOONLIGHT = Object.freeze({ color: '#8fa8c8', patchOpacity: 0.14, shaftOpacity: 0.05, elevationDeg: 40, skewDeg: 14, soft: 1.3 });
 
 function mix(a, b, t) {
   const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
@@ -1588,13 +1969,23 @@ function clipToFloor(points, W, D) {
   return poly;
 }
 
+const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, value));
+const unit4 = (value) => Number(clamp(value, 0, 1).toFixed(4)) + 0;
+
 /**
- * Light through a window's six panes along `light` (the unit vector from the
- * room toward the source): each pane lands as a patch on the floor (projected
- * along the light, clipped to the floor) and a shaft through the air from the
- * glass to where its corners land, inside the room.
+ * Light through a window's six pane apertures along `light` (the unit vector
+ * from the room toward the source): each pane lands as a patch on the floor
+ * (projected along the light, clipped to the floor) and a shaft through the
+ * air from the glass to where its corners land, inside the room.
+ *
+ * Every patch vertex carries gobo coordinates for the soft-penumbra floor
+ * shader: `uv` [u across the pane, 0 to 1; v from the pane's sill-side edge 0
+ * to its far edge 1], found by inverting the affine projection of the pane,
+ * so clipped vertices keep exact coordinates; and `depth`, 0 on the line the
+ * window's lowest glass lands on and 1 at its far tip, which widens the
+ * penumbra the further the light has travelled.
  */
-function paneLight(room, panes, place, light, look) {
+function paneLight(room, panes, place, light, look, glass) {
   const [lx, ly, lz] = light;
   const { widthCm: W, depthCm: D } = room;
   const travel = (p) => {
@@ -1607,6 +1998,11 @@ function paneLight(room, panes, place, light, look) {
     return Math.max(0, Math.min(...limits));
   };
   const along = (p, t) => [p[0] - lx * t, p[1] - ly * t, p[2] - lz * t];
+  const toFloor = (p) => {
+    const q = along(p, p[1] / ly);
+    return [q[0], q[2]];
+  };
+  const glassSpan = Math.max(1e-6, glass.y1 - glass.y0);
   const patches = [];
   const shafts = [];
   for (const [i, pane] of panes.entries()) {
@@ -1616,19 +2012,27 @@ function paneLight(room, panes, place, light, look) {
       [pane.px1, pane.py0],
       [pane.px0, pane.py0],
     ].map(([a, y]) => place([a, y, 0.2]));
-    const floor = clipToFloor(
-      corners.map((p) => {
-        const q = along(p, p[1] / ly);
-        return [q[0], q[2]];
-      }),
-      W,
-      D,
-    );
+    const landed = corners.map(toFloor);
+    const floor = clipToFloor(landed, W, D);
     if (floor.length >= 3) {
+      // Pane frame on the floor: origin at the sill-side left corner, u along the sill, v toward the head.
+      const [a0, a1] = [landed[3], landed[2]];
+      const e1 = [a1[0] - a0[0], a1[1] - a0[1]];
+      const e2 = [landed[0][0] - a0[0], landed[0][1] - a0[1]];
+      const det = e1[0] * e2[1] - e1[1] * e2[0];
+      const uv = floor.map(([x, z]) => {
+        if (Math.abs(det) < 1e-9) return [0, 0];
+        const dx = x - a0[0];
+        const dz = z - a0[1];
+        return [unit4((dx * e2[1] - dz * e2[0]) / det), unit4((e1[0] * dz - e1[1] * dx) / det)];
+      });
       patches.push({
         id: `${look.source}-patch-${i + 1}`,
         light: look.source,
         points: floor.map(([x, z]) => [m(x), FLOOR_LIGHT_Y_M, m(z)]),
+        uv,
+        depth: uv.map(([, v]) => unit4((pane.py0 + v * (pane.py1 - pane.py0) - glass.y0) / glassSpan)),
+        soft: look.soft,
         color: look.color,
         opacity: look.patchOpacity,
       });
@@ -1658,11 +2062,68 @@ function moonDirection(wall) {
 }
 
 /**
- * One window on its wall, as a glazed opening in a plaster reveal with a deep
- * oak sill, a steel glazing frame, two mullions and a transom. With the sun up
- * on the window's side, each pane throws a sunlit patch across the floor and a
- * shaft of light through the air. At night the glass holds a twilight sky and
- * every pane lets in a soft, cool moonlit patch and a faint shaft instead.
+ * Unit vector toward a window's light source from its inward share, its slant
+ * along the wall and its pitch, fitted so the gobo lands whole (GOBO_FIT):
+ * `fit.top` is the height of the highest glass, `fit.reach` the room's depth
+ * from the wall and `fit.run` the narrower clear wall run beside the glass,
+ * all in cm. A point of the glass at height y lands y * inward / pitch into
+ * the room and y * lateral / pitch along the wall.
+ */
+function goboRay(wall, inward, lateral, pitch, fit) {
+  const [nx, nz] = INWARD[wall];
+  const [ux, , uz] = wallDirToRoom(wall, [1, 0, 0]);
+  const lift = Math.max(pitch, (fit.top * inward) / (GOBO_FIT.reach * fit.reach));
+  const cap = (GOBO_FIT.run * lift * fit.run) / fit.top;
+  const slant = clamp(lateral, -cap, cap);
+  const ray = [-nx * inward + ux * slant, lift, -nz * inward + uz * slant];
+  const length = Math.hypot(...ray);
+  return ray.map((c) => Number((c / length).toFixed(6)) + 0);
+}
+
+/** A unit ray in the room frame split into a wall's inward share, its slant along the wall and its pitch. */
+function rayShares(wall, ray) {
+  const [nx, nz] = INWARD[wall];
+  const [ux, , uz] = wallDirToRoom(wall, [1, 0, 0]);
+  return { inward: -(ray[0] * nx + ray[2] * nz), lateral: ray[0] * ux + ray[2] * uz, pitch: ray[1] };
+}
+
+/**
+ * The window's 3D fill light: a soft spot from the middle of the glass, just
+ * inside the casing, aimed straight inward at the floor PORTAL_LIGHT.reachCm
+ * from the wall (20 cm short of the far wall in a shallower room).
+ */
+function portalLight(room, wall, opening, look) {
+  const reach = wall === 'east' || wall === 'west' ? room.widthCm : room.depthCm;
+  const depth = clamp(reach - 20, 40, PORTAL_LIGHT.reachCm);
+  const cx = (opening.x0 + opening.x1) / 2;
+  const place = (point) => wallToRoom(room, wall, point);
+  return {
+    id: `window-${wall}-portal`,
+    type: 'spot',
+    source: look.source,
+    color: look.color,
+    position: v3(place([cx, (opening.y0 + opening.y1) / 2, REVEAL_DEPTH_CM + 4])),
+    target: v3(place([cx, 0, depth])),
+    angle: Number((PORTAL_LIGHT.angleDeg * DEG).toFixed(4)),
+    penumbra: PORTAL_LIGHT.penumbra,
+    intensity: look.intensity,
+    distance: m(PORTAL_LIGHT.distanceCm),
+    decay: PORTAL_LIGHT.decay,
+  };
+}
+
+/**
+ * One window on its wall, as a glazed opening in a recessed plaster casing
+ * with lining returns, a bevelled oak sill, a steel glazing frame, two
+ * mullions, a transom, six casement sashes and two espagnolette handles.
+ * Every window lets light in, by day and by night:
+ * - facing the sun, each pane throws a sunlit gobo patch across the floor and
+ *   a shaft through the air, along a ray kept at an architectural angle;
+ * - facing away from the sun by day, it is a skylight portal: a cooler,
+ *   softer sky gobo and a faint air wash fall steeply inward;
+ * - at night the glass holds a twilight sky and every pane lets in a soft,
+ *   cool moonlit patch and a faint shaft.
+ * Each window also carries `portalLight`, a soft 3D spot coloured to match.
  */
 function buildWindow(room, wall, solar, daylight) {
   const span = wallSpanCm(room, wall);
@@ -1675,55 +2136,89 @@ function buildWindow(room, wall, solar, daylight) {
   const y1 = head;
   const rotY = WALL_ROT_Y[wall];
   const place = (point) => wallToRoom(room, wall, point);
-  const bar = (id, look, bx0, bx1, by0, by1, bz0, bz1, extra = {}) => ({
-    id: `window-${wall}-${id}`,
-    kind: id.split('-')[0],
-    geometry: 'box',
-    radius: null,
-    radiusBottom: null,
-    size: [m(bx1 - bx0), m(by1 - by0), m(bz1 - bz0)],
-    position: v3(place([(bx0 + bx1) / 2, (by0 + by1) / 2, (bz0 + bz1) / 2])),
-    rotation: [0, rotY, 0],
-    ...WINDOW_FRAME[look],
-    grain: extra.grain ?? null,
-    shadow: extra.shadow !== false,
-    emissive: null,
-    emissiveIntensity: 0,
-  });
+  const bar = (id, look, bx0, bx1, by0, by1, bz0, bz1, extra = {}) => {
+    const kind = extra.kind ?? id.split('-')[0];
+    const size = [m(bx1 - bx0), m(by1 - by0), m(bz1 - bz0)];
+    return {
+      id: `window-${wall}-${id}`,
+      kind,
+      geometry: 'box',
+      radius: null,
+      radiusBottom: null,
+      size,
+      bevel: subpartBevel(kind, size, extra.round ?? null, WINDOW_FRAME[look].material),
+      position: v3(place([(bx0 + bx1) / 2, (by0 + by1) / 2, (bz0 + bz1) / 2])),
+      rotation: [0, rotY, 0],
+      ...WINDOW_FRAME[look],
+      grain: extra.grain ?? null,
+      shadow: extra.shadow !== false,
+      emissive: null,
+      emissiveIntensity: 0,
+    };
+  };
   const third = width / 3;
   const transom = y0 + (y1 - y0) * 0.72;
   const m1 = x0 + third;
   const m2 = x0 + 2 * third;
   const h2 = MULLION_CM / 2;
   const [bz0, bz1] = BAR_Z;
+  const [sz0, sz1] = SASH_Z;
+  // Six sashes fill the glass inside the glazing bead, between the mullions and the transom.
+  const columns = [
+    [x0 + BEAD_CM, m1 - h2],
+    [m1 + h2, m2 - h2],
+    [m2 + h2, x1 - BEAD_CM],
+  ];
+  const rows = [
+    [y0 + BEAD_CM, transom - h2],
+    [transom + h2, y1 - BEAD_CM],
+  ];
+  const sashes = rows.flatMap(([py0, py1], r) => columns.map(([px0, px1], c) => ({ n: r * 3 + c + 1, px0, px1, py0, py1 })));
+  // Light passes only the glass each sash leaves clear, so the gobo carries the full frame shadow.
+  const apertures = sashes.map(({ px0, px1, py0, py1 }) => ({
+    px0: px0 + SASH_CM,
+    px1: px1 - SASH_CM,
+    py0: py0 + SASH_CM,
+    py1: py1 - SASH_CM,
+  }));
+  const handleY = y0 + (transom - y0) * 0.55;
+  const lining = REVEAL_DEPTH_CM - 0.4;
   const members = [
-    // The plaster reveal: head, jambs and an apron under the sill, 5 cm off the wall.
+    // The plaster casing: head, jambs and an apron under the sill, 8 cm off the wall.
     bar('head', 'reveal', x0 - FRAME_CM, x1 + FRAME_CM, y1, y1 + FRAME_CM, 0, REVEAL_DEPTH_CM),
     bar('jamb-left', 'reveal', x0 - FRAME_CM, x0, y0, y1, 0, REVEAL_DEPTH_CM),
     bar('jamb-right', 'reveal', x1, x1 + FRAME_CM, y0, y1, 0, REVEAL_DEPTH_CM),
     bar('apron', 'reveal', x0 - FRAME_CM, x1 + FRAME_CM, y0 - 12, y0 - 4.5, 0, 2),
-    // A deep oak sill running past the reveal on both sides.
+    // Four lining faces return from the casing to the glass, so the opening reads recessed.
+    bar('lining-head', 'lining', x0, x1, y1 - LINING_CM, y1, 0.2, lining),
+    bar('lining-left', 'lining', x0, x0 + LINING_CM, y0, y1 - LINING_CM, 0.2, lining),
+    bar('lining-right', 'lining', x1 - LINING_CM, x1, y0, y1 - LINING_CM, 0.2, lining),
+    bar('lining-foot', 'lining', x0 + LINING_CM, x1 - LINING_CM, y0, y0 + 0.8, 0.2, lining),
+    // A deep, bevelled oak sill running past the casing, a shadow line tucked under its nosing.
     bar('sill', 'sill', x0 - FRAME_CM - 3, x1 + FRAME_CM + 3, y0 - 4.5, y0, 0, SILL_DEPTH_CM, { grain: 'x' }),
+    bar('shadowline-sill', 'shadow', x0 - FRAME_CM - 2, x1 + FRAME_CM + 2, y0 - 5.4, y0 - 4.5, 0, SILL_DEPTH_CM - 1.5, { shadow: false }),
     // The steel glazing frame round the glass.
     bar('bead-head', 'mullion', x0, x1, y1 - BEAD_CM, y1, 0.3, 1.8, { grain: 'x' }),
     bar('bead-foot', 'mullion', x0, x1, y0, y0 + BEAD_CM, 0.3, 1.8, { grain: 'x' }),
     bar('bead-left', 'mullion', x0, x0 + BEAD_CM, y0 + BEAD_CM, y1 - BEAD_CM, 0.3, 1.8, { grain: 'y' }),
     bar('bead-right', 'mullion', x1 - BEAD_CM, x1, y0 + BEAD_CM, y1 - BEAD_CM, 0.3, 1.8, { grain: 'y' }),
-    // Mullions and transom standing proud of the glass.
-    bar('mullion-1', 'mullion', m1 - h2, m1 + h2, y0, y1, bz0, bz1, { grain: 'y' }),
-    bar('mullion-2', 'mullion', m2 - h2, m2 + h2, y0, y1, bz0, bz1, { grain: 'y' }),
-    bar('transom', 'mullion', x0, x1, transom - h2, transom + h2, bz0, bz1, { grain: 'x' }),
+    // Mullions and transom standing proud of the glass, micro-bevelled to catch a highlight.
+    bar('mullion-1', 'mullion', m1 - h2, m1 + h2, y0, y1, bz0, bz1, { grain: 'y', round: 'micro' }),
+    bar('mullion-2', 'mullion', m2 - h2, m2 + h2, y0, y1, bz0, bz1, { grain: 'y', round: 'micro' }),
+    bar('transom', 'mullion', x0, x1, transom - h2, transom + h2, bz0, bz1, { grain: 'x', round: 'micro' }),
+    // A slim steel casement sash round each pane, behind the mullions.
+    ...sashes.flatMap(({ n, px0, px1, py0, py1 }) => [
+      bar(`sash-${n}-head`, 'sash', px0, px1, py1 - SASH_CM, py1, sz0, sz1, { grain: 'x' }),
+      bar(`sash-${n}-foot`, 'sash', px0, px1, py0, py0 + SASH_CM, sz0, sz1, { grain: 'x' }),
+      bar(`sash-${n}-left`, 'sash', px0, px0 + SASH_CM, py0 + SASH_CM, py1 - SASH_CM, sz0, sz1, { grain: 'y' }),
+      bar(`sash-${n}-right`, 'sash', px1 - SASH_CM, px1, py0 + SASH_CM, py1 - SASH_CM, sz0, sz1, { grain: 'y' }),
+    ]),
+    // Two brushed steel espagnolette handles on the mullions: a rose, and a lever hanging from it.
+    ...[m1, m2].flatMap((mx, i) => [
+      bar(`handle-rose-${i + 1}`, 'handle', mx - 1.2, mx + 1.2, handleY - 3.2, handleY + 3.2, bz1, bz1 + 0.9, { round: 'micro' }),
+      bar(`handle-lever-${i + 1}`, 'handle', mx - 0.55, mx + 0.55, handleY - 9.5, handleY + 1.2, bz1 + 0.9, bz1 + 2.1, { round: 'micro' }),
+    ]),
   ];
-  const columns = [
-    [x0, m1 - h2],
-    [m1 + h2, m2 - h2],
-    [m2 + h2, x1],
-  ];
-  const rows = [
-    [y0, transom - h2],
-    [transom + h2, y1],
-  ];
-  const panes = rows.flatMap(([py0, py1]) => columns.map(([px0, px1]) => ({ px0, px1, py0, py1 })));
 
   const glazing = {
     id: `window-${wall}-glazing`,
@@ -1736,25 +2231,78 @@ function buildWindow(room, wall, solar, daylight) {
   };
 
   const [nx, nz] = INWARD[wall];
+  const [ux, , uz] = wallDirToRoom(wall, [1, 0, 0]);
   const [lx, ly, lz] = solar.direction;
-  const sunlit = daylight && solar.up && ly > 0.02 && lx * nx + lz * nz < -0.02;
+  // Negative when the sun stands outside this wall; `slant` is its share along the wall.
+  const facing = lx * nx + lz * nz;
+  const slant = lx * ux + lz * uz;
+  const sunlit = daylight && solar.up && ly > 0.02 && facing < -0.02;
+  const skylit = daylight && !sunlit;
   const moonlit = !daylight;
-  let light = { patches: [], shafts: [] };
+  // The highest glass, the room's depth from this wall and the clear wall run beside the glass, cm.
+  const fit = {
+    top: y1 - BEAD_CM - SASH_CM,
+    reach: wall === 'east' || wall === 'west' ? room.widthCm : room.depthCm,
+    run: Math.min(x0, span - x1) + BEAD_CM + SASH_CM,
+  };
+  // The open sky's level, continuous through sunrise and sunset.
+  const skyLevel = solar.up
+    ? SKYLIGHT.twilight + (1 - SKYLIGHT.twilight) * Math.min(1, solar.strength / SKYLIGHT.fullAt)
+    : SKYLIGHT.twilight;
+  const sky = {
+    patch: SKYLIGHT.patchOpacity * skyLevel,
+    shaft: SKYLIGHT.shaftOpacity * skyLevel,
+    portal: PORTAL_LIGHT.sky * skyLevel,
+  };
+  let ray;
+  let look;
   if (sunlit) {
-    light = paneLight(room, panes, place, solar.direction, {
+    const incidence = Math.min(1, (-facing - 0.02) / (SUN_GOBO.incidenceFull - 0.02));
+    ray = goboRay(
+      wall,
+      Math.max(SUN_GOBO.inwardMin, -facing),
+      clamp(slant, -SUN_GOBO.lateralMax, SUN_GOBO.lateralMax),
+      clamp(ly, SUN_GOBO.pitchMin, SUN_GOBO.pitchMax),
+      fit,
+    );
+    // The window facing the sun also faces the sky, so it never reads darker than a sky portal.
+    look = {
       source: 'sun',
       color: solar.color,
-      patchOpacity: Number((0.34 * solar.strength).toFixed(4)),
-      shaftOpacity: Number((0.15 * solar.strength).toFixed(4)),
-    });
-  } else if (moonlit) {
-    light = paneLight(room, panes, place, moonDirection(wall), {
+      patchOpacity: Number(Math.max(SUN_GOBO.patch * solar.strength * incidence, sky.patch).toFixed(4)),
+      shaftOpacity: Number(Math.max(SUN_GOBO.shaft * solar.strength * incidence, sky.shaft).toFixed(4)),
+      soft: SUN_GOBO.soft,
+      intensity: Number(Math.max(PORTAL_LIGHT.sun * (0.4 + 0.6 * solar.strength) * incidence, sky.portal).toFixed(3)),
+    };
+  } else if (skylit) {
+    ray = goboRay(
+      wall,
+      SKYLIGHT.inward,
+      clamp(slant * SKYLIGHT.lateralGain, -SKYLIGHT.lateralMax, SKYLIGHT.lateralMax),
+      SKYLIGHT.pitch,
+      fit,
+    );
+    look = {
+      source: 'sky',
+      color: mix(SKYLIGHT.color, solar.color, SKYLIGHT.solarMix),
+      patchOpacity: Number(sky.patch.toFixed(4)),
+      shaftOpacity: Number(sky.shaft.toFixed(4)),
+      soft: SKYLIGHT.soft,
+      intensity: Number(sky.portal.toFixed(3)),
+    };
+  } else {
+    const moon = rayShares(wall, moonDirection(wall));
+    ray = goboRay(wall, moon.inward, moon.lateral, moon.pitch, fit);
+    look = {
       source: 'moon',
       color: MOONLIGHT.color,
       patchOpacity: MOONLIGHT.patchOpacity,
       shaftOpacity: MOONLIGHT.shaftOpacity,
-    });
+      soft: MOONLIGHT.soft,
+      intensity: PORTAL_LIGHT.moon,
+    };
   }
+  const light = paneLight(room, apertures, place, ray, look, { y0, y1 });
   return {
     id: `window-${wall}`,
     wall,
@@ -1768,7 +2316,11 @@ function buildWindow(room, wall, solar, daylight) {
     patches: light.patches,
     shafts: light.shafts,
     sunlit,
+    skylit,
     moonlit,
+    light: look.source,
+    ray: ray.map((c) => Number(c.toFixed(4)) + 0),
+    portalLight: portalLight(room, wall, { x0, x1, y0, y1 }, look),
   };
 }
 
@@ -1878,10 +2430,10 @@ export function buildScene({ state, conflicts = new Map(), selectedUid = null, t
     modules.reduce((sum, module) => sum + module.subparts.length, 0) +
     furniture.reduce((sum, part) => sum + part.subparts.length, 0) +
     (vignette ? vignette.parts.length : 0);
-  const volumetrics =
-    modules.reduce((sum, module) => sum + module.volumetrics.length, 0) +
-    windows.reduce((sum, win) => sum + win.shafts.length, 0);
-  // Drawn meshes: sub-parts batch by look, one draw call per look.
+  const beams = modules.reduce((sum, module) => sum + module.volumetrics.length, 0);
+  const volumetrics = beams + windows.reduce((sum, win) => sum + win.shafts.length, 0);
+  // Drawn meshes: sub-parts batch by look, one draw call per look; a window's
+  // floor gobo and its air wash are one merged mesh each.
   const meshes =
     shell.surfaces.length +
     shell.poche.length +
@@ -1896,8 +2448,11 @@ export function buildScene({ state, conflicts = new Map(), selectedUid = null, t
       (sum, module) => sum + (lookCount(module.subparts) || 1) + module.emitters.length + 1 + (module.aoFloor ? 1 : 0),
       0,
     ) +
-    volumetrics +
-    windows.reduce((sum, win) => sum + 1 + lookCount(win.members) + win.patches.length, 0);
+    beams +
+    windows.reduce(
+      (sum, win) => sum + 1 + lookCount(win.members) + (win.patches.length > 0 ? 1 : 0) + (win.shafts.length > 0 ? 1 : 0),
+      0,
+    );
 
   return {
     lighting: room.lighting,
@@ -1932,6 +2487,7 @@ export function buildScene({ state, conflicts = new Map(), selectedUid = null, t
           cull: module.cull,
         }))
       : null,
-    stats: { meshes, lights: lights.length + 3, submeshes, volumetrics },
+    // Three rig lights (ambient, sky, sun) plus every LED channel and every window's portal light.
+    stats: { meshes, lights: lights.length + 3 + windows.filter((win) => win.portalLight).length, submeshes, volumetrics },
   };
 }

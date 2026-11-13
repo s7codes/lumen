@@ -2,6 +2,7 @@ import { Edges, Html, OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import {
+  ACESFilmicToneMapping,
   AdditiveBlending,
   BoxGeometry,
   BufferGeometry,
@@ -13,6 +14,7 @@ import {
   EquirectangularReflectionMapping,
   Euler,
   Float32BufferAttribute,
+  LatheGeometry,
   LinearFilter,
   LinearMipmapLinearFilter,
   Matrix4,
@@ -28,7 +30,8 @@ import {
   Vector2,
   Vector3,
 } from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { formatInt } from '../../lib/format.js';
 import { fieldImage, isoLuxContours } from '../../lib/illuminance-field.js';
 import {
@@ -37,10 +40,12 @@ import {
   faceUvTransform,
   iblTier,
   PBR_MATERIALS,
+  STUDIO_ENVIRONMENT,
   studioEnvironmentMap,
   synthesizeMaterial,
 } from '../../lib/pbr-materials.js';
 import { CAMERA_PITCH, CAMERA_YAW, ROOM_WALLS, sameCamera, sanitizeCamera, WALL_HEADING, wrapYaw } from '../../lib/room-3d.js';
+import { GLAZED_WALLS } from '../../lib/solar-path.js';
 import { intersectRayWithWall } from '../../lib/room-raycast.js';
 import {
   cameraFrame,
@@ -100,6 +105,16 @@ const noRaycast = () => null;
 // Lens changes (orbit to eye level, wall to wall in elevation) glide a little
 // slower than presets so the move reads as one continuous camera move.
 const LENS_SPRING = { stiffness: 120, damping: 2 * Math.sqrt(120) };
+
+// Glides step their closed-form springs (exact for any dt) with up to a
+// quarter second per frame, so a slow renderer lands a lens move in a few
+// frames instead of crawling at the walk's 50 ms cap; at 60 Hz and above
+// nothing changes. The first frame of every glide is held to one 60 Hz frame,
+// because an idle demand loop hands it the whole idle time as its delta. The
+// walking gait keeps MAX_FRAME_DT: its collision sliding depends on it.
+const GLIDE_MAX_DT = 0.25;
+const GLIDE_FIRST_DT = 1 / 60;
+const glideStep = (delta, running) => Math.min(Math.max(delta, 0), running ? GLIDE_MAX_DT : GLIDE_FIRST_DT);
 const LOOK_DEG_PER_PX = 0.22;
 const LOOK_THRESHOLD_PX = 4;
 // One wheel notch (100 px of deltaY) swings the inside lens 4 deg.
@@ -217,7 +232,8 @@ function CameraRig({ room, wall, camera, api }) {
     const g = glide.current;
     if (!g) return;
     const f = frameRef.current;
-    const dt = Math.min(Math.max(delta, 0), MAX_FRAME_DT);
+    const dt = glideStep(delta, g.running);
+    g.running = true;
     const { stiffness, damping } = CAMERA_SPRING;
     const goal = {
       ...g.view,
@@ -371,6 +387,8 @@ function WalkRig({ room, walk, insideFov, api }) {
   const velocity = useRef(Object.fromEntries(POSE_KEYS.map((key) => [key, 0])));
   const look = useRef(null);
   const gait = useRef(null);
+  // True while the pose spring is still moving: its next frame continues a glide.
+  const settling = useRef(false);
 
   const target = useCallback((p) => {
     const g = pending.current ?? goal.current;
@@ -622,7 +640,10 @@ function WalkRig({ room, walk, insideFov, api }) {
     const looking = Boolean(look.current?.moved);
     const engaged = Boolean(gait.current?.engaged);
     const skip = engaged ? (looking ? GAIT_LOOK_KEYS : GAIT_KEYS) : looking ? LOOK_KEYS : null;
-    const done = settleSpring(p, velocity.current, target(p), POSE_KEYS, 0.05, dt, skip);
+    // While a gait runs, its residual and the spring share the walk's frame step.
+    const spring = walking || engaged ? dt : glideStep(delta, settling.current);
+    const done = settleSpring(p, velocity.current, target(p), POSE_KEYS, 0.05, spring, skip);
+    settling.current = !done;
     apply(p);
     if (!done || walking) invalidate();
   });
@@ -714,6 +735,7 @@ function ElevationRig({ room, wall }) {
   goal.current = goalPose;
   const pose = useRef(null);
   const velocity = useRef(Object.fromEntries(ELEVATION_KEYS.map((key) => [key, 0])));
+  const settling = useRef(false);
 
   const apply = useCallback(
     (p) => {
@@ -758,8 +780,8 @@ function ElevationRig({ room, wall }) {
   useFrame((_, delta) => {
     const p = pose.current;
     if (!p) return;
-    const dt = Math.min(Math.max(delta, 0), MAX_FRAME_DT);
-    const done = settleSpring(p, velocity.current, goal.current, ELEVATION_KEYS, 0.05, dt);
+    const done = settleSpring(p, velocity.current, goal.current, ELEVATION_KEYS, 0.05, glideStep(delta, settling.current));
+    settling.current = !done;
     apply(p);
     if (!done) invalidate();
   });
@@ -873,15 +895,88 @@ function glass(wire) {
 
 const PbrContext = createContext(null);
 
+// Material families whose look lives in their reflections; glossy ceramics,
+// glass and a lit display qualify by their surface instead.
+const SPECULAR_FAMILIES = new Set(['metal', 'wood']);
+const SPECULAR_ROUGHNESS = 0.45;
+
+const srgbToLinear = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+const glslRgb = (rgb) => `vec3( ${rgb.map((c) => srgbToLinear(c).toFixed(5)).join(', ')} )`;
+
+/*
+ * Analytic studio speculars for the software tier. Three r187 prefilters any
+ * scene environment into a 256 px per face PMREM cube on the first frame of
+ * every canvas, tens of millions of texture taps that a software rasteriser
+ * pays on the CPU at each boot. Here the same studio (studioEnvironmentTexel:
+ * a warm floor under a neutral dome, a horizon bounce, an overhead softbox
+ * and strip boxes east and west) is evaluated in closed form in the reflected
+ * direction instead, its edges widened with the surface roughness the way
+ * the PMREM blurs them, and fed into three's own physical BRDF as indirect
+ * radiance and irradiance. No texture, no prefilter pass.
+ */
+const STUDIO_GLSL = /* glsl */ `
+vec3 lumenStudio( vec3 dir, float blur ) {
+  float e = degrees( asin( clamp( dir.y, -1.0, 1.0 ) ) );
+  float a = length( dir.xz ) > 1e-5 ? degrees( atan( dir.z, dir.x ) ) + 180.0 : 0.0;
+  float above = smoothstep( -6.0 - blur, 6.0 + blur, e );
+  float spread = 9.0 + blur;
+  float bounce = exp( -( e - 2.0 ) * ( e - 2.0 ) / ( 2.0 * spread * spread ) ) * ( 9.0 / spread );
+  vec3 rgb = mix( ${glslRgb(STUDIO_ENVIRONMENT.floor)}, ${glslRgb(STUDIO_ENVIRONMENT.dome)}, above );
+  rgb = mix( rgb, ${glslRgb(STUDIO_ENVIRONMENT.horizon)}, bounce * 0.8 );
+  float box = smoothstep( 52.0 - blur, 64.0 + blur * 0.5, e );
+  float toStrip = min( abs( a - 90.0 ), abs( a - 270.0 ) );
+  float strip = ( 1.0 - smoothstep( 6.0, 10.0 + blur, toStrip ) ) * smoothstep( 4.0 - blur, 10.0, e ) * ( 1.0 - smoothstep( 44.0, 50.0 + blur, e ) );
+  strip *= 10.0 / ( 10.0 + blur );
+  return mix( rgb, ${glslRgb(STUDIO_ENVIRONMENT.softbox)}, max( box, strip * 0.85 ) );
+}
+vec3 lumenStudioIrradiance( vec3 up ) {
+  vec3 base = mix( ${glslRgb(STUDIO_ENVIRONMENT.floor)}, ${glslRgb(STUDIO_ENVIRONMENT.dome)}, smoothstep( -0.45, 0.45, up.y ) );
+  return base + ${glslRgb(STUDIO_ENVIRONMENT.softbox)} * 0.18 * smoothstep( 0.2, 1.0, up.y );
+}
+`;
+
+const STUDIO_INJECT = /* glsl */ `
+#if defined( RE_IndirectSpecular )
+{
+  vec3 lumenReflect = reflect( - geometryViewDir, geometryNormal );
+  lumenReflect = normalize( mix( lumenReflect, geometryNormal, pow4( material.roughness ) ) );
+  lumenReflect = inverseTransformDirection( lumenReflect, viewMatrix );
+  float lumenBlur = 64.0 * material.roughness * material.roughness;
+  radiance += lumenStudio( lumenReflect, lumenBlur ) * ${STUDIO_ENVIRONMENT.intensity.toFixed(3)};
+  iblIrradiance += PI * lumenStudioIrradiance( inverseTransformDirection( geometryNormal, viewMatrix ) ) * ${STUDIO_ENVIRONMENT.intensity.toFixed(3)};
+}
+#endif
+`;
+
+/** The shader patch a specular MeshStandardMaterial takes on the software tier, with its own program cache key. */
+const ANALYTIC_SPECULARS = Object.freeze({
+  onBeforeCompile(shader) {
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\n${STUDIO_GLSL}`)
+      .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>\n${STUDIO_INJECT}`);
+  },
+  customProgramCacheKey: () => 'lumen-analytic-studio-v1',
+});
+
 /**
  * One library per canvas: each material key is synthesised once into
  * DataTextures (albedo, normal, roughness), shared by every mesh that uses
  * it, and disposed with the canvas. Nothing is fetched.
+ *
+ * It also holds the canvas's quality tier, read once from the renderer: on a
+ * GPU ('studio') the prefiltered studio environment lights the whole room and
+ * fillets are tessellated in full; on a software rasteriser ('software':
+ * SwiftShader, llvmpipe, WARP), where every pixel, vertex and prefilter tap
+ * is paid for on the CPU, steel, timber, ceramic and glass still take the
+ * studio's reflections through the analytic speculars above, while matte
+ * plaster, parquet and felt keep the direct rig, and fillets use half the
+ * segments.
  */
 function createPbrLibrary(gl) {
   const cache = new Map();
   const textures = [];
   const anisotropy = Math.min(8, gl.capabilities.getMaxAnisotropy?.() ?? 1);
+  const tier = iblTier(rendererName(gl));
   const texture = (data, width, height, repeat = true) => {
     const map = new DataTexture(data, width, height, RGBAFormat);
     map.wrapS = repeat ? RepeatWrapping : ClampToEdgeWrapping;
@@ -895,7 +990,9 @@ function createPbrLibrary(gl) {
     textures.push(map);
     return map;
   };
-  return {
+  const library = {
+    tier,
+    lean: tier === 'software',
     get(key) {
       if (cache.has(key)) return cache.get(key);
       const maps = synthesizeMaterial(key);
@@ -940,12 +1037,24 @@ function createPbrLibrary(gl) {
       }
       return cache.get('environment');
     },
+    /**
+     * The analytic studio patch a material takes, or null: only on the
+     * software tier (a GPU lights everything through scene.environment), and
+     * only for a specular family or a glossy surface.
+     */
+    speculars(key, roughness) {
+      if (tier !== 'software') return null;
+      const family = PBR_MATERIALS[key]?.family;
+      if (!SPECULAR_FAMILIES.has(family) && !(roughness <= SPECULAR_ROUGHNESS)) return null;
+      return ANALYTIC_SPECULARS;
+    },
     dispose() {
       for (const map of textures) map.dispose();
       textures.length = 0;
       cache.clear();
     },
   };
+  return library;
 }
 
 function PbrProvider({ children }) {
@@ -964,25 +1073,38 @@ function rendererName(gl) {
   return debug ? String(ctx.getParameter(debug.UNMASKED_RENDERER_WEBGL) ?? plain) : plain;
 }
 
+// The filmic tone curve and exposure every frame is graded with.
+const TONE = Object.freeze({ mapping: ACESFilmicToneMapping, label: 'aces', exposure: 1.08 });
+
 /**
- * Image-based lighting from the procedural studio environment: timber,
- * steel, ceramic and glass pick up soft physical reflections of an overhead
- * softbox and a warm horizon bounce. A quality tier: on a software
- * rasteriser (SwiftShader, llvmpipe, WARP) per-pixel IBL costs several times
- * the frame, so the room keeps its direct rig there. The wireframe view keeps
- * plain smoked glass, so the environment comes off with it. The tier in use
- * is written straight to the scene graph mirror as data-ibl.
+ * Always-on image-based lighting from the procedural studio environment: a
+ * 64 x 32 equirectangular map built once per canvas, so timber, brushed
+ * steel, ceramic and glass pick up soft specular reflections of an overhead
+ * softbox and a warm horizon bounce on every renderer. On a GPU it is the
+ * prefiltered scene environment for the whole room ('studio'); on a software
+ * rasteriser the specular materials evaluate the same studio in closed form
+ * ('analytic', see ANALYTIC_SPECULARS). The wireframe view keeps plain smoked glass, so the
+ * environment comes off with it. The mirror records what is in force:
+ * data-ibl, the renderer tier, data-env-intensity, and the tone mapping and
+ * exposure read back off the renderer itself.
  */
 function StudioEnvironment({ enabled, manifestRef }) {
   const pbr = useContext(PbrContext);
   const gl = useThree((state) => state.gl);
   const scene = useThree((state) => state.scene);
   const invalidate = useThree((state) => state.invalidate);
-  const tier = useMemo(() => iblTier(rendererName(gl)), [gl]);
-  const active = enabled && tier === 'studio' && Boolean(pbr);
+  const tier = pbr?.tier ?? 'studio';
+  const active = enabled && Boolean(pbr);
   useEffect(() => {
-    setData(manifestRef?.current, 'ibl', active ? 'studio' : enabled ? tier : 'off');
-    if (!active) return undefined;
+    const mirror = manifestRef?.current;
+    setData(mirror, 'iblTier', tier);
+    setData(mirror, 'msaa', Boolean(gl.getContextAttributes?.()?.antialias));
+    setData(mirror, 'portalMode', tier === 'software' ? 'fill' : 'spot');
+    setData(mirror, 'toneMapping', gl.toneMapping === ACESFilmicToneMapping ? TONE.label : String(gl.toneMapping));
+    setData(mirror, 'exposure', gl.toneMappingExposure);
+    setData(mirror, 'ibl', active ? (tier === 'software' ? 'analytic' : 'studio') : 'off');
+    setData(mirror, 'envIntensity', active ? STUDIO_ENVIRONMENT.intensity : 0);
+    if (!active || tier === 'software') return undefined;
     const env = pbr.environment();
     const previous = { map: scene.environment, intensity: scene.environmentIntensity };
     scene.environment = env.map;
@@ -993,7 +1115,7 @@ function StudioEnvironment({ enabled, manifestRef }) {
       scene.environmentIntensity = previous.intensity;
       invalidate();
     };
-  }, [active, enabled, tier, pbr, scene, invalidate, manifestRef]);
+  }, [active, tier, pbr, gl, scene, invalidate, manifestRef]);
   return null;
 }
 
@@ -1058,6 +1180,111 @@ function worldCylinderGeometry(radiusTop, radiusBottom, height, segments, tileM,
   return geometry;
 }
 
+/**
+ * RoundedBoxGeometry expands its source grid, BoxGeometry(1, 1, 1, n, n, n)
+ * with n = 2 * segments + 1, into one vertex per index and rounds each
+ * vertex from its own position and face alone. Every face of that grid owns
+ * its vertices, so all copies of a grid vertex come out identical: gathering
+ * them back onto the grid's index rebuilds the indexed mesh exactly, in one
+ * pass over typed arrays, with no per-vertex hashing.
+ */
+function indexedRoundedBox(size, segments, radius) {
+  const rounded = new RoundedBoxGeometry(size[0], size[1], size[2], segments, radius);
+  const n = segments * 2 + 1;
+  const grid = new BoxGeometry(1, 1, 1, n, n, n);
+  const index = grid.index.array;
+  const count = grid.attributes.position.count;
+  if (rounded.index || rounded.attributes.position.count !== index.length) {
+    grid.dispose();
+    return rounded.index ? rounded : mergeVertices(rounded);
+  }
+  const gather = (name, width) => {
+    const from = rounded.attributes[name].array;
+    const to = new Float32Array(count * width);
+    for (let k = 0; k < index.length; k += 1) {
+      const v = index[k] * width;
+      const s = k * width;
+      for (let c = 0; c < width; c += 1) to[v + c] = from[s + c];
+    }
+    return new Float32BufferAttribute(to, width);
+  };
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', gather('position', 3));
+  geometry.setAttribute('normal', gather('normal', 3));
+  geometry.setAttribute('uv', gather('uv', 2));
+  geometry.setIndex(grid.index.clone());
+  geometry.userData.radius = rounded.parameters.radius;
+  rounded.dispose();
+  grid.dispose();
+  return geometry;
+}
+
+/**
+ * Rounded box with UVs in metres, built on three's RoundedBoxGeometry. It
+ * lays each face's uv out by arc length across the flat run and both
+ * half-arcs of the fillet, so scaling a face by its unrolled length keeps
+ * grain and weave at true scale right round the bevel, with the same grain
+ * rule as worldBoxGeometry. Indexed, so it batches with boxes, cylinders and
+ * lathes in one draw call.
+ */
+function worldRoundedBoxGeometry(size, radius, segments, tileM, grain) {
+  const geometry = indexedRoundedBox(size, Math.max(1, Math.round(segments)), radius);
+  const r = geometry.userData.radius ?? Math.min(size[0] / 2, size[1] / 2, size[2] / 2, radius);
+  const uv = geometry.attributes.uv;
+  const perFace = uv.count / 6;
+  const along = grain ?? longestAxis(size);
+  const unrolled = (length) => Math.max(length - 2 * r, 0) + (Math.PI * r) / 2;
+  BOX_FACES.forEach(([ui, vi, uAxis, vAxis], face) => {
+    const { swap, su, sv } = faceUvTransform(unrolled(size[ui]), unrolled(size[vi]), uAxis, vAxis, along, tileM);
+    for (let i = face * perFace; i < (face + 1) * perFace; i += 1) {
+      const u = uv.getX(i);
+      const v = uv.getY(i);
+      if (swap) uv.setXY(i, v * su, u * sv);
+      else uv.setXY(i, u * su, v * sv);
+    }
+  });
+  uv.needsUpdate = true;
+  return geometry;
+}
+
+/**
+ * Turned solid round the Y axis from a [radius, height] profile in metres
+ * (vase, bowl, spun shade, weighted base), with UVs in metres: u round the
+ * widest girth, v along the profile's running length.
+ */
+function worldLatheGeometry(profile, segments, tileM) {
+  const points = profile.map(([r, y]) => new Vector2(Math.max(0, r), y));
+  const geometry = new LatheGeometry(points, Math.max(3, Math.round(segments)));
+  const run = [0];
+  for (let j = 1; j < points.length; j += 1) run.push(run[j - 1] + points[j].distanceTo(points[j - 1]));
+  const girth = 2 * Math.PI * Math.max(...points.map((p) => p.x));
+  const uv = geometry.attributes.uv;
+  // LatheGeometry lays its vertices out one meridian at a time, each the full profile.
+  for (let i = 0; i < uv.count; i += 1) uv.setXY(i, (uv.getX(i) * girth) / tileM, run[i % points.length] / tileM);
+  uv.needsUpdate = true;
+  return geometry;
+}
+
+/**
+ * The geometry a sub-part record asks for, in its own frame: box, rounded
+ * box, cylinder or lathe. `lean` (the software tier) halves the fillet and
+ * lathe segments; the silhouette stays, the vertex count drops threefold.
+ */
+function partGeometry(part, tile, lean = false) {
+  if (part.geometry === 'cylinder') {
+    return worldCylinderGeometry(part.radius, part.radiusBottom, part.size[1], part.segments ?? 24, tile, part.grain);
+  }
+  if (part.geometry === 'lathe' && Array.isArray(part.profile) && part.profile.length >= 2) {
+    const segments = part.segments ?? 32;
+    return worldLatheGeometry(part.profile, lean ? Math.max(12, Math.round(segments / 2)) : segments, tile);
+  }
+  if (part.bevel && part.bevel.radius > 0) {
+    const { segments } = part.bevel;
+    return worldRoundedBoxGeometry(part.size, part.bevel.radius, lean ? Math.max(1, Math.floor(segments / 2)) : segments, tile, part.grain);
+  }
+  return worldBoxGeometry(part.size, tile, part.grain);
+}
+
 /** Plane with UVs in metres; `vOffset` shifts the pattern, so floor planks land on the room's plank seams. */
 function worldPlaneGeometry(width, height, tileU, tileV, vOffset = 0) {
   const geometry = new PlaneGeometry(width, height);
@@ -1075,9 +1302,11 @@ function worldPlaneGeometry(width, height, tileU, tileV, vOffset = 0) {
 function PbrMaterial({ material, color, roughness, metalness = 0, wire = false, emissive = null, emissiveIntensity = 0 }) {
   const pbr = useContext(PbrContext);
   const maps = !wire && pbr ? pbr.get(material) : null;
+  // The analytic studio patch is fixed per material instance, so it rides in the key.
+  const studio = !wire && pbr ? pbr.speculars(material, roughness) : null;
   return (
     <meshStandardMaterial
-      key={wire ? 'glass' : maps ? `pbr-${material}` : 'flat'}
+      key={wire ? 'glass' : `${maps ? `pbr-${material}` : 'flat'}${studio ? '-studio' : ''}`}
       color={color}
       roughness={maps ? Math.min(4, roughness / maps.roughness) : roughness}
       metalness={metalness}
@@ -1086,6 +1315,7 @@ function PbrMaterial({ material, color, roughness, metalness = 0, wire = false, 
       roughnessMap={maps ? maps.roughnessMap : null}
       emissive={emissive ?? '#000000'}
       emissiveIntensity={emissive ? emissiveIntensity : 0}
+      {...(studio ?? {})}
       {...glass(wire)}
     />
   );
@@ -1093,16 +1323,11 @@ function PbrMaterial({ material, color, roughness, metalness = 0, wire = false, 
 
 /** One CAD sub-part of a module or a piece of furniture. Never picked: the part's hull takes the pointer. */
 function Subpart({ part, wire }) {
+  const lean = useContext(PbrContext)?.lean ?? false;
   const [tile] = tileOf(part.material);
-  const { geometry: shape, radius, radiusBottom, segments, grain } = part;
-  const [sx, sy, sz] = part.size;
-  const geometry = useGeometry(
-    () =>
-      shape === 'cylinder'
-        ? worldCylinderGeometry(radius, radiusBottom, sy, segments ?? 24, tile, grain)
-        : worldBoxGeometry([sx, sy, sz], tile, grain),
-    [shape, radius, radiusBottom, segments, grain, sx, sy, sz, tile],
-  );
+  const shape = JSON.stringify([part.geometry, part.radius, part.radiusBottom, part.segments, part.grain, part.size, part.bevel, part.profile]);
+  // The shape signature carries every value the geometry is built from.
+  const geometry = useGeometry(() => partGeometry(part, tile, lean), [shape, tile, lean]);
   const [rx, ry, rz] = part.rotation;
   return (
     <mesh
@@ -1133,12 +1358,9 @@ const bakeScale = new Vector3(1, 1, 1);
 const bakeMatrix = new Matrix4();
 
 /** A sub-part's geometry with world-scale UVs, baked into its place in the room. */
-function bakedPartGeometry(part) {
+function bakedPartGeometry(part, lean) {
   const [tile] = tileOf(part.material);
-  const geometry =
-    part.geometry === 'cylinder'
-      ? worldCylinderGeometry(part.radius, part.radiusBottom, part.size[1], part.segments ?? 24, tile, part.grain)
-      : worldBoxGeometry(part.size, tile, part.grain);
+  const geometry = partGeometry(part, tile, lean);
   const [rx, ry, rz] = part.rotation;
   bakeQuaternion.setFromEuler(bakeEuler.set(rx, ry, rz, 'YXZ'));
   geometry.applyMatrix4(bakeMatrix.compose(bakePosition.fromArray(part.position), bakeQuaternion, bakeScale));
@@ -1153,13 +1375,14 @@ function bakedPartGeometry(part) {
  * furnished room's frame cost close to the plain-box engine's.
  */
 function usePartBatches(parts) {
+  const lean = useContext(PbrContext)?.lean ?? false;
   const signature = JSON.stringify(parts);
   const batches = useMemo(() => {
     const groups = new Map();
     for (const part of parts) {
       const key = subpartLookKey(part);
       if (!groups.has(key)) groups.set(key, { key, look: part, geometries: [] });
-      groups.get(key).geometries.push(bakedPartGeometry(part));
+      groups.get(key).geometries.push(bakedPartGeometry(part, lean));
     }
     return [...groups.values()].flatMap(({ key, look, geometries }) => {
       if (geometries.length === 1) return [{ key, look, geometry: geometries[0] }];
@@ -1168,9 +1391,9 @@ function usePartBatches(parts) {
       for (const geometry of geometries) geometry.dispose();
       return [{ key, look, geometry: merged }];
     });
-    // The signature carries every value the batches are built from.
+    // The signature and the tier carry every value the batches are built from.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature]);
+  }, [signature, lean]);
   useEffect(
     () => () => {
       for (const batch of batches) batch.geometry.dispose();
@@ -1347,62 +1570,151 @@ function VolumetricCone({ beam }) {
   return <mesh geometry={geometry} material={material} position={beam.position} rotation={beam.rotation} raycast={noRaycast} renderOrder={3} />;
 }
 
-/** A shaft of sunlight from a window pane to where it lands, in room metres. */
-function SunShaft({ shaft }) {
-  const material = useBeamMaterial(shaft.color, shaft.opacity, true, false);
-  const key = JSON.stringify([shaft.from, shaft.to]);
+/**
+ * A window's shafts of light, one prism per pane from the glass to where it
+ * lands, merged into one mesh: the panes share their window's colour and
+ * opacity, so the whole air wash is a single draw call.
+ */
+function WindowShafts({ shafts }) {
+  const { color, opacity } = shafts[0];
+  const material = useBeamMaterial(color, opacity, true, false);
+  const key = JSON.stringify(shafts.map((shaft) => [shaft.from, shaft.to]));
   const geometry = useGeometry(
-    () => quadsGeometry(shaft.from.map((s0, i) => [s0, shaft.from[(i + 1) % 4], shaft.to[i], shaft.to[(i + 1) % 4]])),
+    () =>
+      quadsGeometry(
+        shafts.flatMap((shaft) => shaft.from.map((s0, i) => [s0, shaft.from[(i + 1) % 4], shaft.to[i], shaft.to[(i + 1) % 4]])),
+      ),
     [key],
   );
   return <mesh geometry={geometry} material={material} raycast={noRaycast} renderOrder={3} />;
 }
 
-/** A sunlit patch on the floor, mullion gaps and all. */
-function SunPatch({ patch }) {
-  const key = JSON.stringify(patch.points);
-  const geometry = useGeometry(() => {
-    const positions = [];
-    for (let i = 1; i < patch.points.length - 1; i += 1) positions.push(...patch.points[0], ...patch.points[i], ...patch.points[i + 1]);
-    const g = new BufferGeometry();
-    g.setAttribute('position', new Float32BufferAttribute(positions, 3));
-    return g;
-  }, [key]);
-  return (
-    <mesh geometry={geometry} raycast={noRaycast} renderOrder={2}>
-      <meshBasicMaterial
-        color={patch.color}
-        transparent
-        opacity={patch.opacity}
-        blending={AdditiveBlending}
-        side={DoubleSide}
-        depthWrite={false}
-        polygonOffset
-        polygonOffsetFactor={-3}
-        polygonOffsetUnits={-3}
-        toneMapped={false}
-      />
-    </mesh>
+const GOBO_VERTEX = /* glsl */ `
+attribute float aDepth;
+varying vec2 vUv;
+varying float vDepth;
+void main() {
+  vUv = uv;
+  vDepth = aDepth;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+// Soft-penumbra window gobo. vUv is the pane's own frame (u across it, v from
+// its sill-side edge to its far edge), so the distance to the nearest pane edge
+// is zero on every mullion and sash shadow line. Near the glass (vDepth 0) the
+// edge is crisp, 8% of the pane; as the light travels deeper into the room
+// (vDepth 1) the penumbra widens to 28% and the patch falls off, and the soft
+// edge diffuses slightly warmer than the core. uSoft widens every penumbra for
+// a diffuse sky or moon. Drawn additively over the floor.
+const GOBO_FRAGMENT = /* glsl */ `
+uniform vec3 uColor;
+uniform float uOpacity;
+uniform float uSoft;
+varying vec2 vUv;
+varying float vDepth;
+void main() {
+  float edge = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
+  float width = min(0.5, mix(0.08, 0.28, vDepth) * uSoft);
+  float feather = smoothstep(0.0, width, edge);
+  float fall = pow(1.0 - vDepth * 0.65, 1.4);
+  vec3 tint = mix(uColor * vec3(1.08, 0.96, 0.84), uColor, feather);
+  gl_FragColor = vec4(tint, uOpacity * feather * fall);
+  #include <colorspace_fragment>
+}
+`;
+
+/** The custom GLSL gobo material for a window's floor light: additive, never writing depth, pulled just above the floor. */
+function useWindowPatchMaterial(color, opacity, soft) {
+  const material = useMemo(
+    () =>
+      new ShaderMaterial({
+        uniforms: {
+          uColor: { value: new Color() },
+          uOpacity: { value: 0 },
+          uSoft: { value: 1 },
+        },
+        vertexShader: GOBO_VERTEX,
+        fragmentShader: GOBO_FRAGMENT,
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        side: DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3,
+      }),
+    [],
   );
+  useLayoutEffect(() => {
+    material.uniforms.uColor.value.set(color);
+    material.uniforms.uOpacity.value = opacity;
+    material.uniforms.uSoft.value = soft;
+  }, [material, color, opacity, soft]);
+  useEffect(() => () => material.dispose(), [material]);
+  return material;
 }
 
 /**
+ * A window's light on the floor: every pane's patch, clipped to the floor,
+ * with its gobo coordinates per vertex, merged into one mesh under the soft
+ * penumbra shader. The coordinates are affine in the floor plane, so a fan
+ * over each convex patch interpolates them exactly.
+ */
+function WindowGobo({ patches }) {
+  const { color, opacity, soft = 1 } = patches[0];
+  const material = useWindowPatchMaterial(color, opacity, soft);
+  const key = JSON.stringify(patches.map((patch) => [patch.points, patch.uv, patch.depth]));
+  const geometry = useGeometry(() => {
+    const positions = [];
+    const uvs = [];
+    const depths = [];
+    for (const patch of patches) {
+      const uv = patch.uv ?? patch.points.map(() => [0.5, 0.5]);
+      const depth = patch.depth ?? patch.points.map(() => 0);
+      const push = (i) => {
+        positions.push(...patch.points[i]);
+        uvs.push(...uv[i]);
+        depths.push(depth[i]);
+      };
+      for (let i = 1; i < patch.points.length - 1; i += 1) {
+        push(0);
+        push(i);
+        push(i + 1);
+      }
+    }
+    const g = new BufferGeometry();
+    g.setAttribute('position', new Float32BufferAttribute(positions, 3));
+    g.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+    g.setAttribute('aDepth', new Float32BufferAttribute(depths, 1));
+    return g;
+  }, [key]);
+  return <mesh geometry={geometry} material={material} raycast={noRaycast} renderOrder={2} />;
+}
+
+const GLAZING_ROUGHNESS = 0.08;
+
+/**
  * One window: the glazing (a twilight sky at night, the sun's sky by day),
- * its plaster reveal, oak sill and steel bars, and the sun or moonlight it
- * lets in. Every member record carries its own look.
+ * its casing, linings, oak sill, steel bars, sashes and handles, and the sun,
+ * sky or moonlight it lets in. Its portal light lives in PortalLights.
  */
 function WindowLayer({ win, wire }) {
   const { glazing } = win;
+  const pbr = useContext(PbrContext);
+  const studio = !wire && pbr ? pbr.speculars(null, GLAZING_ROUGHNESS) : null;
   return (
     <group name={`window-${win.wall}`}>
       <Cullable cull={win.cull}>
         <mesh position={glazing.position} rotation={glazing.rotation} raycast={noRaycast}>
           <planeGeometry args={glazing.size} />
           <meshStandardMaterial
+            key={studio ? 'glass-studio' : 'glass'}
+            {...(studio ?? {})}
             color={glazing.base}
             emissive={glazing.color}
             emissiveIntensity={glazing.intensity}
-            roughness={0.08}
+            roughness={GLAZING_ROUGHNESS}
             metalness={0.2}
             envMapIntensity={0.6}
             polygonOffset
@@ -1412,11 +1724,44 @@ function WindowLayer({ win, wire }) {
           />
         </mesh>
         <PartBatches parts={win.members} wire={wire} />
-        {!wire && win.shafts.map((shaft) => <SunShaft key={shaft.id} shaft={shaft} />)}
+        {!wire && win.shafts.length > 0 && <WindowShafts shafts={win.shafts} />}
       </Cullable>
-      {!wire && win.patches.map((patch) => <SunPatch key={patch.id} patch={patch} />)}
+      {!wire && win.patches.length > 0 && <WindowGobo patches={win.patches} />}
     </group>
   );
+}
+
+// An idle portal slot: mounted and visible, so the spot light count holds, but dark.
+const IDLE_PORTAL = Object.freeze({
+  position: [0, 1.5, 0],
+  target: [0, 0, 1],
+  color: '#ffffff',
+  intensity: 0,
+  angle: 1,
+  penumbra: 1,
+  distance: 6.2,
+  decay: 2,
+});
+// Share of each portal's intensity the software tier adds to the ambient fill instead.
+const PORTAL_FILL = 0.035;
+
+/**
+ * Window portal lights. Three keys every lit shader program on the number of
+ * spot lights, so a spot that came and went with each window or lighting
+ * toggle would recompile and relink every lit material. On a GPU a fixed pool
+ * of one spot per glazable wall stays mounted (an idle slot shines at zero
+ * and is never hidden: a hidden light leaves the count) and only its uniforms
+ * follow the windows. They sit outside the section cut, so a window behind
+ * the eye still lights the room. On a software rasteriser, where three more
+ * spots in every fragment cost too much, SceneGraph folds the portals into
+ * the ambient fill instead.
+ */
+function PortalLights({ windows }) {
+  const lean = useContext(PbrContext)?.lean ?? false;
+  if (lean) return null;
+  return GLAZED_WALLS.map((wall) => (
+    <LedSpot key={wall} light={windows.find((win) => win.wall === wall)?.portalLight ?? IDLE_PORTAL} />
+  ));
 }
 
 /** True when the hit sits under a group the section cut has hidden. */
@@ -1994,12 +2339,15 @@ function OverlayProbe({ drag, api, room, cameraMode, manifestRef }) {
 const SceneGraph = memo(function SceneGraph({ scene, floorLux, heading, cameraMode, drag, onSelect, onHover }) {
   const ink = INK[scene.lighting] ?? INK.night;
   const wire = scene.wireframe;
+  const lean = useContext(PbrContext)?.lean ?? false;
+  // The software tier's portals: a uniform-only lift of the ambient fill, no extra light.
+  const portalFill = lean ? scene.windows.reduce((sum, win) => sum + (win.portalLight?.intensity ?? 0), 0) * PORTAL_FILL : 0;
   const onBackground = (event) => {
     if (event.delta <= DRAG_THRESHOLD_PX && !drag.isActive()) onSelect(null);
   };
   return (
     <>
-      <ambientLight color={scene.rig.ambient.color} intensity={scene.rig.ambient.intensity} />
+      <ambientLight color={scene.rig.ambient.color} intensity={scene.rig.ambient.intensity + portalFill} />
       <hemisphereLight
         color={scene.rig.hemisphere.sky}
         groundColor={scene.rig.hemisphere.ground}
@@ -2012,6 +2360,7 @@ const SceneGraph = memo(function SceneGraph({ scene, floorLux, heading, cameraMo
       {scene.windows.map((win) => (
         <WindowLayer key={win.id} win={win} wire={wire} />
       ))}
+      <PortalLights windows={scene.windows} />
       {!wire && scene.furnitureAo && <ContactShadow plane={scene.furnitureAo} />}
       <Segments points={scene.planks} color={scene.rig.plank.color} opacity={scene.rig.plank.opacity} />
       <Segments points={scene.grid} color={scene.rig.grid.color} opacity={scene.technical ? 0.16 : scene.rig.grid.opacity} />
@@ -2071,6 +2420,7 @@ export default function RoomCanvas({
   drag,
   manifestRef,
   captureRef,
+  antialias = true,
   onSelect,
   onHover,
   onReady,
@@ -2082,9 +2432,21 @@ export default function RoomCanvas({
       frameloop="demand"
       shadows="percentage"
       dpr={[1, 2]}
-      gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+      gl={{
+        // Fixed at context creation; the viewport turns it off on a software rasteriser.
+        antialias,
+        alpha: true,
+        powerPreference: 'high-performance',
+        toneMapping: TONE.mapping,
+        toneMappingExposure: TONE.exposure,
+      }}
       camera={{ fov: 38, near: 0.05, far: 60, position: [0, 2, 6] }}
-      onCreated={({ gl }) => onReady(gl.capabilities.isWebGL2 ? 'webgl2' : 'webgl')}
+      onCreated={({ gl }) => {
+        // ACES filmic grading at a touch over unity exposure, set once on the renderer itself.
+        gl.toneMapping = TONE.mapping;
+        gl.toneMappingExposure = TONE.exposure;
+        onReady(gl.capabilities.isWebGL2 ? 'webgl2' : 'webgl');
+      }}
       onPointerMissed={(event) => {
         if (event.type === 'click' && !drag.isActive()) onSelect(null);
       }}

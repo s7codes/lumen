@@ -8,6 +8,8 @@ import {
   WALL_HEADING,
   WALL_LABELS,
 } from '../../lib/room-3d.js';
+import { setText } from '../../lib/dom-writes.js';
+import { iblTier } from '../../lib/pbr-materials.js';
 import { buildScene, cameraFrame, cameraPosition, wallCull } from '../../lib/room-scene.js';
 import {
   CAMERA_MODE_LABELS,
@@ -22,7 +24,7 @@ import {
   walkKey,
   WALL_LOOK_HEADING,
 } from '../../lib/room-walkthrough.js';
-import { CameraSettings } from './CameraSettings.jsx';
+import { CameraSettings, formatCameraReadout } from './CameraSettings.jsx';
 import { TransformGizmo } from './TransformGizmo.jsx';
 import { ViewportCompass } from './ViewportCompass.jsx';
 import { WalkControls } from './WalkControls.jsx';
@@ -37,19 +39,37 @@ const GRAB_STEPS = Object.freeze({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], Arrow
 // Plus narrows the inside lens (a closer look), minus widens it.
 const LENS_KEYS = Object.freeze({ '+': -1, '=': -1, '-': 1, _: 1 });
 
-let webglSupport = null;
+let webglProbe = null;
 
-/** Probed once per page load; a throwaway context is enough to know. */
-function hasWebgl() {
-  if (webglSupport === null) {
+/**
+ * Probed once per page load; a throwaway context is enough to know whether
+ * WebGL is there and which quality tier its renderer belongs to. The tier is
+ * needed before the real context exists, because multisampling is fixed when
+ * a context is created: a software rasteriser (SwiftShader, llvmpipe, WARP)
+ * would pay for every MSAA sample on the CPU, so it renders without.
+ */
+function probeWebgl() {
+  if (webglProbe === null) {
     try {
       const probe = document.createElement('canvas');
-      webglSupport = Boolean(probe.getContext('webgl2') ?? probe.getContext('webgl'));
+      const ctx = probe.getContext('webgl2') ?? probe.getContext('webgl');
+      if (!ctx) {
+        webglProbe = { supported: false, tier: 'studio' };
+      } else {
+        const plain = String(ctx.getParameter(ctx.RENDERER) ?? '');
+        const debug = plain && !/^webkit webgl$/i.test(plain) ? null : ctx.getExtension('WEBGL_debug_renderer_info');
+        const name = debug ? String(ctx.getParameter(debug.UNMASKED_RENDERER_WEBGL) ?? plain) : plain;
+        webglProbe = { supported: true, tier: iblTier(name) };
+      }
     } catch {
-      webglSupport = false;
+      webglProbe = { supported: false, tier: 'studio' };
     }
   }
-  return webglSupport;
+  return webglProbe;
+}
+
+function hasWebgl() {
+  return probeWebgl().supported;
 }
 
 class CanvasBoundary extends Component {
@@ -150,7 +170,9 @@ function SceneManifest({
       data-window-count={windows.length}
       data-sunlit={windows.some((win) => win.sunlit) || undefined}
       data-sun-patches={lightPatches('sun')}
+      data-sky-patches={lightPatches('sky')}
       data-moon-patches={lightPatches('moon')}
+      data-portal-lights={windows.filter((win) => win.portalLight).length}
     >
       {windows.map((win) => (
         <span
@@ -161,10 +183,16 @@ function SceneManifest({
           data-glazing-base={win.glazing.base}
           data-glazing-intensity={win.glazing.intensity}
           data-members={win.members.length}
+          data-handles={win.members.filter((member) => member.kind === 'handle').length}
+          data-light={win.light}
           data-sunlit={win.sunlit || undefined}
+          data-skylit={win.skylit || undefined}
           data-moonlit={win.moonlit || undefined}
           data-patches={win.patches.length}
           data-shafts={win.shafts.length}
+          data-portal-source={win.portalLight?.source}
+          data-portal-intensity={win.portalLight?.intensity}
+          data-portal-color={win.portalLight?.color}
         />
       ))}
       {scene.modules.map((module) => (
@@ -336,7 +364,6 @@ export function RoomViewport({
   const manifestRef = useRef(null);
   const [supported] = useState(hasWebgl);
   const [renderer, setRenderer] = useState(supported ? 'loading' : 'unavailable');
-  const [view, setView] = useState(camera);
   const [orbiting, setOrbiting] = useState(false);
   const viewRef = useRef(camera);
   const liveRef = useRef(false);
@@ -348,9 +375,12 @@ export function RoomViewport({
   fovRef.current = onInsideFov;
 
   const api = useMemo(() => {
+    const hud = { compass: null, readout: null };
+    // The live lens of a glide or an orbit drag goes straight to the readout's
+    // text node, never through React state: motion re-renders nothing.
     const showView = (next) => {
       viewRef.current = next;
-      setView(next);
+      setText(hud.readout, formatCameraReadout(next));
     };
     return {
       viewRef,
@@ -363,7 +393,7 @@ export function RoomViewport({
         commitRef.current(next);
       },
       drag,
-      hud: { compass: null },
+      hud,
       walkMirror: { current: null },
       // Walk keys held down right now. WalkRig reads them every frame and
       // drives the stance while any is held; `rig` says one is mounted,
@@ -374,6 +404,13 @@ export function RoomViewport({
       commitFov: (deg) => fovRef.current(sanitizeInsideFov(deg)),
     };
   }, [drag]);
+
+  const readoutRef = useCallback(
+    (el) => {
+      api.hud.readout = el;
+    },
+    [api],
+  );
 
   const stageRef = useCallback(
     (el) => {
@@ -528,7 +565,7 @@ export function RoomViewport({
       ? walk.headingDeg
       : cameraMode === 'elevation'
         ? WALL_LOOK_HEADING[activeWall]
-        : normalizeHeading(-(WALL_HEADING[activeWall] + view.yaw));
+        : normalizeHeading(-(WALL_HEADING[activeWall] + camera.yaw));
   const ariaHelp =
     cameraMode === 'inside'
       ? 'Room viewport, inside at 165 cm. Drag to look around, W A S D to walk, Q and E to turn, hold a key to keep moving and Shift to stride, scroll, plus and minus to change the lens, Home to reset.'
@@ -610,6 +647,7 @@ export function RoomViewport({
                   drag={drag}
                   manifestRef={manifestRef}
                   captureRef={captureRef}
+                  antialias={probeWebgl().tier !== 'software'}
                   onSelect={onSelect}
                   onHover={onHover}
                   onReady={onReady}
@@ -651,7 +689,7 @@ export function RoomViewport({
           <div className="room3d-hud__aside">
             <CameraSettings
               camera={camera}
-              view={view}
+              readoutRef={readoutRef}
               wireframe={wireframe}
               floorLux={Boolean(floorLux)}
               onCamera={onCameraCommit}

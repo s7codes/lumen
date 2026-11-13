@@ -13,13 +13,21 @@ function fillPercent(value, range) {
   return `${(((value - range.min) / (range.max - range.min)) * 100).toFixed(1)}%`;
 }
 
+/** The lens readout line, one string so it renders as a single text node the canvas can write live. */
+export function formatCameraReadout(view) {
+  return `Yaw ${view.yaw.toFixed(1)} / Pitch ${view.pitch.toFixed(1)} / Zoom ${view.zoom.toFixed(2)}x`;
+}
+
 /**
  * Fine camera control kept out of sight. Orbiting by drag covers most use;
  * the fader button opens exact yaw, pitch and zoom, the wireframe view and
  * the floor illuminance grid.
  * Closes on Escape, on a second press and on any pointer down outside it.
+ * React renders the committed camera; during a glide or an orbit drag the
+ * canvas writes the live lens straight into the readout through `readoutRef`,
+ * so no frame of motion re-renders the viewport.
  */
-export function CameraSettings({ camera, view, wireframe, floorLux, onCamera, onWireframe, onFloorLux }) {
+export function CameraSettings({ camera, readoutRef, wireframe, floorLux, onCamera, onWireframe, onFloorLux }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const toggleRef = useRef(null);
@@ -70,8 +78,8 @@ export function CameraSettings({ camera, view, wireframe, floorLux, onCamera, on
         data-testid="camera-settings"
         inert={!open}
       >
-        <p className="camera-settings__readout mono" data-testid="camera-readout">
-          Yaw {view.yaw.toFixed(1)} / Pitch {view.pitch.toFixed(1)} / Zoom {view.zoom.toFixed(2)}x
+        <p ref={readoutRef} className="camera-settings__readout mono" data-testid="camera-readout">
+          {formatCameraReadout(camera)}
         </p>
 
         {SLIDERS.map(({ key, label, range, step, format }) => {
