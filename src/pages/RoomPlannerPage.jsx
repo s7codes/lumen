@@ -50,7 +50,7 @@ import {
   DEFAULT_CAMERA_MODE,
   eyeIlluminance,
   INSIDE_FOV_DEG,
-  lookWalk,
+  placeWalk,
   rescaleStance,
   sanitizeCameraMode,
   sanitizeInsideFov,
@@ -210,7 +210,8 @@ export default function RoomPlannerPage() {
         setWalk(defaultStance(room, activeWall));
         setInsideFov(INSIDE_FOV_DEG);
       },
-      look: ({ headingDeg, pitchDeg }) => setWalk((current) => lookWalk(current, headingDeg, pitchDeg)),
+      // A head turn, or the stance a held walk comes to rest at: one commit per gesture.
+      look: (patch) => setWalk((current) => placeWalk(current, room, patch)),
     }),
     [room, activeWall],
   );

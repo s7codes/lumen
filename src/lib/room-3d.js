@@ -1,6 +1,7 @@
 import { getProduct, productHasFinish } from '../data/products.js';
 import { isOneOf, safeStorage } from '../security/sanitize.js';
 import { dimPatch, recordChanged, sanitizeDimPct, withDimPct } from './dimming.js';
+import { sanitizeSolarHour, SOLAR_HOUR, WINDOW_WALLS } from './solar-path.js';
 import {
   boxToRoom,
   boxToWall,
@@ -96,6 +97,21 @@ export const DEFAULT_ROOM = Object.freeze({
   furniture: 'none',
   lighting: 'night',
 });
+
+/*
+ * Optional envelope keys. Each is held only away from its default, the way
+ * an item holds `wall` off the north wall and `dimPct` below 100, so a room
+ * saved before they existed, or one that keeps them default, stores, shares
+ * and compares exactly as it always has.
+ *
+ * - solarHour: local time of the daylight sun, 06:00 to 21:00 (14:30).
+ * - windowWall: the daylight window. When unset it follows the lighting: a
+ *   west window in Daylight Studio, none at night. A chosen wall, or 'none',
+ *   holds through lighting changes.
+ * - furnitureWall: the wall the floor reference backs onto (north).
+ * - furnitureOffsetCm: its slide along that wall from centre (0).
+ */
+export const DEFAULT_FURNITURE_WALL = DEFAULT_ROOM_WALL;
 
 
 // Furniture stands this far off the main wall, so a module shallower than the
@@ -193,15 +209,55 @@ export function wrapYaw(deg) {
 
 /* Envelope, camera and wall adapter */
 
+/** The wall the floor reference backs onto. */
+export function furnitureWallOf(room) {
+  return sanitizeWallId(room?.furnitureWall);
+}
+
+/** How far the floor reference can slide either way from centre along its wall, in whole cm. */
+export function furnitureSlackCm(room) {
+  const spec = getFurniture(room?.furniture);
+  if (!spec || !spec.parts) return 0;
+  return Math.max(0, Math.floor((wallSpanCm(room, furnitureWallOf(room)) - spec.w) / 2));
+}
+
+/** The daylight window in effect: the chosen wall, or by default west in daylight and none at night. */
+export function windowWallOf(room) {
+  if (isOneOf(room?.windowWall, WINDOW_WALLS)) return room.windowWall;
+  return room?.lighting === 'daylight' ? 'west' : 'none';
+}
+
+/** Local solar hour in effect. */
+export function solarHourOf(room) {
+  return sanitizeSolarHour(room?.solarHour);
+}
+
 export function sanitizeRoom(input) {
   const source = isRecord(input) ? input : {};
-  return {
+  const room = {
     widthCm: Math.round(clampRange(source.widthCm, ROOM_WIDTH)),
     depthCm: Math.round(clampRange(source.depthCm, ROOM_DEPTH)),
     heightCm: Math.round(clampRange(source.heightCm, ROOM_HEIGHT)),
     furniture: isOneOf(source.furniture, FURNITURE_IDS) ? source.furniture : DEFAULT_ROOM.furniture,
     lighting: isOneOf(source.lighting, LIGHTING_IDS) ? source.lighting : DEFAULT_ROOM.lighting,
   };
+  if (isFiniteNumber(source.solarHour)) {
+    const hour = sanitizeSolarHour(source.solarHour);
+    if (hour !== SOLAR_HOUR.initial) room.solarHour = hour;
+  }
+  if (isOneOf(source.windowWall, WINDOW_WALLS)) room.windowWall = source.windowWall;
+  // Placement belongs to a piece of furniture: with none chosen there is nothing to place.
+  if (room.furniture !== 'none') {
+    if (isRoomWall(source.furnitureWall) && source.furnitureWall !== DEFAULT_FURNITURE_WALL) {
+      room.furnitureWall = source.furnitureWall;
+    }
+    if (isFiniteNumber(source.furnitureOffsetCm)) {
+      const slack = furnitureSlackCm(room);
+      const offset = Math.round(Math.min(slack, Math.max(-slack, source.furnitureOffsetCm))) + 0;
+      if (offset !== 0) room.furnitureOffsetCm = offset;
+    }
+  }
+  return room;
 }
 
 /**
@@ -269,24 +325,41 @@ export function boxesIntersect(a, b) {
   return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1 && a.z0 < b.z1 && b.z0 < a.z1;
 }
 
-/** Furniture placed centred on the north wall, pulled forward only as far as the room allows. */
+/** Room depth in front of a wall: the room depth for north and south, its width for east and west. */
+function reachCm(room, wall) {
+  return wall === 'east' || wall === 'west' ? room.widthCm : room.depthCm;
+}
+
+/**
+ * Furniture placed against its wall (north by default), centred and slid by
+ * the offset, pulled forward only as far as the room allows. Parts are built
+ * in that wall's frame and carried into the room as axis-aligned boxes, so
+ * collisions, clearances and the walkthrough footprint follow the furniture
+ * onto any wall. `frame` is where its own frame sits on the wall.
+ */
 export function furnitureLayout(room) {
   const spec = getFurniture(room.furniture);
   if (!spec || !spec.parts) return null;
 
-  const x0 = Math.round((room.widthCm - spec.w) / 2);
-  const z0 = Math.max(0, Math.min(FURNITURE_WALL_GAP_CM, room.depthCm - spec.d));
+  const wall = furnitureWallOf(room);
+  const reach = reachCm(room, wall);
+  const slack = furnitureSlackCm(room);
+  const offset = isFiniteNumber(room.furnitureOffsetCm)
+    ? Math.round(Math.min(slack, Math.max(-slack, room.furnitureOffsetCm))) + 0
+    : 0;
+  const x0 = Math.round((wallSpanCm(room, wall) - spec.w) / 2) + offset;
+  const z0 = Math.max(0, Math.min(FURNITURE_WALL_GAP_CM, reach - spec.d));
   const parts = spec.parts.map((p) => ({
     id: p.id,
     tone: p.tone,
-    box: {
+    box: boxToRoom(room, wall, {
       x0: x0 + p.x,
       x1: x0 + p.x + p.w,
       y0: p.y,
       y1: p.y + p.h,
       z0: z0 + p.z,
-      z1: Math.min(room.depthCm, z0 + p.z + p.d),
-    },
+      z1: Math.min(reach, z0 + p.z + p.d),
+    }),
   }));
   const bounds = parts.reduce(
     (acc, { box }) => ({
@@ -299,7 +372,16 @@ export function furnitureLayout(room) {
     }),
     { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity, z0: Infinity, z1: -Infinity },
   );
-  return { id: spec.id, label: spec.label, minHeadroomCm: spec.minHeadroomCm, parts, bounds };
+  return {
+    id: spec.id,
+    label: spec.label,
+    minHeadroomCm: spec.minHeadroomCm,
+    wall,
+    offsetCm: offset,
+    frame: { wall, x0, z0, reach, w: spec.w, d: spec.d },
+    parts,
+    bounds,
+  };
 }
 
 function itemsOn(items, wall) {
@@ -376,8 +458,10 @@ function overlapSpan(a0, a1, b0, b1) {
 
 /**
  * Dimensioned clearances for the technical overlay. Each callout is a 3D
- * segment in room cm with a label and a tone ('ok' or 'tight'). Headroom is
- * read on the north wall, the one the reference furniture backs onto.
+ * segment in room cm with a label and a tone ('ok' or 'tight'). The walkway
+ * runs from the furniture front to the opposite wall, and headroom is read
+ * on the wall the reference furniture backs onto, both worked out in that
+ * wall's frame.
  */
 export function clearanceCallouts(state, selectedUid = null) {
   const { room, items } = state;
@@ -385,21 +469,24 @@ export function clearanceCallouts(state, selectedUid = null) {
   const furniture = furnitureLayout(room);
 
   if (furniture) {
-    const { bounds, minHeadroomCm } = furniture;
-    const walkway = Math.max(0, room.depthCm - bounds.z1);
-    const x = Math.min(room.widthCm - 12, bounds.x1 + 14);
+    const { wall, minHeadroomCm } = furniture;
+    const bounds = boxToWall(room, wall, furniture.bounds);
+    const reach = reachCm(room, wall);
+    const at = (point) => wallToRoom(room, wall, point);
+    const walkway = Math.max(0, reach - bounds.z1);
+    const x = Math.min(wallSpanCm(room, wall) - 12, bounds.x1 + 14);
     callouts.push({
       id: 'walkway',
       label: `Walkway ${walkway} cm`,
       valueCm: walkway,
       tone: walkway >= 60 ? 'ok' : 'tight',
-      from: [x, 0, bounds.z1],
-      to: [x, 0, room.depthCm],
+      from: at([x, 0, bounds.z1]),
+      to: at([x, 0, reach]),
     });
 
     let lowest = null;
     for (const item of items) {
-      if (wallOf(item) !== DEFAULT_ROOM_WALL) continue;
+      if (wallOf(item) !== wall) continue;
       const box = moduleBox(item);
       const span = overlapSpan(box.x0, box.x1, bounds.x0, bounds.x1);
       if (!span || box.y0 < bounds.y1) continue;
@@ -413,8 +500,8 @@ export function clearanceCallouts(state, selectedUid = null) {
         valueCm: lowest.gap,
         tone: lowest.gap >= minHeadroomCm ? 'ok' : 'tight',
         uid: lowest.item.uid,
-        from: [lowest.x, bounds.y1, 3],
-        to: [lowest.x, lowest.item.yCm, 3],
+        from: at([lowest.x, bounds.y1, 3]),
+        to: at([lowest.x, lowest.item.yCm, 3]),
       });
     }
   }
@@ -462,9 +549,10 @@ function pullInside(items, room) {
   return changed ? next : items;
 }
 
+// Optional envelope keys come and go, so equality checks both key sets.
 export function updateRoom(state, patch) {
   const room = sanitizeRoom({ ...state.room, ...(isRecord(patch) ? patch : {}) });
-  if (Object.keys(room).every((key) => room[key] === state.room[key])) return state;
+  if (!recordChanged(room, state.room)) return state;
   return { ...state, room, items: pullInside(state.items, room) };
 }
 

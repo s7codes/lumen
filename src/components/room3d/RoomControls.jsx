@@ -1,15 +1,30 @@
+import { useEffect, useId, useRef } from 'react';
 import { PRODUCTS } from '../../data/products.js';
 import { formatUsd } from '../../lib/format.js';
 import {
   FURNITURE,
+  furnitureSlackCm,
+  furnitureWallOf,
   LIGHTING_MODES,
   ROOM_DEPTH,
   ROOM_HEIGHT,
   ROOM_SIZE_PRESETS,
+  ROOM_WALLS,
   ROOM_WIDTH,
   roomSizePreset,
+  solarHourOf,
   WALL_LABELS,
+  windowWallOf,
 } from '../../lib/room-3d.js';
+import {
+  formatSolarHour,
+  SOLAR_HOUR,
+  SOLAR_PRESETS,
+  solarPreset,
+  solarState,
+  WINDOW_LABELS,
+  WINDOW_WALLS,
+} from '../../lib/solar-path.js';
 import { MAX_WALL_ITEMS } from '../../lib/wall-studio.js';
 import { clampNumber } from '../../security/sanitize.js';
 import { Disclosure, NumberField, PaletteItem, PanelSection } from '../studio/controls.jsx';
@@ -69,6 +84,200 @@ function ScalePresets({ room, onRoom }) {
   );
 }
 
+/**
+ * A range that paints its fill and readout straight to the DOM while the
+ * thumb moves and commits once on `change` (pointer release or a key step),
+ * so a drag is one undoable edit, never a render per pointer move.
+ */
+function CommitRange({ label, value, min, max, step, format, onCommit, testId, disabled = false }) {
+  const id = useId();
+  const inputRef = useRef(null);
+  const readoutRef = useRef(null);
+  const commitRef = useRef(onCommit);
+  commitRef.current = onCommit;
+  const formatRef = useRef(format);
+  formatRef.current = format;
+
+  const paint = (next) => {
+    const input = inputRef.current;
+    if (!input) return;
+    const span = max - min;
+    input.style.setProperty('--dim-fill', `${span > 0 ? ((next - min) / span) * 100 : 0}%`);
+    input.setAttribute('aria-valuetext', formatRef.current(next));
+    if (readoutRef.current) readoutRef.current.textContent = formatRef.current(next);
+  };
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.value = String(value);
+    paint(value);
+    // min and max move the fill too.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, min, max]);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return undefined;
+    const onInput = () => paint(Number(input.value));
+    const onChange = () => commitRef.current(Number(input.value));
+    input.addEventListener('input', onInput);
+    input.addEventListener('change', onChange);
+    return () => {
+      input.removeEventListener('input', onInput);
+      input.removeEventListener('change', onChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="dim-slider room3d-range" data-disabled={disabled || undefined}>
+      <div className="dim-slider__head">
+        <label className="field__label" htmlFor={id}>
+          {label}
+        </label>
+        <output className="dim-slider__value mono" htmlFor={id} ref={readoutRef} data-testid={`${testId}-value`}>
+          {format(value)}
+        </output>
+      </div>
+      <input
+        ref={inputRef}
+        id={id}
+        className="dim-slider__input"
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        defaultValue={value}
+        disabled={disabled}
+        data-testid={testId}
+        data-value={value}
+      />
+    </div>
+  );
+}
+
+const signedCm = (value) => `${value > 0 ? '+' : ''}${value} cm`;
+
+/**
+ * Sun & Aperture: local solar time with four quick presets, and the wall
+ * the daylight window sits in. The sun moves in Daylight Studio; at night
+ * the window stays dark.
+ */
+function SunAperture({ room, onRoom }) {
+  const hour = solarHourOf(room);
+  const preset = solarPreset(hour);
+  const windowWall = windowWallOf(room);
+  const solar = solarState(hour);
+  const daylight = room.lighting === 'daylight';
+  return (
+    <Disclosure
+      label="Sun & Aperture"
+      summary={`${formatSolarHour(hour)} / ${windowWall === 'none' ? 'No window' : `${WINDOW_LABELS[windowWall]} window`}`}
+      testId="room-solar-controls"
+    >
+      <CommitRange
+        label="Solar time"
+        value={hour}
+        min={SOLAR_HOUR.min}
+        max={SOLAR_HOUR.max}
+        step={SOLAR_HOUR.step}
+        format={formatSolarHour}
+        onCommit={(solarHour) => onRoom({ solarHour })}
+        testId="room-solar-hour"
+      />
+      <div className="room3d-sun__presets" role="group" aria-label="Solar time presets">
+        {SOLAR_PRESETS.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            className="room3d-sun__preset"
+            aria-pressed={preset === entry.id}
+            data-testid={`room-solar-${entry.id}`}
+            onClick={() => onRoom({ solarHour: entry.hour })}
+          >
+            <span>{entry.label}</span>
+            <span className="mono">{formatSolarHour(entry.hour)}</span>
+          </button>
+        ))}
+      </div>
+      <Segment
+        legend="Window"
+        name="room-window"
+        options={WINDOW_WALLS.map((id) => ({ id, label: WINDOW_LABELS[id] }))}
+        value={windowWall}
+        onChange={(next) => onRoom({ windowWall: next })}
+      />
+      <p
+        className="room3d-sun__readout mono"
+        data-testid="room-solar-readout"
+        data-azimuth={solar.azimuthDeg}
+        data-elevation={solar.elevationDeg}
+        data-kelvin={solar.kelvin}
+      >
+        {daylight
+          ? solar.up
+            ? `Sun AZ ${Math.round(solar.azimuthDeg)} deg / EL ${Math.round(solar.elevationDeg)} deg / ${solar.kelvin}K`
+            : 'Sun below the horizon / twilight sky'
+          : 'Night Ambient: the sun moves in Daylight Studio.'}
+      </p>
+    </Disclosure>
+  );
+}
+
+/** Which wall the floor reference backs onto, and its slide along it. */
+function FurniturePlacement({ room, onRoom }) {
+  if (room.furniture === 'none') return null;
+  const wall = furnitureWallOf(room);
+  const slack = furnitureSlackCm(room);
+  const offset = room.furnitureOffsetCm ?? 0;
+  const turn = () => onRoom({ furnitureWall: ROOM_WALLS[(ROOM_WALLS.indexOf(wall) + 1) % ROOM_WALLS.length] });
+  return (
+    <Disclosure label="Placement" summary={`${WALL_LABELS[wall]} / ${signedCm(offset)}`} testId="furniture-placement">
+      <div className="room3d-placement">
+        <div className="field studio-field">
+          <label className="field__label" htmlFor="furniture-wall">
+            Backs onto
+          </label>
+          <select
+            id="furniture-wall"
+            className="field__input field__select"
+            value={wall}
+            data-testid="furniture-wall-select"
+            onChange={(event) => onRoom({ furnitureWall: event.target.value })}
+          >
+            {ROOM_WALLS.map((id) => (
+              <option key={id} value={id}>
+                {WALL_LABELS[id]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          className="tool-button room3d-placement__turn"
+          data-testid="furniture-rotate"
+          title="Turn the floor reference onto the next wall, clockwise"
+          onClick={turn}
+        >
+          Rotate 90 deg
+        </button>
+      </div>
+      <CommitRange
+        label="Offset along wall"
+        value={offset}
+        min={-slack}
+        max={slack}
+        step={1}
+        format={signedCm}
+        disabled={slack === 0}
+        onCommit={(furnitureOffsetCm) => onRoom({ furnitureOffsetCm })}
+        testId="furniture-offset"
+      />
+    </Disclosure>
+  );
+}
+
 function RoomSettings({ room, onRoom }) {
   return (
     <PanelSection title="Envelope & Lighting">
@@ -120,6 +329,9 @@ function RoomSettings({ room, onRoom }) {
         value={room.lighting}
         onChange={(lighting) => onRoom({ lighting })}
       />
+      <div className="room3d-disclosure-row">
+        <SunAperture room={room} onRoom={onRoom} />
+      </div>
       <Segment
         legend="Floor reference"
         name="room-furniture"
@@ -127,6 +339,11 @@ function RoomSettings({ room, onRoom }) {
         value={room.furniture}
         onChange={(furniture) => onRoom({ furniture })}
       />
+      {room.furniture !== 'none' && (
+        <div className="room3d-disclosure-row">
+          <FurniturePlacement room={room} onRoom={onRoom} />
+        </div>
+      )}
     </PanelSection>
   );
 }

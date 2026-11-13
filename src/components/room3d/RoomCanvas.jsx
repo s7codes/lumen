@@ -1,20 +1,36 @@
 import { Edges, Html, OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import {
+  AdditiveBlending,
+  BoxGeometry,
   BufferGeometry,
+  ClampToEdgeWrapping,
+  Color,
+  CylinderGeometry,
   DataTexture,
+  DoubleSide,
+  Euler,
   Float32BufferAttribute,
   LinearFilter,
+  LinearMipmapLinearFilter,
+  Matrix4,
+  NoColorSpace,
   Object3D,
+  PlaneGeometry,
+  Quaternion,
   Raycaster,
+  RepeatWrapping,
   RGBAFormat,
+  ShaderMaterial,
   SRGBColorSpace,
   Vector2,
   Vector3,
 } from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { formatInt } from '../../lib/format.js';
 import { fieldImage, isoLuxContours } from '../../lib/illuminance-field.js';
+import { contactShadowMap, faceUvTransform, PBR_MATERIALS, synthesizeMaterial } from '../../lib/pbr-materials.js';
 import { CAMERA_PITCH, CAMERA_YAW, ROOM_WALLS, sameCamera, sanitizeCamera, WALL_HEADING, wrapYaw } from '../../lib/room-3d.js';
 import { intersectRayWithWall } from '../../lib/room-raycast.js';
 import {
@@ -23,20 +39,29 @@ import {
   cameraPosition,
   headingDelta,
   orbitLimits,
+  subpartLookKey,
   sunDirection,
   wallCull,
 } from '../../lib/room-scene.js';
 import { wallDirToRoom, wallToRoom } from '../../lib/room-walls.js';
 import {
+  coastWalk,
   compassReadout,
   elevationCamera,
   EYE_HEIGHT_CM,
   facingWall,
+  furnitureZone,
   headingTurn,
   LOOK_PITCH,
   lookDirection,
   normalizeHeading,
+  placeWalk,
+  rampWalkVelocity,
   sanitizeInsideFov,
+  stepContinuousWalk,
+  WALK_HOLD_S,
+  walkIntent,
+  walkTargetVelocity,
 } from '../../lib/room-walkthrough.js';
 import { MAX_FRAME_DT, stepSpring } from '../../lib/spring.js';
 import { setAttr, setData, setText } from '../../lib/dom-writes.js';
@@ -286,8 +311,11 @@ function lensDirection(lens) {
   return lens.getWorldDirection(new Vector3());
 }
 
-const WALK_KEYS = ['x', 'y', 'z', 'heading', 'pitch', 'fov'];
+const POSE_KEYS = ['x', 'y', 'z', 'heading', 'pitch', 'fov'];
 const LOOK_KEYS = new Set(['heading', 'pitch']);
+const GAIT_KEYS = new Set(['x', 'z', 'heading']);
+const GAIT_LOOK_KEYS = new Set(['x', 'z', 'heading', 'pitch']);
+const RESIDUAL_AXES = ['x', 'z', 'heading'];
 
 /**
  * Inside-room lens: the observer stands at the walk stance with the eye at
@@ -295,7 +323,16 @@ const LOOK_KEYS = new Set(['heading', 'pitch']);
  * A pointer drag turns the head (the world follows the pointer) and writes
  * straight to the camera; the turn is committed once, on release. The wheel
  * swings the field of view the same way, committed after a short pause. A
- * stance change from keys, step buttons or wall tabs glides in on a spring.
+ * stance change from a tapped key, step buttons or wall tabs glides in on a
+ * spring.
+ *
+ * Held walk keys run a gait: once a key has been down WALK_HOLD_S, the stance
+ * advances every frame at a ramped walking speed (stepContinuousWalk), the
+ * camera and the scene-graph mirror are written straight from the frame
+ * loop, and the stance commits once, where the walk comes to rest, when the
+ * last key lifts. The gait starts from the stance the tap stride already
+ * committed, so a hold never loses that first step; the camera, still
+ * gliding toward it, eases onto the gait through a decaying residual.
  */
 function WalkRig({ room, walk, insideFov, api }) {
   const lens = useThree((state) => state.camera);
@@ -305,8 +342,14 @@ function WalkRig({ room, walk, insideFov, api }) {
   const gl = useThree((state) => state.gl);
   const goal = useRef(walk);
   goal.current = walk;
+  // A stance this rig has committed that React has not rendered yet: the
+  // spring aims here meanwhile, never back at the stale stance.
+  const pending = useRef(null);
   const roomRef = useRef(room);
   roomRef.current = room;
+  const zone = useMemo(() => furnitureZone(room), [room]);
+  const zoneRef = useRef(zone);
+  zoneRef.current = zone;
   const aspect = size.width / Math.max(1, size.height);
   const aspectRef = useRef(aspect);
   aspectRef.current = aspect;
@@ -315,11 +358,12 @@ function WalkRig({ room, walk, insideFov, api }) {
   // from a new value set elsewhere (keys, reset), which replaces the live one.
   const fovLens = useRef({ fov: insideFov, committed: insideFov, timer: 0 });
   const pose = useRef(null);
-  const velocity = useRef(Object.fromEntries(WALK_KEYS.map((key) => [key, 0])));
+  const velocity = useRef(Object.fromEntries(POSE_KEYS.map((key) => [key, 0])));
   const look = useRef(null);
+  const gait = useRef(null);
 
   const target = useCallback((p) => {
-    const g = goal.current;
+    const g = pending.current ?? goal.current;
     return {
       x: g.xCm,
       y: EYE_HEIGHT_CM,
@@ -413,14 +457,164 @@ function WalkRig({ room, walk, insideFov, api }) {
     };
   }, [events.connected, gl, api, invalidate]);
 
+  // React rendered a stance: whatever this rig committed has landed.
+  useLayoutEffect(() => {
+    pending.current = null;
+  }, [walk]);
+
+  // One commit per gesture; the spring aims at it from this frame on.
+  const commitStance = useCallback(
+    (patch) => {
+      pending.current = placeWalk(pending.current ?? goal.current, roomRef.current, patch);
+      api.commitWalk(patch);
+      return pending.current;
+    },
+    [api],
+  );
+
+  // Live stance into the scene-graph mirror; React renders the committed one.
+  const mirrorStance = useCallback(
+    (stance) => {
+      const mirror = api.walkMirror.current;
+      if (!mirror) return;
+      const headingDeg = normalizeHeading(stance.headingDeg);
+      setData(mirror, 'xCm', Math.round(stance.xCm));
+      setData(mirror, 'zCm', Math.round(stance.zCm));
+      setData(mirror, 'headingDeg', headingDeg);
+      setData(mirror, 'facingWall', facingWall({ xCm: stance.xCm, zCm: stance.zCm, headingDeg }, roomRef.current));
+    },
+    [api],
+  );
+
+  // A hold has outlasted the tap. The gait starts at rest from the stance the
+  // tap stride committed; the camera's offset from that stance, and the glide
+  // velocity it still carries, become a residual that decays on the lens
+  // spring. Camera speed stays continuous and rises without a surge.
+  const engageGait = useCallback(
+    (g, p) => {
+      const base = pending.current ?? goal.current;
+      const v = velocity.current;
+      const heading = p.heading + headingTurn(p.heading, base.headingDeg);
+      g.engaged = true;
+      g.stance = { xCm: base.xCm, zCm: base.zCm, headingDeg: heading };
+      g.velocity = { forward: 0, strafe: 0, turn: 0 };
+      g.residual = g.reduced
+        ? { x: 0, z: 0, heading: 0 }
+        : { x: p.x - base.xCm, z: p.z - base.zCm, heading: p.heading - heading };
+      g.residualVelocity = g.reduced ? { x: 0, z: 0, heading: 0 } : { x: v.x, z: v.z, heading: v.heading };
+      for (const key of RESIDUAL_AXES) v[key] = 0;
+      api.locomotion.engaged = true;
+      setData(api.walkMirror.current, 'locomotion', 'continuous');
+    },
+    [api],
+  );
+
+  // The last key lifted: the stance commits where the walk comes to rest and
+  // the camera goes back to the spring at the gait's own velocity, which
+  // traces the same exponential coast.
+  const releaseGait = useCallback(
+    (g, coast = true) => {
+      const world = coast && !g.reduced ? g.world : { vx: 0, vz: 0, vh: 0 };
+      const rest = coastWalk(g.stance, roomRef.current, world, zoneRef.current);
+      const v = velocity.current;
+      v.x = world.vx + g.residualVelocity.x;
+      v.z = world.vz + g.residualVelocity.z;
+      v.heading = world.vh + g.residualVelocity.heading;
+      api.locomotion.engaged = false;
+      const mirror = api.walkMirror.current;
+      if (mirror) {
+        delete mirror.dataset.locomotion;
+        delete mirror.dataset.speedCms;
+      }
+      mirrorStance(commitStance({ xCm: rest.xCm, zCm: rest.zCm, headingDeg: rest.headingDeg }));
+    },
+    [api, commitStance, mirrorStance],
+  );
+
+  // One frame of the held-key gait; true while it needs the next frame.
+  const stepGait = (p, dt) => {
+    const keys = api.heldKeys;
+    let g = gait.current;
+    if (keys.size === 0) {
+      gait.current = null;
+      if (g?.engaged) releaseGait(g);
+      return false;
+    }
+    if (!g) {
+      g = { held: 0, engaged: false, reduced: prefersReducedMotion(), world: { vx: 0, vz: 0, vh: 0 } };
+      gait.current = g;
+    }
+    g.held += dt;
+    if (!g.engaged) {
+      if (g.held < WALK_HOLD_S) return true;
+      engageGait(g, p);
+    }
+    const wanted = walkTargetVelocity(walkIntent(keys), api.locomotion.run);
+    g.velocity = g.reduced ? wanted : rampWalkVelocity(g.velocity, wanted, dt);
+    const looking = Boolean(look.current?.moved);
+    if (looking) {
+      // The pointer owns the gaze; the walk follows it.
+      g.stance = { ...g.stance, headingDeg: p.heading };
+      g.velocity.turn = 0;
+      g.residual.heading = 0;
+      g.residualVelocity.heading = 0;
+    }
+    const from = g.stance;
+    const next = stepContinuousWalk(from, roomRef.current, g.velocity, dt, zoneRef.current);
+    if (dt > 0) {
+      g.world = {
+        vx: (next.xCm - from.xCm) / dt,
+        vz: (next.zCm - from.zCm) / dt,
+        vh: (next.headingDeg - from.headingDeg) / dt,
+      };
+    }
+    g.stance = next;
+    const { stiffness, damping } = LENS_SPRING;
+    for (const key of RESIDUAL_AXES) {
+      [g.residual[key], g.residualVelocity[key]] = stepSpring(g.residual[key], g.residualVelocity[key], 0, dt, stiffness, damping);
+    }
+    p.x = next.xCm + g.residual.x;
+    p.z = next.zCm + g.residual.z;
+    if (!looking) p.heading = next.headingDeg + g.residual.heading;
+    mirrorStance(next);
+    setData(api.walkMirror.current, 'speedCms', Math.round(Math.hypot(g.world.vx, g.world.vz)));
+    return true;
+  };
+
+  useEffect(() => {
+    const loco = api.locomotion;
+    loco.rig = true;
+    loco.wake = invalidate;
+    // Keys held while the window loses focus never see their keyup.
+    const drop = () => {
+      if (api.heldKeys.size === 0) return;
+      api.heldKeys.clear();
+      invalidate();
+    };
+    window.addEventListener('blur', drop);
+    return () => {
+      window.removeEventListener('blur', drop);
+      loco.rig = false;
+      loco.wake = null;
+      // A lens switch mid-walk keeps the ground covered so far.
+      const g = gait.current;
+      gait.current = null;
+      if (g?.engaged) releaseGait(g, false);
+      loco.engaged = false;
+    };
+  }, [api, invalidate, releaseGait]);
+
   useFrame((_, delta) => {
     const p = pose.current;
     if (!p) return;
     const dt = Math.min(Math.max(delta, 0), MAX_FRAME_DT);
-    const looking = look.current?.moved ? LOOK_KEYS : null;
-    const done = settleSpring(p, velocity.current, target(p), WALK_KEYS, 0.05, dt, looking);
+    const walking = stepGait(p, dt);
+    const looking = Boolean(look.current?.moved);
+    const engaged = Boolean(gait.current?.engaged);
+    const skip = engaged ? (looking ? GAIT_LOOK_KEYS : GAIT_KEYS) : looking ? LOOK_KEYS : null;
+    const done = settleSpring(p, velocity.current, target(p), POSE_KEYS, 0.05, dt, skip);
     apply(p);
-    if (!done) invalidate();
+    if (!done || walking) invalidate();
   });
 
   // Head turns on a drag that starts anywhere but the selected module, which drags instead.
@@ -455,9 +649,10 @@ function WalkRig({ room, walk, insideFov, api }) {
       const mirror = api.walkMirror.current;
       if (mirror) {
         const heading = normalizeHeading(p.heading);
+        const at = gait.current?.engaged ? gait.current.stance : (pending.current ?? goal.current);
         mirror.dataset.headingDeg = String(heading);
         mirror.dataset.pitchDeg = String(Math.round(p.pitch * 10) / 10);
-        mirror.dataset.facingWall = facingWall({ ...goal.current, headingDeg: heading }, roomRef.current);
+        mirror.dataset.facingWall = facingWall({ xCm: at.xCm, zCm: at.zCm, headingDeg: heading }, roomRef.current);
       }
       invalidate();
     };
@@ -467,7 +662,7 @@ function WalkRig({ room, walk, insideFov, api }) {
       look.current = null;
       if (!l.moved) return;
       api.setOrbiting(false);
-      api.commitWalk({ headingDeg: pose.current.heading, pitchDeg: pose.current.pitch });
+      commitStance({ headingDeg: pose.current.heading, pitchDeg: pose.current.pitch });
     };
     el.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
@@ -479,7 +674,7 @@ function WalkRig({ room, walk, insideFov, api }) {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
     };
-  }, [events.connected, gl, api, invalidate]);
+  }, [events.connected, gl, api, invalidate, commitStance]);
 
   return null;
 }
@@ -664,6 +859,498 @@ function glass(wire) {
   return wire ? { transparent: true, opacity: 0.14, depthWrite: false } : {};
 }
 
+/* Procedural PBR library and world-scale geometry */
+
+const PbrContext = createContext(null);
+
+/**
+ * One library per canvas: each material key is synthesised once into
+ * DataTextures (albedo, normal, roughness), shared by every mesh that uses
+ * it, and disposed with the canvas. Nothing is fetched.
+ */
+function createPbrLibrary(gl) {
+  const cache = new Map();
+  const textures = [];
+  const anisotropy = Math.min(8, gl.capabilities.getMaxAnisotropy?.() ?? 1);
+  const texture = (data, width, height, repeat = true) => {
+    const map = new DataTexture(data, width, height, RGBAFormat);
+    map.wrapS = repeat ? RepeatWrapping : ClampToEdgeWrapping;
+    map.wrapT = repeat ? RepeatWrapping : ClampToEdgeWrapping;
+    map.magFilter = LinearFilter;
+    map.minFilter = repeat ? LinearMipmapLinearFilter : LinearFilter;
+    map.generateMipmaps = repeat;
+    map.anisotropy = repeat ? anisotropy : 1;
+    map.colorSpace = NoColorSpace;
+    map.needsUpdate = true;
+    textures.push(map);
+    return map;
+  };
+  return {
+    get(key) {
+      if (cache.has(key)) return cache.get(key);
+      const maps = synthesizeMaterial(key);
+      const entry = maps
+        ? {
+            roughness: maps.roughness,
+            map: texture(maps.albedoMap, maps.width, maps.height),
+            normalMap: texture(maps.normalMap, maps.width, maps.height),
+            roughnessMap: texture(maps.roughnessMap, maps.width, maps.height),
+          }
+        : null;
+      cache.set(key, entry);
+      return entry;
+    },
+    contact() {
+      if (!cache.has('contact')) {
+        const shadow = contactShadowMap(64);
+        cache.set('contact', texture(shadow.data, shadow.width, shadow.height, false));
+      }
+      return cache.get('contact');
+    },
+    dispose() {
+      for (const map of textures) map.dispose();
+      textures.length = 0;
+      cache.clear();
+    },
+  };
+}
+
+function PbrProvider({ children }) {
+  const gl = useThree((state) => state.gl);
+  const library = useMemo(() => createPbrLibrary(gl), [gl]);
+  useEffect(() => () => library.dispose(), [library]);
+  return <PbrContext.Provider value={library}>{children}</PbrContext.Provider>;
+}
+
+/** A geometry built once per shape and disposed when the shape changes or the mesh goes. */
+function useGeometry(make, deps) {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const geometry = useMemo(make, deps);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  return geometry;
+}
+
+const tileOf = (material) => (PBR_MATERIALS[material]?.tileCm ?? [40, 40]).map((cm) => cm * 0.01);
+
+function longestAxis(size) {
+  if (size[0] >= size[1] && size[0] >= size[2]) return 'x';
+  return size[1] >= size[2] ? 'y' : 'z';
+}
+
+// BoxGeometry face order: +x, -x, +y, -y, +z, -z; the u and v axes of each face.
+const BOX_FACES = Object.freeze([
+  [2, 1, 'z', 'y'],
+  [2, 1, 'z', 'y'],
+  [0, 2, 'x', 'z'],
+  [0, 2, 'x', 'z'],
+  [0, 1, 'x', 'y'],
+  [0, 1, 'x', 'y'],
+]);
+
+/** Box with UVs in metres: the map repeats every tile on every face and the grain runs along the given axis. */
+function worldBoxGeometry(size, tileM, grain) {
+  const geometry = new BoxGeometry(size[0], size[1], size[2]);
+  const uv = geometry.attributes.uv;
+  const along = grain ?? longestAxis(size);
+  BOX_FACES.forEach(([ui, vi, uAxis, vAxis], face) => {
+    const { swap, su, sv } = faceUvTransform(size[ui], size[vi], uAxis, vAxis, along, tileM);
+    for (let i = face * 4; i < face * 4 + 4; i += 1) {
+      const u = uv.getX(i);
+      const v = uv.getY(i);
+      if (swap) uv.setXY(i, v * su, u * sv);
+      else uv.setXY(i, u * su, v * sv);
+    }
+  });
+  uv.needsUpdate = true;
+  return geometry;
+}
+
+/** Cylinder with UVs in metres; grain 'y' runs the texture's u along the axis. */
+function worldCylinderGeometry(radiusTop, radiusBottom, height, segments, tileM, grain, openEnded = false) {
+  const geometry = new CylinderGeometry(radiusTop, radiusBottom, height, segments, 1, openEnded);
+  const uv = geometry.attributes.uv;
+  const torso = (segments + 1) * 2;
+  const around = Math.PI * (radiusTop + radiusBottom);
+  const across = 2 * Math.max(radiusTop, radiusBottom);
+  for (let i = 0; i < uv.count; i += 1) {
+    const u = uv.getX(i);
+    const v = uv.getY(i);
+    if (i >= torso) uv.setXY(i, (u * across) / tileM, (v * across) / tileM);
+    else if (grain === 'y') uv.setXY(i, (v * height) / tileM, (u * around) / tileM);
+    else uv.setXY(i, (u * around) / tileM, (v * height) / tileM);
+  }
+  uv.needsUpdate = true;
+  return geometry;
+}
+
+/** Plane with UVs in metres; `vOffset` shifts the pattern, so floor planks land on the room's plank seams. */
+function worldPlaneGeometry(width, height, tileU, tileV, vOffset = 0) {
+  const geometry = new PlaneGeometry(width, height);
+  const uv = geometry.attributes.uv;
+  for (let i = 0; i < uv.count; i += 1) uv.setXY(i, (uv.getX(i) * width) / tileU, (uv.getY(i) * height) / tileV + vOffset);
+  uv.needsUpdate = true;
+  return geometry;
+}
+
+/**
+ * Standard material with the procedural maps of its family. The roughness
+ * map holds absolute values, so a part's own roughness scales it; the
+ * wireframe view drops the maps for smoked glass.
+ */
+function PbrMaterial({ material, color, roughness, metalness = 0, wire = false, emissive = null, emissiveIntensity = 0 }) {
+  const pbr = useContext(PbrContext);
+  const maps = !wire && pbr ? pbr.get(material) : null;
+  return (
+    <meshStandardMaterial
+      key={wire ? 'glass' : maps ? `pbr-${material}` : 'flat'}
+      color={color}
+      roughness={maps ? Math.min(4, roughness / maps.roughness) : roughness}
+      metalness={metalness}
+      map={maps ? maps.map : null}
+      normalMap={maps ? maps.normalMap : null}
+      roughnessMap={maps ? maps.roughnessMap : null}
+      emissive={emissive ?? '#000000'}
+      emissiveIntensity={emissive ? emissiveIntensity : 0}
+      {...glass(wire)}
+    />
+  );
+}
+
+/** One CAD sub-part of a module or a piece of furniture. Never picked: the part's hull takes the pointer. */
+function Subpart({ part, wire }) {
+  const [tile] = tileOf(part.material);
+  const { geometry: shape, radius, radiusBottom, segments, grain } = part;
+  const [sx, sy, sz] = part.size;
+  const geometry = useGeometry(
+    () =>
+      shape === 'cylinder'
+        ? worldCylinderGeometry(radius, radiusBottom, sy, segments ?? 24, tile, grain)
+        : worldBoxGeometry([sx, sy, sz], tile, grain),
+    [shape, radius, radiusBottom, segments, grain, sx, sy, sz, tile],
+  );
+  const [rx, ry, rz] = part.rotation;
+  return (
+    <mesh
+      geometry={geometry}
+      position={part.position}
+      rotation={[rx, ry, rz, 'YXZ']}
+      castShadow={!wire && part.shadow}
+      receiveShadow
+      raycast={noRaycast}
+    >
+      <PbrMaterial
+        material={part.material}
+        color={part.color}
+        roughness={part.roughness}
+        metalness={part.metalness}
+        wire={wire}
+        emissive={part.emissive}
+        emissiveIntensity={part.emissiveIntensity}
+      />
+    </mesh>
+  );
+}
+
+const bakeEuler = new Euler();
+const bakeQuaternion = new Quaternion();
+const bakePosition = new Vector3();
+const bakeScale = new Vector3(1, 1, 1);
+const bakeMatrix = new Matrix4();
+
+/** A sub-part's geometry with world-scale UVs, baked into its place in the room. */
+function bakedPartGeometry(part) {
+  const [tile] = tileOf(part.material);
+  const geometry =
+    part.geometry === 'cylinder'
+      ? worldCylinderGeometry(part.radius, part.radiusBottom, part.size[1], part.segments ?? 24, tile, part.grain)
+      : worldBoxGeometry(part.size, tile, part.grain);
+  const [rx, ry, rz] = part.rotation;
+  bakeQuaternion.setFromEuler(bakeEuler.set(rx, ry, rz, 'YXZ'));
+  geometry.applyMatrix4(bakeMatrix.compose(bakePosition.fromArray(part.position), bakeQuaternion, bakeScale));
+  return geometry;
+}
+
+/**
+ * Sub-parts that share a look (family, colour, surface, glow, shadow) are
+ * merged into one geometry and drawn in one call: a frame's nine felt slats
+ * are one mesh and its four timber members another. The scene graph still
+ * lists every sub-part; only the draw calls are batched, which keeps a
+ * furnished room's frame cost close to the plain-box engine's.
+ */
+function usePartBatches(parts) {
+  const signature = JSON.stringify(parts);
+  const batches = useMemo(() => {
+    const groups = new Map();
+    for (const part of parts) {
+      const key = subpartLookKey(part);
+      if (!groups.has(key)) groups.set(key, { key, look: part, geometries: [] });
+      groups.get(key).geometries.push(bakedPartGeometry(part));
+    }
+    return [...groups.values()].flatMap(({ key, look, geometries }) => {
+      if (geometries.length === 1) return [{ key, look, geometry: geometries[0] }];
+      const merged = mergeGeometries(geometries, false);
+      if (!merged) return geometries.map((geometry, i) => ({ key: `${key}|${i}`, look, geometry }));
+      for (const geometry of geometries) geometry.dispose();
+      return [{ key, look, geometry: merged }];
+    });
+    // The signature carries every value the batches are built from.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+  useEffect(
+    () => () => {
+      for (const batch of batches) batch.geometry.dispose();
+    },
+    [batches],
+  );
+  return batches;
+}
+
+/** A set of CAD sub-parts, drawn as one mesh per shared look. Never picked: the hull takes the pointer. */
+function PartBatches({ parts, wire }) {
+  const batches = usePartBatches(parts);
+  return batches.map(({ key, look, geometry }) => (
+    <mesh key={key} geometry={geometry} castShadow={!wire && look.shadow} receiveShadow raycast={noRaycast}>
+      <PbrMaterial
+        material={look.material}
+        color={look.color}
+        roughness={look.roughness}
+        metalness={look.metalness}
+        wire={wire}
+        emissive={look.emissive}
+        emissiveIntensity={look.emissiveIntensity}
+      />
+    </mesh>
+  ));
+}
+
+/** Soft contact occlusion laid on a wall or the floor. */
+function ContactShadow({ plane }) {
+  const pbr = useContext(PbrContext);
+  const alpha = pbr ? pbr.contact() : null;
+  if (!alpha) return null;
+  return (
+    <mesh position={plane.position} rotation={plane.rotation} raycast={noRaycast} renderOrder={1}>
+      <planeGeometry args={plane.size} />
+      <meshBasicMaterial
+        color="#000000"
+        alphaMap={alpha}
+        transparent
+        opacity={plane.opacity}
+        depthWrite={false}
+        polygonOffset
+        polygonOffsetFactor={-2}
+        polygonOffsetUnits={-2}
+        toneMapped={false}
+      />
+    </mesh>
+  );
+}
+
+/* Volumetric light */
+
+const BEAM_VERTEX = /* glsl */ `
+varying vec3 vNormalView;
+varying vec3 vViewDir;
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vNormalView = normalize(normalMatrix * normal);
+  vViewDir = normalize(-mv.xyz);
+  gl_Position = projectionMatrix * mv;
+}
+`;
+
+// Bright at the source and fading along the beam (or toward both ends when
+// symmetric). Cones soften at their silhouette by how squarely the surface
+// faces the eye; sheets soften across their width. Drawn additively.
+const BEAM_FRAGMENT = /* glsl */ `
+uniform vec3 uColor;
+uniform float uOpacity;
+uniform float uSheet;
+uniform float uSymmetric;
+varying vec3 vNormalView;
+varying vec3 vViewDir;
+varying vec2 vUv;
+void main() {
+  float along = uSymmetric > 0.5 ? 1.0 - abs(vUv.y * 2.0 - 1.0) : vUv.y;
+  float fall = pow(clamp(along, 0.0, 1.0), 1.35);
+  float facing = abs(dot(normalize(vNormalView), normalize(vViewDir)));
+  float across = 1.0 - abs(vUv.x * 2.0 - 1.0);
+  float edge = mix(pow(facing, 1.5), smoothstep(0.0, 0.55, across), uSheet);
+  gl_FragColor = vec4(uColor, uOpacity * fall * edge);
+  #include <colorspace_fragment>
+}
+`;
+
+function useBeamMaterial(color, opacity, sheet, symmetric) {
+  const material = useMemo(
+    () =>
+      new ShaderMaterial({
+        uniforms: {
+          uColor: { value: new Color() },
+          uOpacity: { value: 0 },
+          uSheet: { value: 0 },
+          uSymmetric: { value: 0 },
+        },
+        vertexShader: BEAM_VERTEX,
+        fragmentShader: BEAM_FRAGMENT,
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        side: DoubleSide,
+      }),
+    [],
+  );
+  useLayoutEffect(() => {
+    material.uniforms.uColor.value.set(color);
+    material.uniforms.uOpacity.value = opacity;
+    material.uniforms.uSheet.value = sheet ? 1 : 0;
+    material.uniforms.uSymmetric.value = symmetric ? 1 : 0;
+  }, [material, color, opacity, sheet, symmetric]);
+  useEffect(() => () => material.dispose(), [material]);
+  return material;
+}
+
+/**
+ * Quads from a source edge (uv.y 1) to a far edge (uv.y 0), uv.x across each.
+ * Each quad is [s0, s1, f0, f1].
+ */
+function quadsGeometry(quads) {
+  const positions = [];
+  const uvs = [];
+  for (const [s0, s1, f0, f1] of quads) {
+    positions.push(...s0, ...f0, ...s1, ...s1, ...f0, ...f1);
+    uvs.push(0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0);
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/** A light sheet in the wall frame: one quad, or a four-sided frustum when it has depth. */
+function sheetGeometry(beam) {
+  const { width0: w0, width1: w1, depth0: d0, depth1: d1, length, direction, reach, symmetric } = beam;
+  const ys = symmetric ? length / 2 : 0;
+  const yf = symmetric ? -length / 2 : direction * length;
+  const zf = symmetric ? 0 : reach;
+  if (!(d0 > 0 || d1 > 0)) {
+    return quadsGeometry([[[-w0 / 2, ys, 0], [w0 / 2, ys, 0], [-w1 / 2, yf, zf], [w1 / 2, yf, zf]]]);
+  }
+  const s = (x, z) => [x, ys, z];
+  const f = (x, z) => [x, yf, zf + z];
+  return quadsGeometry([
+    [s(-w0 / 2, d0 / 2), s(w0 / 2, d0 / 2), f(-w1 / 2, d1 / 2), f(w1 / 2, d1 / 2)],
+    [s(-w0 / 2, -d0 / 2), s(w0 / 2, -d0 / 2), f(-w1 / 2, -d1 / 2), f(w1 / 2, -d1 / 2)],
+    [s(-w0 / 2, -d0 / 2), s(-w0 / 2, d0 / 2), f(-w1 / 2, -d1 / 2), f(-w1 / 2, d1 / 2)],
+    [s(w0 / 2, -d0 / 2), s(w0 / 2, d0 / 2), f(w1 / 2, -d1 / 2), f(w1 / 2, d1 / 2)],
+  ]);
+}
+
+const BEAM_AXIS = new Vector3(0, -1, 0);
+
+/** A volumetric light beam: a cone from its apex along its axis, or a sheet hung from its source. Never picked. */
+function VolumetricCone({ beam }) {
+  const cone = beam.geometry === 'cone';
+  const material = useBeamMaterial(beam.color, beam.opacity, !cone, beam.symmetric);
+  const { length, radiusTop, radiusBottom, width0, width1, depth0, depth1, reach, symmetric } = beam;
+  // A sheet hangs up (+1), down (-1) or centred (0); a cone's axis is its own quaternion.
+  const direction = cone ? 0 : beam.direction;
+  const geometry = useGeometry(() => {
+    if (!cone) return sheetGeometry({ width0, width1, depth0, depth1, length, direction, reach, symmetric });
+    const g = new CylinderGeometry(radiusTop, radiusBottom, length, 32, 1, true);
+    g.translate(0, -length / 2, 0);
+    return g;
+  }, [cone, length, radiusTop, radiusBottom, width0, width1, depth0, depth1, direction, reach, symmetric]);
+  const [dx, dy, dz] = cone ? beam.direction : [0, -1, 0];
+  const quaternion = useMemo(() => new Quaternion().setFromUnitVectors(BEAM_AXIS, new Vector3(dx, dy, dz)), [dx, dy, dz]);
+  if (cone) {
+    return <mesh geometry={geometry} material={material} position={beam.position} quaternion={quaternion} raycast={noRaycast} renderOrder={3} />;
+  }
+  return <mesh geometry={geometry} material={material} position={beam.position} rotation={beam.rotation} raycast={noRaycast} renderOrder={3} />;
+}
+
+/** A shaft of sunlight from a window pane to where it lands, in room metres. */
+function SunShaft({ shaft }) {
+  const material = useBeamMaterial(shaft.color, shaft.opacity, true, false);
+  const key = JSON.stringify([shaft.from, shaft.to]);
+  const geometry = useGeometry(
+    () => quadsGeometry(shaft.from.map((s0, i) => [s0, shaft.from[(i + 1) % 4], shaft.to[i], shaft.to[(i + 1) % 4]])),
+    [key],
+  );
+  return <mesh geometry={geometry} material={material} raycast={noRaycast} renderOrder={3} />;
+}
+
+/** A sunlit patch on the floor, mullion gaps and all. */
+function SunPatch({ patch }) {
+  const key = JSON.stringify(patch.points);
+  const geometry = useGeometry(() => {
+    const positions = [];
+    for (let i = 1; i < patch.points.length - 1; i += 1) positions.push(...patch.points[0], ...patch.points[i], ...patch.points[i + 1]);
+    const g = new BufferGeometry();
+    g.setAttribute('position', new Float32BufferAttribute(positions, 3));
+    return g;
+  }, [key]);
+  return (
+    <mesh geometry={geometry} raycast={noRaycast} renderOrder={2}>
+      <meshBasicMaterial
+        color={patch.color}
+        transparent
+        opacity={patch.opacity}
+        blending={AdditiveBlending}
+        side={DoubleSide}
+        depthWrite={false}
+        polygonOffset
+        polygonOffsetFactor={-3}
+        polygonOffsetUnits={-3}
+        toneMapped={false}
+      />
+    </mesh>
+  );
+}
+
+const WINDOW_FRAME = Object.freeze({
+  geometry: 'box',
+  material: 'metal-obsidian',
+  color: '#3d3832',
+  roughness: 0.5,
+  metalness: 0.3,
+  grain: null,
+  shadow: true,
+  emissive: null,
+  emissiveIntensity: 0,
+});
+
+/** The daylight window: glazing, frame, mullions and the sun it lets in. */
+function WindowLayer({ win, wire }) {
+  const { glazing } = win;
+  const members = useMemo(() => win.members.map((bar) => ({ ...WINDOW_FRAME, ...bar })), [win.members]);
+  return (
+    <group name="daylight-window">
+      <Cullable cull={win.cull}>
+        <mesh position={glazing.position} rotation={glazing.rotation} raycast={noRaycast}>
+          <planeGeometry args={glazing.size} />
+          <meshStandardMaterial
+            color="#0f1114"
+            emissive={glazing.color}
+            emissiveIntensity={glazing.intensity}
+            roughness={0.08}
+            metalness={0.2}
+            polygonOffset
+            polygonOffsetFactor={-1}
+            polygonOffsetUnits={-1}
+          />
+        </mesh>
+        <PartBatches parts={members} wire={wire} />
+        {!wire && win.shafts.map((shaft) => <SunShaft key={shaft.id} shaft={shaft} />)}
+      </Cullable>
+      {!wire && win.patches.map((patch) => <SunPatch key={patch.id} patch={patch} />)}
+    </group>
+  );
+}
+
 /** True when the hit sits under a group the section cut has hidden. */
 function culled(object) {
   for (let node = object; node; node = node.parent) if (!node.visible) return true;
@@ -672,20 +1359,37 @@ function culled(object) {
 
 /* Scene parts */
 
-function Shell({ shell, onBackground }) {
+/**
+ * A wall, floor or ceiling plane under its procedural maps, the pattern laid
+ * in room metres; the floor's planks land on the room's 18 cm plank seams.
+ */
+function ShellSurface({ surface, wire, name, onClick }) {
+  const [tileU, tileV] = tileOf(surface.material);
+  const [width, height] = surface.size;
+  const floor = surface.id === 'floor';
+  const geometry = useGeometry(
+    () => worldPlaneGeometry(width, height, tileU, tileV, floor ? -height / tileV : 0),
+    [width, height, tileU, tileV, floor],
+  );
+  return (
+    <mesh geometry={geometry} position={surface.position} rotation={surface.rotation} receiveShadow name={name} onClick={onClick}>
+      <PbrMaterial
+        material={surface.material}
+        color={surface.color}
+        roughness={surface.roughness ?? 0.92}
+        wire={wire}
+        emissive={surface.glow ?? null}
+        emissiveIntensity={surface.glow ? 1 : 0}
+      />
+    </mesh>
+  );
+}
+
+function Shell({ shell, wire, onBackground }) {
   return (
     <group onClick={onBackground}>
       {shell.surfaces.map((surface) => (
-        <mesh key={surface.id} position={surface.position} rotation={surface.rotation} receiveShadow name={`surface-${surface.id}`}>
-          <planeGeometry args={surface.size} />
-          <meshStandardMaterial
-            color={surface.color}
-            emissive={surface.glow ?? '#000000'}
-            emissiveIntensity={surface.glow ? 1 : 0}
-            roughness={0.92}
-            metalness={0}
-          />
-        </mesh>
+        <ShellSurface key={surface.id} surface={surface} wire={wire} name={`surface-${surface.id}`} />
       ))}
       {shell.poche.map((slab) => (
         <Cullable key={slab.id} cull={slab.cull}>
@@ -700,28 +1404,31 @@ function Shell({ shell, onBackground }) {
 }
 
 /** Baseboards and, at eye level only, the ceiling. */
-function Envelope({ envelope, showCeiling, onBackground }) {
+function Envelope({ envelope, showCeiling, wire, onBackground }) {
   const { ceiling } = envelope;
   return (
     <group>
-      {showCeiling && (
-        <mesh position={ceiling.position} rotation={ceiling.rotation} onClick={onBackground} name="surface-ceiling">
-          <planeGeometry args={ceiling.size} />
-          <meshStandardMaterial
-            color={ceiling.color}
-            emissive={ceiling.glow ?? '#000000'}
-            emissiveIntensity={ceiling.glow ? 1 : 0}
-            roughness={0.95}
-            metalness={0}
-          />
-        </mesh>
-      )}
+      {showCeiling && <ShellSurface surface={ceiling} wire={wire} name="surface-ceiling" onClick={onBackground} />}
       {envelope.baseboards.map((board) => (
         <Cullable key={board.id} cull={board.cull}>
-          <mesh position={board.position} raycast={noRaycast} receiveShadow>
-            <boxGeometry args={board.size} />
-            <meshStandardMaterial color={board.color} roughness={0.7} />
-          </mesh>
+          <Subpart
+            part={{
+              id: board.id,
+              geometry: 'box',
+              size: board.size,
+              position: board.position,
+              rotation: [0, 0, 0],
+              material: board.material,
+              color: board.color,
+              roughness: 0.7,
+              metalness: 0,
+              grain: null,
+              shadow: false,
+              emissive: null,
+              emissiveIntensity: 0,
+            }}
+            wire={wire}
+          />
         </Cullable>
       ))}
     </group>
@@ -781,6 +1488,7 @@ function ModuleMesh({ module, wire, edges, ink, drag, onSelect, onHover }) {
   const groupRef = useRef(null);
   const [px, py, pz] = module.position;
   const { uid } = module;
+  const assembled = module.subparts.length > 0;
 
   useLayoutEffect(() => {
     const group = groupRef.current;
@@ -826,22 +1534,29 @@ function ModuleMesh({ module, wire, edges, ink, drag, onSelect, onHover }) {
       onPointerOut={() => onHover(false)}
     >
       <Cullable cull={module.cull}>
-        <mesh position={module.position} rotation={module.rotation} castShadow={!wire} receiveShadow>
+        {/* The hull: the module's bounding primitive. It takes the pointer and carries the
+            selection and technical outlines; drawn only for a part without sub-assemblies. */}
+        <mesh position={module.position} rotation={module.rotation} castShadow={!wire && !assembled} receiveShadow>
           {module.geometry === 'cylinder' ? (
             <cylinderGeometry args={[module.radius, module.radius, module.size[1], 32]} />
           ) : (
             <boxGeometry args={module.size} />
           )}
-          <meshStandardMaterial
-            key={wire ? 'glass' : 'solid'}
-            color={module.color}
-            roughness={module.roughness}
-            metalness={module.metalness}
-            {...glass(wire)}
-          />
+          {assembled ? (
+            <meshBasicMaterial visible={false} />
+          ) : (
+            <PbrMaterial
+              material={module.material}
+              color={module.color}
+              roughness={module.roughness}
+              metalness={module.metalness}
+              wire={wire}
+            />
+          )}
           <BoxEdges edges={edges} ink={ink} selected={module.selected} conflict={module.conflict} />
         </mesh>
-        {module.felt && (
+        {assembled && <PartBatches parts={module.subparts} wire={wire} />}
+        {!assembled && module.felt && (
           <mesh position={module.felt.position} rotation={module.rotation} receiveShadow>
             <boxGeometry args={module.felt.size} />
             <meshStandardMaterial color={module.felt.color} roughness={0.96} {...glass(wire)} />
@@ -853,6 +1568,9 @@ function ModuleMesh({ module, wire, edges, ink, drag, onSelect, onHover }) {
             <meshStandardMaterial color="#1a1916" emissive={emitter.color} emissiveIntensity={emitter.intensity} roughness={0.4} />
           </mesh>
         ))}
+        {!wire && <ContactShadow plane={module.aoShadow} />}
+        {!wire && module.aoFloor && <ContactShadow plane={module.aoFloor} />}
+        {!wire && module.volumetrics.map((beam) => <VolumetricCone key={beam.id} beam={beam} />)}
       </Cullable>
       {module.lights.map((light) => (
         <ModuleLight key={light.id} light={light} />
@@ -861,13 +1579,27 @@ function ModuleMesh({ module, wire, edges, ink, drag, onSelect, onHover }) {
   );
 }
 
+/**
+ * A floor reference part: its collision box, drawn under its material
+ * unless the detail replaces it, carrying the technical outline, and the
+ * architectural detail (legs, cushions, headboard, objects) around it.
+ */
 function FurnitureMesh({ part, wire, edges, ink }) {
+  const [tile] = tileOf(part.material);
+  const [sx, sy, sz] = part.size;
+  const geometry = useGeometry(() => worldBoxGeometry([sx, sy, sz], tile, null), [sx, sy, sz, tile]);
   return (
-    <mesh position={part.position} castShadow={!wire} receiveShadow name={`furniture-${part.part}`}>
-      <boxGeometry args={part.size} />
-      <meshStandardMaterial key={wire ? 'glass' : 'solid'} color={part.color} roughness={0.88} {...glass(wire)} />
-      <BoxEdges edges={edges} ink={ink} selected={false} conflict={false} />
-    </mesh>
+    <group>
+      <mesh geometry={geometry} position={part.position} castShadow={!wire && part.body} receiveShadow name={`furniture-${part.part}`}>
+        {part.body ? (
+          <PbrMaterial material={part.material} color={part.color} roughness={part.roughness} metalness={part.metalness} wire={wire} />
+        ) : (
+          <meshBasicMaterial visible={false} />
+        )}
+        <BoxEdges edges={edges} ink={ink} selected={false} conflict={false} />
+      </mesh>
+      {part.subparts.length > 0 && <PartBatches parts={part.subparts} wire={wire} />}
+    </group>
   );
 }
 
@@ -1173,8 +1905,10 @@ const SceneGraph = memo(function SceneGraph({ scene, floorLux, heading, cameraMo
       />
       <Sun rig={scene.rig} size={scene.size} heading={heading} />
 
-      <Shell shell={scene.shell} onBackground={onBackground} />
-      <Envelope envelope={scene.envelope} showCeiling={cameraMode === 'inside'} onBackground={onBackground} />
+      <Shell shell={scene.shell} wire={wire} onBackground={onBackground} />
+      <Envelope envelope={scene.envelope} showCeiling={cameraMode === 'inside'} wire={wire} onBackground={onBackground} />
+      {scene.window && <WindowLayer win={scene.window} wire={wire} />}
+      {!wire && scene.furnitureAo && <ContactShadow plane={scene.furnitureAo} />}
       <Segments points={scene.planks} color={scene.rig.plank.color} opacity={scene.rig.plank.opacity} />
       <Segments points={scene.grid} color={scene.rig.grid.color} opacity={scene.technical ? 0.16 : scene.rig.grid.opacity} />
       <Segments points={scene.scaleTicks} color={scene.rig.trim.color} opacity={0.55} />
@@ -1255,15 +1989,17 @@ export default function RoomCanvas({
         insideFov={insideFov}
         api={api}
       />
-      <SceneGraph
-        scene={scene}
-        floorLux={floorLux}
-        heading={WALL_HEADING[wall] ?? 0}
-        cameraMode={cameraMode}
-        drag={drag}
-        onSelect={onSelect}
-        onHover={onHover}
-      />
+      <PbrProvider>
+        <SceneGraph
+          scene={scene}
+          floorLux={floorLux}
+          heading={WALL_HEADING[wall] ?? 0}
+          cameraMode={cameraMode}
+          drag={drag}
+          onSelect={onSelect}
+          onHover={onHover}
+        />
+      </PbrProvider>
       <ScreenProbe modules={scene.modules} manifestRef={manifestRef} />
       <DragBridge drag={drag} room={room} />
       <OverlayProbe drag={drag} api={api} room={room} cameraMode={cameraMode} manifestRef={manifestRef} />

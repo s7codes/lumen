@@ -85,15 +85,43 @@ function withWallCode(tuple, item) {
   return [...padded, WALL_CODE[wall]];
 }
 
+// Optional envelope keys (sun, window, furniture placement) ride in `x`,
+// written only when one is set, so every room without them encodes byte for
+// byte as it always has and older readers simply ignore the extra key.
+const ROOM_EXTRA_KEYS = Object.freeze(['solarHour', 'windowWall', 'furnitureWall', 'furnitureOffsetCm']);
+
 function packRoom(state) {
   const { room, camera, items } = state;
+  const extra = ROOM_EXTRA_KEYS.map((key) => room[key] ?? null);
   return {
     w: [room.widthCm, room.depthCm, room.heightCm, room.furniture, room.lighting],
+    ...(extra.some((value) => value !== null) ? { x: extra } : {}),
     c: [camera.yaw, camera.pitch, camera.zoom],
     i: items.map((item) =>
       withWallCode(withDim([item.productId, item.finish, item.xCm, item.yCm, bit(item.led !== false)], item, 5), item),
     ),
   };
+}
+
+// A well formed `x`: exactly one slot per optional key, each null, a finite
+// number or a short string. What the values mean is sanitizeRoom's call.
+function isRoomExtra(extra) {
+  return (
+    Array.isArray(extra) &&
+    extra.length === ROOM_EXTRA_KEYS.length &&
+    extra.every(
+      (value) =>
+        value === null ||
+        (typeof value === 'number' && Number.isFinite(value)) ||
+        (typeof value === 'string' && value.length <= 16),
+    )
+  );
+}
+
+/** The optional room keys from `x`; values are left to sanitizeRoom. */
+function unpackRoomExtra(extra) {
+  const entries = ROOM_EXTRA_KEYS.map((key, i) => [key, extra[i]]).filter(([, value]) => value !== null);
+  return Object.fromEntries(entries);
 }
 
 function unpackItem(entry, maxLength) {
@@ -131,7 +159,7 @@ function unpackRoom(payload) {
   return {
     format: ROOM_FORMAT,
     version: ROOM_VERSION,
-    room: { widthCm, depthCm, heightCm, furniture, lighting },
+    room: { widthCm, depthCm, heightCm, furniture, lighting, ...(payload.x ? unpackRoomExtra(payload.x) : {}) },
     camera: { yaw, pitch, zoom },
     items: payload.i.map((entry) => unpackItem(entry, 8)),
   };
@@ -173,6 +201,7 @@ export function decodeSceneParam(expectedKind, rawParam) {
   if (!Array.isArray(payload.w) || payload.w.length !== 5) return null;
   if (!Array.isArray(payload.i) || payload.i.length > MAX_WALL_ITEMS) return null;
   if (payload.n !== undefined && typeof payload.n !== 'string') return null;
+  if (payload.x !== undefined && (expectedKind !== 'room' || !isRoomExtra(payload.x))) return null;
 
   const envelope = expectedKind === 'wall' ? unpackWall(payload) : unpackRoom(payload);
   if (envelope.items.some((item) => item === null)) return null;

@@ -3,6 +3,7 @@ import { luminousSources, planePointLux } from './illuminance-field.js';
 import { furnitureLayout } from './room-3d.js';
 import { computeEnvironmentalPhysics } from './room-physics.js';
 import { sanitizeWallId, wallSpanCm, wallToRoom } from './room-walls.js';
+import { approach } from './spring.js';
 
 /*
  * Camera lenses for the 3D room and the inside-room observer.
@@ -38,6 +39,36 @@ const STANCE_BACKOFF = 0.78;
 export const ELEVATION_FOV_DEG = 30;
 const ELEVATION_MARGIN = 1.14;
 const DEG = Math.PI / 180;
+
+/*
+ * Continuous locomotion. A tap of a walk key steps WALK_STEP_CM or turns
+ * TURN_STEP_DEG at once; a key held past WALK_HOLD_S hands the stance to a
+ * per-frame velocity loop, so walking never waits on the OS key repeat.
+ * Speeds are an architectural walking pace, in cm/s and deg/s.
+ */
+export const WALK_SPEED = Object.freeze({ forward: 145, strafe: 120, turn: 78 });
+export const RUN_SPEED = Object.freeze({ forward: 215, strafe: 178, turn: 78 });
+export const WALK_ACCEL_TAU_S = 0.11;
+// Close to 1 / sqrt(120), the inside lens spring's time constant: a released
+// walk handed back to that spring at its own speed lands as a plain
+// exponential coast, the same curve as this deceleration.
+export const WALK_DECEL_TAU_S = 0.09;
+export const WALK_HOLD_S = 0.15;
+
+/** Locomotion keys by their lower-case `KeyboardEvent.key`: unit forward, strafe and turn intents. */
+export const WALK_KEYS = Object.freeze({
+  w: Object.freeze({ forward: 1 }),
+  arrowup: Object.freeze({ forward: 1 }),
+  s: Object.freeze({ forward: -1 }),
+  arrowdown: Object.freeze({ forward: -1 }),
+  a: Object.freeze({ strafe: -1 }),
+  d: Object.freeze({ strafe: 1 }),
+  q: Object.freeze({ turn: -1 }),
+  arrowleft: Object.freeze({ turn: -1 }),
+  e: Object.freeze({ turn: 1 }),
+  arrowright: Object.freeze({ turn: 1 }),
+});
+const VELOCITY_AXES = Object.freeze(['forward', 'strafe', 'turn']);
 
 /** Plan bearing that faces each wall dead-on from inside the room. */
 export const WALL_LOOK_HEADING = Object.freeze({ north: 0, east: 90, south: 180, west: -90 });
@@ -198,6 +229,132 @@ export function stepWalk(walk, room, { forward = 0, strafe = 0 } = {}) {
 
 export function turnWalk(walk, deltaDeg) {
   return { ...walk, headingDeg: normalizeHeading(walk.headingDeg + (isFiniteNumber(deltaDeg) ? deltaDeg : 0)) };
+}
+
+/** The locomotion key id for a `KeyboardEvent.key`, or null for any other key. */
+export function walkKey(key) {
+  if (typeof key !== 'string') return null;
+  const id = key.toLowerCase();
+  return Object.hasOwn(WALK_KEYS, id) ? id : null;
+}
+
+/**
+ * Unit intent from the held keys. Opposite keys cancel; a diagonal is
+ * normalised so W + D walks no faster than W alone.
+ */
+export function walkIntent(keys) {
+  let forward = 0;
+  let strafe = 0;
+  let turn = 0;
+  for (const key of keys ?? []) {
+    const id = walkKey(key);
+    if (id === null) continue;
+    const binding = WALK_KEYS[id];
+    forward += binding.forward ?? 0;
+    strafe += binding.strafe ?? 0;
+    turn += binding.turn ?? 0;
+  }
+  forward = clamp(forward, -1, 1);
+  strafe = clamp(strafe, -1, 1);
+  const reach = Math.hypot(forward, strafe);
+  if (reach > 1) {
+    forward /= reach;
+    strafe /= reach;
+  }
+  return { forward, strafe, turn: clamp(turn, -1, 1) };
+}
+
+/** Velocity the held keys ask for: cm/s along and across the bearing, deg/s of turn. Shift strides. */
+export function walkTargetVelocity(intent, run = false) {
+  const speed = run ? RUN_SPEED : WALK_SPEED;
+  const of = (axis) => (isFiniteNumber(intent?.[axis]) ? clamp(intent[axis], -1, 1) * speed[axis] : 0);
+  return { forward: of('forward'), strafe: of('strafe'), turn: of('turn') };
+}
+
+/**
+ * Eases each velocity axis toward its target, first order: tau 0.11 s while
+ * speeding up, 0.09 s while slowing, stopping or reversing. Exact for the
+ * frame, so 60, 120 and 240 Hz trace the same ramp.
+ */
+export function rampWalkVelocity(velocity, target, dt) {
+  const next = {};
+  for (const axis of VELOCITY_AXES) {
+    const v = isFiniteNumber(velocity?.[axis]) ? velocity[axis] : 0;
+    const t = isFiniteNumber(target?.[axis]) ? target[axis] : 0;
+    const speeding = t !== 0 && Math.sign(t) === Math.sign(v || t) && Math.abs(t) >= Math.abs(v);
+    next[axis] = approach(v, t, 1 / (speeding ? WALK_ACCEL_TAU_S : WALK_DECEL_TAU_S), dt);
+  }
+  return next;
+}
+
+/**
+ * Moves a plan point by (dx, dz): the wall buffer clamps, and a move into the
+ * furniture footprint slides along its edge, axis by axis, as stepWalk does.
+ */
+function slideWalk(pose, room, dx, dz, zone) {
+  const b = walkBounds(room);
+  let x = clamp(pose.xCm + dx, b.x0, b.x1);
+  let z = clamp(pose.zCm + dz, b.z0, b.z1);
+  if (blocked(x, z, zone)) {
+    if (!blocked(x, pose.zCm, zone)) z = pose.zCm <= zone.z0 ? zone.z0 : zone.z1;
+    else if (!blocked(pose.xCm, z, zone)) x = pose.xCm <= zone.x0 ? zone.x0 : zone.x1;
+    else {
+      x = pose.xCm;
+      z = pose.zCm;
+    }
+  }
+  return { xCm: x, zCm: z };
+}
+
+/**
+ * One frame of continuous walking. `velocity` is cm/s along (`forward`) and
+ * across (`strafe`) the bearing and deg/s of `turn`; the bearing turns first,
+ * then the body moves along it. The wall buffer and the furniture footprint
+ * act as in stepWalk, so the observer slides along a sofa instead of
+ * stopping dead. Nothing is rounded and the bearing is not folded: the
+ * stance commits rounded once, when the walk ends. `zone` may pass a
+ * precomputed furnitureZone for the room.
+ */
+export function stepContinuousWalk(pose, room, velocity, dt, zone = furnitureZone(room)) {
+  const step = isFiniteNumber(dt) && dt > 0 ? dt : 0;
+  const rate = (axis) => (isFiniteNumber(velocity?.[axis]) ? velocity[axis] : 0);
+  const headingDeg = pose.headingDeg + rate('turn') * step;
+  const h = headingDeg * DEG;
+  const f = rate('forward') * step;
+  const s = rate('strafe') * step;
+  const moved = slideWalk(pose, room, Math.sin(h) * f + Math.cos(h) * s, -Math.cos(h) * f + Math.sin(h) * s, zone);
+  return { ...pose, ...moved, headingDeg };
+}
+
+/**
+ * Where a released walk comes to rest. `world` is the plan velocity of the
+ * last frame (vx, vz in cm/s, vh in deg/s); decaying at WALK_DECEL_TAU_S it
+ * carries the stance v x tau further, through the same wall and furniture
+ * rules. The bearing stays unfolded, like stepContinuousWalk.
+ */
+export function coastWalk(pose, room, world, zone = furnitureZone(room)) {
+  const rate = (key) => (isFiniteNumber(world?.[key]) ? world[key] : 0);
+  const moved = slideWalk(pose, room, rate('vx') * WALK_DECEL_TAU_S, rate('vz') * WALK_DECEL_TAU_S, zone);
+  return { ...pose, ...moved, headingDeg: pose.headingDeg + rate('vh') * WALK_DECEL_TAU_S };
+}
+
+/**
+ * Commits a live stance: any finite xCm, zCm, headingDeg or pitchDeg in
+ * `patch` replaces the walk's own, then the stance is folded, rounded to
+ * 0.1 and pulled clear of the walls and the furniture like any other.
+ */
+export function placeWalk(walk, room, patch) {
+  const source = patch !== null && typeof patch === 'object' ? patch : {};
+  const pick = (key) => (isFiniteNumber(source[key]) ? source[key] : walk[key]);
+  return resolveStance(
+    {
+      xCm: pick('xCm'),
+      zCm: pick('zCm'),
+      headingDeg: normalizeHeading(pick('headingDeg')),
+      pitchDeg: tenth(clamp(pick('pitchDeg'), LOOK_PITCH.min, LOOK_PITCH.max)),
+    },
+    room,
+  );
 }
 
 export function lookWalk(walk, headingDeg, pitchDeg) {

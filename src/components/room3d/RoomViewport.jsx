@@ -18,6 +18,8 @@ import {
   normalizeHeading,
   sanitizeInsideFov,
   TURN_STEP_DEG,
+  WALK_KEYS,
+  walkKey,
   WALL_LOOK_HEADING,
 } from '../../lib/room-walkthrough.js';
 import { CameraSettings } from './CameraSettings.jsx';
@@ -32,15 +34,6 @@ const KEY_PITCH = 4;
 const KEY_ZOOM = 0.1;
 
 const GRAB_STEPS = Object.freeze({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] });
-const WALK_STEPS = Object.freeze({
-  w: { forward: 1 },
-  arrowup: { forward: 1 },
-  s: { forward: -1 },
-  arrowdown: { forward: -1 },
-  a: { strafe: -1 },
-  d: { strafe: 1 },
-});
-const WALK_TURNS = Object.freeze({ q: -TURN_STEP_DEG, arrowleft: -TURN_STEP_DEG, e: TURN_STEP_DEG, arrowright: TURN_STEP_DEG });
 // Plus narrows the inside lens (a closer look), minus widens it.
 const LENS_KEYS = Object.freeze({ '+': -1, '=': -1, '-': 1, _: 1 });
 
@@ -133,6 +126,7 @@ function SceneManifest({
   walkRef,
 }) {
   const selected = scene.modules.find((module) => module.selected);
+  const { solar, window: daylightWindow, furniturePlacement: placement } = scene;
   return (
     <div
       hidden
@@ -141,8 +135,18 @@ function SceneManifest({
       data-renderer={renderer}
       data-meshes={scene.stats.meshes}
       data-lights={scene.stats.lights}
+      data-submeshes={scene.stats.submeshes}
+      data-volumetrics={scene.stats.volumetrics}
       data-heading={heading}
       data-walls={scene.shell.surfaces.filter((surface) => surface.wall).length}
+      data-solar-hour={solar.hour}
+      data-sun-azimuth={solar.azimuthDeg}
+      data-sun-elevation={solar.elevationDeg}
+      data-sun-kelvin={solar.kelvin}
+      data-sun-direction={scene.rig.sun.fixed ? scene.rig.sun.from.join(' ') : undefined}
+      data-window-wall={daylightWindow?.wall ?? 'none'}
+      data-sunlit={daylightWindow?.sunlit || undefined}
+      data-sun-patches={daylightWindow?.patches.length ?? 0}
     >
       {scene.modules.map((module) => (
         <span
@@ -163,8 +167,19 @@ function SceneManifest({
           data-lit={module.lit || undefined}
           data-dim-pct={module.dimPct}
           data-emissive={module.emitters[0]?.intensity ?? 0}
+          data-subparts={module.subparts.length}
+          data-volumetrics={module.volumetrics.length}
+          data-beam-opacity={module.volumetrics[0]?.opacity ?? 0}
         />
       ))}
+      {placement && (
+        <span
+          data-testid="room-furniture-placement"
+          data-wall={placement.wall}
+          data-offset-cm={placement.offsetCm}
+          data-bounds={[placement.bounds.x0, placement.bounds.x1, placement.bounds.z0, placement.bounds.z1].join(' ')}
+        />
+      )}
       {scene.lights.map((light) => (
         <span
           key={`${light.uid}-${light.id}`}
@@ -324,6 +339,11 @@ export function RoomViewport({
       drag,
       hud: { compass: null },
       walkMirror: { current: null },
+      // Walk keys held down right now. WalkRig reads them every frame and
+      // drives the stance while any is held; `rig` says one is mounted,
+      // `engaged` that a hold has taken over from the tap stride.
+      heldKeys: new Set(),
+      locomotion: { run: false, rig: false, engaged: false, wake: null },
       commitWalk: (patch) => lookRef.current(patch),
       commitFov: (deg) => fovRef.current(sanitizeInsideFov(deg)),
     };
@@ -412,12 +432,23 @@ export function RoomViewport({
     }
     if (cameraMode === 'inside') {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (WALK_STEPS[lower]) {
+      const loco = api.locomotion;
+      loco.run = event.shiftKey;
+      const walking = walkKey(key);
+      if (walking) {
         event.preventDefault();
-        onWalkStep(WALK_STEPS[lower]);
-      } else if (WALK_TURNS[lower]) {
-        event.preventDefault();
-        onWalkTurn(WALK_TURNS[lower]);
+        // A held key is WalkRig's to drive: the OS repeat burst is ignored.
+        // Without a WebGL rig each repeat still steps, as it always did.
+        if (event.repeat && loco.rig) return;
+        api.heldKeys.add(walking);
+        // The first press steps or turns at once, so a tap is exact; once a
+        // hold has engaged, further keys join the continuous walk instead.
+        if (!loco.engaged) {
+          const { forward = 0, strafe = 0, turn = 0 } = WALK_KEYS[walking];
+          if (turn !== 0) onWalkTurn(turn * TURN_STEP_DEG);
+          else onWalkStep({ forward, strafe });
+        }
+        loco.wake?.();
       } else if (key === 'Home') {
         event.preventDefault();
         onWalkReset();
@@ -450,6 +481,20 @@ export function RoomViewport({
     }
   };
 
+  // Letting go of the last walk key, or focus leaving the stage, ends a held
+  // walk; WalkRig commits where it comes to rest.
+  const onKeyUp = (event) => {
+    api.locomotion.run = event.shiftKey;
+    const walking = walkKey(event.key);
+    if (walking && api.heldKeys.delete(walking)) api.locomotion.wake?.();
+  };
+
+  const onBlur = () => {
+    if (api.heldKeys.size === 0) return;
+    api.heldKeys.clear();
+    api.locomotion.wake?.();
+  };
+
   const conflictCount = conflicts.size;
   const preset = activePreset(camera);
   const bearing =
@@ -460,7 +505,7 @@ export function RoomViewport({
         : normalizeHeading(-(WALL_HEADING[activeWall] + view.yaw));
   const ariaHelp =
     cameraMode === 'inside'
-      ? 'Room viewport, inside at 165 cm. Drag to look around, W A S D to walk, Q and E to turn, scroll, plus and minus to change the lens, Home to reset.'
+      ? 'Room viewport, inside at 165 cm. Drag to look around, W A S D to walk, Q and E to turn, hold a key to keep moving and Shift to stride, scroll, plus and minus to change the lens, Home to reset.'
       : 'Room viewport. Drag or use the arrow keys to orbit, scroll, plus and minus to zoom, Home to reset. G grabs the selected module.';
 
   return (
@@ -520,6 +565,8 @@ export function RoomViewport({
             api.pointerDown.current = false;
           }}
           onKeyDown={onKeyDown}
+          onKeyUp={onKeyUp}
+          onBlur={onBlur}
         >
           {supported ? (
             <CanvasBoundary fallback={UNAVAILABLE} onFail={onFail}>
@@ -615,8 +662,13 @@ export function RoomViewport({
         <span className="room3d-stage__lens" data-testid="room-lens-readout">
           {lensReadout(cameraMode, walk, insideFov, eyeLux, activeWall, facing)}
         </span>
-        <span className="tech-only" data-testid="room-polygons">
-          {scene.stats.meshes} meshes / {scene.stats.lights} lights
+        <span
+          className="tech-only room3d-stage__telemetry"
+          data-testid="room-polygons"
+          title="WebGL2 engine telemetry: drawn meshes, CAD sub-parts, volumetric beams and light sources"
+        >
+          {scene.stats.meshes} meshes / {scene.stats.submeshes} CAD sub-parts / {scene.stats.volumetrics} volumetric beams /{' '}
+          {scene.stats.lights} lights
         </span>
         <button
           type="button"
