@@ -1,14 +1,40 @@
 # Lumen
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v7.0.0-e8923a)
+![Release](https://img.shields.io/badge/release-v7.1.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 Architectural lighting and modular furniture on a shared 24V DC bus. Lumen is the
 platform for browsing the parts, planning a room in 3D, composing a wall in 2D and
 ordering the exact bill of materials.
 
-Current release: **v7.0.0**, the next-generation WebGL2 engine behind `/room-3d`. Walking
+Current release: **v7.1.0**, an architectural-visualisation pass over `/room-3d` and a
+calmer studio shell. A room can now carry two or three windows at once: the **Window**
+pills in Sun & Aperture toggle West, East and South independently and `None` clears them,
+stored as a canonical `windowWalls` list while a single window keeps the exact v7.0
+`windowWall` record and share links keep their four-slot `x` tuple. At night the glass no
+longer reads as a black rectangle: each window holds a luminous Nordic twilight (`#2d4263`
+over a `#1a273b` base, emissive 0.88) and lets a cool moonlit sky into the room as silver
+floor patches and faint shafts, framed by a 5 cm plaster reveal, a 15 cm oak sill and
+brushed champagne-steel mullions and transom standing 1.5 to 4.5 cm proud of the glass.
+Walnut and oak drop their zebra rings for a soft veneer figure under dense micro-fibre
+(contrast 0.11 and 0.08), the wide-plank floor calms to a faint ring and a gentle
+plank-to-plank tone, and on a GPU a procedural studio environment (an overhead softbox,
+east and west strip boxes and a warm horizon bounce) lights timber, steel, ceramic and
+glass through `scene.environment` at 0.35; software rasterisers keep the direct rig. The
+envelope gains a perimeter ceiling shadow-gap over a crown band and soft depth in every
+inside corner, and each floor reference a vignette that never touches its collision
+bounds: a woven felt area rug under the bed, sofa and desk, oak bedside ledges with warm
+reading lamps, a low oak and slate coffee table with an art book and a ceramic vessel,
+throw cushions, layered pillows, a piped mattress and a tucked task chair. The acoustics
+key is now **Test Room Echo**: a soft wood clap under a harmonic chord at a lower level,
+with a plain readout (`Echo: 1.26 s vs. 1.56 s bare (-19% reverb)`) and a dashed marker
+where the bare room's echo would end. The bottom-right pill reads **Ask Lumen**, and
+`Ctrl+K` opens a warm basalt spotlight: product names, plain subtitles (`Lighting - 150 x
+12 cm`) and price pills in Visual mode, SKUs, paths and wattage in Specs mode, and one
+line of keyboard help.
+
+v7.0.0 brought the next-generation WebGL2 engine behind `/room-3d`. Walking
 inside the room no longer waits on the keyboard's repeat: a tap of `W A S D`, the arrows
 or `Q` / `E` still steps exactly 25 cm or turns 15 deg, and a key held past 150 ms hands
 the stance to a per-frame gait that ramps (tau 0.11 s up, 0.09 s down) to 145 cm/s ahead,
@@ -380,6 +406,7 @@ loading state. The two planners load as their own chunks behind a centered loadi
 
 | Version | Scope |
 | ------- | ----- |
+| v7.1.0  | ArchViz polish and calmer shell: two or three windows at once (West, East, South toggle pills, canonical `windowWalls`, v7.0 single-window records and links unchanged); luminous Nordic twilight glazing with moonlit floor patches and shafts at night; plaster reveal, deep oak sill and brushed steel mullions proud of the glass; zebra-free walnut and oak veneer and a calm wide-plank floor; procedural studio IBL environment on GPUs; ceiling shadow-gap cove and corner depth; woven area rugs, bedside ledges and lamps, coffee table, throw cushions and a task chair as drawn-only furniture vignettes; Test Room Echo with a soft wood clap and a bare-versus-damped readout; Ask Lumen pill; warm basalt Ctrl+K spotlight with Visual-mode names, subtitles and price pills |
 | v7.0.0  | Next-generation WebGL2 room engine: continuous 60 to 240 Hz walking with exact taps, ramped holds, Shift stride and one commit on release; multi-part parametric CAD sub-assemblies for all 12 parts and detailed reference furniture; procedural tileable PBR albedo, bump, normal and roughness maps for eight material families; volumetric light beams that follow DALI-2 levels and contact shadows; Sun & Aperture solar path with golden hour, window pane patches and light shafts; floor reference on any wall with offset; engine telemetry in Specs mode |
 | v6.3.0  | Lumen AI as an MCP agent: JSON-RPC 2.0 Model Context Protocol server at `POST /api/mcp` (revision 2025-06-18) with 4 resources, 3 prompts and 8 tools including live 3D room, 2D wall and cart mutation; multi-provider LLM tool-use loop (Claude Messages API, OpenAI-compatible, Gemini, Ollama) with a deterministic MCP orchestrator as the key-free path; Server-Sent Events at `POST /api/concierge/stream`; agentic workspace bus that applies tool results live as one undoable step; MCP tool trace chips in the panel |
 | v6.2.0  | Modern Lumen AI chat: welcome hero with starter cards that fold into a docked chip row, New chat, right-aligned warm question bubbles, avatar answers and a pill composer; every answer one lead sentence and two to four labelled bullets (35 to 65 words, at most four pills); bespoke 36 px / 28 px architectural SVG drawings of all 12 parts in both planners' palettes, module lists and Ctrl+K; a continuous lit atmosphere below the overview hero, a fixed route-aware basalt backdrop on every other route and lit Account tiles; 60 s CI budget for software-WebGL scenario tests |
@@ -473,8 +500,9 @@ src/
                         bag store and PSU sizing, wall studio geometry and history,
                         room model and 2D bridge (room-3d), WebGL scene description,
                         CAD sub-assemblies, volumetric beams and orbit frame
-                        (room-scene), procedural PBR map synthesizer (pbr-materials),
-                        solar path and daylight window (solar-path), ray to
+                        (room-scene), procedural PBR map synthesizer and studio
+                        IBL environment (pbr-materials), solar path and window
+                        walls (solar-path), ray to
                         wall-plane drag solver (room-raycast), camera lenses, the
                         165 cm observer and its continuous gait (room-walkthrough),
                         guarded per-frame DOM writes
@@ -484,8 +512,8 @@ src/
                         named project ids (project-library), A/B project
                         comparison (project-diff) and its dialog sources
                         (diff-sources), palette
-                        index and ranking (command-index), RT60 audition synth
-                        and decay curve (acoustic-audition), studio render card
+                        index and ranking (command-index), room echo test: wood
+                        clap, decay curve and readout (acoustic-audition), studio render card
                         compositor (render-snapshot), credentials and session
                         token rules (auth), cloud record rules shared with the
                         server (cloud-records),
@@ -543,7 +571,7 @@ a fast link. Requests time out after 8 s.
 
 | Method and path | Body | Answer |
 | --------------- | ---- | ------ |
-| `GET /api/health` | | `{ ok: true, version: '7.0.0', storage: 'server' }` |
+| `GET /api/health` | | `{ ok: true, version: '7.1.0', storage: 'server' }` |
 | `POST /api/auth/session` | `{ email, password }` | `201 { token, expiresAt, user: { name: 'Studio Guest', email }, library: { scope: 'account', claimed: { projects, quotes } } }` |
 | `GET /api/auth/session` | `Authorization: Bearer` | `200 { user, expiresAt }` or `401` |
 | `DELETE /api/auth/session` | `Authorization: Bearer` | `204`, revokes the token |
@@ -705,7 +733,7 @@ a fast link. Requests time out after 8 s.
   session, and nothing is prefetched when the browser reports Save-Data or a 2G link.
   A cold load of `/` still requests zero planner or WebGL chunks.
 - The Studio AI panel and its engine ship as their own chunks (`ConciergePanel`,
-  `concierge-engine`), loaded on pointer or focus intent over the **Ask Studio AI** pill.
+  `concierge-engine`), loaded on pointer or focus intent over the **Ask Lumen** pill.
   The client only imports the engine dynamically, for the offline fallback.
 - The fallback is a frame centered in the main area: the Lumen mark under a sweeping
   mask highlight, a 160 x 1 px indeterminate bar and a mono label (**Loading spatial
@@ -1183,16 +1211,23 @@ read as the front of a reference zone 260 cm deep, minus the attic slope prism.
   weighted toward 2 and 4 kHz. `stiScore` (0.00-1.00) grades **Poor** (<0.45), **Fair**
   (0.45-0.60), **Good** (0.60-0.75) or **Excellent** (>=0.75). The default wall reads
   `STI 0.54 (Fair)`; a baffle and a frame lift it to 0.58.
-- **Audition RT60** (`audition-room-acoustics`, both planners): `synthesizeAcousticProfile`
-  in `src/lib/acoustic-audition.js` turns the six bands into decay rates
-  (`ln(1000) / RT60`), a C50 clarity figure, a damping percentage and a 32-point energy
-  decay curve in dB on the spectrum's fixed 2.5 s axis. `playAcousticAudition` plays a
-  seeded noise impulse split into six one-octave band-passes, each ringing out on its own
-  RT60 through `setTargetAtTime` (time constant `RT60 / ln(1000)`), under an open D chord
-  whose partials each sustain on the band they sound in. The decay curve
-  (`acoustic-decay-wave`, `data-rt60`, `data-damping-pct`) lights sample by sample as a
-  playhead crosses it in real time; a hairline marks RT60. Without Web Audio the curve
-  still runs, silently, and the context is closed when the take ends.
+- **Test Room Echo** (`audition-room-acoustics`, accessible name `Test Room Echo (Audition
+  RT60)`, both planners): `synthesizeAcousticProfile` in `src/lib/acoustic-audition.js`
+  turns the six bands into decay rates (`ln(1000) / RT60`), a C50 clarity figure, a
+  damping percentage and a 32-point energy decay curve in dB on the spectrum's fixed
+  2.5 s axis. `playAcousticAudition` plays a soft architectural wood clap
+  (`woodClapSamples`: a 6 ms transient, two damped hardwood body modes at 720 Hz and
+  1.88 kHz and a pink tail, seeded and peak-normalised) split into six one-octave
+  band-passes, the top octaves eased off, each ringing out on its own RT60 through
+  `setTargetAtTime` (time constant `RT60 / ln(1000)`), under an open D chord whose
+  partials swell in over 25 ms and each sustain on the band they sound in, at a master
+  gain of 0.28. The decay curve (`acoustic-decay-wave`, `data-rt60`,
+  `data-baseline-rt60`, `data-damping-pct`) lights sample by sample as a playhead crosses
+  it in real time; an amber hairline marks this room's RT60 and, once absorbers take at
+  least 1 percent off, a dashed one marks where the bare room's echo would end. Beneath
+  it `acoustic-echo-readout` reads `Echo: 1.26 s vs. 1.56 s bare (-19% reverb)`, or
+  `Bare room echo 1.56 s - add acoustic panels to damp`. Without Web Audio the curve still
+  runs, silently, and the context is closed when the take ends.
 - The six-bar spectrum (`acoustic-octave-spectrum`, one fixed 2.5 s scale) and the
   derivation (`V`, `A` in m2 sabins, `rho`, wall lux, task coverage) appear under the
   readout in Technical mode only.
@@ -1364,7 +1399,7 @@ zone; floor fields report plan coordinates, `y` measured out from the main wall.
 `ConciergeWidget` is mounted once in the layout shell, after the page in DOM order, so the
 conversation survives every route change and never enters the page's tab sequence early.
 
-- **Dock.** A 40 px **Ask Studio AI** pill fixed 20 px from the bottom-right corner
+- **Dock.** A 40 px **Ask Lumen** pill fixed 20 px from the bottom-right corner
   (`z-index: 90`) in the navbar's dark glass: `rgba(20, 19, 17, 0.92)` on a 16 px backdrop
   blur, a 1 px `rgba(255, 255, 255, 0.12)` edge, `#f4f1ea` text and the Lumen mark with
   its aperture in champagne. Hovered or open, the edge warms to `rgba(229, 199, 153,
@@ -1514,15 +1549,22 @@ conversation survives every route change and never enters the page's tab sequenc
 
 ## Command palette
 
-- `Ctrl+K` (or `Cmd+K`) anywhere opens a glass dialog (`role="dialog"`, 24px backdrop
-  blur, 16px radius) that resolves in from scale 1.04 and an 8px blur. The same keys
+- `Ctrl+K` (or `Cmd+K`) anywhere opens a warm basalt spotlight (`role="dialog"`,
+  `rgba(18, 17, 15, 0.96)` on a 24px backdrop blur, a `rgba(229, 199, 153, 0.18)` hairline,
+  a champagne light along its top edge, 16px radius, 540px wide) that resolves in from
+  scale 1.04 and an 8px blur. The same keys
   close it again; it never opens on top of the cart drawer or the sign-in dialog. The
   first navbar pill (glyph and `Search` only; the shortcut lives in its tooltip) opens it
   too and folds to its glyph below 700px.
-- One search field ranks matches within three fixed groups: **Workspaces** (Overview,
-  Catalog, 3D Room Planner, 2D Wall Studio, Project Quote, Account), **Modules** (all 12
-  parts with SKU, 24V load and USD price; Enter opens the spec sheet) and **Commands**
-  (Switch to Specs or Visual Mode, Set Currency: USD, EUR or HUF, Open Cart Drawer). A label prefix outranks a word start, which outranks any other match, and
+- One search field (`Search lighting, furniture, or pages...`) ranks matches within three
+  fixed groups: **Pages** (Overview, Catalog, 3D Room Planner, 2D Wall Studio, Project
+  Quote, Account, each with a plain subtitle), **Products** (all 12 parts; Enter opens the
+  spec sheet) and **Actions** (Switch to Specs or Visual Mode, Set Currency: USD, EUR or
+  HUF, Open Cart Drawer). In Visual mode a product row shows its drawing, its name, a
+  plain subtitle (`Lighting - 150 x 12 cm`) and a price pill; its SKU, a page's path and
+  a part's 24V load stay in the DOM for search and show only in Specs mode. The footer is
+  one line, `Up/Down to navigate - Enter to open - Esc to close`, and the result count
+  is announced to screen readers rather than shown. A label prefix outranks a word start, which outranks any other match, and
   every term has to land.
 - Keyboard: `ArrowDown` / `ArrowUp` move and wrap, `Enter` runs, `Escape` closes, `Tab`
   stays inside. The field is an ARIA combobox over a grouped listbox with
