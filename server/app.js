@@ -1,5 +1,5 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { GUEST_NAME, sanitizeEmail, validateCredentials } from '../src/lib/auth.js';
+import { randomBytes } from 'node:crypto';
+import { sanitizeEmail, validateCredentials } from '../src/lib/auth.js';
 import { sanitizeBagItems } from '../src/lib/bag.js';
 import {
   MAX_REVISION,
@@ -20,6 +20,7 @@ import { isProjectId, PROJECT_KINDS, projectIdFor, sanitizeProjectName } from '.
 import { buildQuote, CURRENCY_CODES, resolvePromo, sanitizeProject, validateProject } from '../src/lib/quote.js';
 import { isOneOf, safeJsonParse } from '../src/security/sanitize.js';
 import { compressSync, isCompressible, negotiateEncoding } from './compress.js';
+import { originMatches } from './forwarded.js';
 import { createConciergeAgent } from './llm-agent.js';
 import {
   createRateLimiter,
@@ -31,22 +32,20 @@ import {
   resolveRateLimitOptions,
   resolveTrustProxy,
 } from './rate-limit.js';
+import { bearerToken, createSessions, presentsBearer, resolveSessionSecret, sessionView } from './session.js';
 import { ACCOUNT_PREFIX, accountNamespace, isClientNamespace } from './store.js';
 
+export { SESSION_TTL_MS } from './session.js';
 export const MAX_BODY_BYTES = 64 * 1024;
 export const CLIENT_HEADER = 'x-lumen-client';
-export const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 const DRAIN_LIMIT_BYTES = 1024 * 1024;
 const MAX_QUOTE_ITEMS = 64;
 const MAX_SYNC_RECORDS = 64;
-const MAX_REVOKED_SESSIONS = 10_000;
 const SYNC_MODES = Object.freeze(['replace', 'merge']);
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const MALFORMED = Symbol('malformed');
 const JSON_CONTENT_TYPE = /^application\/json\s*(?:;\s*charset\s*=\s*"?utf-8"?\s*)?$/i;
-const TOKEN_PATTERN = /^lmn1\.([A-Za-z0-9_-]{16,512})\.([A-Za-z0-9_-]{43})$/;
-const BEARER_PATTERN = /^Bearer ([^\s]{1,700})$/;
-const BEARER_SCHEME = /^Bearer\s/i;
 const NOTHING_CLAIMED = Object.freeze({ projects: 0, quotes: 0 });
 // MCP revisions this endpoint speaks; a client that names another gets a 400.
 const MCP_PROTOCOL_HEADERS = Object.freeze([MCP_PROTOCOL_VERSION, '2025-03-26']);
@@ -196,22 +195,20 @@ function readJsonValue(req) {
 }
 
 /**
- * DNS-rebinding guard for the MCP and streaming endpoints: a browser call
- * must come from this origin. Callers without an Origin header (curl, an
- * MCP client, server to server) are unaffected.
+ * Cross-site guard for every state-changing call (POST, PUT, DELETE: saves,
+ * quotes, sync, sign-in and out, escalation, MCP and the SSE stream). A
+ * browser always sends Origin on these, so a page on another site, or the
+ * plain-HTTP twin of an HTTPS deployment, is refused before the body is read.
+ * Behind Caddy the expected origin is `https://<host>` from the trusted hop's
+ * X-Forwarded-Proto (server/forwarded.js). Callers without an Origin header
+ * (curl, an MCP client, server to server) carry no ambient credential a forged
+ * request could ride on, and are unaffected.
  */
-function requireSameOrigin(req) {
+function requireSameOrigin(req, trustHops) {
   const origin = req.headers.origin;
-  if (origin === undefined) return;
-  let host = null;
-  try {
-    host = new URL(origin).host;
-  } catch {
-    host = null;
-  }
-  if (!host || host !== req.headers.host) {
-    throw new HttpError(403, 'forbidden_origin', 'Cross-origin calls to this endpoint are refused.');
-  }
+  if (origin === undefined || originMatches(origin, req, trustHops)) return;
+  discardBody(req);
+  throw new HttpError(403, 'forbidden_origin', 'Cross-origin calls to this endpoint are refused.');
 }
 
 function sseFrame(event, data) {
@@ -227,66 +224,6 @@ function requireNamespace(req) {
     throw invalid('Send an X-Lumen-Client header: 16 to 64 characters of A-Z, a-z, 0-9, - or _.');
   }
   return id;
-}
-
-/* Sessions: HMAC-SHA256 signed, stateless, revocable until expiry. */
-
-function base64url(input) {
-  return Buffer.from(input).toString('base64url');
-}
-
-function createSessions(secret) {
-  const revoked = new Map();
-
-  const sign = (payload) => createHmac('sha256', secret).update(payload).digest('base64url');
-
-  function prune(now) {
-    for (const [jti, exp] of revoked) if (exp <= now) revoked.delete(jti);
-    while (revoked.size > MAX_REVOKED_SESSIONS) revoked.delete(revoked.keys().next().value);
-  }
-
-  return {
-    issue(email) {
-      const iat = Date.now();
-      const claims = { sub: email, name: GUEST_NAME, iat, exp: iat + SESSION_TTL_MS, jti: randomBytes(12).toString('base64url') };
-      const payload = base64url(JSON.stringify(claims));
-      return { token: `lmn1.${payload}.${sign(payload)}`, claims };
-    },
-
-    verify(token) {
-      const match = typeof token === 'string' ? TOKEN_PATTERN.exec(token) : null;
-      if (!match) return null;
-      const [, payload, signature] = match;
-      const expected = Buffer.from(sign(payload));
-      const actual = Buffer.from(signature);
-      if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
-      const claims = safeJsonParse(Buffer.from(payload, 'base64url').toString('utf8'), { fallback: null, maxDepth: 2 });
-      if (!isRecord(claims) || !sanitizeEmail(claims.sub) || typeof claims.jti !== 'string') return null;
-      if (!Number.isSafeInteger(claims.exp) || claims.exp <= Date.now() || revoked.has(claims.jti)) return null;
-      return claims;
-    },
-
-    revoke(claims) {
-      prune(Date.now());
-      revoked.set(claims.jti, claims.exp);
-    },
-  };
-}
-
-function bearerToken(req) {
-  const header = req.headers.authorization;
-  const match = typeof header === 'string' ? BEARER_PATTERN.exec(header) : null;
-  return match ? match[1] : null;
-}
-
-// Only the Bearer scheme selects a session; other schemes (a staging proxy's Basic auth) stay anonymous.
-function presentsBearer(req) {
-  const header = req.headers.authorization;
-  return typeof header === 'string' && BEARER_SCHEME.test(header);
-}
-
-function sessionView(claims) {
-  return { user: { name: GUEST_NAME, email: claims.sub }, expiresAt: new Date(claims.exp).toISOString() };
 }
 
 /* Handlers */
@@ -599,7 +536,6 @@ function createHandlers({ store, version, sessions, agent, logger }) {
      * errors, sent before the stream opens.
      */
     async streamConcierge(req, res) {
-      requireSameOrigin(req);
       const body = await readJsonBody(req);
       const { question, context, error } = validateConciergeAsk(body);
       if (error) throw invalid(error);
@@ -639,7 +575,6 @@ function createHandlers({ store, version, sessions, agent, logger }) {
      * object, an unknown protocol revision) gets 400 with an id-less error.
      */
     async mcp(req) {
-      requireSameOrigin(req);
       const revision = req.headers['mcp-protocol-version'];
       if (revision !== undefined && !MCP_PROTOCOL_HEADERS.includes(revision)) {
         return [400, { jsonrpc: '2.0', id: null, error: { code: JSONRPC_ERRORS.invalidRequest, message: 'Unsupported MCP-Protocol-Version.' } }];
@@ -749,14 +684,7 @@ function decodeCaptures(captures) {
 /** Rate-limit tier for a request: the route's own tier, else read for safe methods and write for the rest. */
 function tierFor(route, method) {
   if (route?.exempt) return null;
-  return route?.tiers?.[method] ?? (method === 'GET' || method === 'HEAD' || method === 'OPTIONS' ? 'read' : 'write');
-}
-
-function resolveSecret(secret) {
-  if (secret) return Buffer.from(secret);
-  const fromEnv = process.env.LUMEN_SESSION_SECRET;
-  if (fromEnv && fromEnv.length >= 32) return Buffer.from(fromEnv);
-  return randomBytes(32);
+  return route?.tiers?.[method] ?? (SAFE_METHODS.has(method) ? 'read' : 'write');
 }
 
 /**
@@ -817,10 +745,15 @@ function createRateGate({ options, trustHops, logger }) {
  *   policy (see server/rate-limit.js). Undefined uses the defaults, generous
  *   on loopback, with the read budget from `LUMEN_RATE_LIMIT_MAX`.
  * - `trustProxy`: reverse-proxy hops in front of the server (`true` is one);
- *   undefined reads `LUMEN_TRUST_PROXY`.
+ *   undefined reads `LUMEN_TRUST_PROXY`. A trusted hop on a private address
+ *   supplies the client address (X-Forwarded-For) for rate limiting and the
+ *   browser's scheme and host (X-Forwarded-Proto, X-Forwarded-Host) for the
+ *   same-origin guard.
+ * - `sessionSecret`: the HMAC key; undefined reads `LUMEN_SESSION_SECRET`.
  * - `env`: where those defaults are read, `process.env` unless given.
  * - `logger`: `{ warn, error }`, the console unless given.
- * The handler exposes its limiter as `handler.limiter` (null when disabled).
+ * The handler exposes its limiter as `handler.limiter` (null when disabled)
+ * and its resolved hop count as `handler.trustHops`.
  */
 export function createApp({
   store,
@@ -833,9 +766,10 @@ export function createApp({
   env = process.env,
   logger = console,
 } = {}) {
-  const sessions = createSessions(resolveSecret(sessionSecret));
+  const trustHops = resolveTrustProxy(trustProxy, env);
+  const sessions = createSessions(resolveSessionSecret(sessionSecret, env, logger));
   const routes = buildRoutes(createHandlers({ store, version, sessions, agent, logger }), testReset);
-  const gate = createRateGate({ options: resolveRateLimitOptions(rateLimit, env), trustHops: resolveTrustProxy(trustProxy, env), logger });
+  const gate = createRateGate({ options: resolveRateLimitOptions(rateLimit, env), trustHops, logger });
 
   async function lumenCloud(req, res) {
     try {
@@ -855,6 +789,7 @@ export function createApp({
         const allow = Object.keys(matched.route.methods).join(', ');
         throw new HttpError(405, 'method_not_allowed', `Use ${allow} on this endpoint.`, { allow });
       }
+      if (!SAFE_METHODS.has(req.method)) requireSameOrigin(req, trustHops);
       const result = await handler(req, ...decodeCaptures(matched.captures), res);
       // A streaming handler wrote its own headers and frames and ended the response.
       if (res.headersSent) return;
@@ -885,5 +820,6 @@ export function createApp({
   }
 
   lumenCloud.limiter = gate.limiter;
+  lumenCloud.trustHops = trustHops;
   return lumenCloud;
 }

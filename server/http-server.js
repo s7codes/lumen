@@ -2,15 +2,25 @@ import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { isApiPath } from './app.js';
+import { isSecureRequest } from './forwarded.js';
 import { createStaticHandler } from './static.js';
 
 /** Longest a draining server waits for open connections (an SSE stream, a slow upload) before cutting them. */
 export const SHUTDOWN_GRACE_MS = 10_000;
 
 /**
+ * Strict-Transport-Security for responses that reached the app over HTTPS: a
+ * TLS socket, or X-Forwarded-Proto from the trusted proxy hop the API handler
+ * resolved (`cloud.handler.trustHops`). One year, this host only. Never sent
+ * over plain HTTP, where browsers ignore it anyway.
+ */
+export const HSTS_POLICY = 'max-age=31536000';
+
+/**
  * The production HTTP server: Lumen Cloud on /api and, when `staticDir` holds
  * a build, the app itself on every other path, so the strict
- * `connect-src 'self'` CSP covers the API on one origin.
+ * `connect-src 'self'` CSP covers the API on one origin. Every response the
+ * browser received over HTTPS carries HSTS_POLICY.
  *
  * `shutdown()` drains instead of dropping: it stops accepting connections,
  * closes idle keep-alive sockets, marks every response still in flight
@@ -20,6 +30,7 @@ export const SHUTDOWN_GRACE_MS = 10_000;
  */
 export function createLumenServer({ cloud, staticDir = null, logger = console }) {
   const serveStatic = staticDir && existsSync(join(staticDir, 'index.html')) ? createStaticHandler({ root: staticDir }) : null;
+  const trustHops = cloud.handler.trustHops ?? 0;
   const inFlight = new Set();
   let closing = null;
 
@@ -27,6 +38,8 @@ export function createLumenServer({ cloud, staticDir = null, logger = console })
     inFlight.add(res);
     res.on('close', () => inFlight.delete(res));
     if (closing) res.setHeader('Connection', 'close');
+    // setHeader merges into the writeHead of whichever handler answers: static, JSON or the SSE stream.
+    if (isSecureRequest(req, trustHops)) res.setHeader('Strict-Transport-Security', HSTS_POLICY);
     if (serveStatic && !isApiPath(req.url)) {
       serveStatic(req, res);
       return;
