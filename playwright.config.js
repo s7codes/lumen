@@ -13,14 +13,16 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  // Every context owns its X-Lumen-Client namespace in the test store, so CI
-  // runs four isolated workers in parallel.
-  workers: process.env.CI ? 4 : undefined,
-  // Four workers share a four-vCPU runner where WebGL falls back to software
-  // rasterisation, so the long 3D scenario tests run two to three times slower
-  // there than on a local GPU (the v6.1.0 run timed out two of them at 30 s while
-  // they were still progressing). These are ceilings, not waits: an assertion
-  // returns as soon as its condition holds.
+  // Every context owns its X-Lumen-Client namespace in the test store, so the
+  // workers never share state. CI runs two: the four-vCPU runner has no GPU, so
+  // each Chromium rasterises WebGL and canvas through SwiftShader, which spreads
+  // over several cores itself. Four workers starved one another (the v7.2.0 run
+  // saw the homepage theatre at about 2 fps) for no gain in throughput.
+  workers: process.env.CI ? 2 : undefined,
+  // Software rasterisation still runs the long 3D scenario tests two to three
+  // times slower there than on a local GPU (the v6.1.0 run timed out two of them
+  // at 30 s while they were still progressing). These are ceilings, not waits:
+  // an assertion returns as soon as its condition holds.
   timeout: process.env.CI ? 60_000 : 30_000,
   expect: { timeout: process.env.CI ? 10_000 : 5_000 },
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
