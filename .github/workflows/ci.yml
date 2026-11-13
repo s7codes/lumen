@@ -69,3 +69,98 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 14
+
+  # The production kit end to end, in parallel with the E2E job: the image is built
+  # and the Compose stack boots as it does on the VPS, with DOMAIN=localhost so
+  # Caddy issues its certificate from its internal CA. Every probe goes through
+  # Caddy over HTTPS, so the app sees X-Forwarded-Proto from a bridge-network peer.
+  stack:
+    name: Docker image and Caddy stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DOMAIN: localhost
+      SITE: https://localhost
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Generate a session secret
+        run: echo "LUMEN_SESSION_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Validate the Compose file and the Caddyfile
+        run: |
+          docker compose config --quiet
+          docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+      - name: Build the image and start the stack
+        run: docker compose up --detach --build --wait --wait-timeout 180
+
+      - name: Probe the app through Caddy over HTTPS
+        working-directory: ${{ runner.temp }}
+        run: |
+          version=$(jq -r .version "$GITHUB_WORKSPACE/package.json")
+          # Readiness: retried until Caddy holds its internal certificate.
+          curl -fsSk --retry 20 --retry-all-errors --retry-delay 1 https://localhost/api/health > health.json
+          jq -e --arg v "$version" '.ok == true and .version == $v and .storage == "server"' health.json
+
+          redirect=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost/room-3d)
+          [[ "$redirect" =~ ^30[178]\ https://localhost/room-3d$ ]] || { echo "no HTTPS redirect: $redirect"; exit 1; }
+
+          curl -fsSk -D shell.head -o shell.html https://localhost/room-3d
+          grep -qi '^strict-transport-security: max-age=31536000' shell.head
+          grep -q '<div id="root"></div>' shell.html
+
+          # Sign-in from the HTTPS origin: a Bearer token, HSTS, and no cookie.
+          code=$(curl -sSk -D session.head -o session.json -w '%{http_code}' -X POST https://localhost/api/auth/session \
+            -H "Origin: $SITE" -H 'Content-Type: application/json' --data '{"email":"guest@lumen.com","password":"nordic-test-0042"}')
+          test "$code" = 201
+          token=$(jq -er .token session.json)
+          echo "$token" > token.txt
+          grep -qi '^strict-transport-security: max-age=31536000' session.head
+          if grep -qi '^set-cookie:' session.head; then echo 'the session must never be a cookie'; exit 1; fi
+
+          # An authenticated write from the same origin; the plain-HTTP twin and another site are refused.
+          quote='{"quote":{"currency":"USD","promo":null,"includeDriver":true,"items":[{"id":"modular-cube-36","finish":"oak","qty":2}]},"project":{"reference":"CI Smoke - Compose Stack","preparedFor":"Lumen CI"}}'
+          code=$(curl -sSk -o quote.json -w '%{http_code}' -X POST https://localhost/api/quotes \
+            -H "Origin: $SITE" -H 'Content-Type: application/json' -H "Authorization: Bearer $token" --data "$quote")
+          test "$code" = 201
+          jq -e '.quote.ref | test("^LMN-R-[0-9A-F]{8}$")' quote.json
+          for origin in http://localhost https://evil.example; do
+            code=$(curl -sSk -o refused.json -w '%{http_code}' -X POST https://localhost/api/quotes \
+              -H "Origin: $origin" -H 'Content-Type: application/json' -H "Authorization: Bearer $token" --data "$quote")
+            test "$code" = 403
+            jq -e '.error.code == "forbidden_origin"' refused.json
+          done
+
+          # Server-Sent Events pass through Caddy unbuffered and unencoded.
+          curl -fsSkN -D sse.head -o sse.txt -X POST https://localhost/api/concierge/stream \
+            -H "Origin: $SITE" -H 'Content-Type: application/json' --data '{"question":"What does the Linear Lightbar 60 draw?"}'
+          grep -qi '^content-type: text/event-stream' sse.head
+          if grep -qi '^content-encoding:' sse.head; then echo 'the stream must not be encoded'; exit 1; fi
+          grep -q '^event: complete' sse.txt
+
+          # Unprivileged, on a read-only root filesystem.
+          test "$(docker compose -f "$GITHUB_WORKSPACE/docker-compose.yml" exec -T app id -u)" = 1000
+          if docker compose -f "$GITHUB_WORKSPACE/docker-compose.yml" exec -T app touch /app/probe 2>/dev/null; then echo '/app is writable'; exit 1; fi
+
+      - name: Recreate the app and read the store back from the volume
+        run: |
+          docker compose up --detach --force-recreate --no-deps --wait --wait-timeout 180 app
+          token=$(cat "$RUNNER_TEMP/token.txt")
+          # The same LUMEN_SESSION_SECRET keeps the session valid across the new container.
+          curl -fsSk --retry 20 --retry-all-errors --retry-delay 1 -H "Authorization: Bearer $token" https://localhost/api/quotes > "$RUNNER_TEMP/quotes.json"
+          jq -e '.quotes | length == 1 and .[0].reference == "CI Smoke - Compose Stack"' "$RUNNER_TEMP/quotes.json"
+
+      - name: Stop the app gracefully
+        run: |
+          container=$(docker compose ps --all --quiet app)
+          docker compose stop app
+          test "$(docker inspect --format '{{.State.ExitCode}}' "$container")" = 0
+          docker compose logs app | grep -F 'drained; every write is on disk'
+          if docker compose logs app | grep -F 'LUMEN_SESSION_SECRET'; then echo 'the generated secret was refused'; exit 1; fi
+
+      - name: Print the stack logs
+        if: failure()
+        run: docker compose logs --no-color
