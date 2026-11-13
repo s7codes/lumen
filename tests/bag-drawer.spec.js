@@ -7,7 +7,7 @@ import {
   sanitizeBagItems,
   summarizeBag,
 } from '../src/lib/bag.js';
-import { collectRuntimeErrors, horizontalOverflow, installCspRecorder } from './support/runtime-guards.js';
+import { collectRuntimeErrors, horizontalOverflow, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
 const STORAGE_KEY = `lumen:${BAG_STORAGE_KEY}`;
 
@@ -48,6 +48,7 @@ test.describe('bag drawer', () => {
     const drawer = await openBag(page);
     const lines = drawer.getByTestId('bag-line');
     const note = drawer.getByTestId('bag-psu-note');
+    const count = drawer.getByTestId('bag-count');
     const press = (label) => drawer.getByRole('button', { name: label, exact: true }).click();
     const expectTotals = async (usd, watts, driver) => {
       await expect(drawer.getByTestId('bag-subtotal')).toHaveText(usd);
@@ -58,6 +59,9 @@ test.describe('bag drawer', () => {
     const column = 'Corner Floor Column 140, Walnut';
 
     await expect(lines).toHaveCount(2);
+    await expect(lines.getByTestId('product-thumb-glyph')).toHaveCount(2);
+    await expect(count).toBeVisible();
+    await expect(count).toHaveText('2 items');
     await expectTotals('$475', 40, '1x Lumen 60W 24V Driver');
     await expect(note).toHaveText('Driver utilisation 67% of 60 W');
 
@@ -75,7 +79,10 @@ test.describe('bag drawer', () => {
     await expectTotals('$1,820', 152, 'Multi-bus 24V Driver Array');
     await expect(note).toHaveText('2x 150W drivers / 51% of 300 W');
     await expect(lines.filter({ hasText: 'Corner Floor Column 140' }).getByTestId('bag-line-qty')).toHaveText('5');
-    await expect(drawer.getByText('07 / Items')).toBeVisible();
+    await expect(count).toHaveText('7 items');
+    // Only the line list scrolls: the checkout key and Clear cart stay inside 1280x720.
+    await expect(drawer.getByTestId('proceed-to-checkout')).toBeInViewport({ ratio: 1 });
+    await expect(drawer.getByRole('button', { name: 'Clear cart' })).toBeInViewport({ ratio: 1 });
 
     await press(`Decrease ${shelf}`);
     await expectTotals('$1,635', 136, '1x Lumen 150W 24V Driver');
@@ -84,11 +91,13 @@ test.describe('bag drawer', () => {
     await press(`Remove ${column}`);
     await expect(lines).toHaveCount(1);
     await expectTotals('$185', 16, '1x Lumen 60W 24V Driver');
+    await expect(count).toHaveText('1 item');
     await expect(drawer.getByRole('list', { name: 'Cart contents' })).toBeFocused();
 
     await drawer.getByRole('button', { name: 'Clear cart' }).click();
     await drawer.getByRole('button', { name: 'Confirm: clear 1 item' }).click();
-    await expect(drawer.getByText('Your cart is empty.')).toBeVisible();
+    await expect(drawer.getByRole('heading', { name: 'Your cart is empty' })).toBeVisible();
+    await expect(count).toHaveText('0 items');
     await expectTotals('$0', 0, 'No driver required');
     await expect(drawer.getByRole('button', { name: 'Close' })).toBeFocused();
     expect(await readStoredBag(page)).toBeNull();
@@ -113,8 +122,16 @@ test.describe('bag drawer', () => {
     await expect(page.getByRole('button', { name: 'Cart (3)' })).toBeVisible();
 
     const drawer = await openBag(page);
-    await expect(drawer.getByTestId('bag-line')).toHaveCount(2);
-    await expect(drawer.getByTestId('bag-line').first()).toContainText('LMN-LB-060 / Chalk / 14 W');
+    const lines = drawer.getByTestId('bag-line');
+    await expect(lines).toHaveCount(2);
+    await expect(lines.first()).toContainText('LMN-LB-060 / Chalk / 14 W');
+    // Each line draws its part in the line's own finish, lit when the part draws power.
+    const lightbarGlyph = lines.first().getByTestId('product-thumb-glyph');
+    await expect(lightbarGlyph).toBeVisible();
+    await expect(lightbarGlyph).toHaveAttribute('data-shape', 'lightbar');
+    await expect(lightbarGlyph).toHaveAttribute('data-finish', 'chalk');
+    await expect(lightbarGlyph).toHaveAttribute('data-lit', 'true');
+    await expect(lines.nth(1).getByTestId('product-thumb-glyph')).toHaveAttribute('data-finish', 'walnut');
     await expect(drawer.getByTestId('bag-subtotal')).toHaveText('$530');
     await expect(drawer.getByTestId('bag-load')).toHaveText('43 W');
     await page.keyboard.press('Escape');
@@ -221,10 +238,17 @@ test.describe('bag drawer', () => {
 
     const drawer = await openBag(page);
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+    await expect(drawer.getByTestId('bag-line')).toHaveCount(3);
     for (const line of await drawer.getByTestId('bag-line').all()) {
       const box = await line.boundingBox();
       expect(box.x + box.width).toBeLessThanOrEqual(360);
+      const finish = (await line.getAttribute('data-line')).split(':')[1];
+      const glyph = line.getByTestId('product-thumb-glyph');
+      await expect(glyph).toBeVisible();
+      await expect(glyph).toHaveAttribute('data-finish', finish);
     }
+    await expect(drawer.getByTestId('bag-count')).toHaveText('3 items');
+    await expect(drawer.getByTestId('proceed-to-checkout')).toBeInViewport({ ratio: 1 });
 
     const close = drawer.getByRole('button', { name: 'Close' });
     await expect(close).toBeFocused();
@@ -232,6 +256,70 @@ test.describe('bag drawer', () => {
     await expect(drawer.getByRole('button', { name: 'Clear cart' })).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(close).toBeFocused();
+  });
+
+  test('an empty cart opens on warm basalt with a guided empty state and Specs-only telemetry', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('data-mode', 'architectural');
+
+    const drawer = await openBag(page);
+    // Warm basalt: a champagne top light over a two-stop gradient, a champagne hairline edge, no glow.
+    await expect(drawer).toHaveCSS(
+      'background-image',
+      /^radial-gradient\(.+\), linear-gradient\(rgb\(23, 21, 19\)( 0%)?, rgb\(17, 16, 14\)( 100%)?\)$/,
+    );
+    await expect(drawer).toHaveCSS('border-left-color', 'rgba(229, 199, 153, 0.16)');
+    await expect(drawer).toHaveCSS('box-shadow', 'none');
+    await expect(drawer.getByTestId('bag-count')).toHaveText('0 items');
+
+    const close = drawer.getByRole('button', { name: 'Close' });
+    const catalog = drawer.getByRole('link', { name: 'Browse Catalog' });
+    const planner = drawer.getByRole('link', { name: 'Open 3D Room Planner' });
+    await expect(close).toBeFocused();
+    await expect(drawer.getByRole('heading', { name: 'Your cart is empty' })).toBeVisible();
+    await expect(
+      drawer.getByText('Explore our modular lighting and shelving or design your space in 3D to build your system.'),
+    ).toBeVisible();
+    await expect(catalog).toHaveAttribute('href', '/catalog');
+    await expect(planner).toHaveAttribute('href', '/room-3d');
+    await expect(drawer.getByTestId('proceed-to-checkout')).toHaveCount(0);
+    await expect(drawer.getByRole('button', { name: 'Clear cart' })).toHaveCount(0);
+
+    // The trap runs Close, the two pills, then back to Close.
+    await page.keyboard.press('Tab');
+    await expect(catalog).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(planner).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(close).toBeFocused();
+
+    // Visual mode: an empty cart keeps its 24V readout in the DOM, out of sight.
+    const telemetry = [drawer.getByTestId('bag-load'), drawer.getByTestId('bag-psu'), drawer.getByTestId('bag-psu-note')];
+    for (const row of telemetry) await expect(row).toBeHidden();
+    await expect(drawer.getByTestId('bag-load')).toHaveText('0 W');
+    await expect(drawer.getByTestId('bag-psu')).toHaveText('No driver required');
+    await expect(drawer.getByTestId('bag-subtotal')).toHaveText('$0');
+
+    await page.keyboard.press('Escape');
+    await expect(drawer).toHaveCount(0);
+    await page.getByRole('button', { name: 'Specs (Technical)' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-mode', 'technical');
+
+    // Specs mode: the same rows are on screen with the same exact text.
+    await openBag(page);
+    for (const row of telemetry) await expect(row).toBeVisible();
+    await expect(drawer.getByTestId('bag-load')).toHaveText('0 W');
+    await expect(drawer.getByTestId('bag-psu')).toHaveText('No driver required');
+    await expect(drawer.getByTestId('bag-psu-note')).toHaveText('Passive parts only, no driver load');
+    await expect(drawer.getByRole('heading', { name: 'Your cart is empty' })).toBeVisible();
+
+    // A pill closes the drawer on its way to the route.
+    await catalog.click();
+    await expect(drawer).toHaveCount(0);
+    await expect(page).toHaveURL(/\/catalog$/);
+    expect(errors).toEqual([]);
+    expect(await readCspViolations(page)).toEqual([]);
   });
 });
 

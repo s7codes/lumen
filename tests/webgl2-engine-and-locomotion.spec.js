@@ -31,7 +31,17 @@ import {
   windowWallOf,
   windowWallsOf,
 } from '../src/lib/room-3d.js';
-import { buildScene, FURNITURE_DETAILS, MOONLIGHT, NIGHT_GLAZING, WINDOW_FRAME } from '../src/lib/room-scene.js';
+import {
+  BEVEL,
+  buildScene,
+  FURNITURE_DETAILS,
+  MOONLIGHT,
+  NIGHT_GLAZING,
+  PORTAL_LIGHT,
+  SKYLIGHT,
+  SUN_GOBO,
+  WINDOW_FRAME,
+} from '../src/lib/room-scene.js';
 import {
   coastWalk,
   defaultStance,
@@ -324,7 +334,7 @@ test.describe('parametric CAD sub-assemblies and volumetric light', () => {
     expect(byProduct[SHELF]).toMatchObject({ geometry: 'box', size: [1.1, 0.08, 0.25] });
     for (const module of scene.modules) {
       for (const part of module.subparts) {
-        expect(['box', 'cylinder']).toContain(part.geometry);
+        expect(['box', 'cylinder', 'lathe']).toContain(part.geometry);
         expect(PBR_MATERIALS[part.material], part.id).toBeTruthy();
         expect(part.size.every((c) => c > 0), part.id).toBe(true);
         expect(part.rotation).toHaveLength(3);
@@ -572,10 +582,13 @@ test.describe('solar path and orientable floor reference', () => {
     expect(day.rig.sun).toMatchObject({ fixed: true, color: golden.color });
     expect(day.rig.sun.from.join(' ')).toBe(rounded(golden.direction));
     expect(day.stats.volumetrics).toBe(6);
-    // An east window sees no direct sun at golden hour, but it does at dawn.
+    // An east window sees no direct sun at golden hour, but it does at dawn. Away from the sun it
+    // still faces the open sky, so it lets a skylight portal in instead of going dark.
     const eastWindow = (hour) =>
       buildScene({ state: createRoomState({ ...DEFAULT_ROOM, lighting: 'daylight', solarHour: hour, windowWall: 'east' }) }).window;
-    expect(eastWindow(17.5)).toMatchObject({ sunlit: false, patches: [], shafts: [] });
+    expect(eastWindow(17.5)).toMatchObject({ sunlit: false, skylit: true, light: 'sky' });
+    expect(eastWindow(17.5).patches).toHaveLength(6);
+    expect(eastWindow(17.5).shafts).toHaveLength(6);
     expect(eastWindow(7).sunlit).toBe(true);
     // Night keeps its own rig and, by default, no window.
     const dark = buildScene({ state: createRoomState() });
@@ -816,7 +829,9 @@ test.describe('archviz materials, studio IBL and furniture vignettes', () => {
     expect(Math.sqrt(sq / n - (sum / n) ** 2)).toBeLessThan(16);
 
     const env = studioEnvironmentMap();
-    expect(env).toMatchObject({ width: STUDIO_ENVIRONMENT.width, height: STUDIO_ENVIRONMENT.height, intensity: 0.35 });
+    // A tiny 64 x 32 studio, lit at 0.42 on every renderer.
+    expect(env).toMatchObject({ width: 64, height: 32, intensity: 0.42 });
+    expect(STUDIO_ENVIRONMENT).toMatchObject({ width: 64, height: 32, intensity: 0.42 });
     expect(env.data).toHaveLength(env.width * env.height * 4);
     expect(Buffer.compare(Buffer.from(env.data), Buffer.from(studioEnvironmentMap().data))).toBe(0);
     // A bright overhead softbox, strip boxes east and west, a warm horizon, a dark floor.
@@ -919,7 +934,300 @@ test.describe('archviz materials, studio IBL and furniture vignettes', () => {
     await expect(page.getByTestId('room-scene-graph')).toHaveAttribute('data-submeshes', String(scene.stats.submeshes));
     await expect(page.getByTestId('room-scene-graph')).toHaveAttribute('data-meshes', String(scene.stats.meshes));
     if ((await rendererOf(page)) !== 'unavailable') {
-      await expect(page.getByTestId('room-scene-graph')).toHaveAttribute('data-ibl', /^(studio|software)$/);
+      // Studio IBL is always on: prefiltered on a GPU, in closed form on a software rasteriser.
+      await expect(page.getByTestId('room-scene-graph')).toHaveAttribute('data-ibl', /^(studio|analytic)$/);
+    }
+    expect(errors).toEqual([]);
+    expect(await readCspViolations(page)).toEqual([]);
+  });
+});
+
+// Millwork and metal kinds that take the crisp micro-bevel by default.
+const MICRO_KINDS = new Set(['slab', 'carcass', 'door', 'tray', 'rail', 'stile', 'edge', 'fin', 'slat', 'beam', 'body', 'sill', 'frame', 'top', 'leg', 'post']);
+
+test.describe('window light portals and sculpted CAD geometry', () => {
+  test('both windows at 14:30 cast six-pane gobos and air shafts: the west one direct sun on a clamped ray, the east one a skylight portal, each with a portal light and hardware', () => {
+    const state = createRoomState({ ...DEFAULT_ROOM, lighting: 'daylight', solarHour: 14.5, windowWalls: ['west', 'east'] });
+    const scene = buildScene({ state });
+    expect(JSON.stringify(scene)).toBe(JSON.stringify(buildScene({ state })));
+    const [west, east] = scene.windows;
+    expect(west).toMatchObject({ wall: 'west', sunlit: true, skylit: false, moonlit: false, light: 'sun' });
+    expect(east).toMatchObject({ wall: 'east', sunlit: false, skylit: true, moonlit: false, light: 'sky' });
+    const { widthCm: W, depthCm: D } = DEFAULT_ROOM;
+    for (const win of scene.windows) {
+      expect(win.patches, win.wall).toHaveLength(6);
+      expect(win.shafts, win.wall).toHaveLength(6);
+      for (const patch of win.patches) {
+        expect(patch.light).toBe(win.light);
+        // Every floor vertex carries its gobo coordinates for the penumbra shader, all within the pane.
+        expect(patch.uv).toHaveLength(patch.points.length);
+        expect(patch.depth).toHaveLength(patch.points.length);
+        expect(patch.uv.flat().every((c) => c >= 0 && c <= 1)).toBe(true);
+        expect(patch.depth.every((d) => d >= 0 && d <= 1)).toBe(true);
+        expect(patch.points.every(([x, , z]) => x >= 0 && x <= W / 100 && z >= 0 && z <= D / 100)).toBe(true);
+      }
+      // A soft spot from the middle of the glass, aimed straight in at the floor 2.2 m from the wall.
+      expect(win.portalLight).toMatchObject({ type: 'spot', source: win.light, penumbra: 1, decay: PORTAL_LIGHT.decay });
+      expect(win.portalLight.position[1]).toBeCloseTo((win.y0 + win.y1) / 200, 3);
+      expect(win.portalLight.target[1]).toBe(0);
+      expect(win.portalLight.target[2]).toBeCloseTo(win.portalLight.position[2], 6);
+      // Casing linings, a bevelled oak sill over a shadow line, six sashes and two espagnolette handles.
+      const kinds = win.members.map((member) => member.kind);
+      expect(kinds.filter((kind) => kind === 'handle')).toHaveLength(4);
+      expect(kinds.filter((kind) => kind === 'sash')).toHaveLength(24);
+      expect(kinds.filter((kind) => kind === 'lining')).toHaveLength(4);
+      expect(win.members.filter((member) => member.kind === 'handle').every((m) => m.material === 'metal-steel' && m.bevel)).toBe(true);
+      expect(win.members.find((member) => member.kind === 'sill').bevel).toMatchObject({ segments: BEVEL.micro.segments });
+      expect(win.members.find((member) => member.kind === 'shadowline')).toMatchObject({ ...WINDOW_FRAME.shadow, shadow: false });
+    }
+    expect(west.portalLight.position[0]).toBeCloseTo(0.12, 6);
+    expect(west.portalLight.target[0]).toBeCloseTo(PORTAL_LIGHT.reachCm / 100, 6);
+    expect(east.portalLight.target[0]).toBeCloseTo((W - PORTAL_LIGHT.reachCm) / 100, 6);
+
+    // Direct sun: the 14:30 sun nearly grazes the west wall, so the ray is held at its architectural
+    // minimum inward share against its steepest pitch, and the grid reaches well out across the floor.
+    const sun = solarState(14.5);
+    expect(-sun.direction[0]).toBeLessThan(SUN_GOBO.inwardMin);
+    expect(-west.ray[0] / west.ray[1]).toBeCloseTo(SUN_GOBO.inwardMin / SUN_GOBO.pitchMax, 3);
+    const westX = west.patches.flatMap((patch) => patch.points.map((p) => p[0]));
+    expect(Math.max(...westX)).toBeGreaterThan(1.3);
+    expect(Math.max(...westX) - Math.min(...westX)).toBeGreaterThan(0.7);
+    expect(west.patches.every((patch) => patch.color === sun.color && patch.soft === SUN_GOBO.soft)).toBe(true);
+    expect(west.patches[0].opacity).toBeCloseTo(SUN_GOBO.patch * sun.strength, 4);
+    expect(west.portalLight.intensity).toBeCloseTo(PORTAL_LIGHT.sun * (0.4 + 0.6 * sun.strength), 3);
+
+    // Skylight: steep, softer and cooler, falling more than a metre and a half into the room. Its gobo
+    // lands whole, so every patch is its pane's full parallelogram, corner to corner in pane coordinates.
+    expect(east.ray[0] / east.ray[1]).toBeCloseTo(SKYLIGHT.inward / SKYLIGHT.pitch, 3);
+    for (const patch of east.patches) {
+      expect(patch.points).toHaveLength(4);
+      expect(patch.uv.map(([u, v]) => `${u} ${v}`).sort()).toEqual(['0 0', '0 1', '1 0', '1 1']);
+    }
+    const eastX = east.patches.flatMap((patch) => patch.points.map((p) => p[0]));
+    expect(Math.min(...eastX)).toBeLessThan(W / 100 - 1.5);
+    expect(east.patches.every((patch) => patch.opacity === SKYLIGHT.patchOpacity && patch.soft === SKYLIGHT.soft)).toBe(true);
+    expect(east.shafts.every((shaft) => shaft.opacity === SKYLIGHT.shaftOpacity)).toBe(true);
+    expect(east.patches[0].color).toBe('#e5ebf3');
+    expect(east.portalLight).toMatchObject({ source: 'sky', intensity: PORTAL_LIGHT.sky, color: '#e5ebf3' });
+
+    // Three rig lights plus the two portal lights; twelve shafts in the air.
+    expect(scene.stats.lights).toBe(3 + 2);
+    expect(scene.stats.volumetrics).toBe(12);
+    // After sunset the sky portals dim to half; at night every window is moonlit, portal and all.
+    const dusk = buildScene({ state: createRoomState({ ...DEFAULT_ROOM, lighting: 'daylight', solarHour: 21, windowWalls: ['west', 'east'] }) });
+    for (const win of dusk.windows) {
+      expect(win).toMatchObject({ skylit: true, light: 'sky' });
+      expect(win.patches[0].opacity).toBeCloseTo(SKYLIGHT.patchOpacity * SKYLIGHT.twilight, 6);
+      expect(win.portalLight.intensity).toBeCloseTo(PORTAL_LIGHT.sky * SKYLIGHT.twilight, 6);
+    }
+    const night = buildScene({ state: createRoomState({ ...DEFAULT_ROOM, windowWalls: ['west', 'east'] }) });
+    expect(night.windows.map((win) => win.portalLight)).toEqual([
+      expect.objectContaining({ source: 'moon', intensity: PORTAL_LIGHT.moon, color: MOONLIGHT.color }),
+      expect.objectContaining({ source: 'moon', intensity: PORTAL_LIGHT.moon, color: MOONLIGHT.color }),
+    ]);
+  });
+
+  test('window light lands whole and changes smoothly from 06:00 to 21:00 in compact, shallow and loft rooms, and a sun-facing window never reads darker than the sky', () => {
+    const whole = (patch) =>
+      patch.points.length === 4 && patch.uv.map(([u, v]) => `${u} ${v}`).sort().join('|') === '0 0|0 1|1 0|1 1';
+    for (const dims of [{}, { widthCm: 240, depthCm: 200 }, { widthCm: 640, depthCm: 520, heightCm: 300 }]) {
+      let previous = null;
+      for (let quarter = 24; quarter <= 84; quarter += 1) {
+        const hour = quarter / 4;
+        const room = { ...DEFAULT_ROOM, ...dims, lighting: 'daylight', solarHour: hour, windowWalls: ['west', 'east', 'south'] };
+        const scene = buildScene({ state: createRoomState(room) });
+        const label = `${JSON.stringify(dims)} at ${formatSolarHour(hour)}`;
+        const opacity = {};
+        for (const win of scene.windows) {
+          // Six whole panes on the floor, whatever the room and the hour.
+          expect(win.patches.filter(whole), `${win.wall} ${label}`).toHaveLength(6);
+          opacity[win.wall] = { light: win.light, value: win.patches[0].opacity, portal: win.portalLight.intensity };
+        }
+        const sun = Object.values(opacity).filter((o) => o.light === 'sun');
+        const sky = Object.values(opacity).filter((o) => o.light === 'sky');
+        for (const lit of sun) {
+          for (const open of sky) {
+            expect(lit.value, label).toBeGreaterThanOrEqual(open.value);
+            expect(lit.portal, label).toBeGreaterThanOrEqual(open.portal);
+          }
+        }
+        // No step change through sunrise or sunset: a quarter hour moves any window's light by under 0.1.
+        if (previous) {
+          for (const wall of Object.keys(opacity)) {
+            expect(Math.abs(opacity[wall].value - previous[wall].value), `${wall} ${label}`).toBeLessThan(0.1);
+          }
+        }
+        previous = opacity;
+      }
+    }
+    // Dusk on the default west window keeps a whole gobo at the sky's level instead of a sliver.
+    const dusk = buildScene({ state: createRoomState({ ...DEFAULT_ROOM, lighting: 'daylight', solarHour: 20 }) }).window;
+    expect(dusk).toMatchObject({ wall: 'west', light: 'sun' });
+    expect(dusk.patches.filter(whole)).toHaveLength(6);
+    expect(dusk.patches[0].opacity).toBeGreaterThan(SKYLIGHT.patchOpacity * SKYLIGHT.twilight);
+    // At night every window of the shallowest room still lands its six moonlit panes whole.
+    const night = buildScene({ state: createRoomState({ ...DEFAULT_ROOM, widthCm: 240, depthCm: 200, windowWalls: ['west', 'east', 'south'] }) });
+    expect(night.windows.every((win) => win.light === 'moon' && win.patches.filter(whole).length === 6)).toBe(true);
+  });
+
+  test('upholstery takes lush fillets, millwork a crisp micro-bevel and vessels turn on a lathe, while collision boxes, part ids and walk bounds stay exact', () => {
+    // The bed: a channel-tufted headboard, one draped duvet, a turned-down sheet, a runner and four pillows.
+    const bedRoom = { ...DEFAULT_ROOM, furniture: 'bed-160' };
+    const bed = buildScene({ state: createRoomState(bedRoom) });
+    const layout = furnitureLayout(bedRoom);
+    expect(bed.furniture.map((part) => part.part)).toEqual(layout.parts.map((p) => p.id));
+    expect(bed.furniture.map((part) => part.box)).toEqual(layout.parts.map((p) => p.box));
+    expect(bed.furniturePlacement.bounds).toEqual(layout.bounds);
+    expect(layout.bounds).toEqual({ x0: 80, x1: 240, y0: 0, y1: 52, z0: 6, z1: 212 });
+    expect(furnitureZone(bedRoom)).toEqual({ x0: 60, x1: 260, z0: -14, z1: 232 });
+    const bedParts = bed.furniture.flatMap((part) => part.subparts);
+    const soft = bedParts.filter((part) => ['pillow', 'mattress', 'duvet', 'headboard', 'throw'].includes(part.kind));
+    expect(soft.length).toBeGreaterThanOrEqual(15);
+    for (const part of soft) {
+      expect(part.bevel, part.id).toMatchObject({ segments: BEVEL.soft.segments });
+      expect(part.bevel.radius, part.id).toBeCloseTo(Math.min(...part.size) * BEVEL.soft.ratio, 4);
+    }
+    expect(bedParts.filter((part) => part.kind === 'duvet')).toHaveLength(1);
+    expect(bedParts.filter((part) => part.kind === 'headboard').length).toBeGreaterThanOrEqual(7);
+    const pillows = bedParts.filter((part) => part.kind === 'pillow' && !part.id.endsWith('-flange'));
+    expect(pillows).toHaveLength(4);
+    // Euro shams lean back onto the headboard; the sleeping pillows raise their back ends onto them.
+    expect(pillows.filter((part) => part.id.endsWith('-euro')).every((part) => part.rotation[0] < 0)).toBe(true);
+    expect(pillows.filter((part) => part.id.endsWith('-sleeper')).every((part) => part.rotation[0] > 0)).toBe(true);
+    expect(bed.furniture.find((part) => part.part === 'frame').subparts[0].bevel.radius).toBeLessThanOrEqual(BEVEL.micro.maxM);
+    // Spun-metal bases and turned opal shades on the ledges.
+    expect(bed.furnitureVignette.parts.filter((part) => part.kind === 'lamp' && part.geometry === 'lathe')).toHaveLength(4);
+    // Drawn detail stays inside the room the way the collision boxes do: in a shallow room, on either
+    // wall, and pushed to either end of the wall, every square-set sub-part ends at the wall planes.
+    const footprint = (part) => {
+      const quarter = Math.abs(Math.sin(part.rotation[1])) > 0.5;
+      const [sx, sz] = quarter ? [part.size[2], part.size[0]] : [part.size[0], part.size[2]];
+      return [part.position[0] - sx / 2, part.position[0] + sx / 2, part.position[2] - sz / 2, part.position[2] + sz / 2];
+    };
+    for (const room of [
+      { ...bedRoom, widthCm: 240, depthCm: 200 },
+      { ...bedRoom, widthCm: 240, depthCm: 200, furnitureWall: 'south' },
+      { ...bedRoom, furnitureOffsetCm: -80 },
+      { ...bedRoom, furnitureOffsetCm: 80 },
+    ]) {
+      const placed = buildScene({ state: createRoomState(room) });
+      const square = placed.furniture.flatMap((part) => part.subparts).filter((part) => part.geometry === 'box' && !part.rotation[0] && !part.rotation[2]);
+      for (const part of square) {
+        const [x0, x1, z0, z1] = footprint(part);
+        expect(x0 >= -1e-4 && x1 <= room.widthCm / 100 + 1e-4 && z0 >= -1e-4 && z1 <= room.depthCm / 100 + 1e-4, part.id).toBe(true);
+      }
+    }
+
+    // The sofa: a radiused base, filleted cushions, accent cushions tilted and rolled, bolsters kept round.
+    const sofa = buildScene({ state: createRoomState({ ...DEFAULT_ROOM, furniture: 'sofa-200' }) });
+    const sofaPart = (id) => sofa.furniture.find((part) => part.part === id);
+    expect(sofaPart('base')).toMatchObject({ body: false });
+    expect(sofaPart('base').subparts[0].bevel).toEqual({ radius: 0.04, segments: BEVEL.custom.segments });
+    const accents = [...sofaPart('seat-left').subparts, ...sofaPart('seat-right').subparts].filter((part) => part.id.endsWith('throw-cushion'));
+    expect(accents.map((part) => Math.sign(part.rotation[2]))).toEqual([1, -1]);
+    expect(accents.every((part) => part.rotation[0] < 0 && part.bevel)).toBe(true);
+    expect(sofaPart('arm-left').subparts.find((part) => part.kind === 'bolster').geometry).toBe('cylinder');
+    const bowl = sofa.furnitureVignette.parts.find((part) => part.id.endsWith('-bowl'));
+    expect(bowl).toMatchObject({ geometry: 'lathe', kind: 'object', material: 'matte-chalk' });
+
+    // The desk: a lit ultrawide display with an amber plan and a white grid, by day too, and a
+    // five-star chair under a curved back.
+    const desk = buildScene({ state: createRoomState({ ...DEFAULT_ROOM, lighting: 'daylight', furniture: 'desk-140' }) });
+    const top = desk.furniture.find((part) => part.part === 'top');
+    expect(top.body).toBe(false);
+    expect(top.subparts.find((part) => part.id.endsWith('-top')).bevel).toMatchObject({ segments: BEVEL.micro.segments });
+    const glowing = top.subparts.filter((part) => part.emissive);
+    expect(glowing.find((part) => part.id.endsWith('monitor-screen'))).toMatchObject({ emissive: '#8ea3b8', emissiveIntensity: 0.55 });
+    expect(glowing.filter((part) => part.emissive === '#e8b06a')).toHaveLength(5);
+    expect(glowing.filter((part) => part.emissive === '#d7e0ea')).toHaveLength(7);
+    expect(top.subparts.find((part) => part.id.endsWith('lamp-boom')).rotation[1]).toBeLessThan(0);
+    // The stand rises behind the display: the neck's front face meets the panel's back, clear of the screen.
+    const deskPart = (id) => top.subparts.find((part) => part.id.endsWith(id));
+    const faces = (part) => [part.position[2] - part.size[2] / 2, part.position[2] + part.size[2] / 2];
+    expect(faces(deskPart('monitor-neck'))[1]).toBeCloseTo(faces(deskPart('monitor-panel'))[0], 6);
+    expect(faces(deskPart('monitor-neck'))[1]).toBeLessThan(faces(deskPart('monitor-screen'))[0]);
+    const chair = desk.furnitureVignette.parts.filter((part) => part.kind === 'chair');
+    expect(chair.filter((part) => /chair-leg-\d$/.test(part.id))).toHaveLength(5);
+    expect(chair.filter((part) => part.id.includes('chair-wing')).map((part) => Math.sign(part.rotation[1]))).toEqual([-1, 1]);
+
+    // Wall modules: a micro-bevelled slab, monographs with cream page blocks and a turned amphora on the
+    // shelf; a celadon vase in the cube; bevelled doors and tray and recessed finger pulls on the sideboard.
+    let state = createRoomState({ widthCm: 640, depthCm: 520, heightCm: 300 });
+    for (const productId of [SHELF, 'modular-cube-36', SIDEBOARD]) state = mountInRoom(state, productId).state;
+    const scene = buildScene({ state });
+    const byProduct = Object.fromEntries(scene.modules.map((module) => [module.productId, module]));
+    const shelf = byProduct[SHELF];
+    expect(shelf).toMatchObject({ geometry: 'box', size: [1.1, 0.08, 0.25] });
+    expect(shelf.subparts.find((part) => part.kind === 'slab').bevel).toEqual({ radius: 0.004, segments: 2 });
+    expect(shelf.subparts.filter((part) => part.id.endsWith('-pages')).length).toBeGreaterThanOrEqual(6);
+    for (const module of [shelf, byProduct['modular-cube-36']]) {
+      const vessel = module.subparts.find((part) => part.id.endsWith('-vessel'));
+      expect(vessel, module.productId).toMatchObject({ geometry: 'lathe', kind: 'object', radiusBottom: null });
+      expect(vessel.profile.length).toBeGreaterThanOrEqual(10);
+      expect(vessel.profile.every(([r, y]) => r >= 0 && Number.isFinite(y))).toBe(true);
+      const heights = vessel.profile.map(([, y]) => y);
+      expect(vessel.size[1]).toBeCloseTo(Math.max(...heights) - Math.min(...heights), 3);
+      expect(vessel.size[0]).toBeCloseTo(2 * Math.max(...vessel.profile.map(([r]) => r)), 3);
+    }
+    const sideboard = byProduct[SIDEBOARD].subparts;
+    expect(sideboard.filter((part) => part.kind === 'door').every((part) => part.bevel)).toBe(true);
+    expect(sideboard.filter((part) => part.kind === 'tray').every((part) => part.bevel)).toBe(true);
+    expect(sideboard.filter((part) => part.kind === 'pull-recess')).toHaveLength(2);
+    expect(sideboard.filter((part) => part.kind === 'handle')).toHaveLength(2);
+    // Micro-bevels never exceed 4 mm, and trims thinner than 6 mm stay crisp.
+    for (const part of scene.modules.flatMap((module) => module.subparts)) {
+      if (part.bevel && MICRO_KINDS.has(part.kind)) expect(part.bevel.radius, part.id).toBeLessThanOrEqual(BEVEL.micro.maxM);
+      if (Math.min(...part.size) < BEVEL.micro.minSizeM) expect(part.bevel ?? null, part.id).toBeNull();
+    }
+    expect(scene.stats.submeshes).toBe(scene.modules.reduce((sum, module) => sum + module.subparts.length, 0));
+  });
+
+  test('both windows light the floor in the viewport at 14:30, graded ACES filmic at 1.08 with studio IBL on every renderer tier', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await installCspRecorder(page);
+    await openRoom(page);
+    const graph = page.getByTestId('room-scene-graph');
+    await page.getByRole('radio', { name: 'Daylight Studio' }).check();
+    await page.getByTestId('room-solar-controls').getByRole('button', { name: /Sun & Aperture/ }).click();
+    await expect(page.getByTestId('room-solar-hour')).toHaveValue('14.5');
+    await page.getByTestId('room-window-walls').getByRole('checkbox', { name: 'East' }).check();
+    await expect(graph).toHaveAttribute('data-window-walls', 'west east');
+    await expect(page.getByTestId('room-window-count')).toHaveText('2 active windows');
+    const windowOf = (wall) => graph.locator(`[data-testid="room-window"][data-wall="${wall}"]`);
+    await expect(windowOf('west')).toHaveAttribute('data-light', 'sun');
+    await expect(windowOf('west')).toHaveAttribute('data-sunlit', 'true');
+    await expect(windowOf('east')).toHaveAttribute('data-light', 'sky');
+    await expect(windowOf('east')).toHaveAttribute('data-skylit', 'true');
+    for (const wall of ['west', 'east']) {
+      await expect(windowOf(wall)).toHaveAttribute('data-patches', '6');
+      await expect(windowOf(wall)).toHaveAttribute('data-shafts', '6');
+      await expect(windowOf(wall)).toHaveAttribute('data-handles', '4');
+    }
+    await expect(windowOf('west')).toHaveAttribute('data-portal-source', 'sun');
+    await expect(windowOf('east')).toHaveAttribute('data-portal-source', 'sky');
+    await expect(windowOf('east')).toHaveAttribute('data-portal-intensity', String(PORTAL_LIGHT.sky));
+    await expect(graph).toHaveAttribute('data-sun-patches', '6');
+    await expect(graph).toHaveAttribute('data-sky-patches', '6');
+    await expect(graph).toHaveAttribute('data-portal-lights', '2');
+    await expect(graph).toHaveAttribute('data-volumetrics', '12');
+    await expect.poll(async () => (await readStoredRoom(page)).room.windowWalls).toEqual(['west', 'east']);
+    const stored = sanitizeRoomState(await readStoredRoom(page));
+    await expect(graph).toHaveAttribute('data-lights', String(buildScene({ state: stored }).stats.lights));
+
+    if ((await rendererOf(page)) !== 'unavailable') {
+      // ACES filmic at 1.08 read back off the renderer; the studio at 0.42 on either tier, and MSAA
+      // only where a GPU pays for it.
+      await expect(graph).toHaveAttribute('data-tone-mapping', 'aces');
+      await expect(graph).toHaveAttribute('data-exposure', '1.08');
+      await expect(graph).toHaveAttribute('data-env-intensity', '0.42');
+      const tier = await graph.getAttribute('data-ibl-tier');
+      expect(['studio', 'software']).toContain(tier);
+      await expect(graph).toHaveAttribute('data-ibl', tier === 'software' ? 'analytic' : 'studio');
+      await expect(graph).toHaveAttribute('data-msaa', tier === 'software' ? 'false' : 'true');
+      // Portal lights never change the spot count: a fixed GPU pool, or the ambient fill on software.
+      await expect(graph).toHaveAttribute('data-portal-mode', tier === 'software' ? 'fill' : 'spot');
+      // The gobo shader and the patched speculars compile cleanly: two more frames, still no errors.
+      await settleFrames(page);
     }
     expect(errors).toEqual([]);
     expect(await readCspViolations(page)).toEqual([]);
