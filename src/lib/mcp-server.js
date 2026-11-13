@@ -88,6 +88,12 @@ export const CLIENT_ACTION_TYPES = Object.freeze(['apply_room_state', 'apply_wal
 export const MUTATION_TOOLS = Object.freeze(['mutate_3d_room', 'mutate_2d_wall', 'manage_cart_bag']);
 
 const METHOD_PATTERN = /^[A-Za-z][A-Za-z0-9_/.-]{0,63}$/;
+/**
+ * Deepest container nesting a message may carry. The deepest legitimate shape
+ * is a room or wall draft in `params._meta["lumen/workspace"]`, seven levels
+ * down; anything past twelve is refused before any method runs.
+ */
+export const MCP_MAX_DEPTH = 12;
 const UID_PATTERN = '^m[0-9]{1,4}$';
 const MAX_MOUNTS = 6;
 const MAX_CATALOG_ROWS = 12;
@@ -1060,6 +1066,20 @@ function isValidId(id) {
   return typeof id === 'string' ? id.length <= 128 : Number.isSafeInteger(id);
 }
 
+/** True when `value` nests containers deeper than `maxDepth`. Iterative, so hostile depth cannot exhaust the stack. */
+export function exceedsDepth(value, maxDepth = MCP_MAX_DEPTH) {
+  if (value === null || typeof value !== 'object') return false;
+  const stack = [[value, 1]];
+  while (stack.length > 0) {
+    const [node, depth] = stack.pop();
+    if (depth > maxDepth) return true;
+    for (const child of Array.isArray(node) ? node : Object.values(node)) {
+      if (child !== null && typeof child === 'object') stack.push([child, depth + 1]);
+    }
+  }
+  return false;
+}
+
 /**
  * Workspace for one request: an in-process caller passes it already
  * sanitized; a remote caller sends it as `params._meta["lumen/workspace"]`,
@@ -1134,14 +1154,23 @@ const METHODS = {
 
 /**
  * Handles one JSON-RPC 2.0 message. Returns the response object, or null for
- * a well-formed notification (no id), which gets no response. Batches are
- * not part of the 2025-06-18 revision and read as an invalid request.
- * `context`: `{ version, workspace? }`.
+ * a well-formed notification (no id), which gets no response. Never throws.
+ * Batches are not part of the 2025-06-18 revision and read as an invalid
+ * request whatever their size, so a 50-message array costs one check. A
+ * message nested deeper than MCP_MAX_DEPTH is refused the same way. A fault
+ * inside a method answers -32603 and is handed to `context.onError`.
+ * `context`: `{ version, workspace?, onError? }`.
  */
 export function handleMcpRequest(message, context = {}) {
+  if (Array.isArray(message)) {
+    return rpcError(null, JSONRPC_ERRORS.invalidRequest, 'Invalid Request: batches are not supported; send one JSON-RPC 2.0 object per request.');
+  }
   if (!isRecord(message)) return rpcError(null, JSONRPC_ERRORS.invalidRequest, 'Invalid Request: send one JSON-RPC 2.0 object.');
   const hasId = Object.hasOwn(message, 'id');
   const id = hasId && isValidId(message.id) ? message.id : null;
+  if (exceedsDepth(message)) {
+    return rpcError(id, JSONRPC_ERRORS.invalidRequest, `Invalid Request: the message nests deeper than ${MCP_MAX_DEPTH} levels.`);
+  }
   if (message.jsonrpc !== '2.0') return rpcError(id, JSONRPC_ERRORS.invalidRequest, 'Invalid Request: jsonrpc must be "2.0".');
   if (hasId && !isValidId(message.id)) return rpcError(null, JSONRPC_ERRORS.invalidRequest, 'Invalid Request: id must be a string or an integer.');
   if (typeof message.method !== 'string' || !METHOD_PATTERN.test(message.method)) {
@@ -1160,7 +1189,8 @@ export function handleMcpRequest(message, context = {}) {
     return rpcResult(id, method(message.params, context));
   } catch (error) {
     if (error instanceof ParamsError) return rpcError(id, error.code, error.message);
-    throw error;
+    if (typeof context.onError === 'function') context.onError(error);
+    return rpcError(id, JSONRPC_ERRORS.internal, 'Internal error: the request could not be completed.');
   }
 }
 

@@ -20,13 +20,14 @@ const TEXT_CM = 2.5;
  * Collapses any string to one printable ASCII line. With no CR or LF left a
  * value can never close its group and smuggle in a group code; "%%" control
  * sequences and caret escapes are neutralised so labels render literally.
+ * A run of percent signs folds to one, so "%%%%c" cannot reassemble "%%c".
  */
 export function dxfText(value, maxLength = 120) {
   return String(value ?? '')
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\x20-\x7E]+/g, ' ')
-    .replace(/%%/g, '%')
+    .replace(/%{2,}/g, '%')
     .replace(/\^/g, '^ ')
     .replace(/\s+/g, ' ')
     .trim()

@@ -7,6 +7,24 @@ const STORAGE_NAMESPACE = 'lumen:';
 const SAFE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 const ANY_CONTROL_CHAR = /[\u0000-\u001F\u007F]/;
+// C1 controls, and the bidirectional embeddings, overrides and isolates
+// (U+202A to U+202E, U+2066 to U+2069) that reorder displayed text: the
+// "Trojan Source" set (CVE-2021-42574). Free text keeps none of them.
+const INVISIBLE_CONTROLS = /[\u0080-\u009F\u202A-\u202E\u2066-\u2069]/g;
+// A UTF-16 surrogate without its partner is not a character; it becomes U+FFFD.
+const LONE_SURROGATES = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+const TRAILING_HIGH_SURROGATE = /[\uD800-\uDBFF]$/;
+
+/** Well-formed text with no control, C1 or bidi override characters; line breaks are left to the caller. */
+function cleanCharacters(value) {
+  return value.replace(LONE_SURROGATES, '\uFFFD').normalize('NFC').replace(CONTROL_CHARS, '').replace(INVISIBLE_CONTROLS, '');
+}
+
+/** Caps length without splitting a surrogate pair: a pair cut in half is dropped, never left lone. */
+function capLength(value, maxLength) {
+  const capped = value.slice(0, maxLength);
+  return TRAILING_HIGH_SURROGATE.test(capped) ? capped.slice(0, -1) : capped;
+}
 
 class DepthExceededError extends Error {}
 
@@ -79,18 +97,14 @@ export function isOneOf(value, allowed) {
 }
 
 /**
- * Normalises free text for display or storage: NFC, no control characters,
- * collapsed whitespace, hard length cap. React still escapes on render;
- * this keeps stored and logged values predictable.
+ * Normalises free text for display or storage: NFC, well-formed UTF-16, no
+ * control, C1 or bidi override characters, collapsed whitespace, hard length
+ * cap. React still escapes on render; this keeps stored and logged values
+ * predictable and keeps a name from reordering the text around it.
  */
 export function sanitizeText(value, { maxLength = 256 } = {}) {
   if (typeof value !== 'string') return '';
-  return value
-    .normalize('NFC')
-    .replace(CONTROL_CHARS, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, maxLength);
+  return capLength(cleanCharacters(value).replace(/\s+/g, ' ').trim(), maxLength);
 }
 
 /**
@@ -99,16 +113,13 @@ export function sanitizeText(value, { maxLength = 256 } = {}) {
  */
 export function sanitizeMultilineText(value, { maxLength = 1000 } = {}) {
   if (typeof value !== 'string') return '';
-  return value
-    .normalize('NFC')
-    .replace(/\r\n?/g, '\n')
-    .replace(CONTROL_CHARS, '')
+  const text = cleanCharacters(value.replace(/\r\n?/g, '\n'))
     .split('\n')
     .map((line) => line.replace(/[^\S\n]+/g, ' ').trim())
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
-    .trim()
-    .slice(0, maxLength);
+    .trim();
+  return capLength(text, maxLength);
 }
 
 export function clampNumber(value, min, max, fallback = min) {
