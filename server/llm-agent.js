@@ -30,6 +30,7 @@ import { safeJsonParse } from '../src/security/sanitize.js';
  *   OPENAI_API_KEY       OpenAI Chat Completions with tools
  *   GEMINI_API_KEY       Gemini generateContent with function declarations
  *   LUMEN_LLM_BASE_URL   Ollama or any OpenAI-compatible server, no key needed
+ *   OLLAMA_BASE_URL      the conventional Ollama name, read when LUMEN_LLM_BASE_URL is unset
  *   LUMEN_LLM_MODEL      model id override
  *   LUMEN_LLM_PROVIDER   auto (default), deterministic, anthropic, openai, gemini or ollama
  *
@@ -43,6 +44,7 @@ export const LLM_ENV_KEYS = Object.freeze([
   'OPENAI_API_KEY',
   'GEMINI_API_KEY',
   'LUMEN_LLM_BASE_URL',
+  'OLLAMA_BASE_URL',
   'LUMEN_LLM_MODEL',
   'LUMEN_LLM_PROVIDER',
 ]);
@@ -105,19 +107,20 @@ function httpUrl(value) {
 /** `{ provider, model, apiKey, baseUrl }`; anything incomplete resolves to the deterministic provider. */
 export function resolveLlmConfig(env = {}) {
   const requested = String(env.LUMEN_LLM_PROVIDER ?? 'auto').trim().toLowerCase();
+  const ollamaUrl = env.LUMEN_LLM_BASE_URL || env.OLLAMA_BASE_URL;
   let provider = requested;
   if (requested === 'auto' || requested === '') {
     if (env.ANTHROPIC_API_KEY) provider = 'anthropic';
     else if (env.OPENAI_API_KEY) provider = 'openai';
     else if (env.GEMINI_API_KEY) provider = 'gemini';
-    else if (env.LUMEN_LLM_BASE_URL) provider = 'ollama';
+    else if (ollamaUrl) provider = 'ollama';
     else provider = 'deterministic';
   }
   const deterministic = { provider: 'deterministic', model: null, apiKey: null, baseUrl: null };
   if (!LLM_PROVIDERS.includes(provider) || provider === 'deterministic') return deterministic;
   const model = typeof env.LUMEN_LLM_MODEL === 'string' && /^[\w.:/-]{1,96}$/.test(env.LUMEN_LLM_MODEL) ? env.LUMEN_LLM_MODEL : DEFAULT_MODELS[provider];
   if (provider === 'ollama') {
-    const baseUrl = httpUrl(env.LUMEN_LLM_BASE_URL ?? '');
+    const baseUrl = httpUrl(ollamaUrl ?? '');
     return baseUrl ? { provider, model, apiKey: null, baseUrl: baseUrl.replace(/\/v1$/, '') } : deterministic;
   }
   const apiKey = { anthropic: env.ANTHROPIC_API_KEY, openai: env.OPENAI_API_KEY, gemini: env.GEMINI_API_KEY }[provider];
