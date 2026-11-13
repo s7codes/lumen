@@ -75,7 +75,7 @@ test.describe('command palette', () => {
     await expect(dialog).toHaveAttribute('data-testid', 'command-palette');
     const input = page.getByTestId('command-palette-input');
     await expect(input).toBeFocused();
-    await expect(input).toHaveAttribute('placeholder', 'Search parts, workspaces, or commands...');
+    await expect(input).toHaveAttribute('placeholder', 'Search lighting, furniture, or pages...');
     await expect.poll(() => dialog.evaluate((el) => getComputedStyle(el).backdropFilter)).toBe('blur(24px)');
 
     const items = page.getByTestId('command-palette-item');
@@ -128,6 +128,74 @@ test.describe('command palette', () => {
     await expect(items).toHaveCount(0);
     await expect(page.getByTestId('command-palette-empty')).toBeVisible();
 
+    expect(errors).toEqual([]);
+    expect(await readCspViolations(page)).toEqual([]);
+  });
+
+  test('the spotlight shows names, plain subtitles and price pills in Visual mode and its codes in Specs', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await page.keyboard.press('Control+k');
+    const dialog = palette(page);
+    await expect(dialog).toHaveAttribute('data-mode', 'architectural');
+    // Warm basalt glass with a champagne hairline, a 16 px radius and a 540 px column.
+    const look = await dialog.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        background: style.backgroundColor,
+        border: style.borderTopColor,
+        radius: style.borderTopLeftRadius,
+        width: el.offsetWidth,
+        topLight: getComputedStyle(el, '::before').backgroundImage.includes('linear-gradient'),
+      };
+    });
+    expect(look).toEqual({
+      background: 'rgba(18, 17, 15, 0.96)',
+      border: 'rgba(229, 199, 153, 0.18)',
+      radius: '16px',
+      width: 540,
+      topLight: true,
+    });
+
+    const pendant = PRODUCTS.find((product) => product.id === 'linear-pendant-150');
+    await page.getByTestId('command-palette-input').fill('pendant');
+    const row = page.getByTestId('command-palette-item').filter({ hasText: pendant.name });
+    await expect(row).toHaveCount(1);
+    await expect(row.locator('.palette__label')).toHaveText('Linear Suspension Pendant 150');
+    await expect(row.locator('.palette__summary')).toHaveText('Lighting - 150 x 12 cm');
+    await expect(row.locator('.palette__summary')).toBeVisible();
+    const price = row.getByTestId('command-palette-price');
+    await expect(price).toBeVisible();
+    await expect(price).toHaveText(`${pendant.watts} W / ${formatUsd(pendant.priceUsd)}`);
+    expect(await price.evaluate((el) => el.innerText.trim())).toBe('$420');
+    // The SKU and the wattage stay in the DOM for search, out of sight in Visual mode.
+    const code = row.getByTestId('command-palette-code');
+    await expect(code).toHaveText('LMN-PD-150');
+    await expect(code).toBeHidden();
+    await expect(row).toContainText('LMN-PD-150');
+    // Group labels in plain language, no result counters, one calm line of keyboard help.
+    await page.getByTestId('command-palette-input').fill('');
+    await expect(dialog.locator('.palette__group-label > span:first-child')).toHaveText(['Pages', 'Products', 'Actions']);
+    await expect(dialog.locator('.palette__group-count').first()).toBeHidden();
+    await expect(page.getByTestId('command-palette-footer')).toHaveText(/^Up\/Down to navigate - Enter to open - Esc to close/);
+    await expect(page.getByTestId('command-palette-footer').locator('.palette__hint')).toBeVisible();
+    await expect(page.getByTestId('command-palette-footer').locator('kbd')).toHaveCount(0);
+    await expect(page.getByTestId('command-palette-count')).toHaveText(`${PRODUCTS.length + 11} results`);
+    await page.keyboard.press('Escape');
+
+    // Specs mode brings the codes and the wattage back.
+    await page.keyboard.press('Control+k');
+    await page.getByTestId('command-palette-input').fill('technical');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('html')).toHaveAttribute('data-mode', 'technical');
+    await page.keyboard.press('Control+k');
+    await page.getByTestId('command-palette-input').fill('pendant');
+    await expect(row.getByTestId('command-palette-code')).toBeVisible();
+    expect(await row.getByTestId('command-palette-price').evaluate((el) => el.innerText.trim())).toBe(
+      `${pendant.watts} W / ${formatUsd(pendant.priceUsd)}`,
+    );
     expect(errors).toEqual([]);
     expect(await readCspViolations(page)).toEqual([]);
   });

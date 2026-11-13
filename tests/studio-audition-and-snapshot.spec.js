@@ -4,9 +4,13 @@ import { getProduct } from '../src/data/products.js';
 import {
   AUDITION_CHORD,
   bandIndexFor,
+  CLAP_BAND_WEIGHTS,
   clarityC50,
+  echoReadout,
   ENVELOPE_POINTS,
   synthesizeAcousticProfile,
+  WOOD_CLAP,
+  woodClapSamples,
 } from '../src/lib/acoustic-audition.js';
 import {
   SNAPSHOT_HEIGHT,
@@ -171,6 +175,35 @@ test.describe('RT60 acoustic audition', () => {
     expect(({}).polluted).toBeUndefined();
   });
 
+  test('the echo test is a soft wood clap and reads as a plain bare-versus-damped comparison', () => {
+    // A warm clap: deterministic, peak-normalised, its energy front-loaded in the first 40 ms.
+    const rate = 48000;
+    const clap = woodClapSamples(rate, 1.2);
+    expect(clap).toHaveLength(rate * 1.2);
+    expect(Buffer.compare(Buffer.from(clap.buffer), Buffer.from(woodClapSamples(rate, 1.2).buffer))).toBe(0);
+    const peak = clap.reduce((max, sample) => Math.max(max, Math.abs(sample)), 0);
+    expect(peak).toBeCloseTo(WOOD_CLAP.peak, 5);
+    const rms = (from, to) => Math.sqrt(clap.slice(from, to).reduce((sum, s) => sum + s * s, 0) / (to - from));
+    expect(rms(0, rate * 0.04)).toBeGreaterThan(2.5 * rms(rate * 0.2, rate * 1.2));
+    expect(woodClapSamples(rate, Number.NaN)).toHaveLength(rate);
+    // The upper octaves are eased off, never boosted.
+    expect(CLAP_BAND_WEIGHTS).toHaveLength(OCTAVE_BANDS.length);
+    for (let i = 1; i < CLAP_BAND_WEIGHTS.length; i += 1) expect(CLAP_BAND_WEIGHTS[i]).toBeLessThanOrEqual(CLAP_BAND_WEIGHTS[i - 1]);
+
+    // The readout: bare, then damped against the same room bare.
+    const bare = synthesizeAcousticProfile(computeEnvironmentalPhysics(createLayout(DEFAULT_WALL, [])));
+    expect(echoReadout(bare)).toEqual({ damped: false, text: `Bare room echo ${bare.rt60Sec.toFixed(2)} s - add acoustic panels to damp` });
+    const damped = synthesizeAcousticProfile(computeEnvironmentalPhysics(createLayout(DEFAULT_WALL, mounted([BAFFLE, FRAME]))));
+    const readout = echoReadout(damped);
+    expect(readout.damped).toBe(true);
+    expect(readout.text).toBe(
+      `Echo: ${damped.rt60Sec.toFixed(2)} s vs. ${damped.baselineRt60Sec.toFixed(2)} s bare (-${damped.dampingPct}% reverb)`,
+    );
+    expect(readout.text).toMatch(/^Echo: 1\.26 s vs\. \d\.\d\d s bare \(-\d+% reverb\)$/);
+    expect(echoReadout(null).damped).toBe(false);
+    expect(readout.text).toMatch(/^[\x20-\x7e]+$/);
+  });
+
   test('wall studio: the key plays the six-band decay and the curve follows the felt as it is mounted', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await instrumentWebAudio(page);
@@ -178,7 +211,15 @@ test.describe('RT60 acoustic audition', () => {
     await page.goto('/studio-2d');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
     const cell = page.getByTestId('wall-summary').getByTestId('environmental-physics');
-    await expect(cell.getByTestId('audition-room-acoustics')).toHaveText('Audition RT60');
+    const key = cell.getByTestId('audition-room-acoustics');
+    await expect(key).toHaveText('Test Room Echo');
+    await expect(key).toHaveAccessibleName('Test Room Echo (Audition RT60)');
+    await expect(cell.getByRole('button', { name: /Audition RT60/ })).toHaveCount(1);
+    const readout = cell.getByTestId('acoustic-echo-readout');
+    await expect(readout).toHaveAttribute('data-damped', 'false');
+    await expect(readout).toContainText('Bare room echo');
+    await expect(readout).toContainText('add acoustic panels to damp');
+    await expect(cell.getByTestId('acoustic-baseline-mark')).toHaveCount(0);
     await expect(cell.getByTestId('acoustic-decay-wave').locator('.audition__bar')).toHaveCount(ENVELOPE_POINTS);
 
     const bare = computeEnvironmentalPhysics(createLayout(DEFAULT_WALL, []));
@@ -197,6 +238,17 @@ test.describe('RT60 acoustic audition', () => {
     await expect(after).toHaveAttribute('data-rt60', '1.26');
     expect(Number(await after.getAttribute('data-damping-pct'))).toBeGreaterThan(0);
     expect(Number(await after.getAttribute('data-duration'))).toBeLessThan(synthesizeAcousticProfile(bare).durationSec);
+    // The readout compares the panels against the bare room, and the curve marks where the bare echo ends.
+    const dampedProfile = synthesizeAcousticProfile(damped);
+    await expect(readout).toHaveAttribute('data-damped', 'true');
+    await expect(readout).toHaveText(echoReadout(dampedProfile).text);
+    await expect(readout).toContainText('Echo: 1.26 s vs.');
+    await expect(after).toHaveAttribute('data-baseline-rt60', dampedProfile.baselineRt60Sec.toFixed(2));
+    const mark = cell.getByTestId('acoustic-baseline-mark');
+    await expect(mark).toHaveCount(1);
+    const [markBox, waveBox] = await Promise.all([mark.boundingBox(), after.boundingBox()]);
+    const expectedX = waveBox.x + waveBox.width * Math.min(0.995, dampedProfile.baselineRt60Sec / dampedProfile.windowSec);
+    expect(Math.abs(markBox.x - expectedX)).toBeLessThanOrEqual(1.5);
 
     for (const width of [360, 1280]) {
       await page.setViewportSize({ width, height: 900 });

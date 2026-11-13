@@ -488,7 +488,9 @@ test.describe('Studio AI concierge widget', () => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/catalog');
     const trigger = page.getByTestId('concierge-trigger');
-    await expect(trigger).toHaveAccessibleName('Ask Studio AI');
+    await expect(trigger).toHaveAccessibleName('Ask Lumen');
+    await expect(trigger.locator('.concierge-trigger__label')).toHaveText('Ask Lumen');
+    await expect(trigger).toHaveAttribute('title', 'Ask Lumen AI');
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
     // Closed, the panel is not mounted at all: the lock cannot be bypassed from the DOM.
     await expect(page.getByTestId('concierge-panel')).toHaveCount(0);

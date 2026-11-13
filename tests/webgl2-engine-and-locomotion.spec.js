@@ -3,9 +3,14 @@ import { PRODUCTS } from '../src/data/products.js';
 import { applyLightingSceneToRoom } from '../src/lib/lighting-scenes.js';
 import {
   contactShadowMap,
+  cornerShadeMap,
   finishMaterial,
+  iblTier,
   PBR_MATERIAL_KEYS,
   PBR_MATERIALS,
+  STUDIO_ENVIRONMENT,
+  studioEnvironmentMap,
+  studioEnvironmentTexel,
   synthesizeMaterial,
 } from '../src/lib/pbr-materials.js';
 import {
@@ -18,10 +23,15 @@ import {
   ROOM_WALLS,
   sanitizeRoom,
   sanitizeRoomState,
+  sanitizeWindowWalls,
+  serializeRoomState,
+  toggleWindowPatch,
+  updateRoom,
   updateRoomItem,
   windowWallOf,
+  windowWallsOf,
 } from '../src/lib/room-3d.js';
-import { buildScene } from '../src/lib/room-scene.js';
+import { buildScene, FURNITURE_DETAILS, MOONLIGHT, NIGHT_GLAZING, WINDOW_FRAME } from '../src/lib/room-scene.js';
 import {
   coastWalk,
   defaultStance,
@@ -602,8 +612,12 @@ test.describe('solar path and orientable floor reference', () => {
     await expect(graph).toHaveAttribute('data-sun-azimuth', '180');
     await expect(graph).toHaveAttribute('data-sun-kelvin', '6000');
     await expect(graph).toHaveAttribute('data-sun-direction', rounded(solarState(13).direction));
-    await page.getByRole('radio', { name: 'South' }).check();
+    // Window walls toggle: South joins the daylight west window, and unticking West leaves South alone.
+    await page.getByRole('checkbox', { name: 'South' }).check();
+    await expect(graph).toHaveAttribute('data-window-walls', 'west south');
+    await page.getByRole('checkbox', { name: 'West' }).uncheck();
     await expect(graph).toHaveAttribute('data-window-wall', 'south');
+    await expect(graph).toHaveAttribute('data-window-count', '1');
     await page.getByTestId('room-solar-golden').click();
     await expect(graph).toHaveAttribute('data-sun-kelvin', '2900');
 
@@ -635,6 +649,278 @@ test.describe('solar path and orientable floor reference', () => {
     await page.getByTestId('furniture-offset').fill('30');
     await expect(marker).toHaveAttribute('data-offset-cm', '30');
     await expect.poll(async () => (await readStoredRoom(page)).room).toMatchObject({ furnitureWall: 'south', furnitureOffsetCm: 30 });
+    expect(errors).toEqual([]);
+    expect(await readCspViolations(page)).toEqual([]);
+  });
+});
+
+test.describe('multi-window architecture and luminous night glazing', () => {
+  test('two or three glazed walls store, toggle, share and build as windows while one-window rooms keep their v7.0 record', () => {
+    // Canonical, distinct, glazed walls only; garbage never reads as "no windows".
+    expect(sanitizeWindowWalls(['south', 'west', 'west', 'north'])).toEqual(['west', 'south']);
+    expect(sanitizeWindowWalls([])).toEqual([]);
+    expect(sanitizeWindowWalls(['north', '__proto__'])).toBeNull();
+    expect(sanitizeWindowWalls('west')).toBeNull();
+
+    // Two or more stay a list; one or none fold back onto windowWall, the v7.0 shape.
+    const pair = sanitizeRoom({ ...DEFAULT_ROOM, windowWalls: ['east', 'west'] });
+    expect(pair).toEqual({ ...DEFAULT_ROOM, windowWalls: ['west', 'east'] });
+    expect(sanitizeRoom({ ...DEFAULT_ROOM, windowWalls: ['south'] })).toEqual({ ...DEFAULT_ROOM, windowWall: 'south' });
+    expect(sanitizeRoom({ ...DEFAULT_ROOM, windowWalls: [] })).toEqual({ ...DEFAULT_ROOM, windowWall: 'none' });
+    expect(sanitizeRoom({ ...DEFAULT_ROOM, windowWall: 'east', windowWalls: ['west', 'south'] })).toEqual({
+      ...DEFAULT_ROOM,
+      windowWalls: ['west', 'south'],
+    });
+    expect(windowWallOf(pair)).toBe('west');
+    expect(windowWallsOf(pair)).toEqual(['west', 'east']);
+    expect(windowWallsOf(DEFAULT_ROOM)).toEqual([]);
+    expect(windowWallsOf({ ...DEFAULT_ROOM, lighting: 'daylight' })).toEqual(['west']);
+
+    // Toggling: West then East gives two, South a third, None clears them all.
+    let state = createRoomState();
+    state = updateRoom(state, toggleWindowPatch(state.room, 'west'));
+    expect(state.room.windowWall).toBe('west');
+    state = updateRoom(state, toggleWindowPatch(state.room, 'east'));
+    expect(state.room).toEqual({ ...DEFAULT_ROOM, windowWalls: ['west', 'east'] });
+    expect(updateRoom(state, toggleWindowPatch(state.room, 'nowhere'))).toBe(state);
+    expect(updateRoom(state, { windowWalls: ['east', 'west'] })).toBe(state);
+    const three = updateRoom(state, toggleWindowPatch(state.room, 'south'));
+    expect(windowWallsOf(three.room)).toEqual(['west', 'east', 'south']);
+    expect(updateRoom(three, toggleWindowPatch(three.room, 'none')).room).toEqual({ ...DEFAULT_ROOM, windowWall: 'none' });
+    // A legacy single-window patch replaces the list instead of losing to it.
+    expect(updateRoom(three, { windowWall: 'south' }).room).toEqual({ ...DEFAULT_ROOM, windowWall: 'south' });
+    // Persisted and restored without sharing the list.
+    const stored = serializeRoomState(three);
+    expect(stored.room.windowWalls).not.toBe(three.room.windowWalls);
+    expect(sanitizeRoomState(JSON.parse(JSON.stringify(stored))).room).toEqual(three.room);
+
+    // Share links: the list rides in the window slot, so `x` keeps four slots.
+    const param = encodeSceneParam('room', three, 'Gallery');
+    const payload = JSON.parse(Buffer.from(param.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+    expect(payload.x).toEqual([null, 'west+east+south', null, null]);
+    expect(decodeSceneParam('room', param).state.room).toEqual(three.room);
+    const single = encodeSceneParam('room', createRoomState({ ...DEFAULT_ROOM, windowWall: 'east' }), 'One');
+    expect(JSON.parse(Buffer.from(single.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')).x).toEqual([
+      null,
+      'east',
+      null,
+      null,
+    ]);
+    const forged = { ...payload, x: [null, 'north+__proto__', null, null] };
+    const forgedParam = Buffer.from(JSON.stringify(forged)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    expect(decodeSceneParam('room', forgedParam).state.room).toEqual(DEFAULT_ROOM);
+
+    // Each glazed wall builds its own window; scene.window stays the first for older readers.
+    const scene = buildScene({ state });
+    expect(scene.windows.map((win) => win.wall)).toEqual(['west', 'east']);
+    expect(scene.window).toBe(scene.windows[0]);
+    expect(buildScene({ state: three }).windows).toHaveLength(3);
+    expect(buildScene({ state: createRoomState() }).windows).toEqual([]);
+  });
+
+  test('night glazing holds a luminous twilight sky with moonlight, and the joinery reads proud of the glass', () => {
+    const night = buildScene({ state: createRoomState({ ...DEFAULT_ROOM, windowWalls: ['west', 'east'] }) });
+    for (const win of night.windows) {
+      expect(win.glazing).toMatchObject({ color: NIGHT_GLAZING.color, base: '#1a273b' });
+      expect(win.glazing.color).toBe('#2d4263');
+      expect(win.glazing.intensity).toBeGreaterThanOrEqual(0.7);
+      expect(win).toMatchObject({ sunlit: false, moonlit: true });
+      // Cool moonlight on the floor and faint shafts in the air, one per pane.
+      expect(win.patches).toHaveLength(6);
+      expect(win.patches.every((patch) => patch.light === 'moon' && patch.color === '#8fa8c8' && patch.opacity === 0.14)).toBe(true);
+      expect(win.shafts).toHaveLength(6);
+      expect(win.shafts.every((shaft) => shaft.opacity === MOONLIGHT.shaftOpacity && shaft.opacity < 0.1)).toBe(true);
+    }
+    expect(night.stats.volumetrics).toBe(12);
+    // Moonlight falls into the room from the window it comes through.
+    const [west, east] = night.windows;
+    expect(Math.min(...west.patches.flatMap((patch) => patch.points.map((p) => p[0])))).toBeGreaterThan(0.3);
+    expect(Math.max(...east.patches.flatMap((patch) => patch.points.map((p) => p[0])))).toBeLessThan(3.2 - 0.3);
+
+    // A plaster reveal, a deep oak sill and brushed steel bars, 1.5 to 4.5 cm proud of the glass.
+    const look = (kind) => west.members.filter((member) => member.kind === kind);
+    expect(look('jamb').every((member) => member.material === 'wall-plaster' && member.color === '#7a736a')).toBe(true);
+    expect(look('sill')).toEqual([expect.objectContaining({ material: 'wood-oak', color: '#b89c74' })]);
+    expect(look('sill')[0].size[2]).toBeGreaterThanOrEqual(0.12);
+    for (const bar of [...look('mullion'), ...look('transom')]) {
+      expect(bar).toMatchObject({ ...WINDOW_FRAME.mullion, material: 'metal-steel', color: '#857e75', roughness: 0.32, metalness: 0.45 });
+      expect(bar.size[2]).toBeCloseTo(0.03, 6);
+      expect(bar.position[0]).toBeCloseTo(0.03, 6);
+    }
+    expect(look('mullion')).toHaveLength(2);
+    expect(look('transom')).toHaveLength(1);
+    // The glass sits behind the reveal face, so the panes read recessed.
+    expect(west.glazing.position[0]).toBeLessThan(look('jamb')[0].size[2]);
+
+    // Daylight keeps the sun's sky and its sun patches; no moonlight by day.
+    const day = buildScene({ state: createRoomState({ ...DEFAULT_ROOM, lighting: 'daylight', solarHour: 17.5 }) }).window;
+    expect(day).toMatchObject({ sunlit: true, moonlit: false });
+    expect(day.patches.every((patch) => patch.light === 'sun')).toBe(true);
+    expect(day.glazing.base).toBe('#0f1114');
+  });
+
+  test('the Window pills toggle two and three windows in the viewport and the night glass glows twilight blue', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await openRoom(page);
+    const graph = page.getByTestId('room-scene-graph');
+    await expect(graph).toHaveAttribute('data-window-count', '0');
+    await page.getByTestId('room-solar-controls').getByRole('button', { name: /Sun & Aperture/ }).click();
+    const pills = page.getByTestId('room-window-walls');
+    await expect(pills.getByRole('button', { name: 'None' })).toHaveAttribute('aria-pressed', 'true');
+
+    await pills.getByRole('checkbox', { name: 'West' }).check();
+    await pills.getByRole('checkbox', { name: 'East' }).check();
+    await expect(graph).toHaveAttribute('data-window-walls', 'west east');
+    await expect(graph).toHaveAttribute('data-window-wall', 'west');
+    await expect(page.getByTestId('room-window-count')).toHaveText('2 active windows');
+    await expect(pills.getByRole('button', { name: 'None' })).toHaveAttribute('aria-pressed', 'false');
+    const windows = graph.locator('[data-testid="room-window"]');
+    await expect(windows).toHaveCount(2);
+    for (const win of await windows.all()) {
+      await expect(win).toHaveAttribute('data-glazing-color', '#2d4263');
+      await expect(win).toHaveAttribute('data-moonlit', 'true');
+      expect(Number(await win.getAttribute('data-glazing-intensity'))).toBeGreaterThanOrEqual(0.7);
+    }
+    await expect(graph).toHaveAttribute('data-moon-patches', '12');
+    await expect.poll(async () => (await readStoredRoom(page)).room.windowWalls).toEqual(['west', 'east']);
+
+    await pills.getByRole('checkbox', { name: 'South' }).check();
+    await expect(page.getByTestId('room-window-count')).toHaveText('3 active windows');
+    await expect(windows).toHaveCount(3);
+    await expect(page.getByTestId('room-solar-controls')).toContainText('3 windows');
+
+    await pills.getByRole('button', { name: 'None' }).click();
+    await expect(graph).toHaveAttribute('data-window-count', '0');
+    await expect(windows).toHaveCount(0);
+    await expect.poll(async () => (await readStoredRoom(page)).room.windowWall).toBe('none');
+    expect(errors).toEqual([]);
+    expect(await readCspViolations(page)).toEqual([]);
+  });
+});
+
+test.describe('archviz materials, studio IBL and furniture vignettes', () => {
+  test('veneer and parquet are calm, the studio environment and corner falloff are deterministic', () => {
+    expect(PBR_MATERIALS['wood-walnut'].contrast).toBeLessThanOrEqual(0.15);
+    expect(PBR_MATERIALS['wood-oak'].contrast).toBeLessThanOrEqual(0.15);
+    expect(PBR_MATERIALS['floor-parquet'].contrast).toBeLessThanOrEqual(0.15);
+    expect(PBR_MATERIALS['floor-parquet'].plankTone).toBeCloseTo(0.09, 6);
+    // No zebra: the walnut tone varies far less across the grain than v7.0's 0.34 rings did.
+    const walnut = synthesizeMaterial('wood-walnut');
+    let sum = 0;
+    let sq = 0;
+    for (let i = 0; i < walnut.albedoMap.length; i += 4) {
+      sum += walnut.albedoMap[i];
+      sq += walnut.albedoMap[i] ** 2;
+    }
+    const n = walnut.albedoMap.length / 4;
+    expect(Math.sqrt(sq / n - (sum / n) ** 2)).toBeLessThan(16);
+
+    const env = studioEnvironmentMap();
+    expect(env).toMatchObject({ width: STUDIO_ENVIRONMENT.width, height: STUDIO_ENVIRONMENT.height, intensity: 0.35 });
+    expect(env.data).toHaveLength(env.width * env.height * 4);
+    expect(Buffer.compare(Buffer.from(env.data), Buffer.from(studioEnvironmentMap().data))).toBe(0);
+    // A bright overhead softbox, strip boxes east and west, a warm horizon, a dark floor.
+    const luma = (rgb) => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+    expect(luma(studioEnvironmentTexel(0, 85))).toBeGreaterThan(0.9);
+    expect(luma(studioEnvironmentTexel(90, 25))).toBeGreaterThan(luma(studioEnvironmentTexel(180, 25)));
+    expect(luma(studioEnvironmentTexel(0, 2))).toBeGreaterThan(luma(studioEnvironmentTexel(0, -60)));
+    const horizon = studioEnvironmentTexel(0, 2);
+    expect(horizon[0]).toBeGreaterThan(horizon[2]);
+
+    // A quality tier: GPUs get the studio IBL, software rasterisers keep the direct rig.
+    expect(iblTier('ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Direct3D11 vs_5_0 ps_5_0, D3D11)')).toBe('studio');
+    expect(iblTier('Apple M3')).toBe('studio');
+    expect(iblTier('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)')).toBe('software');
+    expect(iblTier('llvmpipe (LLVM 17.0.6, 256 bits)')).toBe('software');
+    expect(iblTier('ANGLE (Microsoft, Microsoft Basic Render Driver Direct3D11 vs_5_0 ps_5_0, D3D11)')).toBe('software');
+    expect(iblTier(undefined)).toBe('studio');
+
+    const corner = cornerShadeMap(64);
+    expect(corner.data[0]).toBe(0);
+    expect(corner.data[63 * 4]).toBe(0);
+    expect(corner.data[32 * 4]).toBeGreaterThan(230);
+  });
+
+  test('every floor reference gains a woven rug and its companions while its collision parts and bounds stay exact', () => {
+    for (const id of ['bed-160', 'sofa-200', 'desk-140']) {
+      const kinds = FURNITURE_DETAILS[id].vignette.map((spec) => spec.kind);
+      expect(kinds.filter((kind) => kind === 'rug'), id).toHaveLength(2);
+    }
+    const sofaRoom = { ...DEFAULT_ROOM, furniture: 'sofa-200' };
+    const sofa = buildScene({ state: createRoomState(sofaRoom) });
+    // Collision: the same parts, boxes and bounds as before the vignette.
+    expect(furnitureLayout(sofaRoom).bounds).toEqual({ x0: 60, x1: 260, y0: 0, y1: 78, z0: 6, z1: 98 });
+    expect(sofa.furniture.map((part) => part.part)).toEqual(furnitureLayout(sofaRoom).parts.map((p) => p.id));
+    expect(sofa.furniture.map((part) => part.box)).toEqual(furnitureLayout(sofaRoom).parts.map((p) => p.box));
+    expect(sofa.furniturePlacement.bounds).toEqual(furnitureLayout(sofaRoom).bounds);
+
+    // The rug: felt, a darker border, 0.6 cm on the floor, never casting a shadow.
+    const rugs = sofa.furnitureVignette.parts.filter((part) => part.kind === 'rug');
+    expect(rugs.map((part) => [part.material, part.color])).toEqual([
+      ['felt-acoustic', '#6e675e'],
+      ['felt-acoustic', '#9e9589'],
+    ]);
+    expect(rugs.every((part) => part.shadow === false)).toBe(true);
+    expect(Math.max(...rugs.map((part) => part.position[1] + part.size[1] / 2))).toBeCloseTo(0.006, 3);
+    // A coffee table in front with an art book and a ceramic vessel; throw cushions on the seats.
+    const sofaKinds = sofa.furnitureVignette.parts.map((part) => part.kind);
+    expect(sofaKinds).toEqual(expect.arrayContaining(['coffee-table', 'object']));
+    expect(sofa.furnitureVignette.parts.find((part) => part.id.endsWith('table-top')).position[2]).toBeGreaterThan(0.98);
+    expect(sofa.furniture.find((part) => part.part === 'seat-left').subparts.map((p) => p.id)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/throw-cushion$/)]),
+    );
+    expect(sofa.stats.submeshes).toBe(
+      sofa.furniture.reduce((s, part) => s + part.subparts.length, 0) + sofa.furnitureVignette.parts.length,
+    );
+
+    // The bed: oak ledges with reading lamps that glow warm at night only, layered pillows, a piped mattress.
+    const bedRoom = { ...DEFAULT_ROOM, furniture: 'bed-160' };
+    const bed = buildScene({ state: createRoomState(bedRoom) });
+    const shades = bed.furnitureVignette.parts.filter((part) => part.id.endsWith('-shade'));
+    expect(bed.furnitureVignette.parts.filter((part) => part.kind === 'ledge')).toHaveLength(2);
+    expect(shades).toHaveLength(2);
+    expect(shades.every((part) => part.emissive && part.emissiveIntensity > 0)).toBe(true);
+    const dayBed = buildScene({ state: createRoomState({ ...bedRoom, lighting: 'daylight' }) });
+    expect(dayBed.furnitureVignette.parts.filter((part) => part.emissive)).toEqual([]);
+    expect(bed.furniture.find((part) => part.part === 'pillow-left').subparts.length).toBeGreaterThanOrEqual(3);
+    expect(bed.furniture.find((part) => part.part === 'mattress').subparts.map((p) => p.kind)).toContain('piping');
+    // In a tight room the ledges and their lamps go together; the rug clips to the walls.
+    const tight = buildScene({ state: createRoomState({ ...bedRoom, widthCm: 240, depthCm: 200 }) });
+    expect(tight.furnitureVignette.parts.map((part) => part.kind)).toEqual(['rug', 'rug']);
+    for (const part of tight.furnitureVignette.parts) {
+      expect(part.position[0] - part.size[0] / 2).toBeGreaterThanOrEqual(0);
+      expect(part.position[0] + part.size[0] / 2).toBeLessThanOrEqual(2.4);
+      expect(part.position[2] + part.size[2] / 2).toBeLessThanOrEqual(2);
+    }
+
+    // The desk: a task chair tucked in and a glowing lamp diffuser.
+    const desk = buildScene({ state: createRoomState({ ...DEFAULT_ROOM, furniture: 'desk-140' }) });
+    expect(desk.furnitureVignette.parts.filter((part) => part.kind === 'chair').length).toBeGreaterThanOrEqual(5);
+    const diffuser = desk.furniture.find((part) => part.part === 'top').subparts.find((p) => p.id.endsWith('lamp-diffuser'));
+    expect(diffuser.emissiveIntensity).toBeGreaterThan(0);
+
+    // The envelope: a shadow-gap cove on every wall and corner depth at every inside corner.
+    expect(sofa.envelope.coves.map((cove) => cove.wall)).toEqual(ROOM_WALLS);
+    expect(sofa.envelope.coves.every((cove) => cove.parts.map((p) => p.kind).join() === 'shadow-gap,crown')).toBe(true);
+    expect(sofa.envelope.cornerShades).toHaveLength(8);
+    expect(sofa.envelope.cornerShades.every((shade) => shade.walls.length === 2 && shade.culls.length === 2)).toBe(true);
+    expect(JSON.stringify(sofa)).toBe(JSON.stringify(buildScene({ state: createRoomState(sofaRoom) })));
+  });
+
+  test('the viewport mirrors the vignette and keeps its draw stats in step with the engine', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await openRoom(page);
+    await page.getByRole('radio', { name: 'Modular Sofa 200cm' }).check();
+    const vignette = page.getByTestId('room-furniture-vignette');
+    await expect(vignette).toHaveAttribute('data-kinds', 'rug coffee-table object');
+    await expect.poll(async () => (await readStoredRoom(page)).room.furniture).toBe('sofa-200');
+    const scene = buildScene({ state: sanitizeRoomState(await readStoredRoom(page)) });
+    await expect(vignette).toHaveAttribute('data-parts', String(scene.furnitureVignette.parts.length));
+    await expect(page.getByTestId('room-scene-graph')).toHaveAttribute('data-submeshes', String(scene.stats.submeshes));
+    await expect(page.getByTestId('room-scene-graph')).toHaveAttribute('data-meshes', String(scene.stats.meshes));
+    if ((await rendererOf(page)) !== 'unavailable') {
+      await expect(page.getByTestId('room-scene-graph')).toHaveAttribute('data-ibl', /^(studio|software)$/);
+    }
     expect(errors).toEqual([]);
     expect(await readCspViolations(page)).toEqual([]);
   });
