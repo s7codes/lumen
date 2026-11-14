@@ -36,6 +36,12 @@ const CONE_HALO = [
   [0.5, '#f5e2c0', 0.18],
   [1, '#f5e2c0', 0.04],
 ];
+const SPOT_BEAM = [
+  [0, '#fffaf0', 0.72],
+  [0.22, '#fff1d4', 0.42],
+  [0.6, '#ffe6b8', 0.16],
+  [1, '#ffdc9c', 0],
+];
 
 /* ---------- Scene I: architectural wall wash and molded door reveal ---------- */
 
@@ -277,10 +283,27 @@ function GalleryScene() {
           <Stops stops={[[0, '#cdc1a9'], [1, '#bdb096']]} />
         </linearGradient>
         {g.spots.map((spot, i) => (
-          <linearGradient key={spot.x} id={`hg-scallop-${i}`} gradientUnits="userSpaceOnUse" x1="0" y1={r1(spot.wallY)} x2="0" y2={r1(spot.wallY + spot.reach)}>
+          <linearGradient key={spot.x} id={`hg-scallop-${i}`} gradientUnits="userSpaceOnUse" x1="0" y1={r1(spot.scallopTop[1])} x2="0" y2={r1(spot.scallopFoot[1])}>
             <Stops stops={[[0, '#fffaf0', 0.95], [0.25, '#ffefcc', 0.7], [0.65, '#ffe1a6', 0.32], [1, '#ffd98f', 0]]} />
           </linearGradient>
         ))}
+        {/* The beam in the air: white-hot at the aperture, thinning toward the stone. */}
+        {g.spots.map((spot, i) => (
+          <linearGradient
+            key={spot.x}
+            id={`hg-spot-beam-${i}`}
+            gradientUnits="userSpaceOnUse"
+            x1={r1(spot.apex[0])}
+            y1={r1(spot.apex[1])}
+            x2={r1(spot.beamEnd[0])}
+            y2={r1(spot.beamEnd[1])}
+          >
+            <Stops stops={SPOT_BEAM} />
+          </linearGradient>
+        ))}
+        <radialGradient id="hg-spot-bloom">
+          <Stops stops={[[0, '#fffdf7', 0.9], [0.3, '#fff4dc', 0.4], [1, '#fff4dc', 0]]} />
+        </radialGradient>
         <linearGradient id="hg-wash" gradientUnits="userSpaceOnUse" x1="0" y1={r1(g.washTop)} x2="0" y2={r1(g.washFoot)}>
           <Stops stops={[[0, '#fff4d8', 0.98], [0.16, '#ffe2a6', 0.84], [0.55, '#f8c977', 0.46], [1, '#f2b65c', 0.1]]} />
         </linearGradient>
@@ -337,7 +360,7 @@ function GalleryScene() {
           </g>
         ))}
 
-        {/* Two monopoint spots on the track graze the stone. */}
+        {/* Two monopoint grazers: the crisp scallop each one lays on the stone. */}
         {g.spots.map((spot, i) => (
           <path key={spot.x} d={spot.scallop} fill={`url(#hg-scallop-${i})`} />
         ))}
@@ -347,11 +370,18 @@ function GalleryScene() {
         <g clipPath="url(#hg-ceiling-clip)">
           <path d={g.slot} fill="#1c1b19" />
           <path d={g.slotLip} fill="none" stroke="#f7f1e6" strokeOpacity="0.7" strokeWidth="1" />
+          <path d={g.grazerSlot} fill="#1c1b19" />
+          <path d={g.grazerLip} fill="none" stroke="#f7f1e6" strokeOpacity="0.7" strokeWidth="1" />
         </g>
-        {g.spots.map((spot) => (
+        {/* Each beam leaves its aperture and opens onto the scallop: one cone, drawn from the fixture down. */}
+        {g.spots.map((spot, i) => (
+          <path key={spot.x} d={spot.beam} fill={`url(#hg-spot-beam-${i})`} data-spot-beam={i} />
+        ))}
+        {g.spots.map((spot, i) => (
           <g key={spot.x}>
-            <rect x={r1(spot.x - spot.size * 3)} y={r1(spot.y)} width={r1(spot.size * 6)} height={r1(spot.size * 8)} fill="url(#hg-anodized)" />
-            <ellipse cx={r1(spot.x)} cy={r1(spot.y + spot.size * 8)} rx={r1(spot.size * 2.6)} ry={r1(spot.size * 0.9)} fill="#fff4d8" />
+            <path d={spot.body} fill="url(#hg-anodized)" />
+            <path d={spot.aperture} fill="#fff4d8" data-spot-aperture={i} />
+            <circle cx={r1(spot.apex[0])} cy={r1(spot.apex[1])} r={r1(spot.bloom)} fill="url(#hg-spot-bloom)" />
           </g>
         ))}
 

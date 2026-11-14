@@ -1689,8 +1689,9 @@
   color: inherit;
 }
 
-/* The portrait: a painted room in a 3:4 frame. On hover the picture eases a
-   step closer and the luminaire breathes; nothing else moves. */
+/* The portrait: a room drawn as smooth architectural vectors in a 3:4
+   frame. On hover the picture eases a step closer and the luminaire
+   breathes; nothing else moves. */
 .entry-card__portrait {
   position: relative;
   display: block;
@@ -1709,7 +1710,7 @@
   pointer-events: none;
 }
 
-.entry-card__canvas {
+.entry-card__picture {
   position: absolute;
   inset: 0;
   display: block;
@@ -1718,8 +1719,8 @@
   transition: transform var(--duration-hover) var(--ease-cinematic);
 }
 
-.entry-card:hover .entry-card__canvas,
-.entry-card:focus-visible .entry-card__canvas {
+.entry-card:hover .entry-card__picture,
+.entry-card:focus-visible .entry-card__picture {
   transform: scale(1.03);
 }
 
@@ -1874,7 +1875,7 @@
     animation: none;
   }
 
-  .entry-card__canvas {
+  .entry-card__picture {
     transition: none;
   }
 }

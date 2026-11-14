@@ -192,6 +192,78 @@ export function coneHalfWidth({ halfWidth, knee }, s) {
   return halfWidth * Math.sqrt(1 + (s / knee) ** 2);
 }
 
+/**
+ * Convex hull of 2D points (monotone chain), counter-clockwise on screen
+ * axes, with no repeated or collinear vertices.
+ */
+export function convexHull(points) {
+  const pts = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (pts.length < 3) return pts;
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const chain = (list) => {
+    const out = [];
+    for (const p of list) {
+      while (out.length >= 2 && cross(out.at(-2), out.at(-1), p) <= 0) out.pop();
+      out.push(p);
+    }
+    out.pop();
+    return out;
+  };
+  return [...chain(pts), ...chain(pts.reverse())];
+}
+
+/**
+ * A ring of `count` points of radius r round `centre`, square to an axis
+ * that leans `tilt` radians from plumb toward +z (a spot's housing or its
+ * aperture). Points are [x, y, z] in cm.
+ */
+export function axisRing(centre, r, tilt, count = 24) {
+  const [cx, cy, cz] = centre;
+  const sin = Math.sin(tilt);
+  const cos = Math.cos(tilt);
+  return Array.from({ length: count }, (_, i) => {
+    const a = (i / count) * Math.PI * 2;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a) * sin, cz + r * Math.sin(a) * cos];
+  });
+}
+
+/**
+ * The scallop a spot throws on a wall. The aperture is the apex of a round
+ * cone (half angle `halfAngle`) whose axis leans `tilt` from plumb toward the
+ * wall plane z = wallZ. The plane cuts the cone in a conic: its arch sits
+ * where the wall-side generator lands, and it opens toward the floor while
+ * the lean stays under the half angle. Returns the outline on the wall,
+ * [x, y] in cm, from the arch down to `untilY`, symmetric about the spot.
+ */
+export function spotScallop({ apex, wallZ, tilt, halfAngle, untilY = 0, steps = 40 }) {
+  const [ax, ay, az] = apex;
+  const dz = wallZ - az;
+  const uy = -Math.cos(tilt);
+  const uz = Math.sin(tilt);
+  const cos2 = Math.cos(halfAngle) ** 2;
+  const top = ay - dz / Math.tan(tilt + halfAngle);
+  const foot = tilt > halfAngle ? ay - dz / Math.tan(tilt - halfAngle) : -Infinity;
+  const bottom = Math.min(top, Math.max(untilY, foot));
+  // On the wall, a point (x, y) is lit when its ray from the apex lies within
+  // the half angle of the axis: (w.u)^2 >= cos^2 |w|^2 with w.u > 0.
+  const halfWidth = (y) => {
+    const dy = y - ay;
+    const along = dy * uy + dz * uz;
+    const v = along * along - cos2 * (dy * dy + dz * dz);
+    return along > 0 && v > 0 ? Math.sqrt(v / cos2) : 0;
+  };
+  const left = [];
+  const right = [];
+  for (let i = 0; i <= steps; i += 1) {
+    // Rows crowd toward the arch, where the outline turns.
+    const y = top - (top - bottom) * (i / steps) ** 2;
+    const w = halfWidth(y);
+    left.push([ax - w, y]);
+    right.push([ax + w, y]);
+  }
+  return { top, bottom, halfWidth, outline: [...left, ...right.reverse()] };
+}
+
 /* ---------- Scene I: architectural wall wash and molded door reveal ---------- */
 
 const WALL_WASH_ROOM = Object.freeze({ floorY: 765, ceilingY: 40, height: 280, eyeY: 150, depth: 500, vx: 1000 });
@@ -343,26 +415,44 @@ function buildGallery() {
   for (let x = Math.floor((left - 300) / 90) * 90; x <= right + 300; x += 90) floorLines.push(polylinePath([P(x, 0, D), P(x, 0, nearZ - 80)]));
   for (let z = D - 60; z > nearZ - 80; z -= 60) floorLines.push(polylinePath([P(left - 400, 0, z), P(right + 400, 0, z)]));
 
-  // The recessed 24V track: a 6 cm slot in the ceiling, 64 cm off the wall.
+  // The recessed 24V track that carries the pendant: a 6 cm slot in the
+  // ceiling, 64 cm off the wall.
   const trackZ = D - 64;
-  const slot = polygonPath([P(left - 300, H, trackZ - 3), P(right + 300, H, trackZ - 3), P(right + 300, H, trackZ + 3), P(left - 300, H, trackZ + 3)]);
-  const slotLip = polylinePath([P(left - 300, H, trackZ - 3), P(right + 300, H, trackZ - 3)]);
+  const slotStrip = (z, half) => polygonPath([P(left - 300, H, z - half), P(right + 300, H, z - half), P(right + 300, H, z + half), P(left - 300, H, z + half)]);
+  const slotEdge = (z, half) => polylinePath([P(left - 300, H, z - half), P(right + 300, H, z - half)]);
+  const slot = slotStrip(trackZ, 3);
+  const slotLip = slotEdge(trackZ, 3);
 
-  // Two monopoint spots in the slot, each grazing the limestone in a crisp
-  // scallop that dies out a metre off the floor.
+  // Two monopoint grazers in a second 24V slot, 18 cm off the wall. Each is
+  // a 6 cm housing, 8 cm long, leaning 6 degrees toward the stone: its 24
+  // degree beam leaves the 5.2 cm aperture and opens onto the limestone in
+  // a crisp scallop that dies out a metre off the floor. The aperture, the
+  // beam and the scallop are one cone, so the light leaves the fixture itself.
+  const grazeZ = D - 18;
+  const grazerSlot = slotStrip(grazeZ, 2.5);
+  const grazerLip = slotEdge(grazeZ, 2.5);
+  const SPOT = Object.freeze({ length: 8, housing: 3, aperture: 2.6, tilt: (6 * Math.PI) / 180, halfAngle: (12 * Math.PI) / 180, fadeY: 96 });
   const spots = [-236, -64].map((x) => {
-    const [px, py] = P(x, H, trackZ);
-    const s = cam.scaleAt(trackZ);
-    const [wx, wy] = P(x, H - 22, D);
-    const reach = P(0, 96, D)[1] - wy;
+    const { length, housing, aperture, tilt, halfAngle, fadeY } = SPOT;
+    const mount = [x, H, grazeZ];
+    const apex = [x, H - length * Math.cos(tilt), grazeZ + length * Math.sin(tilt)];
+    const rimOnScreen = axisRing(apex, aperture, tilt).map(([rx, ry, rz]) => P(rx, ry, rz));
+    const scallop = spotScallop({ apex, wallZ: D, tilt, halfAngle, untilY: fadeY });
+    const onWall = scallop.outline.map(([wx, wy]) => P(wx, wy, D));
+    // The lit air thins out just under the arch; from there the scallop carries the light.
+    const hazeY = scallop.top - 0.4 * (scallop.top - fadeY);
     return {
-      x: px,
-      y: py,
-      size: s,
-      wallX: wx,
-      wallY: wy,
-      scallop: conePath({ x: wx, y0: wy, dir: 1, reach, halfWidth: 2.6 * k, knee: 9 * k }),
-      reach,
+      x,
+      apex: P(...apex),
+      aperture: polygonPath(rimOnScreen),
+      apertureRim: rimOnScreen,
+      body: polygonPath(convexHull([...axisRing(mount, housing, tilt), ...axisRing(apex, housing, tilt)].map(([bx, by, bz]) => P(bx, by, bz)))),
+      bloom: aperture * 3.4 * cam.scaleAt(apex[2]),
+      scallop: polygonPath(onWall),
+      scallopTop: P(x, scallop.top, D),
+      scallopFoot: P(x, scallop.bottom, D),
+      beam: polygonPath(convexHull([...rimOnScreen, ...onWall])),
+      beamEnd: P(x, hazeY, D),
     };
   });
 
@@ -470,6 +560,8 @@ function buildGallery() {
     floorLines,
     slot,
     slotLip,
+    grazerSlot,
+    grazerLip,
     trackY: P(0, H, trackZ)[1],
     spots,
     shelf,

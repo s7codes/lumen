@@ -24,7 +24,6 @@
   --concierge-muted: #847e76;
   --concierge-edge: rgba(20, 19, 17, 0.16);
   --concierge-hairline: rgba(20, 19, 17, 0.12);
-  --concierge-warm-edge: #141311;
   --concierge-accent: #141311;
   --concierge-accent-hi: #2b2925;
   --concierge-accent-ink: #f5f2eb;
@@ -499,51 +498,6 @@ body:has(.camera-settings[data-open]) .concierge-dock {
   display: grid;
   gap: 10px;
   min-width: 0;
-}
-
-/* MCP tool trace: flat chips above the answer, no glow */
-.concierge-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 6px 0 8px;
-  padding: 0;
-  list-style: none;
-}
-/* Inline text flow, not flex: the tool name stays whole and the summary wraps under it. */
-.concierge-tool {
-  display: block;
-  width: fit-content;
-  max-width: 100%;
-  min-height: 22px;
-  padding: 3px 9px;
-  border: 1px solid var(--concierge-hairline);
-  border-left: 2px solid var(--concierge-warm-edge);
-  border-radius: 0;
-  background: var(--concierge-raised);
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--concierge-soft);
-}
-.concierge-tool[data-status='error'] {
-  border-left-color: var(--signal-fault);
-}
-.concierge-tool__proto {
-  margin-right: 6px;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  color: var(--concierge-accent);
-}
-.concierge-tool__name {
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--concierge-ink);
-}
-.concierge-tool__summary {
-  color: var(--concierge-soft);
 }
 
 .concierge-msg__meta {

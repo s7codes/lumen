@@ -2403,6 +2403,39 @@ function sanitizeToolArguments(value) {
   return isRecord(parsed) ? parsed : {};
 }
 
+/*
+ * Internal tool execution is never conversation. A line is a trace when it
+ * carries the "MCP //" marker of a tool chip, or opens (bare or as a "- "
+ * bullet) with a snake_case tool identifier and a colon or a parenthesis,
+ * as in "lookup_studio_guide: Studio Guide" or "query_catalog({...})". Every
+ * label the studio writes is Title Case words, so no answer line looks like one.
+ */
+const TRACE_MARKER = /\bMCP\s*\/\//i;
+const TRACE_CALL = /^\s*(?:-\s+)?[a-z][a-z0-9]*(?:_[a-z0-9]+)+\s*[:(]/;
+
+export function isToolTraceLine(line) {
+  return typeof line === 'string' && (TRACE_MARKER.test(line) || TRACE_CALL.test(line));
+}
+
+/**
+ * The conversational part of an answer, as the chat shows it: trace lines
+ * dropped, the blank-line structure round them collapsed.
+ */
+export function conversationalText(answer) {
+  if (typeof answer !== 'string') return '';
+  return answer
+    .split('\n')
+    .filter((line) => !isToolTraceLine(line))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** A source that only names an MCP tool the agent ran: kept for the transcript, never shown. */
+export function isToolCitation(citation) {
+  return citation?.id?.startsWith('mcp:') === true || /^\s*MCP\b/i.test(citation?.label ?? '');
+}
+
 /** MCP tool trace from an untrusted reply: names, display summaries and bounded arguments only. */
 export function sanitizeToolCalls(input) {
   if (!Array.isArray(input)) return [];

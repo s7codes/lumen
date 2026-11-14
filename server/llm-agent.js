@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   composeReply,
+  conversationalText,
   describeWorkspace,
   ESCALATION_NOTICE,
   evaluateConciergeQuery,
@@ -167,6 +168,7 @@ function systemPrompt(ctx) {
     'When the visitor asks you to change their room, wall or cart, call mutate_3d_room, mutate_2d_wall or manage_cart_bag; the browser applies the result as one step that Ctrl+Z undoes.',
     'For bespoke fabrication, structural certification, freight claims or onsite installation, call unlock_engineering_escalation.',
     'Never state a figure a tool did not return.',
+    'The visitor sees only your conversation: never name a tool, never echo a tool call, a trace or a system command.',
     'Answer in plain ASCII: one lead sentence, then two to four lines of the form "- Label: detail". No emojis, no headings, at most 90 words.',
     `Live workspace: ${describeWorkspace(ctx)}`,
   ].join('\n');
@@ -442,7 +444,8 @@ async function runLlm({ config, question, ctx, version, fetchImpl, signal, timeo
     }
     state = adapter.append(state, turn, results);
   }
-  const text = asciiAnswer(answer);
+  // Server authority: a model that echoes a tool trace anyway loses that line before the reply is formed.
+  const text = conversationalText(asciiAnswer(answer));
   if (!text) throw new Error('provider returned no answer text');
 
   // Resolution stays decided by the question alone, so the escalation gate replays it.

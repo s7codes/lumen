@@ -5,7 +5,15 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { useConcierge } from '../hooks/useConcierge.js';
 import { sanitizeEmail } from '../lib/auth.js';
 import { sanitizeTicketMessage, sanitizeTicketSubject, TICKET_LIMITS, TICKET_QUEUED } from '../lib/cloud-records.js';
-import { canMarkUnhelpful, CONCIERGE_CATEGORIES, MCP_PROTOCOL, QUESTION_MAX, routeLabel } from '../lib/concierge-engine.js';
+import {
+  canMarkUnhelpful,
+  CONCIERGE_CATEGORIES,
+  conversationalText,
+  isToolCitation,
+  MCP_PROTOCOL,
+  QUESTION_MAX,
+  routeLabel,
+} from '../lib/concierge-engine.js';
 import { isSafeInternalPath } from '../security/sanitize.js';
 import { ArrowRight, LumenMark } from './icons.jsx';
 
@@ -95,28 +103,17 @@ function AnswerBody({ text }) {
 }
 
 /**
- * The MCP tools Lumen AI ran for this answer, in order: one flat chip per
- * call, "MCP // tool: what it did". A refused edit reads in amber.
+ * The MCP tools Lumen AI ran for this answer stay out of the conversation:
+ * the visitor reads the reply, never the trace. The calls ride along as a
+ * hidden list of bare data attributes (no text, no tooltip, nothing painted
+ * or announced), so automation can still tell which tool ran and whether it
+ * completed.
  */
 function ToolTrace({ calls }) {
   return (
-    <ol className="concierge-tools" data-testid="concierge-tool-calls" aria-label="MCP tool calls">
+    <ol data-testid="concierge-tool-calls" hidden>
       {calls.map((call, i) => (
-        <li
-          key={`${call.name}-${i}`}
-          className="concierge-tool"
-          data-testid="concierge-tool-call"
-          data-tool-name={call.name}
-          data-status={call.status}
-          title={call.summary || call.name}
-        >
-          <span className="concierge-tool__proto" aria-hidden="true">
-            MCP //
-          </span>
-          <span className="visually-hidden">MCP tool </span>
-          <span className="concierge-tool__name">{call.name}</span>
-          {call.summary && <span className="concierge-tool__summary">: {call.summary}</span>}
-        </li>
+        <li key={`${call.name}-${i}`} data-testid="concierge-tool-call" data-tool-name={call.name} data-status={call.status} />
       ))}
     </ol>
   );
@@ -135,6 +132,9 @@ function ReplyTurn({ turn, pathname, onUnhelpful, onNavigate, latestRef }) {
   const pct = Math.round(reply.confidence * 100);
   // A chip back to the page the visitor is on would only close the panel.
   const actions = reply.suggestedActions.filter((action) => isSafeInternalPath(action.to) && action.to !== pathname);
+  // Only the conversation reaches the visitor: no tool trace line, no tool named as a source.
+  const answer = conversationalText(reply.answer);
+  const sources = reply.citations.filter((citation) => !isToolCitation(citation));
   return (
     <li
       ref={latestRef}
@@ -170,7 +170,7 @@ function ReplyTurn({ turn, pathname, onUnhelpful, onNavigate, latestRef }) {
         </p>
         {reply.toolCalls?.length > 0 && <ToolTrace calls={reply.toolCalls} />}
         <div className="concierge-msg__body">
-          <AnswerBody text={reply.answer} />
+          <AnswerBody text={answer} />
         </div>
         {reply.metrics.length > 0 && (
           <dl className="concierge-metrics" data-testid="concierge-metrics">
@@ -199,9 +199,9 @@ function ReplyTurn({ turn, pathname, onUnhelpful, onNavigate, latestRef }) {
             ))}
           </nav>
         )}
-        {reply.citations.length > 0 && (
+        {sources.length > 0 && (
           <p className="concierge-cites tech-only mono" data-testid="concierge-citations">
-            Sources: {reply.citations.map((citation) => citation.label).join(' / ')}
+            Sources: {sources.map((citation) => citation.label).join(' / ')}
           </p>
         )}
         {kind === 'answer' &&

@@ -12,16 +12,19 @@ import {
 } from '../src/lib/icons-cinema.js';
 import {
   conePath,
+  convexHull,
   galleryWeight,
   HERO_CROSSFADE_SECONDS,
   HERO_CYCLE_SECONDS,
   HERO_HOLD_SECONDS,
   HERO_SCENE_IDS,
   heroSceneAt,
+  heroSceneGeometry,
   herringbonePlanks,
   roomCamera,
+  spotScallop,
 } from '../src/lib/hero-scenes.js';
-import { createRoom, INTERIOR_SCENE_IDS } from '../src/lib/interior-painter.js';
+import { createRoom, INTERIOR_SCENE_IDS, INTERIOR_VIEW, interiorScene } from '../src/lib/interior-painter.js';
 import { collectRuntimeErrors, horizontalOverflow, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
 test.beforeEach(async ({ page }) => {
@@ -40,6 +43,28 @@ function canvasPrint(canvas) {
     for (let i = 0; i < data.length; i += 4 * 97) sum += data[i] + data[i + 1] * 3 + data[i + 2] * 7;
     return sum;
   });
+}
+
+/** Vertices of an "M x yL x y ... Z" polygon path. */
+function polygonPoints(d) {
+  return d
+    .slice(1, -1)
+    .split('L')
+    .map((pair) => pair.split(' ').map(Number));
+}
+
+/** Point in a convex polygon (either winding), edges included. */
+function insideConvex(points, [x, y]) {
+  let sign = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const [ax, ay] = points[i];
+    const [bx, by] = points[(i + 1) % points.length];
+    const cross = (bx - ax) * (y - ay) - (by - ay) * (x - ax);
+    if (Math.abs(cross) < 1e-6) continue;
+    if (sign === 0) sign = Math.sign(cross);
+    else if (Math.sign(cross) !== sign) return false;
+  }
+  return true;
 }
 
 function edgeToEdge(page, locator) {
@@ -108,6 +133,26 @@ test.describe('meet our icons clock', () => {
     expect((bx1 - bx0) / (fx1 - fx0)).toBeCloseTo(0.5, 6);
     expect(fy0).toBeCloseTo(400, 6);
     expect(by0).toBeLessThan(fy0);
+
+    // Each room is smooth vectors only: crisp paths painted in a hex colour or
+    // a gradient of its own drawing, finite geometry, the luminaire in frame.
+    for (const id of INTERIOR_SCENE_IDS) {
+      const art = interiorScene(id);
+      expect(art.id).toBe(id);
+      expect(art.shapes.length, id).toBeGreaterThan(100);
+      expect(art.defs.every((def) => ['linear', 'radial', 'clip'].includes(def.type)), id).toBe(true);
+      const ids = new Set(art.defs.map((def) => def.id));
+      for (const shape of art.shapes) {
+        expect(shape.paint === 'none' || /^#[0-9a-f]{6}$/.test(shape.paint) || ids.has(shape.paint), `${id} ${shape.paint}`).toBe(true);
+        expect(shape.d, id).not.toMatch(/NaN|Infinity|undefined/);
+      }
+      expect(art.glow.x).toBeGreaterThan(0);
+      expect(art.glow.x).toBeLessThan(1);
+      expect(art.glow.y).toBeGreaterThan(0);
+      expect(art.glow.y).toBeLessThan(1);
+    }
+    expect(interiorScene('unknown').id).toBe('dining');
+    expect(INTERIOR_VIEW).toEqual({ width: 600, height: 800 });
   });
 
   test('the hero clock holds each scene 5 s and crossfades 1.1 s, and its rooms are true perspective', () => {
@@ -155,6 +200,38 @@ test.describe('meet our icons clock', () => {
     const foot = points[12];
     expect(foot[1]).toBe(350);
     expect(100 - foot[0]).toBeCloseTo(10 * Math.sqrt(1 + (300 / 40) ** 2), 1);
+
+    // A spot leaning toward a wall: its scallop arches where the wall-side
+    // generator lands, is symmetric about the spot and opens toward the floor
+    // while the lean stays under the half angle.
+    const lean = spotScallop({ apex: [0, 290, 400], wallZ: 420, tilt: 0.1, halfAngle: 0.2, untilY: 100 });
+    expect(lean.top).toBeCloseTo(290 - 20 / Math.tan(0.3), 6);
+    expect(lean.halfWidth(lean.top + 0.01)).toBe(0);
+    expect(lean.bottom).toBe(100);
+    expect(lean.halfWidth(150)).toBeGreaterThan(lean.halfWidth(200));
+    expect(Math.abs(lean.outline[0][0])).toBeLessThan(1e-3);
+    expect(lean.outline[0][1]).toBe(lean.top);
+    for (let i = 0; i < 10; i += 1) expect(lean.outline[i][0]).toBeCloseTo(-lean.outline.at(-1 - i)[0], 9);
+    // Leaning past the half angle closes the scallop into an ellipse above the floor.
+    const steep = spotScallop({ apex: [0, 290, 400], wallZ: 420, tilt: 0.5, halfAngle: 0.2, untilY: 0 });
+    expect(steep.bottom).toBeCloseTo(290 - 20 / Math.tan(0.3), 6);
+    expect(convexHull([[0, 0], [2, 0], [1, 1], [1, 0.2], [2, 2], [0, 2]])).toHaveLength(4);
+
+    // Scene II: each grazer's light is one cone from its own aperture. The
+    // beam starts on the aperture rim, never below it, and holds both the
+    // aperture centre and the arch of the scallop it lays on the limestone.
+    const { spots } = heroSceneGeometry().gallery;
+    expect(spots).toHaveLength(2);
+    for (const spot of spots) {
+      const beam = polygonPoints(spot.beam);
+      const rimTop = Math.min(...spot.apertureRim.map(([, y]) => y));
+      expect(Math.min(...beam.map(([, y]) => y))).toBeCloseTo(rimTop, 0);
+      expect(insideConvex(beam, spot.apex)).toBe(true);
+      expect(insideConvex(beam, spot.scallopTop)).toBe(true);
+      expect(spot.scallopTop[1]).toBeGreaterThan(spot.apex[1]);
+      // The beam's gradient runs from the aperture down past the arch.
+      expect(spot.beamEnd[1]).toBeGreaterThan(spot.scallopTop[1]);
+    }
   });
 });
 
@@ -229,6 +306,24 @@ test.describe('light architectural hero', () => {
     // The gallery: a recessed 24V track slot, a pendant that pools gold on the console, a lit walnut shelf.
     await expect(gallery.locator('path[fill="url(#hg-wash)"]')).toHaveCount(1);
     await expect(gallery.locator('[data-depth="pendant"] path[fill="url(#hg-beam)"]')).toHaveCount(1);
+    // Each track spot's light is drawn from its own aperture: in the rendered
+    // picture the beam's top edge is the aperture's, as wide, and runs on below it.
+    const anchors = await gallery.evaluate((svg) =>
+      [...svg.querySelectorAll('[data-spot-beam]')].map((beam) => {
+        const aperture = svg.querySelector(`[data-spot-aperture="${beam.dataset.spotBeam}"]`).getBBox();
+        const box = beam.getBBox();
+        return {
+          gap: Math.abs(box.y - aperture.y),
+          spans: box.x <= aperture.x + 0.5 && box.x + box.width >= aperture.x + aperture.width - 0.5,
+          below: box.y + box.height > aperture.y + aperture.height + 100,
+        };
+      }),
+    );
+    expect(anchors).toHaveLength(2);
+    for (const anchor of anchors) {
+      expect(anchor.gap).toBeLessThan(0.5);
+      expect(anchor).toMatchObject({ spans: true, below: true });
+    }
 
     // No text overlays on the pictures: the only words in the hero are the copy.
     await expect(hero.locator('.hero__tag, .hero__readout, .hero__atmosphere')).toHaveCount(0);
@@ -383,7 +478,7 @@ test.describe('meet our icons cinema', () => {
 });
 
 test.describe('explore the lumen home', () => {
-  test('a centred head, three 3:4 painted rooms on a 16 px gutter, captions on the bare paper, then A culture of light', async ({ page }) => {
+  test('a centred head, three 3:4 vector rooms on a 16 px gutter, captions on the bare paper, then A culture of light', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
@@ -400,6 +495,29 @@ test.describe('explore the lumen home', () => {
       await expect(canvases.nth(i)).toHaveAttribute('data-scene', scene);
       await expect(canvases.nth(i)).toHaveAttribute('data-painted', scene);
       await expect(canvases.nth(i)).toHaveAttribute('aria-hidden', 'true');
+    }
+    // Smooth architectural vectors, never procedural noise: inline SVG with
+    // no canvas, filter, turbulence, pattern or bitmap, every path painted in
+    // a flat colour or a gradient that lives in its own picture.
+    const pictures = await portraits.evaluateAll((els) =>
+      els.map((el) => {
+        const svg = el.querySelector('[data-testid="interior-portrait"]');
+        // The painted shapes: the picture's own paths, not the outlines inside its clip paths.
+        const fills = [...svg.querySelectorAll(':scope > path')].map((path) => path.getAttribute('fill'));
+        return {
+          tag: svg.tagName.toLowerCase(),
+          canvases: el.querySelectorAll('canvas').length,
+          noise: svg.querySelectorAll('filter, feTurbulence, pattern, image').length,
+          flat: fills.every((fill) => fill === 'none' || /^#[0-9a-f]{6}$/.test(fill) || /^url\(#[a-z0-9-]+\)$/.test(fill)),
+          unresolved: fills.filter((fill) => fill.startsWith('url(') && !svg.querySelector(fill.slice(4, -1))).length,
+          gradients: svg.querySelectorAll('linearGradient, radialGradient').length,
+          textures: [el, ...el.querySelectorAll('*')].filter((node) => getComputedStyle(node).backgroundImage.includes('url(')).length,
+        };
+      }),
+    );
+    for (const picture of pictures) {
+      expect(picture).toMatchObject({ tag: 'svg', canvases: 0, noise: 0, flat: true, unresolved: 0, textures: 0 });
+      expect(picture.gradients).toBeGreaterThan(20);
     }
     // Boxes include transforms: measure once the staggered reveal has settled.
     await expect

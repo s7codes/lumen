@@ -6,7 +6,15 @@ import { expect, test } from '@playwright/test';
 import { asciiAnswer, createConciergeAgent, DEFAULT_MODELS, loadDotEnv, resolveLlmConfig } from '../server/llm-agent.js';
 import { parseAgentIntent } from '../src/lib/agent-intent.js';
 import { BAG_STORAGE_KEY } from '../src/lib/bag.js';
-import { evaluateConciergeQuery, MCP_PROTOCOL, sanitizeClientActions, sanitizeConciergeReply } from '../src/lib/concierge-engine.js';
+import {
+  conversationalText,
+  evaluateConciergeQuery,
+  isToolCitation,
+  isToolTraceLine,
+  MCP_PROTOCOL,
+  sanitizeClientActions,
+  sanitizeConciergeReply,
+} from '../src/lib/concierge-engine.js';
 import { answerDeltas, runDeterministicAgent } from '../src/lib/mcp-orchestrator.js';
 import { handleMcpRequest, MCP_PROTOCOL_VERSION, MCP_TOOL_NAMES } from '../src/lib/mcp-server.js';
 import { createRoomState, mountInRoom, ROOM_STORAGE_KEY, sanitizeRoomState, serializeRoomState } from '../src/lib/room-3d.js';
@@ -594,9 +602,12 @@ test.describe('Lumen AI agentic workspace execution', () => {
     await expect(tool).toHaveCount(1);
     await expect(tool).toHaveAttribute('data-tool-name', 'mutate_3d_room');
     await expect(tool).toHaveAttribute('data-status', 'completed');
-    await expect(tool).toContainText('MCP //');
-    await expect(tool).toContainText('mutate_3d_room: Set the room to Grand Loft 800 x 650 x 340 cm, mounted Floating Shelf 110 in Walnut on the East Wall');
-    await expect(reply.getByTestId('concierge-tool-calls')).toBeVisible();
+    // The trace is data for automation, never conversation: nothing of it is painted or announced.
+    await expect(reply.getByTestId('concierge-tool-calls')).toBeHidden();
+    await expect(tool).toHaveText('');
+    await expect(reply).not.toContainText('MCP //');
+    await expect(reply).not.toContainText('mutate_3d_room');
+    await expect(reply.locator('.concierge-msg__lead')).toContainText('Grand Loft');
 
     // The live viewport and scene graph took the mutation without a reload.
     await expect(viewport).toHaveAttribute('data-room-width', '800');
@@ -667,6 +678,91 @@ test.describe('Lumen AI agentic workspace execution', () => {
     });
 
     expect(errors.filter((line) => !/ERR_FAILED|net::/.test(line))).toEqual([]);
+    expect(await readCspViolations(page)).toEqual([]);
+  });
+});
+
+test.describe('Lumen AI chat shows only the conversation', () => {
+  const TRACE = 'MCP // lookup_studio_guide: Studio Guide & Troubleshooting';
+
+  test('trace lines and tool sources are told apart from studio copy by their shape alone', () => {
+    expect(isToolTraceLine(TRACE)).toBe(true);
+    expect(isToolTraceLine('mcp//query_catalog')).toBe(true);
+    expect(isToolTraceLine('query_catalog({"query":"shelf"})')).toBe(true);
+    expect(isToolTraceLine('- inspect_workspace: 3 modules on the north wall')).toBe(true);
+    // Studio labels are Title Case words and part ids use hyphens: never mistaken for a trace.
+    expect(isToolTraceLine('- Open the editor: click 3D Room in the top bar')).toBe(false);
+    expect(isToolTraceLine('- Parts: floating-shelf-110 in Walnut')).toBe(false);
+    expect(isToolTraceLine('Clicking 3D Room in the top navigation bar opens the 3D Room Planner (/room-3d) directly.')).toBe(false);
+    expect(conversationalText(`${TRACE}\n\nClicking 3D Room opens the planner.\n- Open the editor: click 3D Room\nquery_catalog: 12 parts`)).toBe(
+      'Clicking 3D Room opens the planner.\n- Open the editor: click 3D Room',
+    );
+    expect(conversationalText(42)).toBe('');
+    expect(isToolCitation({ id: 'mcp:lookup-studio-guide', label: 'MCP / lookup_studio_guide' })).toBe(true);
+    expect(isToolCitation({ id: 'guide:room-planner', label: 'Studio Guide' })).toBe(false);
+
+    // Every reply the device composes reads clean, whatever tool it ran.
+    const { reply } = runDeterministicAgent('How do I open the 3D room?', { route: '/' });
+    expect(reply.toolCalls.map((call) => call.name)).toEqual(['lookup_studio_guide']);
+    expect(conversationalText(reply.answer)).toBe(reply.answer);
+  });
+
+  test('a how-to answer shows the reply alone: no MCP trace and no tool name, the trace kept as hidden data', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.goto('/');
+    await openConcierge(page);
+    const reply = await ask(page, 'How do I open the 3D room?');
+    await expect(reply).toHaveAttribute('data-category', 'guide');
+    await expect(reply.locator('.concierge-msg__lead')).toContainText('Clicking 3D Room');
+    await expect(reply.getByTestId('concierge-tool-call')).toHaveAttribute('data-tool-name', 'lookup_studio_guide');
+    await expect(reply.getByTestId('concierge-tool-calls')).toBeHidden();
+    const shown = await reply.evaluate((el) => el.innerText);
+    expect(shown).not.toContain('MCP');
+    expect(shown).not.toContain('lookup_studio_guide');
+    expect(await reply.locator('[title]').count()).toBe(0);
+    expect(errors).toEqual([]);
+    expect(await readCspViolations(page)).toEqual([]);
+  });
+
+  test('a reply that carries trace lines and tool sources reaches the visitor as conversation only, Specs mode included', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    await page.goto('/room-3d');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    await page.getByTestId('studio-header').getByTestId('mode-switch').getByRole('button', { name: /^Specs/ }).click();
+    const leaky = {
+      id: 'LMN-C-0A1B2C3D',
+      question: 'How do I open the 3D room?',
+      answer: `${TRACE}\n\nClicking 3D Room in the top bar opens the planner.\n- Open the editor: click 3D Room\nlookup_studio_guide: matched the planner guide`,
+      confidence: 0.92,
+      category: 'guide',
+      resolved: true,
+      citations: [
+        { id: 'mcp:lookup-studio-guide', label: 'MCP / lookup_studio_guide' },
+        { id: 'guide:room-planner', label: 'Studio Guide' },
+      ],
+      suggestedActions: [],
+      metrics: [],
+      mcpProtocol: MCP_PROTOCOL,
+      toolCalls: [{ name: 'lookup_studio_guide', arguments: {}, summary: 'Studio Guide & Troubleshooting', status: 'completed' }],
+      clientActions: [],
+    };
+    await page.route('**/api/concierge/ask', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ reply: leaky }) }));
+    await openConcierge(page);
+    const reply = await ask(page, 'How do I open the 3D room?');
+    await expect(reply).toHaveAttribute('data-transport', 'http');
+    await expect(reply).toHaveAttribute('data-reply-id', 'LMN-C-0A1B2C3D');
+    await expect(reply.locator('.concierge-msg__lead')).toHaveText('Clicking 3D Room in the top bar opens the planner.');
+    await expect(reply.locator('.concierge-msg__list li')).toHaveText(['Open the editor: click 3D Room']);
+    // Specs mode shows provenance, never a tool as a source.
+    const sources = reply.getByTestId('concierge-citations');
+    await expect(sources).toBeVisible();
+    await expect(sources).toHaveText('Sources: Studio Guide');
+    const shown = await reply.evaluate((el) => el.innerText);
+    expect(shown).not.toContain('MCP');
+    expect(shown).not.toContain('lookup_studio_guide');
+    expect(shown).not.toContain('matched the planner guide');
+    await expect(reply.getByTestId('concierge-tool-call')).toHaveAttribute('data-tool-name', 'lookup_studio_guide');
+    expect(errors).toEqual([]);
     expect(await readCspViolations(page)).toEqual([]);
   });
 });
