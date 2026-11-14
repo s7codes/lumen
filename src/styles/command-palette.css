@@ -1,30 +1,30 @@
-/* Command palette trigger: the first navbar pill, same 32px glass key as the
-   mode switch, account and cart. Glyph and word only; the Ctrl+K / Cmd+K
-   shortcut lives in the title. Below 560px it folds to the glyph alone. */
+/* Command palette trigger: the first navbar utility key, borderless small
+   capitals on the same 32px baseline as the mode toggle, account and cart.
+   Glyph and word only; the Ctrl+K / Cmd+K shortcut lives in the title.
+   Below 700px it folds to the glyph alone. */
 
 .palette-trigger {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   height: var(--pill-height);
-  padding-inline: var(--space-3) var(--space-4);
-  border: 1px solid var(--pill-edge);
-  border-radius: var(--pill-radius);
-  background: var(--pill-surface);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  padding-inline: var(--space-2);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   font-family: var(--font-sans);
-  font-size: var(--nav-font-size);
-  font-weight: var(--nav-font-weight);
+  font-size: var(--nav-utility-size);
+  font-weight: var(--weight-medium);
   line-height: 1;
-  letter-spacing: var(--nav-tracking);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
   white-space: nowrap;
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 6px;
   transition:
-    border-color var(--duration-fast) var(--ease-out),
     background-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out),
-    translate var(--duration-base) var(--ease-out);
+    color var(--duration-fast) var(--ease-out);
 }
 
 .palette-trigger svg {
@@ -33,22 +33,15 @@
   height: 14px;
 }
 
-.palette-trigger:hover {
-  border-color: var(--pill-edge-hover);
-  background: var(--pill-surface-hover);
-  color: var(--text-primary);
-  translate: 0 -1px;
+.palette-trigger:hover .palette-trigger__label {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 6px;
 }
 
 .palette-trigger[aria-expanded='true'] {
-  border-color: var(--text-primary);
-  background: var(--text-primary);
-  color: var(--text-inverse);
-  translate: none;
-}
-
-.palette-trigger:focus-visible {
-  border-radius: var(--pill-radius);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 @media (max-width: 699px) {
@@ -63,7 +56,7 @@
   }
 }
 
-/* Phones: four pills share the row, so the gaps and pill insets tighten. */
+/* Phones: four keys share the row, so the gaps and insets tighten. */
 @media (max-width: 419px) {
   .navbar__inner {
     column-gap: var(--space-2);
@@ -75,8 +68,13 @@
 
   .navbar__controls .bag-trigger,
   .navbar__controls .account-trigger {
-    padding-inline: var(--space-2);
-    font-size: 12.5px;
+    padding-inline: var(--space-1);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+  }
+
+  .navbar__controls .bag-trigger {
+    padding-right: 0;
   }
 
   /* Like Search, the cart folds to its glyph and count; the word stays in the
@@ -97,7 +95,8 @@
 
   .navbar__controls .mode-switch__segment {
     padding-inline: 6px;
-    font-size: 12.5px;
+    font-size: 11px;
+    letter-spacing: 0.02em;
   }
 }
 
@@ -112,17 +111,16 @@
 .palette-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(5, 5, 5, 0.56);
+  background: rgba(20, 19, 17, 0.32);
   animation: palette-fade var(--duration-base) var(--ease-out);
 }
 
-/* Spotlight: the Lumen AI panel's warm basalt glass, a hairline champagne
-   edge and a champagne light along the top; depth from a zero-blur plinth,
-   never a glow. Visual mode shows names, a plain subtitle and a price;
-   SKUs, paths and wattage stay in the DOM as Specs-mode detail (.tech-only). */
+/* Spotlight: a crisp white index sheet under a carbon head rule, square at
+   every corner, no glass and no shadow. Visual mode shows names, a plain
+   subtitle and a price; SKUs, paths and wattage stay in the DOM as
+   Specs-mode detail (.tech-only). */
 .palette {
   --palette-top: clamp(64px, 14vh, 144px);
-  --palette-champagne: #e5c799;
 
   position: absolute;
   top: var(--palette-top);
@@ -131,30 +129,25 @@
   flex-direction: column;
   width: min(540px, calc(100vw - 32px));
   max-height: min(560px, calc(100svh - var(--palette-top) - 24px));
-  border: 1px solid rgba(229, 199, 153, 0.18);
-  border-radius: 16px;
-  background: rgba(18, 17, 15, 0.96);
-  -webkit-backdrop-filter: blur(24px);
-  backdrop-filter: blur(24px);
-  box-shadow:
-    inset 0 1px 0 rgba(229, 199, 153, 0.16),
-    0 3px 0 rgba(0, 0, 0, 0.45);
-  color: #e6e2da;
+  border: 1px solid var(--rule-frame);
+  border-radius: 0;
+  background: var(--paper-white);
+  color: var(--text-primary);
   overflow: hidden;
   transform: translateX(-50%);
   transform-origin: 50% 0;
   animation: palette-in 520ms var(--ease-cinematic) both;
 }
 
-/* The champagne top-edge light: brightest at the centre, gone at the corners. */
+/* The head rule: one carbon line across the top of the sheet. */
 .palette::before {
   content: '';
   position: absolute;
-  top: 0;
-  right: 18%;
-  left: 18%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(229, 199, 153, 0.6), transparent);
+  top: -1px;
+  right: -1px;
+  left: -1px;
+  height: 2px;
+  background: var(--ink);
   pointer-events: none;
 }
 
@@ -165,14 +158,14 @@
   gap: var(--space-3);
   height: 58px;
   padding-inline: 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid var(--rule);
 }
 
 .palette__search-glyph {
   flex: none;
   width: 16px;
   height: 16px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .palette__input {
@@ -184,13 +177,13 @@
   font-family: var(--font-sans);
   font-size: 15px;
   letter-spacing: -0.01em;
-  color: #f4f1ea;
-  caret-color: var(--palette-champagne);
+  color: var(--text-primary);
+  caret-color: var(--ink);
   outline: none;
 }
 
 .palette__input::placeholder {
-  color: #8f877b;
+  color: var(--text-muted);
 }
 
 .palette__list {
@@ -216,16 +209,16 @@
   justify-content: space-between;
   padding: var(--space-3) var(--space-3) 6px;
   font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 500;
-  color: #8f877b;
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-secondary);
 }
 
 :root[data-mode='technical'] .palette__group-label {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
 }
 
 .palette__group-count {
@@ -240,7 +233,7 @@
   min-height: 48px;
   padding: var(--space-2) var(--space-3);
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 0;
   color: var(--text-secondary);
   cursor: pointer;
   transition:
@@ -250,9 +243,9 @@
 }
 
 .palette__option[data-active] {
-  border-color: rgba(229, 199, 153, 0.2);
-  background: rgba(229, 199, 153, 0.07);
-  color: #f4f1ea;
+  border-color: transparent;
+  background: var(--paper-stone);
+  color: var(--text-primary);
 }
 
 .palette__glyph {
@@ -260,9 +253,9 @@
   place-items: center;
   width: 28px;
   height: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 4px;
-  color: var(--text-muted);
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  color: var(--text-secondary);
   transition:
     color var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out);
@@ -274,7 +267,7 @@
 }
 
 .palette__option[data-active] .palette__glyph {
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: var(--ink);
   color: var(--text-primary);
 }
 
@@ -298,7 +291,7 @@
 .palette__label {
   overflow: hidden;
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -312,7 +305,7 @@
   overflow: hidden;
   font-size: 12px;
   white-space: nowrap;
-  color: #b9b2a6;
+  color: var(--text-secondary);
 }
 
 .palette__summary {
@@ -328,7 +321,7 @@
   line-height: 1.6;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: #8f877b;
+  color: var(--text-muted);
 }
 
 .palette__meta {
@@ -340,28 +333,27 @@
   color: var(--text-secondary);
 }
 
-/* A clean 4px price tag; in Specs mode the wattage rides in front of it. */
+/* A square price tag on a hairline; in Specs mode the wattage rides in front of it. */
 .palette__price {
   padding: 3px 9px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
   font-family: var(--font-sans);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: 0;
-  color: #e6e2da;
+  color: var(--text-primary);
 }
 
 .palette__option[data-active] .palette__price {
-  border-color: rgba(229, 199, 153, 0.34);
-  color: #f0dcb8;
+  border-color: var(--ink);
 }
 
 .palette__meta[data-badge] {
   padding: 3px 7px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
   font-size: 10px;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
@@ -381,10 +373,10 @@
   align-items: center;
   justify-content: center;
   padding: 10px 18px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid var(--rule);
   font-family: var(--font-sans);
   font-size: 12px;
-  color: #8f877b;
+  color: var(--text-secondary);
 }
 
 .palette__hint {
@@ -399,14 +391,14 @@
   align-items: center;
   height: 18px;
   padding-inline: 5px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: transparent;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 @media (max-width: 559px) {

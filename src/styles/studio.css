@@ -2,15 +2,18 @@
    Module geometry arrives as px from the fit scale; --ppcm (px per cm) is set
    on .wall so CSS details can be sized in centimetres. */
 
-/* A low warm wash behind the stage column, so the studio reads as a lit
-   drafting room rather than a dead-black page. */
+/* The workstation is a square optical chamber set into the gallery page: a
+   deep basalt volume with a low warm wash behind the stage column, so the
+   studio reads as a lit drafting room rather than a dead-black slab. */
 .studio-layout {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr) 280px;
   grid-template-areas: 'palette main inspector';
   gap: var(--space-4);
   align-items: start;
-  background: radial-gradient(
+  padding-block: var(--space-5);
+  background-color: var(--chamber);
+  background-image: radial-gradient(
     ellipse 70% 60% at 50% 26%,
     rgba(232, 168, 92, 0.06) 0%,
     rgba(232, 168, 92, 0.018) 45%,

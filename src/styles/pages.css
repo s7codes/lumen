@@ -1,13 +1,16 @@
 /* Catalog */
 
-/* Filters and tools share one frosted bento bar above the grid. */
+/* Filters and tools share one flush bar above the grid, between a carbon
+   rule and a hairline. */
 .catalog__controls {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-6);
-  padding: var(--space-4) var(--space-5) var(--space-4) var(--space-4);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--rule-ink);
+  border-bottom: 1px solid var(--rule-section);
 }
 
 .catalog-filter {
@@ -16,7 +19,7 @@
   gap: var(--space-1);
 }
 
-/* Filters read as plain type; the engaged one inverts flat. */
+/* Filters read as plain tracked type; the engaged one inverts to carbon. */
 .catalog-filter__option {
   display: inline-flex;
   align-items: center;
@@ -24,10 +27,10 @@
   height: 36px;
   padding-inline: var(--space-4);
   border: 0;
-  border-radius: var(--radius-md);
-  font-family: var(--font-mono);
+  border-radius: 0;
+  font-family: var(--font-sans);
   font-size: var(--text-2xs);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-variant-numeric: tabular-nums;
@@ -39,7 +42,7 @@
 }
 
 .catalog-filter__option:hover:not([aria-pressed='true']) {
-  background: rgba(242, 238, 231, 0.05);
+  background: rgba(20, 19, 17, 0.04);
   color: var(--text-primary);
 }
 
@@ -71,11 +74,12 @@
 }
 
 .field__label {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 10px;
+  font-weight: var(--weight-medium);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .field__input {
@@ -92,11 +96,12 @@
   transition: border-color var(--duration-fast) var(--ease-out);
 }
 
-/* Catalog tools: a bare baseline instead of a boxed well. */
+/* Catalog tools: a bare carbon baseline instead of a boxed well. */
 .catalog__tools .field__input {
   height: 36px;
   padding-inline: 0;
   border-width: 0 0 1px;
+  border-color: var(--border-strong);
   border-radius: 0;
   background-color: transparent;
 }
@@ -111,7 +116,7 @@
 
 .field__input:focus-visible {
   outline: none;
-  border-color: var(--lumen-amber);
+  border-color: var(--focus-ring);
 }
 
 .field--search .field__input {
@@ -168,7 +173,7 @@
 .catalog__empty-title {
   max-width: 24ch;
   font-size: var(--text-xl);
-  font-weight: var(--weight-light);
+  font-weight: var(--weight-display);
   letter-spacing: -0.02em;
   overflow-wrap: anywhere;
 }
@@ -203,7 +208,7 @@
   min-width: 0;
   min-height: 32px;
   padding: var(--space-1) var(--space-3);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--text-2xs);
   font-weight: 500;
   line-height: 1.2;
@@ -214,6 +219,11 @@
   transition:
     color var(--duration-fast) var(--ease-out),
     background-color var(--duration-fast) var(--ease-out);
+}
+
+/* Inside a planner chamber the switch keeps the instrument's mono face. */
+:where(.optical) .segment-switch__option {
+  font-family: var(--font-mono);
 }
 
 .segment-switch__option + .segment-switch__option {
@@ -231,7 +241,7 @@
 }
 
 .segment-switch__option:focus-visible {
-  outline: 1px solid var(--lumen-amber);
+  outline: 1px solid var(--focus-ring);
   outline-offset: -3px;
   border-radius: 0;
 }

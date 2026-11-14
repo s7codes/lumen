@@ -420,7 +420,7 @@ test.describe('human-friendly UX and header polish', () => {
     expect(readme).not.toContain('Copyright (c) 2026 Lumen Spatial Studio');
   });
 
-  test('navbar reads in sans Title Case, the search pill has no shortcut badge, Visual / Specs switches mode', async ({
+  test('navbar links read in sans Title Case, utility keys in small capitals, no shortcut badge, Visual / Specs switches mode', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
@@ -448,8 +448,10 @@ test.describe('human-friendly UX and header polish', () => {
     await expect(trigger).toHaveText('Search');
     await expect(trigger.locator('kbd')).toHaveCount(0);
     expect(await trigger.textContent()).not.toMatch(/ctrl|cmd|\bK\b/i);
-    await expect(trigger).toHaveCSS('font-size', '13.5px');
-    await expect(trigger).toHaveCSS('text-transform', 'none');
+    // Utility keys: 0.75rem tracked capitals in the sans face, borderless.
+    await expect(trigger).toHaveCSS('font-size', '12px');
+    await expect(trigger).toHaveCSS('text-transform', 'uppercase');
+    await expect(trigger).toHaveCSS('font-family', /Inter Tight/);
     // The shortcut itself still works from anywhere.
     await page.keyboard.press('Control+k');
     await expect(page.getByTestId('command-palette')).toBeVisible();
@@ -461,15 +463,18 @@ test.describe('human-friendly UX and header polish', () => {
     const specs = group.getByRole('button', { name: /^Specs/ });
     await expect(visual).toHaveAttribute('title', 'Visual mode - clean presentation');
     await expect(specs).toHaveAttribute('title', 'Specs mode - dimensions, wiring & engineering data');
-    await expect(specs).toHaveCSS('text-transform', 'none');
+    await expect(specs).toHaveCSS('text-transform', 'uppercase');
+    await expect(specs).toHaveCSS('border-top-left-radius', '0px');
     await specs.click();
     await expect(page.locator('html')).toHaveAttribute('data-mode', 'technical');
     await expect(specs).toHaveAttribute('aria-pressed', 'true');
     await visual.click();
     await expect(page.locator('html')).toHaveAttribute('data-mode', 'architectural');
-    for (const pill of [page.getByTestId('sign-in'), page.getByRole('button', { name: 'Cart (0)' })]) {
-      await expect(pill).toHaveCSS('font-size', '13.5px');
-      await expect(pill).toHaveCSS('text-transform', 'none');
+    for (const key of [page.getByTestId('sign-in'), page.getByRole('button', { name: 'Cart (0)' })]) {
+      await expect(key).toHaveCSS('font-size', '12px');
+      await expect(key).toHaveCSS('text-transform', 'uppercase');
+      await expect(key).toHaveCSS('letter-spacing', '0.96px');
+      await expect(key).toHaveCSS('border-top-width', '0px');
     }
     expect(errors).toEqual([]);
   });
@@ -680,15 +685,15 @@ test.describe('product mini-icons', () => {
 });
 
 test.describe('page atmosphere', () => {
-  test('the overview, the 2D Wall Studio and the account sit on lit layers with zero overflow at 360 and 1440 px', async ({ page }) => {
+  test('the overview, the 2D Wall Studio and the account sit on flat alabaster paper with zero overflow at 360 and 1440 px', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/');
     await seed(page, [[SESSION_KEY, JSON.stringify(GUEST)]]);
     for (const width of [360, 1440]) {
       await page.setViewportSize({ width, height: 900 });
 
-      // Overview: the atmosphere starts at the hero's foot on its floor tone, carries four
-      // washes, drafting lines and a champagne hairline over each section.
+      // Overview: the paper starts at the hero chamber's foot. No washes, no drafting
+      // lattice; each section opens on its own hairline-ruled head.
       await page.goto('/');
       const flow = page.getByTestId('home-atmosphere');
       // Layout offsets: the hero copy pulls into focus with a transform on load.
@@ -697,15 +702,16 @@ test.describe('page atmosphere', () => {
         return el.offsetTop - (hero.offsetTop + hero.offsetHeight);
       });
       expect(seam, `${width}px`).toBe(0);
-      const washes = await computedLayers(flow, '::before');
-      expect(washes.position).toBe('absolute');
-      expect(radials(washes.image), `${width}px washes`).toBe(4);
-      expect(washes.image).toContain('rgb(10, 10, 9) 0px');
-      const drafting = await computedLayers(flow, '::after');
-      expect(drafting.image).toContain('linear-gradient(90deg');
-      expect(drafting.size).toBe('120px 100%');
+      const paper = await computedLayers(flow);
+      expect(paper.image, `${width}px paper`).toBe('none');
+      expect(await flow.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(245, 242, 235)');
+      for (const pseudo of ['::before', '::after']) {
+        expect(await flow.evaluate((el, which) => getComputedStyle(el, which).content, pseudo), pseudo).toBe('none');
+      }
       for (const section of ['.lab', '.showcase3d', '.modules', '.entries']) {
-        expect((await computedLayers(flow.locator(`:scope > ${section}`))).image, section).toContain('rgba(229, 199, 153, 0.16)');
+        expect((await computedLayers(flow.locator(`:scope > ${section}`))).image, section).toBe('none');
+        const head = flow.locator(`:scope > ${section} .section-head`);
+        expect(await head.evaluate((el) => getComputedStyle(el).borderBottom), section).toBe('1px solid rgba(20, 19, 17, 0.14)');
       }
       await expect(page.getByTestId('ambient-backdrop')).toHaveAttribute('data-atmosphere', 'home');
       expect(await horizontalOverflow(page), `/ ${width}px`).toBeLessThanOrEqual(0);
@@ -720,24 +726,29 @@ test.describe('page atmosphere', () => {
         const backdrop = page.getByTestId('ambient-backdrop');
         await expect(backdrop).toHaveAttribute('data-atmosphere', zone);
         const layers = await computedLayers(backdrop);
-        expect(layers).toMatchObject({ position: 'fixed', events: 'none' });
-        expect(radials(layers.image), `${path} washes`).toBe(3);
-        expect(layers.image).toContain('radial-gradient(72% 54% at 50% -8%, rgba(232, 168, 92, 0.1)');
-        expect(layers.image).toContain('linear-gradient(rgb(13, 12, 11) 0%, rgb(20, 18, 16) 48%, rgb(11, 10, 9) 100%)');
-        const lattice = await computedLayers(backdrop, '::after');
-        expect(lattice.size).toBe('96px 96px, 96px 96px');
+        expect(layers).toMatchObject({ position: 'fixed', events: 'none', image: 'none' });
+        expect(radials(layers.image), `${path} washes`).toBe(0);
+        expect(await backdrop.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(245, 242, 235)');
+        expect(await backdrop.evaluate((el) => getComputedStyle(el, '::after').content)).toBe('none');
         expect(await backdrop.boundingBox(), `${path} ${width}px`).toEqual({ x: 0, y: 0, width, height: 900 });
-        // The page header and the planner surround read through it: nothing paints a flat black slab.
+        // The page header reads straight on the paper: nothing paints a slab behind it.
         const header = page.locator('.page-header');
         expect(await header.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
         expect(await horizontalOverflow(page), `${path} ${width}px`).toBeLessThanOrEqual(0);
       }
     }
-    // Account tiles: a warm backlight from the top edge and a champagne hairline inside the border.
+    // The 2D Wall Studio workstation is a square optical chamber set into the paper.
+    await page.goto('/studio-2d');
+    const chamber = page.locator('.studio-layout');
+    await expect(chamber).toHaveClass(/(^|\s)optical(\s|$)/);
+    await expect(chamber).toHaveCSS('background-color', 'rgb(17, 16, 14)');
+    await expect(chamber).toHaveCSS('border-top-left-radius', '0px');
+    // Account: the profile sits on the paper, no backlight and no lit inner edge.
+    await page.goto('/account');
     const profile = page.getByTestId('account-profile');
     const tile = await profile.evaluate((el) => ({ image: getComputedStyle(el).backgroundImage, shadow: getComputedStyle(el).boxShadow }));
-    expect(radials(tile.image)).toBe(2);
-    expect(tile.shadow).toContain('inset');
+    expect(radials(tile.image)).toBe(0);
+    expect(tile.shadow).toBe('none');
     expect(await readCspViolations(page)).toEqual([]);
     expect(errors).toEqual([]);
   });

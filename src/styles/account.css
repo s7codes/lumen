@@ -1,30 +1,24 @@
-/* Account dashboard: one bento grid. The profile tile spans the frame and
-   carries the session action; projects and quotes sit side by side below. */
+/* Account: a Swiss project and requisition register on the gallery paper.
+   The profile and its telemetry strip open the page; every section below is
+   one full-width ledger row under a carbon rule, its title in the left
+   track and its entries in the right. No tiles, no glass, square corners. */
 
 .account-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
-  gap: var(--bento-gap);
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
 }
 
-@media (max-width: 959px) {
-  .account-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* Profile */
+/* Profile: identity on the left, Sign Out on the top-right corner, then the
+   telemetry strip between a carbon rule and a hairline. */
 
 .account-profile {
-  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
     'identity action'
     'facts facts';
   gap: var(--space-7) var(--space-6);
-  padding: var(--bento-pad);
+  padding-bottom: clamp(var(--space-7), 5vw, var(--space-8));
 }
 
 .account-profile__identity {
@@ -35,7 +29,7 @@
 .account-profile__name {
   margin-top: var(--space-4);
   font-size: var(--text-xl);
-  font-weight: var(--weight-strong);
+  font-weight: var(--weight-display);
   line-height: 1.08;
   letter-spacing: var(--tracking-headline);
   overflow-wrap: anywhere;
@@ -58,22 +52,33 @@
   grid-area: facts;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: var(--space-4) var(--space-5);
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--bento-edge);
+  border-top: 1px solid var(--rule-ink);
+  border-bottom: 1px solid var(--rule-section);
   font-size: var(--text-2xs);
+}
+
+.account-profile__facts > div {
+  min-width: 0;
+  padding: var(--space-4) var(--space-4) var(--space-4) clamp(var(--space-3), 1.6vw, var(--space-5));
+  border-left: 1px solid var(--rule-section);
+}
+
+.account-profile__facts > div:first-child {
+  padding-left: 0;
+  border-left: 0;
 }
 
 .account-profile__facts dt {
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .account-profile__facts dd {
   margin-top: var(--space-1);
   font-size: var(--text-xs);
   color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 559px) {
@@ -86,8 +91,21 @@
     gap: var(--space-5);
   }
 
+  .account-profile__sign-out {
+    justify-self: start;
+  }
+
   .account-profile__facts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .account-profile__facts > div:nth-child(odd) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .account-profile__facts > div:nth-child(n + 3) {
+    border-top: 1px solid var(--rule-section);
   }
 }
 
@@ -95,43 +113,49 @@
   .account-profile__facts {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .account-profile__facts > div:nth-child(3n + 1) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .account-profile__facts > div:nth-child(n + 4) {
+    border-top: 1px solid var(--rule-section);
+  }
 }
 
-/* Panels */
+/* Ledger rows: the section title in a narrow left track, its entries in the
+   wide right track, one carbon rule above the whole row. */
 
 .account-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+  align-items: start;
+  column-gap: clamp(var(--space-6), 4vw, var(--space-9));
   min-width: 0;
-  padding: var(--bento-pad);
+  padding-block: var(--space-6) clamp(var(--space-7), 5vw, var(--space-8));
+  border-top: 1px solid var(--rule-ink);
 }
 
-/* Client portal: every tile is lit softly from its top edge and carries a
-   champagne hairline just inside the border, which itself stays the bento
-   edge. The profile header takes a warmer corner light. */
-.account-grid > .bento {
-  background:
-    radial-gradient(120% 70% at 50% 0%, rgba(232, 168, 92, 0.055), rgba(232, 168, 92, 0) 62%),
-    var(--bento-surface);
-  box-shadow: inset 0 1px 0 rgba(229, 199, 153, 0.16);
+.account-panel > * {
+  grid-column: 2;
+  min-width: 0;
 }
 
-.account-grid > .account-profile {
-  background:
-    radial-gradient(90% 140% at 0% 0%, rgba(232, 146, 58, 0.085), rgba(232, 146, 58, 0) 58%),
-    radial-gradient(120% 70% at 50% 0%, rgba(232, 168, 92, 0.04), rgba(232, 168, 92, 0) 62%),
-    var(--bento-surface);
-  box-shadow: inset 0 1px 0 rgba(229, 199, 153, 0.22);
+.account-panel > .account-panel__head {
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .account-panel__head {
-  margin-bottom: var(--space-7);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
 }
 
 .account-panel__head--action {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-5);
 }
 
 .account-panel__compare {
@@ -141,11 +165,15 @@
 }
 
 .account-panel__title {
-  margin-top: var(--space-4);
-  font-size: var(--text-xl);
-  font-weight: var(--weight-strong);
-  line-height: 1.08;
-  letter-spacing: var(--tracking-headline);
+  margin-top: var(--space-3);
+  font-size: clamp(1.5rem, 1.15rem + 1vw, 2.125rem);
+  font-weight: var(--weight-display);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+
+.account-panel__title:focus-visible {
+  outline-offset: 6px;
 }
 
 .account-panel__note {
@@ -155,37 +183,53 @@
   color: var(--text-muted);
 }
 
-/* Saved project cards: inset tiles inside the projects panel */
+@media (max-width: 959px) {
+  .account-panel {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--space-6);
+  }
+
+  .account-panel > *,
+  .account-panel > .account-panel__head {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .account-panel__head--action {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+}
+
+/* Saved projects: register entries, a stone drawing beside the record */
 
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
-  gap: var(--bento-gap);
 }
 
 .project-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
+  display: grid;
+  grid-template-columns: minmax(0, 190px) minmax(0, 1fr);
+  grid-template-areas:
+    'thumb head'
+    'thumb title'
+    'thumb spec'
+    'thumb actions';
+  grid-template-rows: auto auto 1fr auto;
+  gap: var(--space-3) clamp(var(--space-5), 2.4vw, var(--space-7));
   min-width: 0;
-  padding: var(--space-5);
-  border: 1px solid var(--bento-edge);
-  border-radius: var(--bento-radius-inner);
-  background:
-    radial-gradient(110% 80% at 50% 0%, rgba(229, 199, 153, 0.05), rgba(229, 199, 153, 0) 65%),
-    rgba(255, 255, 255, 0.015);
-  box-shadow: inset 0 1px 0 rgba(229, 199, 153, 0.12);
-  transition:
-    border-color var(--duration-slow) var(--ease-out),
-    box-shadow var(--duration-slow) var(--ease-out);
+  padding-block: var(--space-6);
+  border-bottom: 1px solid var(--rule-section);
 }
 
-.project-card:hover {
-  border-color: var(--bento-edge-hover);
-  box-shadow: inset 0 1px 0 rgba(229, 199, 153, 0.26);
+.project-card:first-child {
+  padding-top: 0;
 }
 
 .project-card__head {
+  grid-area: head;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -200,56 +244,62 @@
 }
 
 .project-card__thumb {
+  grid-area: thumb;
   width: 100%;
-  height: 180px;
-  padding: var(--space-6);
-  border-radius: var(--radius-md);
+  height: 150px;
+  padding: var(--space-4);
   background: var(--bg-stage);
 }
 
 .project-card__title {
-  font-size: var(--text-xl);
-  font-weight: var(--weight-strong);
-  line-height: 1.08;
-  letter-spacing: var(--tracking-headline);
+  grid-area: title;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-regular);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
 }
 
 .project-card__spec {
+  grid-area: spec;
   display: grid;
-  gap: var(--space-2);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-5);
+  align-content: start;
   font-size: var(--text-2xs);
   letter-spacing: 0.02em;
 }
 
 .project-card__spec > div {
   display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .project-card__spec dt {
-  flex: none;
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .project-card__spec dd {
   min-width: 0;
-  text-align: right;
   color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
-/* Open and Delete share a row on a wide card; on a narrow one Delete drops
-   to its own full-width row instead of crushing the open key. */
+/* Open, Compare and Delete on one row; on a narrow entry Delete drops to its
+   own row instead of crushing the open key. */
 .project-card__actions {
+  grid-area: actions;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: auto;
+  margin-top: var(--space-2);
 }
 
 .project-card__actions .button {
+  height: 40px;
   padding-inline: var(--space-4);
   white-space: nowrap;
 }
@@ -261,13 +311,9 @@
 }
 
 .project-card__compare {
-  flex: 1 1 96px;
+  flex: 0 1 120px;
   justify-content: center;
-  border-color: var(--border-hairline);
-  color: var(--text-secondary);
-}
-
-.project-card__compare:hover:not(:disabled) {
+  border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
@@ -277,14 +323,15 @@
 }
 
 .project-card__delete {
-  flex: 1 1 96px;
+  flex: 0 1 120px;
   justify-content: center;
-  border-color: var(--border-hairline);
+  border-color: var(--border-strong);
   color: var(--text-secondary);
 }
 
 .project-card__delete:hover:not(:disabled) {
   border-color: var(--signal-fault);
+  background: transparent;
   color: var(--signal-fault-soft);
 }
 
@@ -307,10 +354,6 @@
   visibility: visible;
 }
 
-.project-card[data-busy] {
-  border-color: var(--bento-edge);
-}
-
 .project-card[data-busy] > :not(.project-card__actions),
 .project-card[data-busy] .project-card__open {
   opacity: 0.36;
@@ -319,6 +362,23 @@
 
 .project-card[data-busy] .project-card__open {
   pointer-events: none;
+}
+
+@media (max-width: 559px) {
+  .project-card {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'head'
+      'thumb'
+      'title'
+      'spec'
+      'actions';
+    grid-template-rows: auto;
+  }
+
+  .project-card__spec {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* Cloud loading: shimmering placeholder rows while the account syncs */
@@ -330,17 +390,14 @@
 
 .cloud-loading__rows {
   display: grid;
-  gap: var(--bento-gap);
+  border-top: 1px solid var(--rule-section);
 }
 
 .cloud-loading__row {
   display: block;
-  height: 112px;
-  border: 1px solid var(--bento-edge);
-  border-radius: var(--bento-radius-inner);
-  background:
-    linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.045) 50%, transparent 70%) 0 0 / 250% 100%,
-    rgba(255, 255, 255, 0.012);
+  height: 96px;
+  border-bottom: 1px solid var(--rule-section);
+  background: linear-gradient(100deg, transparent 30%, rgba(20, 19, 17, 0.05) 50%, transparent 70%) 0 0 / 250% 100%;
   animation: cloud-loading-sweep 1600ms var(--ease-in-out) infinite;
 }
 
@@ -356,7 +413,7 @@
   font-size: 10px;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 @keyframes cloud-loading-sweep {
@@ -368,7 +425,7 @@
   }
 }
 
-/* Order history: hairline-ruled rows inside the quotes panel */
+/* Order history: hairline-ruled register rows */
 
 .order-list {
   display: grid;
@@ -378,7 +435,7 @@
   display: grid;
   gap: var(--space-3);
   padding-block: var(--space-5);
-  border-top: 1px solid var(--bento-edge);
+  border-top: 1px solid var(--rule-section);
 }
 
 .order-row:first-child {
@@ -397,13 +454,13 @@
 .order-row__id {
   min-width: 0;
   font-size: var(--text-xs);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 
 .order-row__status {
   padding: 3px 7px;
-  border-radius: var(--radius-xs);
+  border-radius: 0;
   font-size: 10px;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
@@ -411,7 +468,8 @@
 }
 
 .order-row__status[data-status='in-production'] {
-  color: var(--lumen-amber-soft);
+  box-shadow: inset 0 0 0 1px var(--text-primary);
+  color: var(--text-primary);
 }
 
 .order-row__status[data-status='pending-review'] {
@@ -426,9 +484,9 @@
 
 .order-row__project {
   font-size: var(--text-lg);
-  font-weight: var(--weight-strong);
+  font-weight: var(--weight-regular);
   line-height: 1.2;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
 }
 
@@ -443,7 +501,7 @@
 .order-row__meta dt {
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .order-row__meta dd {
@@ -456,17 +514,13 @@
   }
 }
 
-/* Studio engineering tickets: the full row under projects and quotes. */
-
-.account-panel--tickets {
-  grid-column: 1 / -1;
-}
+/* Studio engineering tickets: the same register, full width like the rest. */
 
 .ticket-row {
   display: grid;
   gap: var(--space-3);
   padding-block: var(--space-5);
-  border-top: 1px solid var(--bento-edge);
+  border-top: 1px solid var(--rule-section);
 }
 
 .ticket-row:first-child {
@@ -476,12 +530,12 @@
 
 .ticket-row__ref {
   font-size: var(--text-xs);
-  color: var(--lumen-amber-soft);
+  color: var(--text-primary);
 }
 
 .ticket-row__status {
   padding: 3px 7px;
-  border-radius: var(--radius-xs);
+  border-radius: 0;
   box-shadow: inset 0 0 0 1px var(--border-strong);
   font-size: 10px;
   letter-spacing: var(--tracking-label);
@@ -498,8 +552,8 @@
 
 .ticket-row__summary {
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--bento-edge);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--rule-section);
+  border-radius: 0;
   font-size: var(--text-2xs);
   line-height: 1.6;
   color: var(--text-secondary);
@@ -509,5 +563,5 @@
 .order-row__ref {
   font-size: 10px;
   letter-spacing: 0.02em;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }

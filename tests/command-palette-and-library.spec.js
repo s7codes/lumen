@@ -72,7 +72,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('command palette', () => {
-  test('opens on Ctrl+K and from the navbar pill, filters modules and opens one with Enter', async ({ page }) => {
+  test('opens on Ctrl+K and from the navbar key, filters modules and opens one with Enter', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
@@ -84,7 +84,8 @@ test.describe('command palette', () => {
     const input = page.getByTestId('command-palette-input');
     await expect(input).toBeFocused();
     await expect(input).toHaveAttribute('placeholder', 'Search lighting, furniture, or pages...');
-    await expect.poll(() => dialog.evaluate((el) => getComputedStyle(el).backdropFilter)).toBe('blur(24px)');
+    // An opaque sheet: no frosted glass behind it.
+    await expect.poll(() => dialog.evaluate((el) => getComputedStyle(el).backdropFilter)).toBe('none');
 
     const items = page.getByTestId('command-palette-item');
     await expect(items.and(page.locator('[data-group="workspaces"]'))).toHaveText([
@@ -140,7 +141,7 @@ test.describe('command palette', () => {
     expect(await readCspViolations(page)).toEqual([]);
   });
 
-  test('the spotlight shows names, plain subtitles and price pills in Visual mode and its codes in Specs', async ({ page }) => {
+  test('the spotlight shows names, plain subtitles and price tags in Visual mode and its codes in Specs', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/');
@@ -148,23 +149,27 @@ test.describe('command palette', () => {
     await page.keyboard.press('Control+k');
     const dialog = palette(page);
     await expect(dialog).toHaveAttribute('data-mode', 'architectural');
-    // Warm basalt glass with a champagne hairline, a 16 px radius and a 540 px column.
+    // A crisp white index sheet: a carbon hairline frame, square corners, a carbon
+    // head rule along the top and a 540 px column.
     const look = await dialog.evaluate((el) => {
       const style = getComputedStyle(el);
+      const head = getComputedStyle(el, '::before');
       return {
         background: style.backgroundColor,
         border: style.borderTopColor,
         radius: style.borderTopLeftRadius,
+        shadow: style.boxShadow,
         width: el.offsetWidth,
-        topLight: getComputedStyle(el, '::before').backgroundImage.includes('linear-gradient'),
+        headRule: `${head.height} ${head.backgroundColor}`,
       };
     });
     expect(look).toEqual({
-      background: 'rgba(18, 17, 15, 0.96)',
-      border: 'rgba(229, 199, 153, 0.18)',
-      radius: '16px',
+      background: 'rgb(250, 248, 244)',
+      border: 'rgba(20, 19, 17, 0.16)',
+      radius: '0px',
+      shadow: 'none',
       width: 540,
-      topLight: true,
+      headRule: '2px rgb(20, 19, 17)',
     });
 
     const pendant = PRODUCTS.find((product) => product.id === 'linear-pendant-150');
@@ -178,9 +183,9 @@ test.describe('command palette', () => {
     await expect(price).toBeVisible();
     await expect(price).toHaveText(`${pendant.watts} W / ${formatUsd(pendant.priceUsd)}`);
     expect(await price.evaluate((el) => el.innerText.trim())).toBe('$420');
-    // Hardware radii inside the panel: a 6px row and a 4px price tag, no pills.
-    await expect(row).toHaveCSS('border-top-left-radius', '6px');
-    await expect(price).toHaveCSS('border-top-left-radius', '4px');
+    // Square geometry inside the panel: the row and the price tag, no pills.
+    await expect(row).toHaveCSS('border-top-left-radius', '0px');
+    await expect(price).toHaveCSS('border-top-left-radius', '0px');
     // The SKU and the wattage stay in the DOM for search, out of sight in Visual mode.
     const code = row.getByTestId('command-palette-code');
     await expect(code).toHaveText('LMN-PD-150');
@@ -257,18 +262,18 @@ test.describe('command palette', () => {
     const cart = page.getByRole('dialog', { name: 'Cart' });
     await expect(cart).toBeVisible();
     await expect(palette(page)).toHaveCount(0);
-    // The drawer it opens is the editorial sheet: a plain title, no second bag icon, sharp keys only.
+    // The drawer it opens is the editorial sheet: a plain title, no second bag icon, square keys only.
     await expect(cart.getByRole('heading', { level: 2 })).toHaveText('Cart');
     await expect(cart.getByTestId('bag-glyph')).toHaveCount(0);
-    await expect(cart.getByRole('button', { name: 'Close' })).toHaveCSS('border-top-left-radius', '4px');
+    await expect(cart.getByRole('button', { name: 'Close' })).toHaveCSS('border-top-left-radius', '0px');
     const radii = await cart.evaluate((el) => [...el.querySelectorAll('a, button')].map((key) => parseFloat(getComputedStyle(key).borderTopLeftRadius)));
-    expect(Math.max(...radii)).toBeLessThanOrEqual(4);
+    expect(Math.max(...radii)).toBe(0);
 
     expect(errors).toEqual([]);
     expect(await readCspViolations(page)).toEqual([]);
   });
 
-  test('the palette pill is a matched 32px glass key and the row never overflows', async ({ page }) => {
+  test('the palette key is a borderless 32px typographic key and the row never overflows', async ({ page }) => {
     for (const width of [360, 768, 1280, 1600]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/');
@@ -282,7 +287,8 @@ test.describe('command palette', () => {
           shadow: style.boxShadow,
         };
       });
-      expect(look, `${width}px`).toEqual({ height: 32, radius: '24px', surface: 'rgba(255, 255, 255, 0.05)', shadow: 'none' });
+      expect(look, `${width}px`).toEqual({ height: 32, radius: '0px', surface: 'rgba(0, 0, 0, 0)', shadow: 'none' });
+      await expect(trigger).toHaveCSS('border-top-width', '0px');
       await expect(trigger).toHaveAccessibleName('Search commands');
       expect(await horizontalOverflow(page), `${width}px`).toBeLessThanOrEqual(0);
 

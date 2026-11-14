@@ -1,26 +1,68 @@
-:root {
-  /* Surfaces: warm basalt, darkest at the canvas */
-  --bg-inset: #030303;
-  --bg-canvas: #050505;
-  --bg-surface: #0d0c0b;
-  --bg-elevated: #151412;
-  --bg-raised: #1f1d1a;
+/* Two surfaces, one system.
 
-  /* Stage: the soft lit plinth product drawings sit on, no outline */
-  --bg-stage: radial-gradient(120% 90% at 50% 0%, rgba(242, 238, 231, 0.055) 0%, rgba(242, 238, 231, 0.015) 55%, rgba(242, 238, 231, 0.008) 100%);
+   The gallery: warm alabaster paper, matte carbon ink and structural
+   hairlines. Every page, sheet, drawer and control lives here.
+
+   The optical chamber (.optical): a deep black volume reserved for live light
+   and 3D simulation - the hero viewport, the dimming bench, the theatre, the
+   catalog plinths and both planner workstations. It re-declares the dark
+   token set, so everything drawn inside a chamber keeps its night palette.
+   Warm 2700K amber appears only as light emitted inside a chamber, never as
+   a button fill on paper. */
+
+:root {
+  /* Gallery palette */
+  --paper: #f5f2eb;
+  --paper-stone: #ece8df;
+  --paper-white: #faf8f4;
+  --ink: #141311;
+  --ink-hover: #2b2925;
+  --ink-graphite: #57534e;
+  --ink-caption: #847e76;
+  --rule: rgba(20, 19, 17, 0.12);
+  --rule-section: rgba(20, 19, 17, 0.14);
+  --rule-frame: rgba(20, 19, 17, 0.16);
+  --rule-ink: #141311;
+
+  /* Optical chamber palette, for gallery pages that set a chamber into the paper */
+  --chamber: #11100e;
+  --chamber-plinth: #141210;
+  --chamber-ink: #f5f2eb;
+  --chamber-ink-soft: rgba(245, 242, 235, 0.74);
+  --chamber-ink-muted: rgba(245, 242, 235, 0.52);
+  --chamber-rule: rgba(245, 242, 235, 0.14);
+
+  /* 2700K emission: the only warm colour, and only where light is emitted */
+  --emission: #d4883a;
+  --emission-soft: #e5a158;
+
+  /* Surfaces */
+  --bg-inset: #faf8f4;
+  --bg-canvas: #f5f2eb;
+  --bg-surface: #f5f2eb;
+  --bg-elevated: #ece8df;
+  --bg-raised: #e4dfd4;
+
+  /* Stage: the flat stone sheet small drawings sit on in the gallery */
+  --bg-stage: #ece8df;
 
   /* Hairlines */
-  --border-hairline: rgba(242, 238, 231, 0.08);
-  --border-strong: rgba(242, 238, 231, 0.16);
-  --border-solid: #2a2825;
+  --border-hairline: rgba(20, 19, 17, 0.12);
+  --border-strong: rgba(20, 19, 17, 0.28);
+  --border-solid: #d9d3c7;
 
-  /* Typography: pure white display type, legible silver for body and data */
-  --text-primary: #ffffff;
-  --text-secondary: #b8b8b8;
-  --text-muted: #7c7c80;
-  --text-inverse: #0b0b0a;
+  /* Typography: carbon display type, warm graphite body, stone captions */
+  --text-primary: #141311;
+  --text-secondary: #57534e;
+  --text-muted: #847e76;
+  --text-inverse: #f5f2eb;
+  --text-body: #57534e;
 
-  /* Tungsten amber */
+  /* Interface accent and focus: carbon on paper, champagne inside a chamber */
+  --accent: #141311;
+  --focus-ring: #141311;
+
+  /* Tungsten amber: light sources, lamp glows and the bus run */
   --lumen-amber: #e8923a;
   --lumen-amber-soft: #f0b273;
   --lumen-amber-dim: rgba(232, 146, 58, 0.12);
@@ -39,12 +81,12 @@
   --plaster-ink: rgba(11, 11, 10, 0.1);
 
   /* Fault signal: clearance and collision states only */
-  --signal-fault: #c8553d;
-  --signal-fault-soft: #e08a74;
-  --signal-fault-dim: rgba(200, 85, 61, 0.1);
+  --signal-fault: #b4472f;
+  --signal-fault-soft: #a3402a;
+  --signal-fault-dim: rgba(180, 71, 47, 0.08);
 
-  /* Structural grid: a subliminal texture, never louder than the type */
-  --grid-line: rgba(242, 238, 231, 0.01);
+  /* Structural grid: a drafting-film texture, never louder than the type */
+  --grid-line: rgba(20, 19, 17, 0.02);
   --grid-label: transparent;
   --grid-columns: 12;
   --grid-gutter: 24px;
@@ -63,21 +105,24 @@
   --text-md: 1.125rem;
   --text-lg: 1.375rem;
   --text-xl: clamp(1.75rem, 1.35rem + 1.4vw, 2.5rem);
-  --text-headline: clamp(2.5rem, 1.25rem + 4.6vw, 5.75rem);
+  --text-headline: clamp(2.25rem, 1.15rem + 3.7vw, 4.75rem);
   --text-display: clamp(3.25rem, 1.1rem + 7.4vw, 9rem);
   --text-hero: clamp(3rem, 1.2rem + 5.2vw, 7rem);
 
+  /* Editorial weights: display type sits light, UI labels at a book medium */
+  --weight-display: 360;
   --weight-light: 350;
   --weight-regular: 400;
-  --weight-strong: 640;
+  --weight-medium: 500;
+  --weight-strong: 600;
 
-  --leading-display: 0.94;
-  --leading-tight: 1.02;
+  --leading-display: 1.04;
+  --leading-tight: 1.06;
   --leading-snug: 1.25;
   --leading-body: 1.55;
-  --tracking-display: -0.052em;
-  --tracking-hero: -0.04em;
-  --tracking-headline: -0.042em;
+  --tracking-display: -0.03em;
+  --tracking-hero: -0.03em;
+  --tracking-headline: -0.03em;
   --tracking-heading: -0.02em;
   --tracking-label: 0.08em;
 
@@ -98,36 +143,33 @@
   /* Air between major sections: 160px at 1280 wide, 200px from 1600 */
   --section-space: clamp(112px, 12.5vw, var(--space-12));
 
-  /* Micro radii */
-  --radius-xs: 2px;
-  --radius-sm: 3px;
-  --radius-md: 4px;
+  /* Radii: the gallery is cut square. The micro radii survive for the planners. */
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
 
-  /* Bento: major layout containers only. Controls keep the micro radii. */
-  --bento-surface: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
-  --bento-edge: rgba(255, 255, 255, 0.06);
-  --bento-edge-hover: rgba(255, 255, 255, 0.12);
-  --bento-blur: 16px;
-  --bento-radius: 16px;
-  --bento-radius-inner: 12px;
+  /* Legacy layout tokens, flattened: no floating tiles, no frosted glass */
+  --bento-surface: transparent;
+  --bento-edge: rgba(20, 19, 17, 0.12);
+  --bento-edge-hover: rgba(20, 19, 17, 0.28);
+  --bento-blur: 0px;
+  --bento-radius: 0px;
+  --bento-radius-inner: 0px;
   --bento-gap: clamp(12px, 1.25vw, 20px);
   --bento-pad: clamp(20px, 2.2vw, 36px);
 
-  /* Cursor glow radius for product cards; position is written by useCardTilt */
+  /* Cursor light radius inside a catalog plinth; position is written by useCursorGlow */
   --tilt-glow-radius: 380px;
 
-  /* Navbar pills: mode switch, account and cart share one soft glass key */
+  /* Navbar controls: borderless typographic keys on one 32px baseline */
   --pill-height: 32px;
-  --pill-radius: 24px;
-  --pill-surface: rgba(255, 255, 255, 0.05);
-  --pill-surface-hover: rgba(255, 255, 255, 0.08);
-  --pill-edge: rgba(255, 255, 255, 0.08);
-  --pill-edge-hover: rgba(255, 255, 255, 0.18);
+  --pill-radius: 0px;
 
-  /* Navbar type: legible sans in natural Title Case, never all-caps mono */
+  /* Navbar type: primary links in Title Case sans; utility keys in small caps */
   --nav-font-size: 13.5px;
   --nav-font-weight: 500;
   --nav-tracking: -0.01em;
+  --nav-utility-size: 0.75rem;
 
   /* Chrome */
   --nav-height: 56px;
@@ -160,24 +202,14 @@
   --duration-card: 1000ms;
   --hover-zoom: 1.045;
 
-  /* Tactile keys: a hovered key lifts off a hard-edged plinth (zero blur)
-     and drifts toward the pointer by at most the magnet range. */
-  --key-lift: 2px;
-  --key-plinth: 4px;
-  --key-plinth-primary: #8c4f1b;
-  --key-plinth-neutral: #2a2825;
-  --magnet-range-x: 4px;
-  --magnet-range-y: 3px;
-
-  /* Planner cards: soft raised surfaces inside the sidebars and toolbars */
-  --text-body: #a1a1aa;
-  --card-surface: rgba(255, 255, 255, 0.03);
-  --card-edge: rgba(255, 255, 255, 0.08);
-  --card-radius: 12px;
-  --cluster-surface: rgba(255, 255, 255, 0.025);
-  --cluster-edge: rgba(255, 255, 255, 0.07);
-  --cluster-edge-strong: rgba(255, 255, 255, 0.12);
-  --cluster-radius: 10px;
+  /* Planner cards (inside the chambers they keep their own radius) */
+  --card-surface: rgba(20, 19, 17, 0.02);
+  --card-edge: rgba(20, 19, 17, 0.12);
+  --card-radius: 0px;
+  --cluster-surface: rgba(20, 19, 17, 0.02);
+  --cluster-edge: rgba(20, 19, 17, 0.1);
+  --cluster-edge-strong: rgba(20, 19, 17, 0.2);
+  --cluster-radius: 0px;
 
   /* Elevation stage: the surround stays a step darker than the wall itself */
   --stage-surround: #11100f;
@@ -193,17 +225,75 @@
   /* 3D stage: a warm architectural horizon behind the transparent canvas */
   --room-horizon: radial-gradient(ellipse at 50% 35%, #1d1b18 0%, #11100e 65%, #0a0a09 100%);
 
-  /* Glass panels for floating studio chrome */
+  /* Sheets and floating chrome on paper */
+  --glass-surface: rgba(250, 248, 244, 0.94);
+  --glass-hud: rgba(245, 242, 235, 0.92);
+  --glass-pill: #141311;
+  --glass-edge: rgba(20, 19, 17, 0.12);
+  --glass-blur: 12px;
+  --z-hud: 5;
+  --z-room-panels: 1;
+  --z-room-stage: 2;
+
+  color-scheme: light;
+}
+
+/* The optical chamber: the night palette the planners and light stages were
+   drawn in. Custom properties inherit, so one class turns a whole subtree. */
+.optical {
+  --bg-inset: #030303;
+  --bg-canvas: #050505;
+  --bg-surface: #0d0c0b;
+  --bg-elevated: #151412;
+  --bg-raised: #1f1d1a;
+  --bg-stage: radial-gradient(120% 90% at 50% 0%, rgba(242, 238, 231, 0.055) 0%, rgba(242, 238, 231, 0.015) 55%, rgba(242, 238, 231, 0.008) 100%);
+
+  --border-hairline: rgba(242, 238, 231, 0.08);
+  --border-strong: rgba(242, 238, 231, 0.16);
+  --border-solid: #2a2825;
+
+  --text-primary: #ffffff;
+  --text-secondary: #b8b8b8;
+  --text-muted: #7c7c80;
+  --text-inverse: #0b0b0a;
+  --text-body: #a1a1aa;
+
+  --accent: #e5c799;
+  --focus-ring: #e8923a;
+
+  --signal-fault: #c8553d;
+  --signal-fault-soft: #e08a74;
+  --signal-fault-dim: rgba(200, 85, 61, 0.1);
+
+  --grid-line: rgba(242, 238, 231, 0.01);
+
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+
+  --bento-surface: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+  --bento-edge: rgba(255, 255, 255, 0.06);
+  --bento-edge-hover: rgba(255, 255, 255, 0.12);
+  --bento-blur: 16px;
+  --bento-radius: 16px;
+  --bento-radius-inner: 12px;
+
+  --card-surface: rgba(255, 255, 255, 0.03);
+  --card-edge: rgba(255, 255, 255, 0.08);
+  --card-radius: 12px;
+  --cluster-surface: rgba(255, 255, 255, 0.025);
+  --cluster-edge: rgba(255, 255, 255, 0.07);
+  --cluster-edge-strong: rgba(255, 255, 255, 0.12);
+  --cluster-radius: 10px;
+
   --glass-surface: rgba(18, 17, 16, 0.46);
   --glass-hud: rgba(11, 11, 10, 0.62);
   --glass-pill: rgba(30, 29, 27, 0.56);
   --glass-edge: rgba(242, 238, 231, 0.1);
   --glass-blur: 18px;
-  --z-hud: 5;
-  --z-room-panels: 1;
-  --z-room-stage: 2;
 
   color-scheme: dark;
+  color: var(--text-primary);
 }
 
 /* Wide and 2K displays: widen the frame and lift the type scale so body copy
@@ -228,7 +318,15 @@
   }
 }
 
+/* Specs mode: the drafting grid comes forward in carbon on paper and in
+   amber inside a chamber; hairlines firm up a step on both. */
 :root[data-mode='technical'] {
+  --grid-line: rgba(20, 19, 17, 0.06);
+  --grid-label: rgba(20, 19, 17, 0.42);
+  --border-hairline: rgba(20, 19, 17, 0.16);
+}
+
+:root[data-mode='technical'] .optical {
   --grid-line: rgba(232, 146, 58, 0.07);
   --grid-label: rgba(232, 146, 58, 0.55);
   --border-hairline: rgba(242, 238, 231, 0.11);

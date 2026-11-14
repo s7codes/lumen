@@ -244,10 +244,11 @@ test.describe('brand mark and display mode switch', () => {
     const fills = await mark.locator('rect').evaluateAll((rects) =>
       rects.map((rect) => [rect.dataset.part, getComputedStyle(rect).fill]),
     );
+    // Carbon ink on the alabaster bar; the aperture is the one warm mark, the lamp's light.
     expect(Object.fromEntries(fills)).toEqual({
-      spine: 'rgb(255, 255, 255)',
-      base: 'rgb(255, 255, 255)',
-      cantilever: 'rgb(255, 255, 255)',
+      spine: 'rgb(20, 19, 17)',
+      base: 'rgb(20, 19, 17)',
+      cantilever: 'rgb(20, 19, 17)',
       aperture: 'rgb(232, 146, 58)',
     });
 
@@ -294,10 +295,11 @@ test.describe('brand mark and display mode switch', () => {
       const style = getComputedStyle(el);
       return { border: `${style.borderTopWidth} ${style.borderTopStyle}`, color: style.borderTopColor };
     });
-    expect(frame).toEqual({ border: '1px solid', color: 'rgba(255, 255, 255, 0.08)' });
+    // A square carbon hairline toggle; the engaged segment inverts to carbon.
+    expect(frame).toEqual({ border: '1px solid', color: 'rgb(20, 19, 17)' });
 
     await expect(arch).toHaveAttribute('aria-pressed', 'true');
-    expect(await paint(arch)).toEqual({ background: 'rgb(255, 255, 255)', color: 'rgb(11, 11, 10)', shadow: 'none' });
+    expect(await paint(arch)).toEqual({ background: 'rgb(20, 19, 17)', color: 'rgb(245, 242, 235)', shadow: 'none' });
 
     await tech.click();
     await expect(html).toHaveAttribute('data-mode', 'technical');
@@ -306,7 +308,7 @@ test.describe('brand mark and display mode switch', () => {
     // Polled: the inversion eases over 120 ms.
     await expect
       .poll(() => paint(tech))
-      .toEqual({ background: 'rgb(255, 255, 255)', color: 'rgb(11, 11, 10)', shadow: 'none' });
+      .toEqual({ background: 'rgb(20, 19, 17)', color: 'rgb(245, 242, 235)', shadow: 'none' });
     await expect.poll(async () => (await paint(arch)).background).toBe('rgba(0, 0, 0, 0)');
     expect((await paint(arch)).shadow).toBe('none');
 

@@ -1,7 +1,6 @@
 import { Outlet, ScrollRestoration, useLocation } from 'react-router-dom';
 import { AuthProvider } from '../contexts/AuthContext.jsx';
 import { ToastProvider } from '../contexts/ToastContext.jsx';
-import { useMagneticField } from '../hooks/useMagneticField.js';
 import { BagProvider } from './BagProvider.jsx';
 import { CommandPaletteProvider } from './CommandPalette.jsx';
 import { ConciergeWidget } from './ConciergeWidget.jsx';
@@ -33,9 +32,9 @@ function atmosphereFor(pathname) {
 }
 
 /**
- * The page atmosphere: warm basalt depth, a tungsten wash falling on the
- * stage from above and drafting lines at the edges, fixed behind every
- * route. It sits under the structural grid, so Specs mode still draws over it.
+ * The page ground: flat alabaster paper fixed behind every route, named after
+ * the route it sits under. It sits under the structural grid, so Specs mode
+ * still draws over it.
  */
 function AmbientBackdrop() {
   const { pathname } = useLocation();
@@ -52,8 +51,6 @@ function focusMain(event) {
 }
 
 export function LayoutShell() {
-  useMagneticField();
-
   return (
     <AuthProvider>
       <ToastProvider>

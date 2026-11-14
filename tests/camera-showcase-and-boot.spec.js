@@ -950,7 +950,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     expect(errors).toEqual([]);
   });
 
-  test('the launch bar is one slim row under the rig: the studio key and three presets stay anchored on hover; the Grand Loft preset opens at eye level in 800 x 650 x 340 cm', async ({
+  test('the launch bar is one hairline footer row under the rig: the studio key and three presets stay anchored on hover; the Grand Loft preset opens at eye level in 800 x 650 x 340 cm', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
@@ -961,8 +961,12 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await expect(pad).toBeVisible();
     await expect(pad).toHaveAttribute('data-reveal-settled', '');
     await expect(pad.getByRole('heading', { level: 3, name: 'Step inside the 3D Spatial Workstation.' })).toBeVisible();
-    await expect(pad).toHaveCSS('border-top-color', 'rgba(232, 146, 58, 0.28)');
-    expect(await pad.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('radial-gradient');
+    // A full-width footer bar on the paper: a carbon rule over it, a hairline under it, no box.
+    await expect(pad).toHaveCSS('border-top-color', 'rgb(20, 19, 17)');
+    await expect(pad).toHaveCSS('border-bottom-color', 'rgba(20, 19, 17, 0.14)');
+    await expect(pad).toHaveCSS('border-top-left-radius', '0px');
+    expect(await pad.evaluate((el) => getComputedStyle(el).backgroundImage)).toBe('none');
+    await expect(pad).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
     // Compact and integrated: one row under 110 px, flush under the theatre and its cards, no filler copy.
     const [padBox, rigBox] = await Promise.all([pad.boundingBox(), page.locator('.showcase3d__rig').boundingBox()]);
@@ -978,7 +982,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await expect(cta).toHaveCSS('padding-left', '28px');
     await expect(cta).toHaveCSS('padding-right', '28px');
     await expect(cta).toHaveCSS('font-size', '15px');
-    await expect(cta).toHaveCSS('font-weight', '600');
+    await expect(cta).toHaveCSS('font-weight', '500');
     await expect(cta.locator('.launchpad__cta-glyph svg')).toBeVisible();
     const ctaBox = await cta.boundingBox();
     expect(ctaBox.height).toBeGreaterThanOrEqual(54);
@@ -998,6 +1002,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
       await expect(link).toHaveAttribute('href', href);
       await expect(link).toHaveAccessibleName(name);
       await expect(link).toHaveCSS('height', '40px');
+      await expect(link).toHaveCSS('border-top-left-radius', '0px');
       const box = await link.boundingBox();
       expect(Math.abs(box.y + box.height / 2 - (ctaBox.y + ctaBox.height / 2))).toBeLessThanOrEqual(1);
     }
@@ -1022,10 +1027,11 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
       for (const layer of look.layers) expect(layer === 'none' || layer.includes('inset'), layer).toBe(true);
       expect(look.layers.join(' ')).not.toContain('111, 82, 48');
     }
-    // The cap brightens in place: a lighter champagne layer fades in under the label, the glyph holds still.
+    // The slab deepens in place: a #2b2925 layer fades in under the label, the glyph holds still.
     await expect.poll(() => cta.evaluate((el) => getComputedStyle(el, '::before').opacity)).toBe('1');
+    expect(await cta.evaluate((el) => getComputedStyle(el, '::before').backgroundColor)).toBe('rgb(43, 41, 37)');
     await expect(cta.locator('.launchpad__cta-glyph svg')).toHaveCSS('transform', 'none');
-    await expect(cta).toHaveCSS('box-shadow', 'rgba(255, 255, 255, 0.45) 0px 1px 0px 0px inset');
+    await expect(cta).toHaveCSS('box-shadow', 'none');
     // Lifted, not lit: nothing under a hovered preset or the studio key carries blur.
     for (const control of [loft, cta]) {
       const blur = await control.evaluate((el) =>
@@ -1234,7 +1240,7 @@ test.describe('page-order scroll-spy, calm turntable and champagne launch key', 
     expect(errors).toEqual([]);
   });
 
-  test('the capability cards read at a glance: index and glyph badge, a title, one short sentence and two spec pills', async ({
+  test('the capability index reads at a glance: index and line glyph, a title, one short sentence and two naked spec figures', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -1258,38 +1264,52 @@ test.describe('page-order scroll-spy, calm turntable and champagne launch key', 
       expect(text.match(/[.!?]/g), text).toHaveLength(1);
       expect(text.endsWith('.')).toBe(true);
       expect(/^[\x20-\x7e]*$/.test(text)).toBe(true);
-      await expect(summary).toHaveCSS('color', 'rgb(184, 184, 184)');
+      await expect(summary).toHaveCSS('color', 'rgb(87, 83, 78)');
       const type = await summary.evaluate((el) => {
         const style = getComputedStyle(el);
         return { size: Number.parseFloat(style.fontSize), leading: Number.parseFloat(style.lineHeight) };
       });
       expect(type.leading).toBeGreaterThanOrEqual(type.size * 1.6);
 
-      const pills = card.getByTestId('showcase-pillar-chip');
-      await expect(pills).toHaveText(chips);
-      const look = await pills.first().evaluate((el) => {
+      // Key figures as naked monospace text: no pill, no border, no fill.
+      const figures = card.getByTestId('showcase-pillar-chip');
+      await expect(figures).toHaveText(chips);
+      const look = await figures.first().evaluate((el) => {
         const style = getComputedStyle(el);
-        return { radius: style.borderTopLeftRadius, width: style.borderTopWidth, shadow: style.boxShadow };
+        return { radius: style.borderTopLeftRadius, width: style.borderTopWidth, surface: style.backgroundColor, shadow: style.boxShadow, family: style.fontFamily };
       });
-      expect(look).toEqual({ radius: '999px', width: '1px', shadow: 'none' });
+      expect(look).toMatchObject({ radius: '0px', width: '0px', surface: 'rgba(0, 0, 0, 0)', shadow: 'none' });
+      expect(look.family).toContain('IBM Plex Mono');
       await expect(card.locator('.showcase3d__pillar-spec')).toHaveCount(0);
+      // A flush index row on the paper: no tile, no glass, divided by a hairline.
+      const row = await card.evaluate((el) => {
+        const style = getComputedStyle(el);
+        const cell = getComputedStyle(el.parentElement);
+        return { radius: style.borderTopLeftRadius, surface: style.backgroundColor, blur: style.backdropFilter, rule: cell.borderBottom };
+      });
+      expect(row).toEqual({ radius: '0px', surface: 'rgba(0, 0, 0, 0)', blur: 'none', rule: '1px solid rgba(20, 19, 17, 0.14)' });
     }
+    // The capability on stage inverts its index to carbon; holding one pins it there.
+    const held = page.getByTestId('showcase-pillar-inside');
+    await held.getByRole('button', { name: '165 cm Eye-Level Walkthrough' }).click();
+    await expect(held).toHaveAttribute('data-active', 'true');
+    await expect(held.locator('.showcase3d__pillar-index')).toHaveCSS('background-color', 'rgb(20, 19, 17)');
+    await expect(held.locator('.showcase3d__pillar-index')).toHaveCSS('color', 'rgb(245, 242, 235)');
   });
 
-  test('the launch key wears a soft champagne cap and a perimeter beam on a 6 s loop, with no blurred glow', async ({ page }) => {
+  test('the launch key is a square matte carbon slab with a light trace round its edge on a 6 s loop, with no blurred glow', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     const cta = page.getByTestId('launch-3d-studio-cta');
     await cta.scrollIntoViewIfNeeded();
-    await expect(cta).toHaveCSS(
-      'background-image',
-      'linear-gradient(135deg, rgb(243, 227, 198) 0%, rgb(229, 199, 153) 55%, rgb(216, 178, 124) 100%)',
-    );
-    await expect(cta).toHaveCSS('color', 'rgb(20, 18, 16)');
+    // No orange fill and no champagne cap: matte carbon, paper ink, square corners.
+    await expect(cta).toHaveCSS('background-image', 'none');
+    await expect(cta).toHaveCSS('background-color', 'rgb(20, 19, 17)');
+    await expect(cta).toHaveCSS('color', 'rgb(245, 242, 235)');
+    await expect(cta).toHaveCSS('border-top-left-radius', '0px');
     expect(await cta.evaluate(maxBlurPx)).toBe(0);
-    // The lit top edge is an inset hairline, not a glow.
-    expect(await cta.evaluate((el) => getComputedStyle(el).boxShadow)).toContain('inset');
+    await expect(cta).toHaveCSS('box-shadow', 'none');
 
     const beam = page.getByTestId('cta-border-beam');
     await expect(beam).toBeVisible();

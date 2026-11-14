@@ -1,17 +1,20 @@
-/* Product grid: a bento wall of frosted tiles on a tight gutter. */
+/* Product grid: naked plinths on the gallery paper, generous gutters, rows
+   closed by each card's own hairline. */
 
 .product-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-  gap: var(--bento-gap);
+  gap: clamp(var(--space-7), 5vw, 72px) clamp(var(--space-5), 2.5vw, 40px);
 }
 
 .product-grid__cell {
   min-width: 0;
 }
 
-/* Product card: a bento tile. useCardTilt writes the inline transform and
-   the --glow-* properties; the glow is tinted by the fixture's own CCT. */
+/* Product card: no frame, no fill, no radius. A square optical plinth on
+   top, the specification straight on the paper below it, one hairline under
+   the whole. useCursorGlow writes --glow-* onto the card; the plinth paints
+   the fixture's own light at that point. The card itself never moves. */
 
 .product-card {
   --glow-x: 50%;
@@ -22,45 +25,34 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: var(--space-5);
-  border: 1px solid var(--bento-edge);
-  border-radius: var(--bento-radius);
-  background: var(--bento-surface);
-  -webkit-backdrop-filter: blur(var(--bento-blur));
-  backdrop-filter: blur(var(--bento-blur));
-  isolation: isolate;
-  transition:
-    border-color var(--duration-slow) var(--ease-out),
-    box-shadow var(--duration-hover) var(--ease-cinematic);
+  padding: 0 0 var(--space-5);
+  border: 0;
+  border-bottom: 1px solid var(--rule-section);
+  border-radius: 0;
+  background: none;
 }
 
-.product-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  background: radial-gradient(
-    var(--tilt-glow-radius) circle at var(--glow-x) var(--glow-y),
-    rgba(var(--light-rgb), 0.11) 0%,
-    rgba(var(--light-rgb), 0.04) 38%,
-    transparent 70%
-  );
-  opacity: var(--glow-a);
-  pointer-events: none;
-}
-
-.product-card:hover {
-  border-color: var(--bento-edge-hover);
-  box-shadow: 0 32px 64px -32px rgba(0, 0, 0, 0.8);
-}
-
+/* Index, family and stock ride inside the plinth as quiet telemetry. */
 .product-card__head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
-  padding-bottom: var(--space-4);
+  padding: 14px 16px;
+  pointer-events: none;
+}
+
+.product-card__head .index-label {
+  color: var(--chamber-ink-soft);
+}
+
+.product-card__head .index-label__num {
+  color: var(--chamber-ink-muted);
 }
 
 .product-card__stock {
@@ -71,20 +63,43 @@
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   white-space: nowrap;
-  color: var(--text-muted);
+  color: var(--chamber-ink-muted);
 }
 
 .product-card__stock[data-stock='in-stock'] {
-  color: var(--text-secondary);
+  color: var(--chamber-ink-soft);
 }
 
-/* The drawing sits on a softly lit stage. On hover it eases forward inside
-   the stage; overflow keeps the card's footprint fixed. */
+/* The plinth: a 4:3 optical vignette in which the elevation drawing glows.
+   On hover the drawing eases forward inside it; overflow keeps the card's
+   footprint fixed. */
 .product-card__figure {
-  padding: var(--space-6) var(--space-5);
-  border-radius: var(--bento-radius-inner);
-  background: var(--bg-stage);
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  padding: 52px 9% 9%;
+  border-radius: 0;
+  background-color: var(--chamber-plinth);
+  background-image: radial-gradient(ellipse 78% 66% at 50% 48%, #1d1a16 0%, rgba(20, 18, 16, 0) 72%);
   overflow: hidden;
+  isolation: isolate;
+}
+
+/* The cursor light: a warm pool in the fixture's own CCT. */
+.product-card__figure::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(
+    var(--tilt-glow-radius) circle at var(--glow-x) var(--glow-y),
+    rgba(var(--light-rgb), 0.16) 0%,
+    rgba(var(--light-rgb), 0.05) 38%,
+    transparent 70%
+  );
+  opacity: var(--glow-a);
+  pointer-events: none;
 }
 
 .product-card__figure .elev {
@@ -98,23 +113,31 @@
 .product-card[data-mode='technical'] .product-card__figure {
   background-image:
     linear-gradient(rgba(232, 146, 58, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(232, 146, 58, 0.06) 1px, transparent 1px);
-  background-size: 12px 12px;
-  background-position: -1px -1px;
+    linear-gradient(90deg, rgba(232, 146, 58, 0.06) 1px, transparent 1px),
+    radial-gradient(ellipse 78% 66% at 50% 48%, #1d1a16 0%, rgba(20, 18, 16, 0) 72%);
+  background-size:
+    12px 12px,
+    12px 12px,
+    auto;
+  background-position:
+    -1px -1px,
+    -1px -1px,
+    0 0;
 }
 
 .product-card__body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-6) 0 var(--space-4);
+  gap: var(--space-2);
+  padding: var(--space-5) 0 var(--space-4);
 }
 
 .product-card__name {
   font-size: var(--text-lg);
-  font-weight: var(--weight-strong);
-  line-height: 1.15;
-  letter-spacing: -0.03em;
+  font-weight: var(--weight-regular);
+  line-height: 1.18;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
 }
 
 .product-card__dims {
@@ -125,9 +148,10 @@
 }
 
 .product-card__summary {
-  max-width: 40ch;
+  max-width: 42ch;
+  margin-top: var(--space-1);
   font-size: var(--text-sm);
-  font-weight: var(--weight-light);
+  font-weight: var(--weight-regular);
   color: var(--text-secondary);
 }
 
@@ -147,22 +171,23 @@
   font-size: var(--text-lg);
   font-weight: var(--weight-light);
   letter-spacing: -0.02em;
+  color: var(--text-primary);
 }
 
 .product-card__in-bag {
   font-size: 10px;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--lumen-amber-soft);
+  color: var(--text-primary);
 }
 
 .product-card__add {
   flex-shrink: 0;
-  height: 36px;
-  padding-inline: var(--space-3);
+  height: 40px;
+  padding-inline: var(--space-4);
 }
 
-/* Engineering telemetry, technical mode only */
+/* Engineering telemetry, technical mode only: a hairline table on paper */
 
 .telemetry {
   display: grid;
@@ -198,7 +223,7 @@
   color: var(--text-primary);
 }
 
-/* Finish swatches */
+/* Finish swatches: square material chips, a carbon ring on the chosen one */
 
 .swatches {
   min-width: 0;
@@ -210,11 +235,11 @@
 .swatches__legend {
   padding: 0;
   margin-bottom: var(--space-2);
-  font-family: var(--font-mono);
   font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .swatches__row {
@@ -246,36 +271,36 @@
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: var(--radius-xs);
+  border-radius: 0;
   background: linear-gradient(135deg, var(--swatch-hi) 0%, var(--swatch) 45%, var(--swatch-lo) 100%);
   box-shadow:
-    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
-    0 0 0 1px var(--border-hairline);
+    inset 0 0 0 1px rgba(20, 19, 17, 0.22),
+    0 0 0 1px transparent;
   transition: box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .swatch:hover .swatch__chip {
   box-shadow:
-    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
-    0 0 0 1px var(--text-secondary);
+    inset 0 0 0 1px rgba(20, 19, 17, 0.22),
+    0 0 0 1px var(--border-strong);
 }
 
 .swatch__input:checked + .swatch__chip {
   box-shadow:
-    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
-    0 0 0 2px var(--bg-surface),
-    0 0 0 3px var(--lumen-amber);
+    inset 0 0 0 1px rgba(20, 19, 17, 0.22),
+    0 0 0 2px var(--bg-canvas),
+    0 0 0 3px var(--ink);
 }
 
 .swatch__input:focus-visible + .swatch__chip {
-  outline: 1px solid var(--lumen-amber);
+  outline: 1px solid var(--focus-ring);
   outline-offset: 5px;
 }
 
 .swatches__name {
   margin-left: var(--space-2);
   font-size: var(--text-xs);
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .swatches__surface {
@@ -283,7 +308,7 @@
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 /* Procedural elevation drawing. Finish and light colours arrive as custom

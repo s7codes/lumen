@@ -44,9 +44,9 @@
 }
 
 /* Product card entrance. The card grows from 0.95 and fades in as it enters
-   the viewport. It animates the individual scale property, so the inline
-   tilt transform from useCardTilt composes with it, and it uses keyframes,
-   so the card's own border and shadow transitions are left alone. */
+   the viewport. It animates the individual scale property, so the transform
+   property stays free, and it uses keyframes, so the card's own transitions
+   are left alone. */
 
 :root[data-reveal='on'] .reveal-card:not([data-revealed]) {
   opacity: 0;

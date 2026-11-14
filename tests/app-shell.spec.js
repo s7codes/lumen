@@ -184,30 +184,78 @@ test.describe('app shell', () => {
       expect(heroBox.y + heroBox.height - (copyBox.y + copyBox.height), label).toBeLessThan(heroBox.height * 0.1);
     }
 
-    await expect(page.locator('.hero__title')).toHaveCSS('color', 'rgb(255, 255, 255)');
-    await expect(page.locator('.hero__lede')).toHaveCSS('color', 'rgb(184, 184, 184)');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(5, 5, 5)');
+    // The hero is an optical chamber set into the alabaster paper: alabaster type on #11100e.
+    await expect(page.locator('.hero__title')).toHaveCSS('color', 'rgb(245, 242, 235)');
+    await expect(page.locator('.hero__title')).toHaveCSS('font-weight', '360');
+    await expect(page.locator('.hero__lede')).toHaveCSS('color', 'rgba(245, 242, 235, 0.74)');
+    await expect(page.getByTestId('ambient-surface')).toHaveCSS('background-color', 'rgb(17, 16, 14)');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(245, 242, 235)');
+    await expect(page.locator('body')).toHaveCSS('color', 'rgb(20, 19, 17)');
   });
 
-  test('home content below the hero sits in 16px bento tiles', async ({ page }) => {
+  test('home content below the hero sits flush on the paper: square corners, hairline rules, no tiles or glass', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/');
-    const tiles = [
-      page.locator('.spec-strip__item').first(),
-      page.getByTestId('lab-bench'),
-      page.getByTestId('lab-panel'),
-      page.getByTestId('core-modules').locator('.product-card').first(),
-      page.locator('.modules__foot'),
-      page.locator('.entry-card').first(),
-    ];
-    for (const tile of tiles) {
-      const look = await tile.evaluate((el) => {
+    const look = (locator) =>
+      locator.evaluate((el) => {
         const style = getComputedStyle(el);
-        return { radius: style.borderTopLeftRadius, edge: style.borderTopColor, width: style.borderTopWidth };
+        return {
+          radius: style.borderTopLeftRadius,
+          surface: style.backgroundColor,
+          image: style.backgroundImage,
+          blur: style.backdropFilter,
+          top: `${style.borderTopWidth} ${style.borderTopStyle} ${style.borderTopColor}`,
+          bottom: `${style.borderBottomWidth} ${style.borderBottomStyle} ${style.borderBottomColor}`,
+          left: `${style.borderLeftWidth} ${style.borderLeftStyle} ${style.borderLeftColor}`,
+        };
       });
-      expect(look).toEqual({ radius: '16px', edge: 'rgba(255, 255, 255, 0.06)', width: '1px' });
+    const HAIRLINE = '1px solid rgba(20, 19, 17, 0.14)';
+    const CARBON_RULE = '1px solid rgb(20, 19, 17)';
+
+    // Spec ledger: three flush columns between two hairlines, split by vertical hairlines.
+    const specs = page.locator('.spec-strip__item');
+    await expect(specs).toHaveCount(3);
+    for (const [i, item] of (await specs.all()).entries()) {
+      const cell = await look(item);
+      expect(cell).toMatchObject({ radius: '0px', surface: 'rgba(0, 0, 0, 0)', image: 'none', blur: 'none', top: HAIRLINE, bottom: HAIRLINE });
+      expect(cell.left).toBe(i === 0 ? '0px none rgb(20, 19, 17)' : HAIRLINE);
     }
-    await expect(page.getByTestId('lab-panel')).toHaveCSS('backdrop-filter', 'blur(16px)');
+    await expect(page.locator('.spec-strip__item.bento, .entry-card.bento, .modules__foot.bento, .lab-panel.bento')).toHaveCount(0);
+
+    // Section heads: an asymmetric split above a full-width hairline.
+    const head = page.locator('#lab-title').locator('xpath=..');
+    expect((await look(head)).bottom).toBe(HAIRLINE);
+    const [titleBox, ledeBox] = await Promise.all([page.locator('#lab-title').boundingBox(), head.locator('.section-head__lede').boundingBox()]);
+    expect(ledeBox.x).toBeGreaterThan(titleBox.x + titleBox.width * 0.5);
+
+    // Surface lab: the dark bench and its stone specification sheet share one square frame.
+    const rig = await look(page.locator('.lab__rig'));
+    expect(rig).toMatchObject({ radius: '0px', top: '1px solid rgba(20, 19, 17, 0.16)' });
+    expect(await look(page.getByTestId('lab-bench'))).toMatchObject({ radius: '0px', surface: 'rgb(17, 16, 14)' });
+    expect(await look(page.getByTestId('lab-panel'))).toMatchObject({ radius: '0px', surface: 'rgb(236, 232, 223)', blur: 'none' });
+    const [benchBox, panelBox] = await Promise.all([page.getByTestId('lab-bench').boundingBox(), page.getByTestId('lab-panel').boundingBox()]);
+    expect(Math.abs(benchBox.x + benchBox.width - panelBox.x)).toBeLessThanOrEqual(1);
+
+    // Core modules close on a carbon rule; workspaces are index rows between carbon rules.
+    expect(await look(page.locator('.modules__foot'))).toMatchObject({ radius: '0px', surface: 'rgba(0, 0, 0, 0)', top: CARBON_RULE });
+    expect((await look(page.locator('.entries__grid'))).top).toBe(CARBON_RULE);
+    const rows = page.locator('.entry-card');
+    await expect(rows).toHaveCount(3);
+    for (const row of await rows.all()) {
+      expect(await look(row)).toMatchObject({ radius: '0px', surface: 'rgba(0, 0, 0, 0)', blur: 'none', bottom: CARBON_RULE });
+    }
+    // Full-width rows stacked top to bottom: one left edge, one width, increasing tops.
+    const boxes = await Promise.all((await rows.all()).map((row) => row.boundingBox()));
+    for (const box of boxes) {
+      expect(Math.abs(box.x - boxes[0].x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(box.width - boxes[0].width)).toBeLessThanOrEqual(1);
+    }
+    expect(boxes[1].y).toBeGreaterThan(boxes[0].y + boxes[0].height - 1);
+    expect(boxes[2].y).toBeGreaterThan(boxes[1].y + boxes[1].height - 1);
+    // The line drawing stands bare on the paper: no stage box behind it.
+    expect(await look(rows.first().locator('.entry-card__glyph'))).toMatchObject({ surface: 'rgba(0, 0, 0, 0)', image: 'none' });
   });
 
   test('a fresh document load starts at the top instead of inheriting another page scroll', async ({
@@ -226,11 +274,19 @@ test.describe('app shell', () => {
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(400);
   });
 
-  test('navbar controls are one row of matched glass pills, flush right', async ({ page }) => {
+  test('navbar utility keys are borderless small capitals on one row, the mode toggle a square hairline, flush right', async ({
+    page,
+  }) => {
     for (const width of [1280, 1600, 768]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/');
       const navbar = page.locator('header.navbar');
+      // A flush alabaster gallery bar over one hairline.
+      const bar = await navbar.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { surface: style.backgroundColor, rule: `${style.borderBottomWidth} ${style.borderBottomStyle} ${style.borderBottomColor}`, blur: style.backdropFilter };
+      });
+      expect(bar).toEqual({ surface: 'rgba(245, 242, 235, 0.92)', rule: '1px solid rgba(20, 19, 17, 0.12)', blur: 'blur(12px)' });
       const pills = [
         navbar.getByTestId('mode-switch'),
         navbar.getByTestId('sign-in'),
@@ -245,6 +301,7 @@ test.describe('app shell', () => {
             return {
               radius: style.borderTopLeftRadius,
               edge: style.borderTopWidth,
+              edgeColor: style.borderTopColor,
               surface: style.backgroundColor,
               shadow: style.boxShadow,
               height: box.height,
@@ -255,14 +312,13 @@ test.describe('app shell', () => {
           }),
         );
       }
+      // Visual | Specs: a square carbon hairline toggle.
+      expect(looks[0], `${width}px`).toMatchObject({ radius: '0px', edge: '1px', edgeColor: 'rgb(20, 19, 17)', surface: 'rgba(0, 0, 0, 0)', shadow: 'none', height: 32 });
+      // Sign In and Cart: no pill, no border, no fill, carbon ink.
+      for (const look of looks.slice(1)) {
+        expect(look, `${width}px`).toMatchObject({ radius: '0px', edge: '0px', surface: 'rgba(0, 0, 0, 0)', shadow: 'none', height: 32 });
+      }
       for (const look of looks) {
-        expect(look, `${width}px`).toMatchObject({
-          radius: '24px',
-          edge: '1px',
-          surface: 'rgba(255, 255, 255, 0.05)',
-          shadow: 'none',
-          height: 32,
-        });
         expect(Math.abs(look.mid - looks[0].mid), `${width}px`).toBeLessThanOrEqual(0.5);
       }
       // Left to right in source order, the cart closing the row on the frame's right inset.
@@ -273,15 +329,21 @@ test.describe('app shell', () => {
         return box.right - Number.parseFloat(getComputedStyle(el).paddingRight);
       });
       expect(Math.abs(looks[2].right - frameRight), `${width}px`).toBeLessThanOrEqual(1);
-      // Natural Title Case in the sans face, never all-caps mono.
-      await expect(pills[2]).toHaveCSS('text-transform', 'none');
-      await expect(pills[2]).toHaveCSS('font-size', '13.5px');
+      // Small tracked capitals in the sans face (0.75rem, 0.08em), never mono.
+      for (const pill of pills.slice(1)) {
+        await expect(pill).toHaveCSS('text-transform', 'uppercase');
+        await expect(pill).toHaveCSS('font-size', '12px');
+        await expect(pill).toHaveCSS('letter-spacing', '0.96px');
+        await expect(pill).toHaveCSS('color', 'rgb(20, 19, 17)');
+        await expect(pill).toHaveCSS('font-family', /Inter Tight/);
+      }
     }
 
     const engaged = page.locator('.mode-switch__segment[aria-pressed="true"]');
-    await expect(engaged).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(engaged).toHaveCSS('background-color', 'rgb(20, 19, 17)');
+    await expect(engaged).toHaveCSS('color', 'rgb(245, 242, 235)');
     await expect(engaged).toHaveCSS('box-shadow', 'none');
-    await expect(engaged).toHaveCSS('border-top-left-radius', '24px');
+    await expect(engaged).toHaveCSS('border-top-left-radius', '0px');
   });
 
   test('cart trigger opens a modal drawer that closes on Escape and returns focus', async ({ page }) => {
@@ -313,19 +375,20 @@ test.describe('app shell', () => {
     }
   });
 
-  test('structural grid stays a 1% subliminal texture in architectural mode, sections get 160px of air', async ({
+  test('structural grid stays a 2% drafting-film texture in architectural mode, sections get 160px of air', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/');
     const column = page.locator('.structural-grid__col').first();
-    await expect(column).toHaveCSS('border-left-color', 'rgba(242, 238, 231, 0.01)');
+    await expect(column).toHaveCSS('border-left-color', 'rgba(20, 19, 17, 0.02)');
     // 12.5vw at 1280 wide.
     await expect(page.getByTestId('core-modules')).toHaveCSS('padding-top', '160px');
     await expect(page.getByTestId('surface-lab')).toHaveCSS('padding-top', '160px');
 
+    // Specs mode brings the drafting grid forward in carbon on the paper.
     await page.getByRole('group', { name: 'Display mode' }).getByRole('button', { name: 'Technical' }).click();
-    await expect(column).toHaveCSS('border-left-color', 'rgba(232, 146, 58, 0.07)');
+    await expect(column).toHaveCSS('border-left-color', 'rgba(20, 19, 17, 0.06)');
   });
 
   test('display mode switch persists through validated storage and rejects tampered values', async ({

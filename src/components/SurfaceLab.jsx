@@ -60,7 +60,7 @@ export function SurfaceLab() {
   return (
     <div className="lab__rig">
       <div
-        className="lab-bench"
+        className="lab-bench optical"
         data-testid="lab-bench"
         data-kelvin={kelvin}
         data-material={material}
@@ -93,7 +93,7 @@ export function SurfaceLab() {
         </p>
       </div>
 
-      <div className="lab-panel bento" data-testid="lab-panel">
+      <div className="lab-panel" data-testid="lab-panel">
         <div className="lab-control">
           <div className="lab-control__head">
             <label htmlFor="lab-dimmer" className="lab-control__label">

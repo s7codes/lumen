@@ -226,7 +226,8 @@ test.describe('lumen cloud client', () => {
     const art = empty.locator('svg.empty-art');
     await expect(art).toBeVisible();
     expect(await art.locator('.empty-art__edge').first().evaluate((el) => getComputedStyle(el).strokeWidth)).toBe('0.8px');
-    await expect(empty.locator('.empty-state__title')).toHaveCSS('color', 'rgb(161, 161, 170)');
+    await expect(empty.locator('.empty-state__title')).toHaveCSS('color', 'rgb(87, 83, 78)');
+    await expect(empty.locator('.empty-state')).toHaveCSS('text-align', 'left');
     await empty.getByRole('link', { name: 'Start 2D Wall Studio' }).click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
   });

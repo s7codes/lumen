@@ -519,7 +519,7 @@ export default function CheckoutPage() {
           lede="The cart is empty, so there is nothing to quote yet. Specify parts in the catalog or send a planned wall or room to the cart."
         />
         <div className="container checkout-empty" data-testid="checkout-empty">
-          <div className="checkout-empty__card bento">
+          <div className="checkout-empty__card">
             <EmptyState
               art="shelf"
               title="No parts specified yet."

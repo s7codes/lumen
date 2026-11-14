@@ -104,15 +104,22 @@ test.describe('authentication shell', () => {
     await expect(page.getByTestId('account-user')).toContainText('Studio Guest');
     await expect(page.getByTestId('account-user')).toContainText('guest@lumen.com');
     await expect(account).toHaveAttribute('aria-current', 'page');
-    // Polled: the inversion eases over 120 ms. Flat surface, no glow.
+    // The current page reads as a typographic key: a carbon underline under carbon
+    // capitals, no fill, no pill and no glow.
     await expect
       .poll(() =>
         account.evaluate((el) => {
           const style = getComputedStyle(el);
-          return { background: style.backgroundColor, color: style.color, shadow: style.boxShadow };
+          return {
+            background: style.backgroundColor,
+            color: style.color,
+            shadow: style.boxShadow,
+            line: style.textDecorationLine,
+            radius: style.borderTopLeftRadius,
+          };
         }),
       )
-      .toEqual({ background: 'rgb(255, 255, 255)', color: 'rgb(11, 11, 10)', shadow: 'none' });
+      .toEqual({ background: 'rgba(0, 0, 0, 0)', color: 'rgb(20, 19, 17)', shadow: 'none', line: 'underline', radius: '0px' });
 
     // The session survives a reload.
     await page.reload();
@@ -218,7 +225,7 @@ test.describe('account dashboard', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
   });
 
-  test('profile, projects and quotes sit in bento tiles with Sign Out anchored top right of the profile', async ({
+  test('the account is a ledger register: a telemetry strip, then full-width rows under carbon rules, Sign Out top right', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -227,27 +234,55 @@ test.describe('account dashboard', () => {
     await page.goto('/account');
 
     const profile = page.getByTestId('account-profile');
-    const tiles = [profile, page.getByTestId('account-projects'), page.getByTestId('account-orders')];
-    for (const tile of tiles) {
+    const rows = [page.getByTestId('account-projects'), page.getByTestId('account-orders'), page.getByTestId('account-tickets-section')];
+    for (const tile of [profile, ...rows]) {
+      // Each row rises in as it scrolls into view.
+      await tile.scrollIntoViewIfNeeded();
       await expect.poll(() => tile.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
       const look = await tile.evaluate((el) => {
         const style = getComputedStyle(el);
-        return {
-          radius: style.borderTopLeftRadius,
-          edge: style.borderTopColor,
-          width: style.borderTopWidth,
-          blur: style.backdropFilter,
-        };
+        return { radius: style.borderTopLeftRadius, surface: style.backgroundColor, image: style.backgroundImage, blur: style.backdropFilter, shadow: style.boxShadow };
       });
-      expect(look).toEqual({ radius: '16px', edge: 'rgba(255, 255, 255, 0.06)', width: '1px', blur: 'blur(16px)' });
+      // No tiles, no glass, no lit edges: everything sits on the paper.
+      expect(look).toEqual({ radius: '0px', surface: 'rgba(0, 0, 0, 0)', image: 'none', blur: 'none', shadow: 'none' });
+    }
+    // Each section is one ledger row under a carbon rule.
+    for (const row of rows) {
+      await expect(row).toHaveCSS('border-top-width', '1px');
+      await expect(row).toHaveCSS('border-top-color', 'rgb(20, 19, 17)');
     }
 
-    // Profile spans the frame; projects and quotes share the row below it.
-    const [profileBox, projectsBox, ordersBox] = await Promise.all(tiles.map((tile) => tile.boundingBox()));
-    expect(Math.abs(profileBox.x - projectsBox.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(profileBox.x + profileBox.width - (ordersBox.x + ordersBox.width))).toBeLessThanOrEqual(1);
-    expect(Math.abs(projectsBox.y - ordersBox.y)).toBeLessThanOrEqual(1);
-    expect(projectsBox.y).toBeGreaterThan(profileBox.y + profileBox.height);
+    // The telemetry strip: a flush table between a carbon rule and a hairline.
+    const facts = profile.locator('.account-profile__facts');
+    await expect(facts).toHaveCSS('border-top-color', 'rgb(20, 19, 17)');
+    await expect(facts).toHaveCSS('border-bottom-color', 'rgba(20, 19, 17, 0.14)');
+    await expect(facts).toHaveCSS('border-top-left-radius', '0px');
+
+    // Profile and every row span the same frame, stacked top to bottom.
+    const [profileBox, ...rowBoxes] = await Promise.all([profile, ...rows].map((tile) => tile.boundingBox()));
+    let floor = profileBox.y + profileBox.height;
+    for (const box of rowBoxes) {
+      expect(Math.abs(box.x - profileBox.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(box.width - profileBox.width)).toBeLessThanOrEqual(1);
+      expect(box.y).toBeGreaterThanOrEqual(floor - 1);
+      floor = box.y + box.height;
+    }
+
+    // The title owns the left track, its entries the right one.
+    const projects = rows[0];
+    const [titleBox, emptyBox] = await Promise.all([
+      projects.getByRole('heading', { level: 2, name: 'Saved Spatial Projects' }).boundingBox(),
+      projects.getByTestId('saved-projects-empty').boundingBox(),
+    ]);
+    expect(emptyBox.x).toBeGreaterThan(titleBox.x + titleBox.width);
+    // A compact, left-aligned empty state: a small drawing, sharp carbon and hairline keys.
+    const empty = projects.getByTestId('saved-projects-empty');
+    await expect(empty).toHaveCSS('text-align', 'left');
+    expect((await empty.locator('svg.empty-art').boundingBox()).width).toBeLessThanOrEqual(80);
+    const start = empty.getByRole('link', { name: 'Start 2D Wall Studio' });
+    await expect(start).toHaveCSS('background-color', 'rgb(20, 19, 17)');
+    await expect(start).toHaveCSS('border-top-left-radius', '0px');
+    await expect(empty.getByRole('link', { name: 'Open Room Planner' })).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
     // Sign Out lives in the profile tile, on its top-right padding corner.
     const signOut = profile.getByTestId('sign-out');
@@ -266,22 +301,14 @@ test.describe('account dashboard', () => {
     await expect(profile.getByRole('heading', { level: 2 })).toHaveText(GUEST.name);
     await expect(page.getByTestId('account-user')).toContainText(GUEST.email);
 
-    // The portal sits on the fixed page atmosphere: a tungsten wash from above, the oak glow
-    // from the top right and warm basalt depth; each tile is lit from its top edge.
+    // The register sits on the fixed page ground: flat alabaster paper, no washes.
     const backdrop = page.getByTestId('ambient-backdrop');
     await expect(backdrop).toHaveAttribute('data-atmosphere', 'account');
     const atmosphere = await backdrop.evaluate((el) => {
       const style = getComputedStyle(el);
-      return { position: style.position, image: style.backgroundImage, events: style.pointerEvents };
+      return { position: style.position, image: style.backgroundImage, surface: style.backgroundColor, events: style.pointerEvents };
     });
-    expect(atmosphere.position).toBe('fixed');
-    expect(atmosphere.events).toBe('none');
-    // The production minifier writes 0% as 0, which Chromium reads back as 0px.
-    expect(atmosphere.image).toMatch(/radial-gradient\(circle at 100% 0(%|px), rgba\(232, 146, 58, 0\.05\)/);
-    expect(atmosphere.image).toContain('linear-gradient(rgb(13, 12, 11) 0%, rgb(20, 18, 16) 48%, rgb(11, 10, 9) 100%)');
-    for (const tile of tiles) {
-      expect(await tile.evaluate((el) => getComputedStyle(el).boxShadow)).toContain('inset');
-    }
+    expect(atmosphere).toEqual({ position: 'fixed', image: 'none', surface: 'rgb(245, 242, 235)', events: 'none' });
 
     // Phone width: the action drops under the identity and nothing overflows.
     await page.setViewportSize({ width: 360, height: 800 });
@@ -293,7 +320,7 @@ test.describe('account dashboard', () => {
 });
 
 test.describe('toast notifications', () => {
-  test('a success toast floats in as a glass pill, bottom centre above every layer, and unmounts after four seconds', async ({ page }) => {
+  test('a success toast sets in as a square carbon slab, bottom centre above every layer, and unmounts after four seconds', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/catalog');
 
@@ -319,33 +346,27 @@ test.describe('toast notifications', () => {
       };
     });
     expect(placement).toEqual({ position: 'fixed', zIndex: '100', bottom: 24 });
-    // Scaling from the centre during entry never moves the pill off the axis.
+    // Scaling from the centre during entry never moves the slab off the axis.
     const offAxis = await toast.evaluate((el) => {
       const rect = el.getBoundingClientRect();
       return Math.abs(rect.left + rect.width / 2 - document.documentElement.clientWidth / 2);
     });
     expect(offAxis).toBeLessThan(1);
 
-    // Translucent pill on a backdrop blur. Depth is a dark ambient shadow and a
-    // hairline top highlight; no layer carries a coloured glow.
-    const glass = await toast.evaluate((el) => {
+    // A flat matte carbon slab with paper ink: square, opaque, no glass, no shadow, no glow.
+    const slab = await toast.evaluate((el) => {
       const style = getComputedStyle(el);
       return {
         animation: style.animationName,
         radius: style.borderTopLeftRadius,
         background: style.backgroundColor,
         backdrop: style.backdropFilter,
-        layers: style.boxShadow.split(/,(?![^(]*\))/).map((layer) => layer.trim()),
+        shadow: style.boxShadow,
       };
     });
-    expect(glass.animation).toBe('toast-in');
-    expect(glass.radius).toBe('999px');
-    expect(glass.background).toBe('rgba(30, 29, 27, 0.56)');
-    expect(glass.backdrop).toContain('blur(28px)');
-    expect(glass.layers).toHaveLength(2);
-    for (const layer of glass.layers) {
-      expect(layer.endsWith('inset') || layer.startsWith('rgba(0, 0, 0,')).toBe(true);
-    }
+    expect(slab).toEqual({ animation: 'toast-in', radius: '0px', background: 'rgb(20, 19, 17)', backdrop: 'none', shadow: 'none' });
+    await expect(toast.getByTestId('toast-message')).toHaveCSS('color', 'rgb(245, 242, 235)');
+    await expect(toast.getByRole('button', { name: 'Dismiss notification' })).toHaveCSS('border-top-left-radius', '0px');
 
     // Still up at three seconds, unmounted shortly after the four-second mark.
     await page.waitForTimeout(Math.max(0, 3000 - (Date.now() - shownAt)));

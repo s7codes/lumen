@@ -1,5 +1,6 @@
-/* A/B project diff: a frosted dialog of bento cards. Pickers, the two
-   elevations, six delta tiles and the itemized change log. */
+/* A/B project diff: a crisp white comparison sheet of square hairline
+   cards. Pickers, the two elevations, six delta tiles and the itemized
+   change log, in carbon ink on paper. */
 
 .diff-modal {
   position: relative;
@@ -9,14 +10,10 @@
   max-height: calc(100dvh - 2 * var(--space-4));
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--bento-radius);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%),
-    rgba(13, 12, 11, 0.94);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--rule-frame);
+  border-top: 2px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper-white);
   animation: diff-focus 1000ms var(--ease-cinematic) both;
 }
 
@@ -32,10 +29,10 @@
 .diff-modal__title {
   margin-top: var(--space-2);
   font-size: var(--text-xl);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.05;
   letter-spacing: -0.03em;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .diff-modal__body {
@@ -46,18 +43,16 @@
 
 .diff-card {
   min-width: 0;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--bento-radius-inner);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-hairline);
+  border-radius: 0;
+  background: transparent;
 }
 
 .diff-section-title {
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.02em;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 /* Pickers: A and B share one row with the swap key between them. */
@@ -113,7 +108,7 @@
   height: 38px;
   padding: 0 36px 0 var(--space-3);
   border: 1px solid var(--border-hairline);
-  border-radius: 10px;
+  border-radius: 0;
   background: var(--bg-inset);
   font: inherit;
   font-size: 13px;
@@ -129,7 +124,7 @@
 
 .diff-picker__select:focus-visible {
   outline: none;
-  border-color: var(--lumen-amber);
+  border-color: var(--accent);
 }
 
 .diff-picker__select option,
@@ -156,7 +151,7 @@
   height: 38px;
   padding-inline: var(--space-3);
   border: 1px solid var(--border-hairline);
-  border-radius: 10px;
+  border-radius: 0;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
@@ -173,15 +168,8 @@
 }
 
 .diff-swap:hover {
-  border-color: var(--border-strong);
+  border-color: var(--text-primary);
   color: var(--text-primary);
-  translate: 0 -2px;
-  box-shadow: 0 4px 0 0 var(--key-plinth-neutral);
-}
-
-.diff-swap:active {
-  translate: 0 0;
-  box-shadow: none;
 }
 
 /* Elevations */
@@ -216,11 +204,11 @@
 .diff-thumb__name {
   overflow: hidden;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.02em;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .diff-thumb__meta {
@@ -236,7 +224,7 @@
   width: 100%;
   height: 168px;
   padding: var(--space-4);
-  border-radius: var(--radius-md);
+  border-radius: 0;
   background: var(--bg-stage);
 }
 
@@ -256,7 +244,7 @@
   height: 10px;
   margin-left: var(--space-2);
   border: 1.5px solid currentColor;
-  border-radius: 1px;
+  border-radius: 0;
 }
 
 .diff-legend__key:first-child {
@@ -264,11 +252,11 @@
 }
 
 .diff-legend__key[data-key='added'] {
-  border-color: var(--lumen-amber);
+  border-color: var(--accent);
 }
 
 .diff-legend__key[data-key='modified'] {
-  border-color: #ffffff;
+  border-color: var(--text-muted);
 }
 
 .diff-legend__key[data-key='removed'] {
@@ -316,12 +304,12 @@
 
 .diff-kpi__value {
   font-size: 26px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.1;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .diff-kpi[data-trend='flat'] .diff-kpi__value {
@@ -329,7 +317,7 @@
 }
 
 .diff-kpi[data-better='true'] .diff-kpi__value {
-  color: var(--lumen-amber-soft);
+  color: var(--accent);
 }
 
 .diff-kpi[data-better='false'] .diff-kpi__value {
@@ -412,7 +400,7 @@
   align-items: baseline;
   gap: var(--space-3);
   padding: 9px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  border-top: 1px solid var(--border-hairline);
 }
 
 .diff-row:first-child {
@@ -428,7 +416,7 @@
 }
 
 .diff-row[data-change='added'] .diff-row__sign {
-  color: var(--lumen-amber);
+  color: var(--accent);
 }
 
 .diff-row[data-change='removed'] .diff-row__sign {
@@ -473,7 +461,7 @@
   position: absolute;
   inset: 0;
   width: 40%;
-  background: var(--lumen-amber);
+  background: var(--accent);
   animation: diff-sweep 1100ms var(--ease-in-out) infinite;
 }
 

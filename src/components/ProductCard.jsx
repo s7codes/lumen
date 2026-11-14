@@ -2,7 +2,7 @@ import { useCallback, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { efficacyLmPerW, getCategory, getFinish, STOCK_LABELS } from '../data/products.js';
 import { useBag } from '../hooks/useBag.js';
-import { useCardTilt } from '../hooks/useCardTilt.js';
+import { useCursorGlow } from '../hooks/useCursorGlow.js';
 import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { formatLeadTime, formatUsd, padIndex } from '../lib/format.js';
@@ -36,7 +36,7 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
   const uid = useId();
   const cardRef = useRef(null);
   const reveal = useScrollReveal();
-  // Callback refs attach before effects run, so useCardTilt still finds the node.
+  // Callback refs attach before effects run, so useCursorGlow still finds the node.
   const attachCard = useCallback(
     (node) => {
       cardRef.current = node;
@@ -48,7 +48,7 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
     },
     [reveal],
   );
-  useCardTilt(cardRef);
+  useCursorGlow(cardRef);
 
   const finishId = product.finishes.includes(controlledFinish) ? controlledFinish : ownFinish;
   const finish = getFinish(finishId);
@@ -90,7 +90,8 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
         </p>
       </header>
 
-      <div className="product-card__figure">
+      {/* The plinth: a square optical chamber where the fixture's own light falls. */}
+      <div className="product-card__figure optical">
         <ProductElevation product={product} finish={finish} technical={technical} />
       </div>
 

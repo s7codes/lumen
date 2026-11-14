@@ -2,7 +2,8 @@ import { memo, useId } from 'react';
 import { FINISHES, getFinish } from '../data/products.js';
 
 /**
- * Miniature architectural drawing of one catalog part on a dark glass tile.
+ * Miniature architectural drawing of one catalog part on a square dark tile,
+ * a pocket optical chamber.
  * Every shape is drawn on a 36-unit grid in the three tones of the active
  * finish (base, highlight, shade). A luminous part that is switched on adds
  * its warm backlight and light cones; passive parts and parts whose 24V
@@ -25,7 +26,8 @@ export function finishRamp(finishId, fallbackId) {
 
 const GRID = 36;
 const SIZES = Object.freeze({ md: 36, sm: 28 });
-const TILE_RADIUS_PX = 8;
+// Square, like every chamber on the gallery: no rounded tile.
+const TILE_RADIUS_PX = 0;
 
 const LED_ON = '#fff3dc';
 const LED_OFF = 'rgba(255, 255, 255, 0.16)';
@@ -341,7 +343,7 @@ function ProductThumbGlyphView({ product, finish, lit = true, size = 'md', class
         y={px / 2}
         width={GRID - px}
         height={GRID - px}
-        rx={radius - px / 2}
+        rx={Math.max(0, radius - px / 2)}
         fill="none"
         stroke="rgba(255, 255, 255, 0.09)"
         strokeWidth={px}

@@ -102,7 +102,7 @@ test.describe('scroll reveal', () => {
     });
 
     // Cards wait transparent at 0.95 on the individual scale property, so the
-    // tilt transform stays free.
+    // transform property stays free.
     for (const cell of await revealState(cells)) {
       expect(cell).toMatchObject({ revealed: null, settled: false, opacity: '0', scale: '0.95', transform: 'none' });
     }
@@ -214,10 +214,11 @@ test.describe('scroll reveal', () => {
   });
 });
 
-// Inline tilt, glow custom properties and the layout footprint of a card.
+// Inline transform, cursor-light custom properties and the layout footprint of a card.
+// The light is painted inside the plinth, on its ::after layer.
 function readTilt(card) {
   return card.evaluate((el) => {
-    const glow = getComputedStyle(el, '::before');
+    const glow = getComputedStyle(el.querySelector('.product-card__figure'), '::after');
     const match = el.style.transform.match(
       /^perspective\((\d+)px\) rotateX\((-?[\d.]+)deg\) rotateY\((-?[\d.]+)deg\)$/,
     );
@@ -247,26 +248,58 @@ async function settledCatalogCard(page, name) {
 }
 
 test.describe('product imagery', () => {
-  test('a catalog card is a frosted bento tile with a 16px radius and a hairline edge', async ({ page }) => {
+  test('a catalog card is a naked plinth: a square 4:3 optical vignette over the specification on bare paper', async ({
+    page,
+  }) => {
     const card = await settledCatalogCard(page, 'Floating Shelf 110');
     const tile = await card.evaluate((el) => {
       const style = getComputedStyle(el);
       return {
         radius: style.borderTopLeftRadius,
-        border: `${style.borderTopWidth} ${style.borderTopStyle} ${style.borderTopColor}`,
+        top: style.borderTopWidth,
+        bottom: `${style.borderBottomWidth} ${style.borderBottomStyle} ${style.borderBottomColor}`,
+        surface: style.backgroundColor,
         image: style.backgroundImage,
         blur: style.backdropFilter,
       };
     });
-    expect(tile.radius).toBe('16px');
-    expect(tile.border).toBe('1px solid rgba(255, 255, 255, 0.06)');
-    expect(tile.image).toBe(
-      'linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%)',
-    );
-    expect(tile.blur).toBe('blur(16px)');
+    // No outer frame, no fill, no corner radius: one hairline closes the card.
+    expect(tile).toEqual({
+      radius: '0px',
+      top: '0px',
+      bottom: '1px solid rgba(20, 19, 17, 0.14)',
+      surface: 'rgba(0, 0, 0, 0)',
+      image: 'none',
+      blur: 'none',
+    });
+
+    // The plinth: square, 4:3, deep warm black, flush with the card's top and sides.
+    const plinth = card.locator('.product-card__figure');
+    const stage = await plinth.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const box = el.getBoundingClientRect();
+      return { radius: style.borderTopLeftRadius, surface: style.backgroundColor, ratio: box.width / box.height };
+    });
+    expect(stage.radius).toBe('0px');
+    expect(stage.surface).toBe('rgb(20, 18, 16)');
+    expect(stage.ratio).toBeCloseTo(4 / 3, 1);
+    const [cardBox, plinthBox] = await Promise.all([card.boundingBox(), plinth.boundingBox()]);
+    expect(Math.abs(plinthBox.y - cardBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(plinthBox.width - cardBox.width)).toBeLessThanOrEqual(1);
+
+    // Everything below the plinth sits on the paper; swatches are square, the key is matte carbon.
+    const body = card.locator('.product-card__body');
+    expect((await body.boundingBox()).y).toBeGreaterThanOrEqual(plinthBox.y + plinthBox.height - 1);
+    await expect(body).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(card.getByRole('heading', { level: 3 })).toHaveCSS('font-weight', '400');
+    await expect(card.locator('.swatch__chip').first()).toHaveCSS('border-top-left-radius', '0px');
+    const add = card.getByRole('button', { name: /add to cart/i });
+    await expect(add).toHaveCSS('background-color', 'rgb(20, 19, 17)');
+    await expect(add).toHaveCSS('color', 'rgb(245, 242, 235)');
+    await expect(add).toHaveCSS('border-top-left-radius', '0px');
   });
 
-  test('hovering a catalog card tilts it toward the pointer, lights a cursor glow and eases the drawing forward', async ({
+  test('hovering a catalog card lights the plinth under the pointer and eases the drawing forward; the card never tilts', async ({
     page,
   }) => {
     const card = await settledCatalogCard(page, 'Floating Shelf 110');
@@ -274,7 +307,7 @@ test.describe('product imagery', () => {
     const drawing = stage.locator('svg.elev');
 
     await expect(stage).toHaveCSS('overflow', 'hidden');
-    // No outline and no solid tile: the stage is a soft gradient only.
+    // No outline: the plinth is a deep warm black under a soft vignette.
     const surface = await stage.evaluate((el) => {
       const style = getComputedStyle(el);
       return {
@@ -283,7 +316,7 @@ test.describe('product imagery', () => {
         image: style.backgroundImage.startsWith('radial-gradient'),
       };
     });
-    expect(surface).toEqual({ border: '0px', color: 'rgba(0, 0, 0, 0)', image: true });
+    expect(surface).toEqual({ border: '0px', color: 'rgb(20, 18, 16)', image: true });
     const timing = await drawing.evaluate((el) => {
       const style = getComputedStyle(el);
       return { duration: style.transitionDuration, easing: style.transitionTimingFunction };
@@ -297,27 +330,23 @@ test.describe('product imagery', () => {
     expect(rest.glowImage).toContain('radial-gradient');
     const stageFootprint = await stage.evaluate((el) => `${el.offsetWidth}x${el.offsetHeight}`);
 
-    // Upper-left quadrant: that corner lifts toward the viewer, so rotateX
-    // goes negative and rotateY positive, each capped at 4 degrees.
+    // Upper-left of the plinth: the light pools under the pointer in the fixture's
+    // own colour temperature, and the object on the plinth holds still.
     const box = await card.boundingBox();
     const pointer = { x: box.width * 0.25, y: box.height * 0.2 };
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.move(box.x + pointer.x, box.y + pointer.y, { steps: 6 });
     await expect(drawing).toHaveCSS('transform', 'matrix(1.045, 0, 0, 1.045, 0, 0)');
     await expect.poll(async () => (await readTilt(card)).glowA).toBeGreaterThan(0.95);
-    const tilted = await readTilt(card);
-    expect(tilted.perspective).toBe(1000);
-    expect(tilted.rx).toBeLessThan(-1);
-    expect(tilted.ry).toBeGreaterThan(1);
-    expect(Math.abs(tilted.rx)).toBeLessThanOrEqual(4);
-    expect(Math.abs(tilted.ry)).toBeLessThanOrEqual(4);
-    expect(tilted.computed).toMatch(/^matrix3d\(/);
-    expect(tilted.glowOpacity).toBeGreaterThan(0.95);
-    // The glow sits under the pointer, measured from the card's top-left.
-    expect(Math.abs(tilted.glowX - pointer.x)).toBeLessThan(16);
-    expect(Math.abs(tilted.glowY - pointer.y)).toBeLessThan(16);
-    // Tilt is paint only: the layout footprint of card and stage never moves.
-    expect(tilted.footprint).toBe(rest.footprint);
+    const lit = await readTilt(card);
+    expect(lit).toMatchObject({ inline: '', computed: 'none', perspective: null });
+    expect(lit.glowOpacity).toBeGreaterThan(0.95);
+    expect(lit.glowImage).toContain('rgba(255, 167, 87, 0.16)');
+    // The light sits under the pointer, measured from the card's top-left.
+    expect(Math.abs(lit.glowX - pointer.x)).toBeLessThan(16);
+    expect(Math.abs(lit.glowY - pointer.y)).toBeLessThan(16);
+    // Light is paint only: the layout footprint of card and plinth never moves.
+    expect(lit.footprint).toBe(rest.footprint);
     expect(await stage.evaluate((el) => `${el.offsetWidth}x${el.offsetHeight}`)).toBe(stageFootprint);
 
     await page.mouse.move(4, 4);
@@ -341,7 +370,9 @@ test.describe('product imagery', () => {
 });
 
 test.describe('tactile keys', () => {
-  test('a primary key lifts off a zero-blur plinth, pulls toward the pointer and settles back', async ({ page }) => {
+  test('a primary key is a matte carbon slab: it deepens on hover and never lifts, drifts or casts a plinth', async ({
+    page,
+  }) => {
     await page.goto('/');
     const card = page.getByRole('article', { name: 'Floating Shelf 110' });
     const key = card.getByRole('button', { name: /add to cart/i });
@@ -350,14 +381,17 @@ test.describe('tactile keys', () => {
     await waitForCardAtRest(card);
 
     const rest = await readKey(key);
-    expect(rest).toMatchObject({ x: 0, y: 0, shadowY: 0, blur: 0, layers: 1 });
+    expect(rest).toMatchObject({ x: 0, y: 0, shadowX: 0, shadowY: 0, blur: 0 });
+    await expect(key).toHaveCSS('box-shadow', 'none');
+    await expect(key).toHaveCSS('background-color', 'rgb(20, 19, 17)');
+    await expect(key).toHaveCSS('border-top-left-radius', '0px');
+    await expect(key).toHaveCSS('font-family', /Inter Tight/);
+    const restBox = await key.boundingBox();
 
-    const box = await key.boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await expect.poll(async () => (await readKey(key)).y).toBeCloseTo(-2, 1);
-    await expect.poll(async () => (await readKey(key)).shadowY).toBeCloseTo(4, 1);
-    expect((await readKey(key)).blur).toBe(0);
-    // The plus turns a quarter: rotate(90deg) computes to matrix(~0, 1, -1, ~0, 0, 0).
+    // Hover: the surface deepens to #2b2925; the plus turns a quarter, the key stays put.
+    await page.mouse.move(restBox.x + restBox.width / 2, restBox.y + restBox.height / 2);
+    await expect(key).toHaveCSS('background-color', 'rgb(43, 41, 37)');
+    // rotate(90deg) computes to matrix(~0, 1, -1, ~0, 0, 0).
     await expect
       .poll(() =>
         key
@@ -366,17 +400,20 @@ test.describe('tactile keys', () => {
       )
       .toBe('1.000');
 
-    // Toward the right edge the cap drifts right (at most 4px) and the plinth
-    // stays where the key rests, so it trails on the left.
-    await page.mouse.move(box.x + box.width - 3, box.y + box.height / 2, { steps: 4 });
-    await expect.poll(async () => (await readKey(key)).x).toBeGreaterThan(2.5);
-    const pulled = await readKey(key);
-    expect(pulled.x).toBeLessThanOrEqual(4);
-    expect(Math.abs(pulled.shadowX + pulled.x)).toBeLessThan(0.5);
-    expect(pulled.blur).toBe(0);
+    // Toward the right edge nothing pulls the key: no translate, no plinth, no glow.
+    await page.mouse.move(restBox.x + restBox.width - 3, restBox.y + restBox.height / 2, { steps: 4 });
+    expect(await readKey(key)).toMatchObject({ x: 0, y: 0, shadowX: 0, shadowY: 0, blur: 0 });
+    const held = await key.boundingBox();
+    expect(Math.abs(held.x - restBox.x) + Math.abs(held.y - restBox.y)).toBeLessThan(0.5);
 
-    await page.mouse.move(box.x + box.width / 2, box.y - 120);
-    await expect.poll(async () => readKey(key)).toMatchObject({ x: 0, y: 0, shadowX: 0, shadowY: 0, blur: 0 });
+    // The naked secondary key is one carbon hairline that inverts on hover.
+    const explore = page.getByRole('link', { name: 'Explore Full Catalog' });
+    await explore.scrollIntoViewIfNeeded();
+    await expect(explore).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(explore).toHaveCSS('border-top-color', 'rgb(20, 19, 17)');
+    await explore.hover();
+    await expect(explore).toHaveCSS('background-color', 'rgb(20, 19, 17)');
+    await expect(explore).toHaveCSS('color', 'rgb(245, 242, 235)');
   });
 
   test('arrow keys slide their arrow 4px and the sync keys carry one', async ({ page }) => {

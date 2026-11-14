@@ -25,11 +25,10 @@
   padding-bottom: var(--section-space);
 }
 
+/* An empty quote reads as one blank register row under a carbon rule. */
 .checkout-empty__card {
-  display: grid;
-  place-items: center;
-  min-height: 420px;
-  padding: var(--bento-pad);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--rule-ink);
 }
 
 .checkout-panel {
@@ -334,7 +333,8 @@
 }
 
 .bom tr[data-testid='quote-driver-line'] .bom__name {
-  color: var(--lumen-amber-soft);
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
 }
 
 .quote-totals {
@@ -414,11 +414,9 @@
   gap: 4px;
   min-width: 0;
   padding: var(--space-3);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-sm);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-hairline);
+  border-radius: 0;
+  background: transparent;
 }
 
 .quote-sheet .install-schedule__cell dd {

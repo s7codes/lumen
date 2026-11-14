@@ -68,7 +68,7 @@ export function BlueprintSheetModal({ open, onClose, layout, projectName, return
       <div className="modal-scrim" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
-        className="blueprint-modal"
+        className="blueprint-modal optical"
         role="dialog"
         aria-modal="true"
         aria-label="Architectural blueprint sheet"

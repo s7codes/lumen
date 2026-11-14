@@ -276,15 +276,16 @@ test.describe('bag drawer', () => {
     await expect(page.locator('html')).toHaveAttribute('data-mode', 'architectural');
 
     const drawer = await openBag(page);
-    // One flat sheet of lifted basalt behind a neutral hairline edge: no gradient light, no glow.
-    await expect(drawer).toHaveCSS('background-color', 'rgb(30, 28, 25)');
+    // One flat crisp white sheet on the paper behind a carbon hairline edge: no gradient light, no glow.
+    await expect(drawer).toHaveCSS('background-color', 'rgb(250, 248, 244)');
     await expect(drawer).toHaveCSS('background-image', 'none');
-    await expect(drawer).toHaveCSS('border-left-color', 'rgba(255, 255, 255, 0.08)');
+    await expect(drawer).toHaveCSS('border-left-color', 'rgba(20, 19, 17, 0.12)');
     await expect(drawer).toHaveCSS('box-shadow', 'none');
+    await expect(drawer).toHaveCSS('color', 'rgb(20, 19, 17)');
 
-    // Header: the plain title and a mono counter, no second bag icon, a rectangular labelled Close key.
+    // Header: the plain title and a mono counter, no second bag icon, a square labelled Close key.
     const header = drawer.locator('.bag-drawer__header');
-    await expect(header).toHaveCSS('border-bottom-color', 'rgba(255, 255, 255, 0.08)');
+    await expect(header).toHaveCSS('border-bottom-color', 'rgba(20, 19, 17, 0.12)');
     await expect(drawer.getByRole('heading', { level: 2 })).toHaveText('Cart');
     await expect(drawer.getByTestId('bag-glyph')).toHaveCount(0);
     const count = drawer.getByTestId('bag-count');
@@ -292,7 +293,7 @@ test.describe('bag drawer', () => {
     await expect(count).toHaveCSS('font-family', /IBM Plex Mono/);
     const close = drawer.getByRole('button', { name: 'Close' });
     await expect(close).toHaveText('Close');
-    await expect(close).toHaveCSS('border-top-left-radius', '4px');
+    await expect(close).toHaveCSS('border-top-left-radius', '0px');
 
     // The note: left-aligned under the header, no floating card and no emblem tile.
     const catalog = drawer.getByRole('link', { name: 'Browse Catalog' });
@@ -301,13 +302,13 @@ test.describe('bag drawer', () => {
     await expect(close).toBeFocused();
     await expect(heading).toBeVisible();
     await expect(heading).toHaveCSS('font-size', '20px');
-    await expect(heading).toHaveCSS('font-weight', '500');
-    await expect(heading).toHaveCSS('color', 'rgb(244, 241, 234)');
+    await expect(heading).toHaveCSS('font-weight', '400');
+    await expect(heading).toHaveCSS('color', 'rgb(20, 19, 17)');
     await expect(
       drawer.getByText(
         'Select individual luminaires and shelves from the catalog, or push a complete wall or room specification from the planners.',
       ),
-    ).toHaveCSS('color', 'rgb(158, 152, 142)');
+    ).toHaveCSS('color', 'rgb(87, 83, 78)');
     const note = drawer.locator('.bag-empty');
     await expect(note).toHaveCSS('border-top-style', 'none');
     await expect(note).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -318,28 +319,30 @@ test.describe('bag drawer', () => {
     expect(headingBox.x - sheet.x).toBeCloseTo(25, 0);
     expect(catalogBox.x).toBeCloseTo(headingBox.x, 0);
 
-    // The two routes in: sharp 4px keys with mono uppercase labels, as on the hero.
+    // The two routes in: square keys with tracked sans capitals. Matte carbon for the
+    // primary route, one carbon hairline for the second; no orange fill anywhere.
     await expect(catalog).toHaveAttribute('href', '/catalog');
     await expect(planner).toHaveAttribute('href', '/room-3d');
     for (const key of [catalog, planner]) {
-      await expect(key).toHaveCSS('border-top-left-radius', '4px');
-      await expect(key).toHaveCSS('font-family', /IBM Plex Mono/);
+      await expect(key).toHaveCSS('border-top-left-radius', '0px');
+      await expect(key).toHaveCSS('font-family', /Inter Tight/);
       await expect(key).toHaveCSS('text-transform', 'uppercase');
       await expect(key).toHaveCSS('letter-spacing', '0.96px');
     }
-    await expect(catalog).toHaveCSS('background-color', 'rgb(232, 146, 58)');
-    await expect(planner).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.16)');
+    await expect(catalog).toHaveCSS('background-color', 'rgb(20, 19, 17)');
+    await expect(catalog).toHaveCSS('color', 'rgb(245, 242, 235)');
+    await expect(planner).toHaveCSS('border-top-color', 'rgb(20, 19, 17)');
     await expect(planner).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    // Nothing on the sheet is a pill or a bubble.
+    // Nothing on the sheet is a pill, a bubble or a rounded key.
     const radii = await drawer.evaluate((el) => [...el.querySelectorAll('a, button')].map((key) => parseFloat(getComputedStyle(key).borderTopLeftRadius)));
-    expect(Math.max(...radii)).toBeLessThanOrEqual(4);
+    expect(Math.max(...radii)).toBe(0);
     await expect(drawer.getByTestId('proceed-to-checkout')).toHaveCount(0);
     await expect(drawer.getByRole('button', { name: 'Clear cart' })).toHaveCount(0);
 
     // Below a hairline: three signature parts, each an indexed row with its drawing, size and price.
     const quick = drawer.getByTestId('bag-quick-add');
     await expect(quick).toBeVisible();
-    await expect(quick).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.07)');
+    await expect(quick).toHaveCSS('border-top-color', 'rgba(20, 19, 17, 0.12)');
     await expect(quick.getByRole('heading', { name: 'Signature Starting Modules' })).toBeVisible();
     const rows = quick.getByTestId('bag-quick-row');
     await expect(rows).toHaveCount(QUICK_ADD.length);
@@ -351,14 +354,14 @@ test.describe('bag drawer', () => {
       await expect(row).toContainText(product.name);
       await expect(row.getByTestId('bag-quick-dims')).toHaveText(`${w} x ${h} x ${d} cm`);
       await expect(row.getByTestId('bag-quick-price')).toHaveText(`$${product.priceUsd}`);
-      await expect(row).toHaveCSS('border-bottom-color', 'rgba(255, 255, 255, 0.07)');
+      await expect(row).toHaveCSS('border-bottom-color', 'rgba(20, 19, 17, 0.12)');
       await expect(row).toHaveCSS('border-top-left-radius', '0px');
       const glyph = row.getByTestId('product-thumb-glyph');
       await expect(glyph).toHaveAttribute('data-size', 'sm');
       await expect(glyph).toHaveAttribute('data-finish', product.defaultFinish);
       const add = row.getByRole('button', { name: quickAddLabel(product) });
       await expect(add).toHaveText('Add');
-      await expect(add).toHaveCSS('border-top-left-radius', '4px');
+      await expect(add).toHaveCSS('border-top-left-radius', '0px');
       adds.push(add);
     }
 
@@ -421,7 +424,7 @@ test.describe('bag drawer', () => {
     await expect(line.getByTestId('bag-line-qty')).toHaveText('1');
     await expect(line).toHaveCSS('border-top-left-radius', '0px');
     await expect(line).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    await expect(line).toHaveCSS('border-bottom-color', 'rgba(255, 255, 255, 0.07)');
+    await expect(line).toHaveCSS('border-bottom-color', 'rgba(20, 19, 17, 0.12)');
     const sheet = await drawer.boundingBox();
     const row = await line.boundingBox();
     expect(row.x).toBeCloseTo(sheet.x + 1, 0);
@@ -430,12 +433,13 @@ test.describe('bag drawer', () => {
     await expect(line.locator('.bag-line__finish')).toHaveCSS('border-top-style', 'none');
     await expect(line.getByRole('group', { name: `Quantity, ${pendant.name}, ${finish.label}` })).toHaveCSS(
       'border-top-left-radius',
-      '4px',
+      '0px',
     );
     const checkout = drawer.getByTestId('proceed-to-checkout');
     await expect(checkout).toHaveText('Proceed to Checkout');
-    await expect(checkout).toHaveCSS('border-top-left-radius', '4px');
-    await expect(checkout).toHaveCSS('background-color', 'rgb(232, 146, 58)');
+    await expect(checkout).toHaveCSS('border-top-left-radius', '0px');
+    await expect(checkout).toHaveCSS('background-color', 'rgb(20, 19, 17)');
+    await expect(checkout).toHaveCSS('color', 'rgb(245, 242, 235)');
     await expect(checkout).toHaveCSS('text-transform', 'uppercase');
     await expect(drawer.locator('.bag-summary')).toHaveCSS('border-top-left-radius', '0px');
 

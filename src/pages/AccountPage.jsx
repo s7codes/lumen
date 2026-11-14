@@ -141,7 +141,7 @@ function ProjectCard({ record, index, deleting, onDelete, onCompare }) {
         {/* Opening a project checks the saved revision out into the planner workspace. */}
         <Link
           to={view.href}
-          className="button project-card__open"
+          className="button button--primary project-card__open"
           onClick={(event) => (deleting ? event.preventDefault() : view.restore())}
           aria-disabled={deleting || undefined}
           tabIndex={deleting ? -1 : undefined}
@@ -419,7 +419,7 @@ export default function AccountPage() {
       <div className="container account-grid reveal-stagger" aria-busy={loading || undefined}>
         <section
           ref={reveal}
-          className="account-profile bento reveal-cinematic"
+          className="account-profile reveal-up"
           aria-labelledby="account-profile-title"
           data-testid="account-profile"
         >
@@ -449,7 +449,7 @@ export default function AccountPage() {
 
         <section
           ref={reveal}
-          className="account-panel bento reveal-cinematic"
+          className="account-panel reveal-up"
           aria-labelledby="account-projects-title"
           data-testid="account-projects"
         >
@@ -505,7 +505,7 @@ export default function AccountPage() {
 
         <section
           ref={reveal}
-          className="account-panel bento reveal-cinematic"
+          className="account-panel reveal-up"
           aria-labelledby="account-orders-title"
           data-testid="account-orders"
         >
@@ -539,7 +539,7 @@ export default function AccountPage() {
 
         <section
           ref={reveal}
-          className="account-panel account-panel--tickets bento reveal-cinematic"
+          className="account-panel account-panel--tickets reveal-up"
           aria-labelledby="account-tickets-title"
           aria-busy={tickets.status === 'loading' || undefined}
           data-testid="account-tickets-section"

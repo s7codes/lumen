@@ -942,14 +942,14 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     expect(await readCspViolations(page)).toEqual([]);
   });
 
-  test('stealth panel: a basalt trigger with the Lumen mark, graphite questions, a silent locked gate and Specs-only metadata', async ({
+  test('gallery panel: a carbon trigger with the Lumen mark, stone questions on a white sheet, a silent locked gate and Specs-only metadata', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
 
-    // Navbar: Search and Cart wear matching 14 px glyphs on one stroke weight, centred in their pills.
+    // Navbar: Search and Cart wear matching 14 px glyphs on one stroke weight, centred on their keys.
     const banner = page.getByRole('banner');
     const cart = banner.getByRole('button', { name: 'Cart (0)' });
     const bag = cart.getByTestId('bag-glyph');
@@ -965,20 +965,28 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     await expect(cart).toHaveCSS('column-gap', '8px');
     await expect(banner.getByTestId('command-palette-trigger')).toHaveCSS('column-gap', '8px');
 
-    // Trigger: dark basalt glass and the Lumen mark with a champagne slit, warming on hover.
+    // Trigger: a square matte carbon key and the Lumen mark with a champagne slit, deepening on hover.
     const trigger = page.getByTestId('concierge-trigger');
     await expect(trigger.getByTestId('lumen-mark')).toBeVisible();
     await expect(trigger.locator('.aperture-glyph')).toHaveCount(0);
-    await expect(trigger).toHaveCSS('background-color', 'rgba(20, 19, 17, 0.92)');
-    await expect(trigger).toHaveCSS('color', 'rgb(244, 241, 234)');
-    await expect(trigger).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.12)');
+    await expect(trigger).toHaveCSS('background-color', 'rgb(20, 19, 17)');
+    await expect(trigger).toHaveCSS('color', 'rgb(245, 242, 235)');
+    await expect(trigger).toHaveCSS('border-top-left-radius', '0px');
+    await expect(trigger).toHaveCSS('box-shadow', 'none');
+    await expect(trigger).toHaveCSS('backdrop-filter', 'none');
     await expect(trigger.locator('[data-part="aperture"]')).toHaveCSS('fill', 'rgb(229, 199, 153)');
     await trigger.hover();
-    await expect(trigger).toHaveCSS('border-top-color', 'rgba(229, 199, 153, 0.45)');
+    await expect(trigger).toHaveCSS('background-color', 'rgb(43, 41, 37)');
     const panel = await openConcierge(page);
     await page.mouse.move(10, 400);
-    await expect(trigger).toHaveCSS('border-top-color', 'rgba(229, 199, 153, 0.45)');
-    await expect(trigger).toHaveCSS('background-color', 'rgba(26, 24, 21, 0.94)');
+    // Open, the key holds its deeper surface.
+    await expect(trigger).toHaveCSS('background-color', 'rgb(43, 41, 37)');
+    // The panel: an opaque white sheet under a carbon head rule, square at every corner.
+    const sheet = page.getByTestId('concierge-panel');
+    await expect(sheet).toHaveCSS('background-color', 'rgb(250, 248, 244)');
+    await expect(sheet).toHaveCSS('border-top-color', 'rgb(20, 19, 17)');
+    await expect(sheet).toHaveCSS('border-top-left-radius', '0px');
+    await expect(sheet).toHaveCSS('backdrop-filter', 'none');
     await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Lumen AI');
     await expect(panel.locator('.concierge-panel__head').getByTestId('lumen-mark')).toBeVisible();
 
@@ -995,15 +1003,15 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     expect(gateLook).toEqual({ position: 'absolute', overflow: 'hidden', width: 1, height: 1 });
     await expect(panel.locator('.concierge-gate__glyph, .concierge-gate svg')).toHaveCount(0);
 
-    // A warm charcoal-bronze question bubble on the right; the answer sits straight on the
-    // glass beside a 22 px avatar, never in a yellow block.
+    // A square stone question block on the right; the answer sits straight on the
+    // sheet beside a 22 px avatar, never in a coloured block.
     const reply = await ask(page, 'What is Visual vs Specs mode?');
     const question = page.getByTestId('concierge-question').last();
-    await expect(question).toHaveCSS('background-color', 'rgb(42, 38, 33)');
-    await expect(question).toHaveCSS('color', 'rgb(244, 241, 234)');
-    await expect(question).toHaveCSS('border-top-color', 'rgba(229, 199, 153, 0.22)');
-    await expect(question).toHaveCSS('border-top-left-radius', '10px');
-    await expect(question).toHaveCSS('border-bottom-right-radius', '3px');
+    await expect(question).toHaveCSS('background-color', 'rgb(236, 232, 223)');
+    await expect(question).toHaveCSS('color', 'rgb(20, 19, 17)');
+    await expect(question).toHaveCSS('border-top-color', 'rgba(20, 19, 17, 0.22)');
+    await expect(question).toHaveCSS('border-top-left-radius', '0px');
+    await expect(question).toHaveCSS('border-bottom-right-radius', '0px');
     await expect(reply).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     const avatar = reply.getByTestId('concierge-avatar');
     await expect(avatar.getByTestId('lumen-mark')).toBeVisible();
@@ -1012,7 +1020,7 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     const body = reply.locator('.concierge-msg__body');
     await expect(body).toHaveCSS('font-size', '13.5px');
     await expect(body).toHaveCSS('line-height', '21.6px');
-    await expect(body).toHaveCSS('color', 'rgb(230, 226, 218)');
+    await expect(body).toHaveCSS('color', 'rgb(43, 41, 37)');
     // The answer streams in once; its flag lands on the element, so a reopened panel never replays it.
     await expect(reply).toHaveAttribute('data-revealed', 'true');
     await expect(body).toHaveCSS('mask-image', 'none');
@@ -1094,7 +1102,7 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     expect(geometry).toMatchObject({ dock: 0, rows: 1 });
     expect(geometry.share).toBeGreaterThanOrEqual(0.8);
 
-    // The question: a warm bubble on the right. The composer: one 10px well with a 6px send key, no pills.
+    // The question: a stone block on the right. The composer: one square well with a square send key, no pills.
     const bubble = await page.getByTestId('concierge-question').first().evaluate((el) => {
       const body = el.closest('.concierge-panel__body');
       const style = getComputedStyle(body);
@@ -1108,18 +1116,19 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     // The composer keeps focus after every send; its resting edge shows once it lets go.
     const field = panel.locator('.concierge-composer__field');
     const input = page.getByTestId('concierge-input');
-    await expect(field).toHaveCSS('background-color', 'rgb(24, 23, 21)');
-    await expect(field).toHaveCSS('border-top-color', 'rgba(229, 199, 153, 0.5)');
+    await expect(field).toHaveCSS('background-color', 'rgb(245, 242, 235)');
+    await expect(field).toHaveCSS('border-top-color', 'rgb(20, 19, 17)');
     await input.blur();
-    await expect(field).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.14)');
-    await expect(field).toHaveCSS('border-top-left-radius', '10px');
+    await expect(field).toHaveCSS('border-top-color', 'rgba(20, 19, 17, 0.14)');
+    await expect(field).toHaveCSS('border-top-left-radius', '0px');
+    await expect(field).toHaveCSS('box-shadow', 'none');
     await input.focus();
-    await expect(field).toHaveCSS('border-top-color', 'rgba(229, 199, 153, 0.5)');
+    await expect(field).toHaveCSS('border-top-color', 'rgb(20, 19, 17)');
     const send = page.getByTestId('concierge-send');
     await expect(send).toHaveAccessibleName('Ask');
     await expect(send).toHaveCSS('width', '32px');
-    await expect(send).toHaveCSS('border-top-left-radius', '6px');
-    await expect(prompts.getByTestId('concierge-quick-prompt').first()).toHaveCSS('border-top-left-radius', '6px');
+    await expect(send).toHaveCSS('border-top-left-radius', '0px');
+    await expect(prompts.getByTestId('concierge-quick-prompt').first()).toHaveCSS('border-top-left-radius', '0px');
 
     // A chip asks straight from the bar; New chat clears the thread back to the welcome.
     await prompts.getByTestId('concierge-quick-prompt').filter({ hasText: 'How do I walk inside at 165 cm?' }).click();

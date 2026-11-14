@@ -1,3 +1,9 @@
+/* Overview. One optical chamber opens the page (the ambient hero, where a
+   pendant lights a ribbed wall), then the gallery paper takes over: a ledger
+   strip, asymmetric section heads over hairline rules, the dimming bench and
+   the theatre set into the paper as square chambers, naked catalog plinths
+   and an index of the three workspaces. */
+
 /* Ambient hero: lighting coordinates are written by useAmbientLight.
    Two tracks: the type owns the left, the right track stays empty so the
    pendant has open air to swing through. The inset scales with the viewport,
@@ -17,7 +23,7 @@
   min-height: max(640px, calc(100svh - var(--nav-height)));
   padding: var(--space-7) var(--hero-inset) clamp(var(--space-6), 3.5vw, var(--space-9));
   overflow: hidden;
-  background: var(--bg-canvas);
+  background: var(--chamber);
   isolation: isolate;
 }
 
@@ -69,7 +75,7 @@
       rgba(232, 146, 58, 0.07) 0,
       transparent 70%
     ),
-    linear-gradient(180deg, rgba(11, 11, 10, 0) 55%, rgba(11, 11, 10, 0.85) 100%);
+    linear-gradient(180deg, rgba(17, 16, 14, 0) 55%, rgba(17, 16, 14, 0.85) 100%);
 }
 
 .hero__rail {
@@ -94,7 +100,6 @@
   left: var(--light-x);
   width: 14px;
   height: 8px;
-  border-radius: 0 0 var(--radius-xs) var(--radius-xs);
   background: var(--alu-sheen);
   transform: translateX(-50%);
 }
@@ -115,7 +120,6 @@
   left: var(--light-x);
   width: 10px;
   height: 22px;
-  border-radius: var(--radius-xs) var(--radius-xs) 1px 1px;
   background: linear-gradient(90deg, #8e9295, #d3d6d8 45%, #767b7f);
   box-shadow: 0 2px 0 -1px var(--lumen-amber-soft), 0 8px 24px 4px var(--lumen-amber-glow);
   transform: translateX(-50%);
@@ -147,7 +151,7 @@
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--chamber-ink-muted);
 }
 
 .hero__content {
@@ -158,12 +162,20 @@
   text-align: left;
 }
 
+.hero .index-label {
+  color: var(--chamber-ink-soft);
+}
+
+.hero .index-label__num {
+  color: var(--chamber-ink-muted);
+}
+
 .hero__title {
   max-width: 12ch;
   margin-top: var(--space-6);
-  color: var(--text-primary);
+  color: var(--chamber-ink);
   font-size: var(--text-hero);
-  font-weight: var(--weight-strong);
+  font-weight: var(--weight-display);
   line-height: var(--leading-display);
   letter-spacing: var(--tracking-hero);
   text-wrap: balance;
@@ -176,14 +188,33 @@
   font-weight: var(--weight-light);
   line-height: 1.45;
   letter-spacing: -0.01em;
-  color: var(--text-secondary);
+  color: var(--chamber-ink-soft);
 }
 
 .hero__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4);
+  gap: var(--space-3);
   margin-top: var(--space-7);
+}
+
+/* The hero is a gallery chamber, not an instrument: its keys keep the sans. */
+.hero .button {
+  font-family: var(--font-sans);
+}
+
+/* Inside the chamber the secondary key is a naked alabaster hairline that
+   inverts to alabaster on hover; the primary key is alabaster already. */
+.hero .button:not(.button--primary) {
+  border-color: rgba(245, 242, 235, 0.55);
+  background: transparent;
+  color: var(--chamber-ink);
+}
+
+.hero .button:not(.button--primary):hover {
+  border-color: var(--chamber-ink);
+  background: var(--chamber-ink);
+  color: var(--ink);
 }
 
 /* The overview pulls into focus once on load, one line of the spec at a time. */
@@ -214,11 +245,11 @@
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   white-space: pre;
-  color: var(--text-muted);
+  color: var(--chamber-ink-muted);
 }
 
 .hero__readout-label {
-  color: var(--lumen-amber);
+  color: var(--emission-soft);
 }
 
 @media (max-width: 959px) {
@@ -238,240 +269,139 @@
   }
 }
 
-/* Below the hero: one continuous atmosphere that scrolls with the sections.
-   The base picks up the hero's own floor tone (its wash ends in
-   rgba(11, 11, 10, 0.85)) and rises into warm basalt; soft tungsten and
-   bronze washes sit behind the lab, the 3D studio, the core modules and the
-   workspaces; drafting lines run the full height, stronger toward the edges;
-   a champagne hairline marks the start of each section. */
+/* Below the hero the overview scrolls on plain paper. The flow keeps its own
+   stacking context so reveals and chambers layer predictably. */
 
 .home-atmosphere {
   position: relative;
   isolation: isolate;
   overflow-x: clip;
+  background: var(--paper);
 }
 
-.home-atmosphere::before,
-.home-atmosphere::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-}
-
-.home-atmosphere::before {
-  background:
-    radial-gradient(ellipse 75% 50% at 18% 28%, rgba(232, 146, 58, 0.065), rgba(232, 146, 58, 0) 70%),
-    radial-gradient(ellipse 70% 55% at 82% 62%, rgba(216, 178, 124, 0.055), rgba(216, 178, 124, 0) 72%),
-    radial-gradient(ellipse 55% 14% at 50% 44%, rgba(232, 168, 92, 0.05), rgba(232, 168, 92, 0) 70%),
-    radial-gradient(ellipse 60% 16% at 22% 90%, rgba(229, 199, 153, 0.045), rgba(229, 199, 153, 0) 72%),
-    linear-gradient(180deg, #0a0a09 0, #0c0b0a 640px, #100e0c 42%, #0e0c0b 78%, #090808 100%);
-}
-
-.home-atmosphere::after {
-  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, rgba(255, 255, 255, 0) 1px);
-  background-position: 50% 0;
-  background-size: 120px 100%;
-  -webkit-mask-image:
-    linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.3) 28%, rgba(0, 0, 0, 0.3) 72%, #000 100%),
-    linear-gradient(180deg, transparent 0, #000 8%, #000 92%, transparent 100%);
-  -webkit-mask-composite: source-in;
-  mask-image:
-    linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.3) 28%, rgba(0, 0, 0, 0.3) 72%, #000 100%),
-    linear-gradient(180deg, transparent 0, #000 8%, #000 92%, transparent 100%);
-  mask-composite: intersect;
-}
-
-.home-atmosphere > :is(.lab, .showcase3d, .modules, .entries) {
-  background-image: linear-gradient(90deg, rgba(229, 199, 153, 0), rgba(229, 199, 153, 0.16) 50%, rgba(229, 199, 153, 0));
-  background-position: 50% calc(var(--section-space) * 0.45);
-  background-repeat: no-repeat;
-  background-size: calc(100% - 2 * var(--grid-margin)) 1px;
-}
-
-/* Specification strip */
+/* Specification ledger: three columns between two hairline rules, divided by
+   vertical hairlines, straight on the paper. */
 
 .spec-strip__grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--bento-gap);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding-top: var(--section-space);
 }
 
 .spec-strip__item {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--bento-pad);
-  min-height: 220px;
+  gap: var(--space-5);
+  min-width: 0;
+  padding: var(--space-6) var(--space-6) var(--space-6) clamp(var(--space-5), 2.4vw, var(--space-7));
+  border-top: 1px solid var(--rule-section);
+  border-bottom: 1px solid var(--rule-section);
+  border-left: 1px solid var(--rule-section);
 }
 
-.spec-strip__item .spec-strip__detail {
-  margin-top: auto;
+.spec-strip__item:first-child {
+  padding-left: 0;
+  border-left: 0;
 }
 
 .spec-strip__value {
-  max-width: 14ch;
-  margin-top: var(--space-3);
-  font-size: var(--text-xl);
-  font-weight: var(--weight-strong);
-  line-height: 1.08;
-  letter-spacing: var(--tracking-headline);
+  max-width: 16ch;
+  font-size: clamp(1.375rem, 1.05rem + 0.9vw, 1.875rem);
+  font-weight: var(--weight-display);
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+}
+
+.spec-strip__index {
+  display: block;
+  margin-bottom: var(--space-5);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-regular);
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 
 .spec-strip__detail {
+  margin-top: auto;
   font-size: var(--text-xs);
   color: var(--text-secondary);
 }
 
 @media (max-width: 767px) {
   .spec-strip__grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .spec-strip__item {
-    min-height: 0;
+    padding-left: 0;
+    padding-right: 0;
+    border-left: 0;
+  }
+
+  .spec-strip__item + .spec-strip__item {
+    border-top: 0;
   }
 }
 
-/* Workspace entry cards */
-
-.entries {
-  padding-top: var(--section-space);
-}
-
-.entries__head {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  margin-bottom: clamp(var(--space-8), 7vw, var(--space-10));
-}
-
-.entries__title {
-  max-width: 16ch;
-  font-size: var(--text-headline);
-  font-weight: var(--weight-strong);
-  line-height: var(--leading-display);
-  letter-spacing: var(--tracking-headline);
-  text-wrap: balance;
-}
-
-.entries__grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--bento-gap);
-}
-
-.entry-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  height: 100%;
-  padding: var(--bento-pad);
-}
-
-.entry-card:hover {
-  border-color: var(--bento-edge-hover);
-}
-
-.entry-card__glyph {
-  display: block;
-  margin-bottom: var(--space-4);
-  padding: var(--space-8) var(--space-7);
-  border-radius: var(--bento-radius-inner);
-  background: var(--bg-stage);
-  color: var(--text-muted);
-  overflow: hidden;
-  transition: color var(--duration-slow) var(--ease-out);
-}
-
-.entry-card__glyph svg {
-  width: 100%;
-  height: auto;
-  max-height: 120px;
-  transition: transform var(--duration-hover) var(--ease-cinematic);
-}
-
-.entry-card:hover .entry-card__glyph {
-  color: var(--text-primary);
-}
-
-.entry-card:hover .entry-card__glyph svg {
-  transform: scale(var(--hover-zoom));
-}
-
-.entry-card__title {
-  font-size: var(--text-xl);
-  font-weight: var(--weight-strong);
-  line-height: 1.1;
-  letter-spacing: var(--tracking-headline);
-}
-
-.entry-card__body {
-  flex: 1;
-  max-width: 38ch;
-  font-weight: var(--weight-light);
-  color: var(--text-secondary);
-}
-
-.entry-card__cta {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--text-primary);
-}
-
-.entry-card__cta svg {
-  width: 14px;
-  height: 14px;
-  transition: transform var(--duration-base) var(--ease-out);
-}
-
-.entry-card:hover .entry-card__cta svg {
-  transform: translateX(4px);
-  color: var(--lumen-amber);
-}
-
-@media (max-width: 959px) {
-  .entries__grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Section heads for the scrolling showcase */
+/* Section heads: an asymmetric split above a full-width hairline. The caption
+   and a light headline own the left track; the lede settles into the right
+   columns on the headline's last line. */
 
 .section-head {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  margin-bottom: clamp(var(--space-8), 7vw, var(--space-10));
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  grid-template-areas:
+    'caption caption'
+    'title lede';
+  align-items: end;
+  column-gap: clamp(var(--space-6), 4vw, var(--space-9));
+  margin-bottom: clamp(var(--space-7), 5vw, var(--space-9));
+  padding-bottom: clamp(var(--space-5), 2.5vw, var(--space-7));
+  border-bottom: 1px solid var(--rule-section);
+}
+
+.section-head > .index-label {
+  grid-area: caption;
+  margin-bottom: var(--space-5);
 }
 
 .section-head__title {
+  grid-area: title;
   max-width: 17ch;
   font-size: var(--text-headline);
-  font-weight: var(--weight-strong);
+  font-weight: var(--weight-display);
   line-height: var(--leading-display);
   letter-spacing: var(--tracking-headline);
   text-wrap: balance;
 }
 
 .section-head__lede {
-  max-width: 50ch;
-  margin-top: var(--space-3);
-  font-size: var(--text-lg);
-  font-weight: var(--weight-light);
-  line-height: 1.45;
-  letter-spacing: -0.01em;
+  grid-area: lede;
+  max-width: 44ch;
+  font-size: var(--text-md);
+  font-weight: var(--weight-regular);
+  line-height: 1.55;
+  letter-spacing: -0.005em;
   color: var(--text-secondary);
 }
 
-/* 02 / Surface and dimming lab */
+@media (max-width: 959px) {
+  .section-head {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'caption'
+      'title'
+      'lede';
+  }
+
+  .section-head__lede {
+    margin-top: var(--space-5);
+  }
+}
+
+/* 02 / Surface and dimming lab: the dark bench and its specification sheet
+   share one square frame with no gap between them. */
 
 .lab {
   padding-top: var(--section-space);
@@ -480,8 +410,9 @@
 .lab__rig {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-  gap: var(--bento-gap);
   align-items: stretch;
+  border: 1px solid var(--rule-frame);
+  border-radius: 0;
 }
 
 /* Bench lighting model. --lab-level is the dimmer duty (0-1), --lab-light the
@@ -502,9 +433,8 @@
   position: relative;
   min-height: clamp(480px, 46vw, 680px);
   overflow: hidden;
-  border: 1px solid var(--bento-edge);
-  border-radius: var(--bento-radius);
-  background: #050504;
+  border-radius: 0;
+  background: var(--chamber);
   isolation: isolate;
 }
 
@@ -535,9 +465,9 @@
   inset: 0;
   background: radial-gradient(
     ellipse calc(42% + var(--lab-level) * 46%) calc(48% + var(--lab-level) * 70%) at 50% 0%,
-    rgba(5, 5, 4, calc(0.9 - var(--lab-level) * 0.86)) 0%,
-    rgba(5, 5, 4, calc(0.93 - var(--lab-level) * 0.5)) 55%,
-    rgba(5, 5, 4, calc(0.96 - var(--lab-level) * 0.18)) 100%
+    rgba(17, 16, 14, calc(0.9 - var(--lab-level) * 0.86)) 0%,
+    rgba(17, 16, 14, calc(0.93 - var(--lab-level) * 0.5)) 55%,
+    rgba(17, 16, 14, calc(0.96 - var(--lab-level) * 0.18)) 100%
   );
 }
 
@@ -559,7 +489,6 @@
   left: 18%;
   right: 18%;
   height: 7px;
-  border-radius: 1px;
   background: var(--alu-sheen);
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
 }
@@ -625,7 +554,7 @@
   font-size: 10px;
   letter-spacing: var(--tracking-label);
   color: var(--lumen-amber-soft);
-  background: rgba(5, 5, 4, 0.7);
+  background: rgba(17, 16, 14, 0.7);
   transform: translate(50%, 50%);
 }
 
@@ -634,12 +563,11 @@
   bottom: var(--space-4);
   left: var(--space-4);
   padding: 2px 6px;
-  border-radius: var(--radius-xs);
-  background: rgba(5, 5, 4, 0.72);
+  background: rgba(17, 16, 14, 0.72);
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--chamber-ink-soft);
 }
 
 .lab-bench__tag--end {
@@ -647,13 +575,16 @@
   right: var(--space-4);
 }
 
-/* Lab controls */
+/* Lab specification sheet: carbon controls and tabular telemetry on stone. */
 
 .lab-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-7);
+  min-width: 0;
   padding: var(--bento-pad);
+  background: var(--paper-stone);
+  color: var(--text-primary);
 }
 
 .lab-control {
@@ -672,9 +603,9 @@
 .lab-control__label {
   padding: 0;
   margin-bottom: var(--space-3);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--text-2xs);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-secondary);
@@ -687,7 +618,8 @@
   color: var(--text-primary);
 }
 
-/* Fader: amber fill to the thumb, aluminum cap with a centre index line */
+/* Fader: a carbon fill to the thumb on a hairline track, a square carbon cap
+   with a paper index line. */
 
 .dimmer {
   --fill: 72%;
@@ -701,45 +633,36 @@
 }
 
 .dimmer::-webkit-slider-runnable-track {
-  height: 4px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, var(--lumen-amber) 0 var(--fill), var(--bg-raised) var(--fill) 100%);
-  box-shadow: inset 0 0 0 1px var(--border-hairline);
+  height: 2px;
+  background: linear-gradient(90deg, var(--ink) 0 var(--fill), rgba(20, 19, 17, 0.18) var(--fill) 100%);
 }
 
 .dimmer::-webkit-slider-thumb {
-  width: 14px;
-  height: 24px;
+  width: 12px;
+  height: 22px;
   margin-top: -10px;
-  border: 1px solid #0b0b0a;
-  border-radius: var(--radius-xs);
-  background:
-    linear-gradient(180deg, transparent 45%, var(--lumen-amber) 45% 55%, transparent 55%),
-    linear-gradient(90deg, #8e9295, #d3d6d8 45%, #767b7f);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(180deg, transparent 45%, var(--paper) 45% 55%, transparent 55%), var(--ink);
   appearance: none;
 }
 
 .dimmer::-moz-range-track {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--bg-raised);
+  height: 2px;
+  background: rgba(20, 19, 17, 0.18);
 }
 
 .dimmer::-moz-range-progress {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--lumen-amber);
+  height: 2px;
+  background: var(--ink);
 }
 
 .dimmer::-moz-range-thumb {
-  width: 14px;
-  height: 24px;
-  border: 1px solid #0b0b0a;
-  border-radius: var(--radius-xs);
-  background:
-    linear-gradient(180deg, transparent 45%, var(--lumen-amber) 45% 55%, transparent 55%),
-    linear-gradient(90deg, #8e9295, #d3d6d8 45%, #767b7f);
+  width: 12px;
+  height: 22px;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(180deg, transparent 45%, var(--paper) 45% 55%, transparent 55%), var(--ink);
 }
 
 .dimmer:focus-visible {
@@ -747,12 +670,12 @@
 }
 
 .dimmer:focus-visible::-webkit-slider-thumb {
-  outline: 1px solid var(--lumen-amber);
+  outline: 1px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
 .dimmer:focus-visible::-moz-range-thumb {
-  outline: 1px solid var(--lumen-amber);
+  outline: 1px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -764,21 +687,24 @@
   color: var(--text-muted);
 }
 
-/* Segmented colour temperature selector */
+/* Colour temperature: three square cells in one carbon hairline. The engaged
+   cell inverts to carbon; its chip keeps the light's own colour. */
 
 .segmented {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--radius-md);
-  background: rgba(242, 238, 231, 0.035);
+  border: 1px solid var(--ink);
+  border-radius: 0;
 }
 
 .segmented__option {
   position: relative;
   display: block;
   min-width: 0;
+}
+
+.segmented__option + .segmented__option {
+  border-left: 1px solid var(--ink);
 }
 
 .segmented__input,
@@ -798,9 +724,8 @@
   flex-direction: column;
   gap: 2px;
   height: 100%;
-  padding: var(--space-2);
-  border-radius: var(--radius-xs);
-  color: var(--text-muted);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-secondary);
   transition:
     background-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out);
@@ -811,17 +736,15 @@
   align-items: center;
   gap: 6px;
   font-size: var(--text-xs);
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .segmented__value::before {
   content: '';
   width: 8px;
   height: 8px;
-  border-radius: 1px;
   background: rgb(var(--chip));
-  opacity: 0.35;
-  transition: opacity var(--duration-fast) var(--ease-out);
+  box-shadow: inset 0 0 0 1px rgba(20, 19, 17, 0.2);
 }
 
 .segmented__label {
@@ -832,29 +755,24 @@
 }
 
 .segmented__option:hover .segmented__face {
-  color: var(--text-secondary);
+  background: rgba(20, 19, 17, 0.05);
 }
 
 .segmented__input:checked + .segmented__face {
-  background: var(--bg-raised);
-  color: var(--text-primary);
-  box-shadow: inset 0 1px 0 rgba(242, 238, 231, 0.06);
+  background: var(--ink);
+  color: rgba(245, 242, 235, 0.72);
 }
 
 .segmented__input:checked + .segmented__face .segmented__value {
-  color: var(--text-primary);
-}
-
-.segmented__input:checked + .segmented__face .segmented__value::before {
-  opacity: 1;
+  color: var(--paper);
 }
 
 .segmented__input:focus-visible + .segmented__face {
-  outline: 1px solid var(--lumen-amber);
-  outline-offset: 1px;
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
-/* Surface slat samples */
+/* Surface slat samples: square swatches, a carbon hairline on the chosen one */
 
 .slat-picker {
   display: grid;
@@ -870,34 +788,33 @@
   min-width: 0;
   padding: 4px;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: 0;
   transition: border-color var(--duration-fast) var(--ease-out);
 }
 
 .slat-picker__option:hover {
-  border-color: var(--border-hairline);
+  border-color: var(--rule-frame);
 }
 
 .slat-picker__option:has(.slat-picker__input:checked) {
-  border-color: var(--lumen-amber);
+  border-color: var(--ink);
 }
 
 .slat-picker__option:has(.slat-picker__input:focus-visible) {
-  outline: 1px solid var(--lumen-amber);
+  outline: 1px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
 .slat-picker__sample {
   height: 44px;
-  border-radius: var(--radius-xs);
   background: repeating-linear-gradient(
     90deg,
     var(--swatch-hi) 0,
     var(--swatch) 2px,
     var(--swatch) 7px,
     var(--swatch-lo) 9px,
-    #050504 9px,
-    #050504 10px
+    #11100e 9px,
+    #11100e 10px
   );
 }
 
@@ -913,12 +830,14 @@
   color: var(--text-primary);
 }
 
-/* Live telemetry */
+/* Live telemetry: a tabular ledger under one hairline */
 
 .lab-telemetry {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-5) var(--space-4);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--rule-frame);
 }
 
 .lab-telemetry__cell {
@@ -929,11 +848,11 @@
 }
 
 .lab-telemetry dt {
-  font-family: var(--font-mono);
   font-size: 10px;
+  font-weight: var(--weight-medium);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .lab-telemetry dd {
@@ -950,7 +869,7 @@
   font-size: 10px;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 @media (max-width: 959px) {
@@ -973,7 +892,8 @@
   }
 }
 
-/* 04 / Core modules */
+/* 04 / Core modules: three naked plinths, then one carbon rule with the count
+   and the way into the catalog. */
 
 .modules {
   padding-top: var(--section-space);
@@ -982,7 +902,7 @@
 .modules__grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--bento-gap);
+  gap: clamp(var(--space-7), 5vw, var(--space-8)) clamp(var(--space-5), 2.5vw, 40px);
 }
 
 .modules__cell {
@@ -995,15 +915,16 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-top: var(--bento-gap);
-  padding: var(--space-5) var(--bento-pad);
+  margin-top: clamp(var(--space-7), 5vw, var(--space-8));
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--rule-ink);
 }
 
 .modules__count {
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 @media (max-width: 959px) {
@@ -1013,8 +934,9 @@
 }
 
 /* 03 / 3D Spatial Studio showcase. The stage is a canvas 2D projection under
-   an HTML and SVG HUD; its rAF loop runs only while the stage is on screen,
-   and never under reduced motion. */
+   an HTML and SVG HUD in a square chamber; its rAF loop runs only while the
+   stage is on screen, and never under reduced motion. Beside it, a flush
+   index of the three capabilities on the paper. */
 
 .showcase3d {
   padding-top: var(--section-space);
@@ -1033,7 +955,7 @@
 .showcase3d__rig {
   display: grid;
   grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
-  gap: var(--bento-gap);
+  column-gap: clamp(var(--space-6), 3.4vw, var(--space-8));
   align-items: stretch;
 }
 
@@ -1045,18 +967,15 @@
   min-width: 0;
   margin: 0;
   overflow: hidden;
+  border-radius: 0;
   background:
     radial-gradient(70% 60% at 50% 46%, rgba(232, 146, 58, 0.1) 0%, rgba(232, 146, 58, 0) 70%),
     radial-gradient(120% 80% at 50% 0%, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0) 60%),
-    linear-gradient(180deg, #0d0d0f 0%, #070708 100%);
+    linear-gradient(180deg, #151310 0%, var(--chamber) 100%);
 }
 
-.showcase3d__stage[data-held] {
-  border-color: rgba(232, 146, 58, 0.28);
-}
-
-/* 3:2 at rest; beside the taller card column the stage grows into the spare
-   height and the projection refits to it, so no dead band opens under the caption. */
+/* 3:2 at rest; beside the taller index the stage grows into the spare height
+   and the projection refits to it, so no dead band opens under the caption. */
 .theatre {
   position: relative;
   flex: 1 0 auto;
@@ -1088,13 +1007,13 @@
 
 .theatre__frame path {
   fill: none;
-  stroke: rgba(242, 238, 231, 0.3);
+  stroke: rgba(245, 242, 235, 0.3);
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
 
 .theatre__frame .theatre__frame-centre {
-  stroke: rgba(242, 238, 231, 0.16);
+  stroke: rgba(245, 242, 235, 0.16);
 }
 
 .theatre__bar,
@@ -1113,11 +1032,11 @@
   display: flex;
   justify-content: space-between;
   gap: var(--space-4);
-  color: #a1a1aa;
+  color: var(--chamber-ink-muted);
 }
 
 .theatre__act-name {
-  color: #ffffff;
+  color: var(--chamber-ink);
   white-space: nowrap;
 }
 
@@ -1126,15 +1045,15 @@
   bottom: var(--space-5);
   display: flex;
   gap: var(--space-4);
-  color: #a1a1aa;
+  color: var(--chamber-ink-muted);
 }
 
 .theatre__telemetry b {
   display: inline-block;
   min-width: 3ch;
   margin-left: 6px;
-  font-weight: 500;
-  color: #ffffff;
+  font-weight: var(--weight-medium);
+  color: var(--chamber-ink);
 }
 
 .theatre__readout {
@@ -1142,16 +1061,16 @@
   bottom: var(--space-5);
   max-width: 58%;
   text-align: right;
-  color: #ffcf9a;
+  color: #e5c799;
 }
 
-/* Act selector: four keys on one hairline rail. The key on stage inverts to
-   a lit surface and carries the act clock as a 2px fill; a held key gets a
-   razor-thin amber edge. */
+/* Act selector: four keys on one hairline rail inside the chamber. The key on
+   stage lifts to a lit surface and carries the act clock as a 2px fill; a
+   held key gets a razor-thin champagne edge. */
 .theatre__acts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-top: 1px solid var(--bento-edge);
+  border-top: 1px solid var(--chamber-rule);
 }
 
 .theatre__act {
@@ -1163,9 +1082,9 @@
   min-height: 56px;
   padding: var(--space-3) var(--space-4);
   border: 0;
-  border-right: 1px solid var(--bento-edge);
+  border-right: 1px solid var(--chamber-rule);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--chamber-ink-muted);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -1179,39 +1098,39 @@
 }
 
 .theatre__act:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.025);
+  color: var(--chamber-ink);
+  background: rgba(245, 242, 235, 0.03);
 }
 
 .theatre__act:focus-visible {
-  outline: 1px solid var(--lumen-amber-soft);
+  outline: 1px solid var(--focus-ring);
   outline-offset: -1px;
 }
 
 .theatre__act[data-active] {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--chamber-ink);
+  background: rgba(245, 242, 235, 0.06);
 }
 
 .theatre__act[aria-pressed='true'] {
-  box-shadow: inset 0 0 0 1px rgba(232, 146, 58, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(229, 199, 153, 0.55);
 }
 
 .theatre__act-index {
   flex: none;
   font-size: var(--text-2xs);
-  color: var(--text-muted);
+  color: var(--chamber-ink-muted);
 }
 
 .theatre__act[data-active] .theatre__act-index {
-  color: var(--lumen-amber);
+  color: var(--emission-soft);
 }
 
 .theatre__act-label {
   min-width: 0;
   overflow: hidden;
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: -0.005em;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1229,112 +1148,88 @@
 .theatre__act-fill {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, rgba(232, 146, 58, 0.55) 0%, #f0b273 100%);
+  background: linear-gradient(90deg, rgba(212, 136, 58, 0.55) 0%, var(--emission-soft) 100%);
   transform: scaleX(0);
   transform-origin: left;
 }
 
 .theatre__caption {
   padding: var(--space-3) var(--bento-pad) var(--space-4);
-  border-top: 1px solid var(--bento-edge);
+  border-top: 1px solid var(--chamber-rule);
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: #a1a1aa;
+  color: var(--chamber-ink-muted);
 }
 
-/* ---------- capability pillars ---------- */
+/* ---------- capability index ---------- */
 
+/* Three rows on the paper between hairlines. Index, title and line glyph
+   on the first line, one sentence under it, the key figures as naked
+   tracked text. The capability on stage inverts its index to carbon. */
 .showcase3d__pillars {
   display: grid;
   grid-template-rows: repeat(3, minmax(0, 1fr));
-  gap: var(--bento-gap);
   margin: 0;
   padding: 0;
   list-style: none;
+  border-top: 1px solid var(--rule-ink);
 }
 
 .showcase3d__pillar-cell {
   min-width: 0;
+  border-bottom: 1px solid var(--rule-section);
 }
 
 .showcase3d__pillar {
-  --glow-x: 50%;
-  --glow-y: 30%;
-  --glow-a: 0;
-
   position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'index title glyph'
+    '. body body'
+    '. chips chips';
+  align-content: start;
+  column-gap: var(--space-4);
   height: 100%;
-  padding: var(--space-5) var(--space-5) var(--space-6);
-  border: 1px solid var(--bento-edge);
-  border-radius: var(--bento-radius);
-  background: var(--bento-surface);
-  -webkit-backdrop-filter: blur(var(--bento-blur));
-  backdrop-filter: blur(var(--bento-blur));
-  isolation: isolate;
+  padding: var(--space-5) var(--space-3) var(--space-6) 0;
   cursor: pointer;
-  transition:
-    border-color var(--duration-slow) var(--ease-out),
-    background-color var(--duration-slow) var(--ease-out),
-    box-shadow var(--duration-hover) var(--ease-cinematic);
-}
-
-.showcase3d__pillar::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  background: radial-gradient(
-    var(--tilt-glow-radius) circle at var(--glow-x) var(--glow-y),
-    rgba(240, 178, 115, 0.1) 0%,
-    rgba(240, 178, 115, 0.035) 38%,
-    transparent 70%
-  );
-  opacity: var(--glow-a);
-  pointer-events: none;
+  transition: background-color var(--duration-slow) var(--ease-out);
 }
 
 .showcase3d__pillar:hover {
-  border-color: var(--bento-edge-hover);
-  box-shadow: 0 32px 64px -32px rgba(0, 0, 0, 0.8);
+  background: rgba(20, 19, 17, 0.025);
 }
 
-.showcase3d__pillar[data-active] {
-  border-color: rgba(232, 146, 58, 0.34);
-  background-color: rgba(232, 146, 58, 0.035);
-}
-
-/* Index left, glyph badge right: the card reads at a glance before its copy. */
+/* The decorative top row hands its two cells to the row grid. */
 .showcase3d__pillar-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
+  display: contents;
 }
 
 .showcase3d__pillar-index {
+  grid-area: index;
+  align-self: start;
+  justify-self: start;
+  margin-top: 4px;
+  padding: 3px 5px;
   font-size: var(--text-2xs);
-  font-weight: 500;
-  letter-spacing: var(--tracking-label);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
-  transition: color var(--duration-slow) var(--ease-out);
+  transition:
+    color var(--duration-base) var(--ease-out),
+    background-color var(--duration-base) var(--ease-out);
 }
 
 .showcase3d__pillar-badge {
+  grid-area: glyph;
   display: grid;
-  flex: none;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.025);
-  color: #ffffff;
-  transition: border-color var(--duration-slow) var(--ease-out);
+  width: 28px;
+  height: 28px;
+  color: var(--text-secondary);
+  transition: color var(--duration-base) var(--ease-out);
 }
 
 .showcase3d__pillar-badge svg {
@@ -1343,19 +1238,21 @@
 }
 
 .showcase3d__pillar[data-active] .showcase3d__pillar-index {
-  color: var(--lumen-amber);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 .showcase3d__pillar[data-active] .showcase3d__pillar-badge {
-  border-color: rgba(232, 146, 58, 0.34);
+  color: var(--text-primary);
 }
 
 .showcase3d__pillar-title {
-  font-size: clamp(1.25rem, 1rem + 0.6vw, 1.5rem);
-  font-weight: var(--weight-strong);
-  line-height: 1.15;
-  letter-spacing: -0.025em;
-  color: #ffffff;
+  grid-area: title;
+  font-size: clamp(1.125rem, 0.95rem + 0.45vw, 1.375rem);
+  font-weight: var(--weight-regular);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
 }
 
 .showcase3d__pillar-key {
@@ -1370,25 +1267,27 @@
 }
 
 .showcase3d__pillar-key:focus-visible {
-  outline: 1px solid var(--lumen-amber-soft);
+  outline: 1px solid var(--focus-ring);
   outline-offset: 4px;
 }
 
 .showcase3d__pillar-body {
-  flex: 1;
-  max-width: 34ch;
+  grid-area: body;
+  max-width: 36ch;
+  margin-top: var(--space-2);
   font-size: var(--text-sm);
-  font-weight: var(--weight-light);
-  line-height: 1.7;
+  font-weight: var(--weight-regular);
+  line-height: 1.65;
   color: var(--text-secondary);
 }
 
-/* Key figures as quiet pills: a hairline edge, never a lit dot. */
+/* Key figures as naked tracked text, split by a quiet slash: no pills. */
 .showcase3d__pillar-chips {
+  grid-area: chips;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: 0;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-3) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -1396,31 +1295,27 @@
 .showcase3d__pillar-chip {
   display: inline-flex;
   align-items: center;
-  height: 26px;
-  padding-inline: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
+  gap: var(--space-2);
   font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  font-weight: var(--weight-regular);
+  line-height: 1.5;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   white-space: nowrap;
-  color: var(--text-secondary);
-  transition:
-    border-color var(--duration-slow) var(--ease-out),
-    color var(--duration-slow) var(--ease-out);
+  color: var(--text-primary);
 }
 
-.showcase3d__pillar[data-active] .showcase3d__pillar-chip {
-  border-color: rgba(229, 199, 153, 0.3);
-  color: #f3e3c6;
+.showcase3d__pillar-chip + .showcase3d__pillar-chip::before {
+  content: '/';
+  color: var(--text-muted);
 }
 
 /* ---------- launch bar ---------- */
 
-/* One slim row under the rig: the headline, three quick-launch pills and the
-   studio key. Its height is the key's (54 px) plus a 20 px inset, under
-   110 px on a desktop; narrower frames wrap it to two rows, phones stack it. */
+/* One full-width bar under the rig between a carbon rule and a hairline:
+   the headline, three quick-launch keys and the studio key. Its height is
+   the key's (54 px) plus a 20 px inset, under 110 px on a desktop; narrower
+   frames wrap it to two rows, phones stack it. */
 .launchpad {
   position: relative;
   display: grid;
@@ -1428,59 +1323,27 @@
   grid-template-areas: 'copy presets cta';
   align-items: center;
   gap: var(--space-4) var(--space-5);
-  margin-top: var(--bento-gap);
-  padding: 20px 20px 20px 28px;
-  border: 1px solid rgba(232, 146, 58, 0.28);
-  border-radius: var(--bento-radius);
-  background: radial-gradient(
-    55% 240% at 100% 50%,
-    rgba(232, 146, 58, 0.16) 0%,
-    rgba(232, 146, 58, 0.04) 55%,
-    rgba(255, 255, 255, 0.02) 100%
-  );
-  -webkit-backdrop-filter: blur(var(--bento-blur));
-  backdrop-filter: blur(var(--bento-blur));
-  overflow: hidden;
-  isolation: isolate;
-}
-
-/* A drafting lattice behind the keys that fades out toward the headline, and a lit top edge. */
-.launchpad::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background:
-    repeating-linear-gradient(90deg, rgba(242, 238, 231, 0.035) 0 1px, transparent 1px 40px),
-    repeating-linear-gradient(0deg, rgba(242, 238, 231, 0.035) 0 1px, transparent 1px 40px);
-  -webkit-mask-image: radial-gradient(45% 160% at 100% 50%, #000 0%, transparent 80%);
-  mask-image: radial-gradient(45% 160% at 100% 50%, #000 0%, transparent 80%);
-  pointer-events: none;
-}
-
-.launchpad::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 12%;
-  right: 12%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(240, 178, 115, 0.65) 50%, transparent 100%);
-  pointer-events: none;
+  margin-top: var(--space-5);
+  padding: 20px 0;
+  border-top: 1px solid var(--rule-ink);
+  border-bottom: 1px solid var(--rule-section);
+  border-radius: 0;
+  background: none;
 }
 
 .launchpad__title {
   grid-area: copy;
   min-width: 0;
   font-size: 20px;
-  font-weight: var(--weight-strong);
+  font-weight: var(--weight-regular);
   line-height: 1.2;
   letter-spacing: -0.02em;
   text-wrap: balance;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
-/* Quick-launch pills: a glyph, a short label and an arrow that is the only part to travel. */
+/* Quick-launch keys: a line glyph, a short label and an arrow that is the
+   only part to travel. Square hairlines that firm to carbon on hover. */
 .launchpad__presets {
   grid-area: presets;
   display: flex;
@@ -1497,15 +1360,13 @@
   align-items: center;
   gap: var(--space-2);
   height: 40px;
-  padding: 0 14px 0 7px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  background: rgba(8, 8, 10, 0.46);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  color: #ffffff;
+  padding: 0 14px 0 10px;
+  border: 1px solid rgba(20, 19, 17, 0.28);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
   white-space: nowrap;
   transition:
@@ -1515,12 +1376,12 @@
 
 .launchpad__preset:hover,
 .launchpad__preset:focus-visible {
-  border-color: rgba(240, 178, 115, 0.5);
-  background: rgba(26, 20, 14, 0.72);
+  border-color: var(--ink);
+  background: rgba(20, 19, 17, 0.03);
 }
 
 .launchpad__preset:focus-visible {
-  outline: 1px solid var(--lumen-amber-soft);
+  outline: 1px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -1528,11 +1389,8 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
+  width: 22px;
+  height: 22px;
 }
 
 .launchpad__preset-glyph svg {
@@ -1544,7 +1402,7 @@
   flex: none;
   width: 12px;
   height: 12px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   transition:
     transform var(--duration-base) var(--ease-out),
     color var(--duration-base) var(--ease-out);
@@ -1553,12 +1411,12 @@
 .launchpad__preset:hover .launchpad__preset-arrow,
 .launchpad__preset:focus-visible .launchpad__preset-arrow {
   transform: translateX(3px);
-  color: var(--lumen-amber-soft);
+  color: var(--text-primary);
 }
 
-/* The flagship key: sans, sentence case, a soft champagne cap with espresso ink
-   and a lit top edge. It stays anchored on hover (no lift, no plinth, no
-   magnetic pull): a brighter cap fades in over it and only the arrow moves. */
+/* The flagship key: a matte carbon slab in sentence case with paper ink. It
+   stays anchored on hover: a deeper carbon layer fades in under the label
+   and only the arrow moves. */
 .button.launchpad__cta {
   grid-area: cta;
   position: relative;
@@ -1569,14 +1427,12 @@
   padding: 0 28px;
   font-family: var(--font-sans);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
   text-transform: none;
-  border-color: rgba(255, 244, 224, 0.55);
-  background: linear-gradient(135deg, #f3e3c6 0%, #e5c799 55%, #d8b27c 100%);
-  color: #141210;
-  translate: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 .button.launchpad__cta::before {
@@ -1584,20 +1440,16 @@
   position: absolute;
   inset: 0;
   z-index: -1;
-  border-radius: inherit;
-  background: linear-gradient(135deg, #fbf3e4 0%, #f1dbb5 55%, #e6c591 100%);
+  background: var(--ink-hover);
   opacity: 0;
   transition: opacity var(--duration-base) var(--ease-out);
 }
 
 .button.launchpad__cta:hover:not(:disabled),
 .button.launchpad__cta:active:not(:disabled) {
-  --lift: 0px;
-  --plinth: 0px;
-  translate: none;
-  border-color: rgba(255, 249, 238, 0.85);
-  background: linear-gradient(135deg, #f3e3c6 0%, #e5c799 55%, #d8b27c 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 .button.launchpad__cta:hover:not(:disabled)::before,
@@ -1611,9 +1463,7 @@
   place-items: center;
   width: 34px;
   height: 34px;
-  border: 1px solid rgba(20, 18, 16, 0.18);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.28);
+  border: 1px solid rgba(245, 242, 235, 0.24);
 }
 
 .button.launchpad__cta .launchpad__cta-glyph svg {
@@ -1635,9 +1485,9 @@
   transform: translateX(3px);
 }
 
-/* The border beam: an alabaster head on a gold trail, gliding round the key once
-   every 6 s. Each dash starts one dash length back, so both share a leading edge.
-   Laid over the border box, so the ribbon runs on the key's own 1px edge. */
+/* The light trace: a thin alabaster head on a champagne trail, gliding round
+   the key once every 6 s. Each dash starts one dash length back, so both
+   share a leading edge. Laid over the border box, on the key's own edge. */
 .button.launchpad__cta .launchpad__cta-beam {
   position: absolute;
   inset: -1px;
@@ -1649,20 +1499,20 @@
 
 .launchpad__cta-beam rect {
   fill: none;
-  stroke-linecap: round;
+  stroke-linecap: square;
 }
 
 .launchpad__cta-beam-trail {
-  stroke: rgba(216, 178, 124, 0.85);
-  stroke-width: 1.5;
+  stroke: rgba(229, 199, 153, 0.7);
+  stroke-width: 1;
   stroke-dasharray: 26 74;
   stroke-dashoffset: 26;
   animation: cta-beam-trail 6s linear infinite;
 }
 
 .launchpad__cta-beam-head {
-  stroke: #fffaf0;
-  stroke-width: 2;
+  stroke: #f5f2eb;
+  stroke-width: 1.5;
   stroke-dasharray: 7 93;
   stroke-dashoffset: 7;
   animation: cta-beam-head 6s linear infinite;
@@ -1701,13 +1551,13 @@
 .launchpad__cta-sub {
   font-family: var(--font-mono);
   font-size: 10.5px;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  opacity: 0.72;
+  opacity: 0.66;
 }
 
-/* Narrower desktops: the headline takes the first row, pills and key the second. */
+/* Narrower desktops: the headline takes the first row, keys the second. */
 @media (max-width: 1279px) {
   .launchpad {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -1720,11 +1570,13 @@
 @media (max-width: 1099px) {
   .showcase3d__rig {
     grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--space-6);
   }
 
   .showcase3d__pillars {
     grid-template-rows: none;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: var(--space-5);
   }
 }
 
@@ -1758,7 +1610,7 @@
   }
 
   .theatre__act:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--bento-edge);
+    border-bottom: 1px solid var(--chamber-rule);
   }
 
   .launchpad {
@@ -1767,7 +1619,6 @@
       'copy'
       'presets'
       'cta';
-    padding: 20px;
   }
 
   .launchpad__presets li {
@@ -1809,5 +1660,133 @@
   .button.launchpad__cta .launchpad__cta-arrow,
   .launchpad__preset-arrow {
     transition: none;
+  }
+}
+
+/* 05 / Workspaces: a horizontal editorial index. Three full-width rows
+   between carbon rules, each a four-column line: index, title, description,
+   then a bare line drawing over the way in. */
+
+.entries {
+  padding-top: var(--section-space);
+}
+
+.entries__grid {
+  display: grid;
+  border-top: 1px solid var(--rule-ink);
+}
+
+.entry-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 2.1fr) minmax(0, 2.8fr) minmax(0, 1.8fr);
+  grid-template-areas:
+    'index title body glyph'
+    'index title body cta';
+  grid-template-rows: 1fr auto;
+  column-gap: clamp(var(--space-4), 2.6vw, 40px);
+  row-gap: var(--space-4);
+  padding-block: clamp(var(--space-6), 3vw, var(--space-7));
+  border-bottom: 1px solid var(--rule-ink);
+  transition: background-color var(--duration-slow) var(--ease-out);
+}
+
+.entry-card:hover {
+  background: rgba(20, 19, 17, 0.025);
+}
+
+.entry-card > .index-label {
+  grid-area: index;
+  padding-top: 6px;
+}
+
+.entry-card__title {
+  grid-area: title;
+  font-size: clamp(1.5rem, 1.1rem + 1.2vw, 2.25rem);
+  font-weight: var(--weight-display);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+
+.entry-card__body {
+  grid-area: body;
+  max-width: 44ch;
+  padding-top: 6px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+/* The line drawing stands bare on the paper: no stage, no box. */
+.entry-card__glyph {
+  grid-area: glyph;
+  display: block;
+  justify-self: end;
+  width: min(100%, 168px);
+  color: var(--text-secondary);
+  transition: color var(--duration-slow) var(--ease-out);
+}
+
+.entry-card__glyph svg {
+  width: 100%;
+  height: auto;
+  max-height: 92px;
+  transition: transform var(--duration-hover) var(--ease-cinematic);
+  transform-origin: 100% 50%;
+}
+
+.entry-card:hover .entry-card__glyph {
+  color: var(--text-primary);
+}
+
+.entry-card:hover .entry-card__glyph svg {
+  transform: scale(var(--hover-zoom));
+}
+
+.entry-card__cta {
+  grid-area: cta;
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.entry-card__cta svg {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--duration-base) var(--ease-out);
+}
+
+.entry-card:hover .entry-card__cta svg {
+  transform: translateX(4px);
+}
+
+@media (max-width: 959px) {
+  .entry-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'index glyph'
+      'title glyph'
+      'body body'
+      'cta cta';
+    grid-template-rows: auto;
+  }
+
+  .entry-card__glyph {
+    width: 112px;
+  }
+
+  .entry-card__body {
+    padding-top: 0;
+  }
+
+  .entry-card__cta {
+    justify-self: start;
   }
 }

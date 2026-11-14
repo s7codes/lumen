@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useCardTilt } from '../hooks/useCardTilt.js';
 import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { useSectionSpy } from '../hooks/useSectionLink.js';
 import { useShowcaseTheatre } from '../hooks/useShowcaseTheatre.js';
@@ -40,7 +39,7 @@ const PILLARS = Object.freeze([
   },
 ]);
 
-// Compact quick-launch pills: the visible label stays short, the spec rides in the tooltip.
+// Compact quick-launch keys: the visible label stays short, the spec rides in the tooltip.
 const LAUNCH_PRESETS = Object.freeze([
   {
     id: 'orbit',
@@ -71,15 +70,13 @@ function hoverIntent(event) {
   return event.pointerType !== 'touch';
 }
 
+/** One row of the capability index: hovering previews its act, a click holds it. */
 function Pillar({ pillar, active, held, theatre }) {
   const reveal = useScrollReveal();
-  const cardRef = useRef(null);
-  useCardTilt(cardRef);
   const { act, Glyph } = pillar;
   return (
     <li ref={reveal} className="showcase3d__pillar-cell reveal-up">
       <article
-        ref={cardRef}
         className="showcase3d__pillar"
         data-active={active || undefined}
         data-testid={`showcase-pillar-${act}`}
@@ -129,7 +126,7 @@ function Theatre({ stage, setStageNode, canvasRef, theatre }) {
     <figure
       ref={setStageNode}
       id={STAGE_ID}
-      className="showcase3d__stage bento reveal-cinematic"
+      className="showcase3d__stage optical reveal-cinematic"
       data-act={stage.act}
       data-held={stage.locked ? 'true' : undefined}
       data-testid="showcase-stage"
@@ -198,7 +195,7 @@ function Theatre({ stage, setStageNode, canvasRef, theatre }) {
 }
 
 /*
- * A light ribbon tracing the key's perimeter. Each rect has pathLength 100,
+ * A light trace on the key's square perimeter. Each rect has pathLength 100,
  * so a dash is a share of the perimeter at any key width and the ribbon moves
  * at one even speed round the long and short edges alike; the trail and the
  * head share their leading edge, which tapers the ribbon toward its tail.
@@ -206,17 +203,17 @@ function Theatre({ stage, setStageNode, canvasRef, theatre }) {
 function CtaBorderBeam() {
   return (
     <svg className="launchpad__cta-beam" data-testid="cta-border-beam" aria-hidden="true" focusable="false">
-      <rect className="launchpad__cta-beam-trail" width="100%" height="100%" rx="3" pathLength="100" />
-      <rect className="launchpad__cta-beam-head" width="100%" height="100%" rx="3" pathLength="100" />
+      <rect className="launchpad__cta-beam-trail" width="100%" height="100%" pathLength="100" />
+      <rect className="launchpad__cta-beam-head" width="100%" height="100%" pathLength="100" />
     </svg>
   );
 }
 
 /*
- * The launch bar: one slim row under the theatre and its cards (headline,
- * quick-launch pills, the studio key), so a single button never sits in a
- * cavernous box. Every key stays anchored on hover: no lift, no plinth, no
- * magnetic pull; the cap brightens and only its arrow travels.
+ * The launch bar: one hairline footer bar under the theatre and its index
+ * (headline, quick-launch keys, the studio key), so a single button never
+ * sits in a cavernous box. Every key stays anchored on hover: the surface
+ * deepens and only its arrow travels.
  */
 function Launchpad() {
   const reveal = useScrollReveal();
@@ -252,7 +249,6 @@ function Launchpad() {
         to={LAUNCH_PATH}
         className="button button--primary launchpad__cta"
         data-testid="launch-3d-studio-cta"
-        data-magnet="off"
         onPointerEnter={warmPlanner}
         onFocus={warmPlanner}
       >

@@ -57,7 +57,7 @@ function AmbientHero() {
   useAmbientLight(surfaceRef, readoutRef);
 
   return (
-    <section ref={surfaceRef} className="hero" data-testid="ambient-surface" aria-labelledby="hero-title">
+    <section ref={surfaceRef} className="hero optical" data-testid="ambient-surface" aria-labelledby="hero-title">
       <div className="hero__layers" aria-hidden="true">
         <div className="hero__ribs" />
         <div className="hero__wash" />
@@ -133,17 +133,19 @@ export default function HomePage() {
     <>
       <AmbientHero />
 
-      {/* Below the hero the overview scrolls through one continuous atmosphere:
-          warm washes behind each section, drafting lines and hairline dividers. */}
+      {/* Below the hero the overview scrolls on the gallery paper: a ledger
+          strip, hairline-ruled section heads and chambers set into the page. */}
       <div className="home-atmosphere" data-testid="home-atmosphere">
         <section className="spec-strip" aria-label="System specification">
           <dl className="spec-strip__grid container reveal-stagger">
             {SPECS.map((spec, i) => (
-              <div key={spec.value} ref={reveal} className="spec-strip__item bento reveal-up">
-                <dt className="index-label">
-                  <span className="index-label__num">Spec</span> {String(i + 1).padStart(2, '0')}
+              <div key={spec.value} ref={reveal} className="spec-strip__item reveal-up">
+                <dt className="spec-strip__value">
+                  <span className="spec-strip__index mono" aria-hidden="true">
+                    {padIndex(i + 1)}
+                  </span>
+                  {spec.value}
                 </dt>
-                <dd className="spec-strip__value">{spec.value}</dd>
                 <dd className="spec-strip__detail mono">{spec.detail}</dd>
               </div>
             ))}
@@ -186,7 +188,7 @@ export default function HomePage() {
               </li>
             ))}
           </ul>
-          <div ref={reveal} className="modules__foot bento reveal-up">
+          <div ref={reveal} className="modules__foot reveal-up">
             <p className="modules__count mono">
               {padIndex(PRODUCTS.length)} modules / {padIndex(CATEGORIES.length)} families / one 24V bus
             </p>
@@ -204,27 +206,26 @@ export default function HomePage() {
           aria-labelledby="entries-title"
           data-testid="workspaces"
         >
-          <header ref={reveal} className="entries__head reveal-up">
-            <p className="index-label">
-              <span className="index-label__num">05</span> / Workspaces
-            </p>
-            <h2 id="entries-title" className="entries__title">
-              Start from a room, a part or a wall.
-            </h2>
-          </header>
+          <SectionHead
+            index="05"
+            section="Workspaces"
+            titleId="entries-title"
+            title="Start from a room, a part or a wall."
+            lede="Every workspace draws on one parts index and one 24V bus, so a room, a wall and a cart always agree on the bill of materials."
+          />
 
           <ul className="entries__grid reveal-stagger">
             {ENTRIES.map(({ to, index, section, title, body, Glyph }) => (
               <li key={to} ref={reveal} className="reveal-up">
-                <Link to={to} className="entry-card bento">
+                <Link to={to} className="entry-card">
                   <span className="index-label">
                     <span className="index-label__num">{index}</span> / {section}
                   </span>
+                  <span className="entry-card__title">{title}</span>
+                  <span className="entry-card__body">{body}</span>
                   <span className="entry-card__glyph">
                     <Glyph />
                   </span>
-                  <span className="entry-card__title">{title}</span>
-                  <span className="entry-card__body">{body}</span>
                   <span className="entry-card__cta mono">
                     Enter
                     <ArrowRight />

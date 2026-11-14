@@ -80,12 +80,17 @@ input[type='number']::-webkit-outer-spin-button {
 }
 
 ::selection {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+:where(.optical) ::selection {
   background: var(--lumen-amber);
-  color: var(--text-inverse);
+  color: #0b0b0a;
 }
 
 :focus-visible {
-  outline: 1px solid var(--lumen-amber);
+  outline: 1px solid var(--focus-ring);
   outline-offset: 3px;
   border-radius: var(--radius-xs);
 }
@@ -97,63 +102,22 @@ input[type='number']::-webkit-outer-spin-button {
   padding-inline: var(--grid-margin);
 }
 
-/* Page atmosphere, fixed under every route (LayoutShell). It is positioned at
-   the structural grid's level and precedes it, so it covers the canvas while
-   the grid and the shell paint over it. Warm basalt depth, a tungsten wash
-   falling on the stage from above, an oak glow from the top right and a
-   bronze lift from the lower left. */
+/* Page ground, fixed under every route (LayoutShell): flat alabaster paper.
+   No washes and no lattice; depth on the gallery comes from rules, type and
+   the optical chambers set into it. The route still names its atmosphere. */
 .ambient-backdrop {
   position: fixed;
   inset: 0;
   z-index: var(--z-grid);
   pointer-events: none;
-  background:
-    radial-gradient(ellipse 72% 54% at 50% -8%, rgba(232, 168, 92, 0.1), rgba(232, 168, 92, 0.03) 48%, rgba(232, 168, 92, 0) 78%),
-    radial-gradient(circle at 100% 0%, rgba(232, 146, 58, 0.05), rgba(232, 146, 58, 0) 40%),
-    radial-gradient(ellipse 60% 50% at 0% 100%, rgba(216, 178, 124, 0.04), rgba(216, 178, 124, 0) 70%),
-    linear-gradient(180deg, #0d0c0b 0%, #141210 48%, #0b0a09 100%);
+  background: var(--bg-canvas);
 }
 
-/* Drafting lines at the periphery: a 96 px lattice that clears toward the
-   middle of the page, where the content sits. */
-.ambient-backdrop::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px);
-  background-position: center top;
-  background-size: 96px 96px;
-  -webkit-mask-image: radial-gradient(ellipse 78% 74% at 50% 44%, transparent 54%, #000 100%);
-  mask-image: radial-gradient(ellipse 78% 74% at 50% 44%, transparent 54%, #000 100%);
-}
-
-/* The overview's hero owns the top of the page and the home flow scrolls its
-   own lit zones, so its backdrop stays a calm basalt. */
-.ambient-backdrop[data-atmosphere='home'] {
-  background: linear-gradient(180deg, #070706 0%, #0b0a09 60%, #090807 100%);
-}
-
-.ambient-backdrop[data-atmosphere='home']::after {
-  content: none;
-}
-
-/* Bento: a frosted, hairline-edged tile for major layout blocks. */
-.bento {
-  position: relative;
-  border: 1px solid var(--bento-edge);
-  border-radius: var(--bento-radius);
-  background: var(--bento-surface);
-  -webkit-backdrop-filter: blur(var(--bento-blur));
-  backdrop-filter: blur(var(--bento-blur));
-  transition: border-color var(--duration-slow) var(--ease-out);
-}
-
+/* Index captions: small tracked sans in graphite, the number a step quieter. */
 .index-label {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--text-2xs);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-variant-numeric: tabular-nums;
@@ -195,11 +159,12 @@ input[type='number']::-webkit-outer-spin-button {
   left: var(--space-2);
   z-index: calc(var(--z-drawer) + 1);
   padding: var(--space-2) var(--space-3);
-  background: var(--lumen-amber);
-  color: var(--text-inverse);
-  font-family: var(--font-mono);
+  background: var(--ink);
+  color: var(--paper);
   font-size: var(--text-xs);
-  border-radius: var(--radius-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
   transform: translateY(-200%);
 }
 
@@ -207,59 +172,74 @@ input[type='number']::-webkit-outer-spin-button {
   transform: none;
 }
 
+/* Keys. On paper the secondary key is a naked carbon hairline that inverts
+   on hover, and the primary key is a matte carbon slab that deepens a step.
+   Square corners, no lift, no plinth, no glow: the surface changes, the key
+   stays where it is. */
 .button {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
   height: 44px;
   padding-inline: var(--space-5);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  font-family: var(--font-sans);
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
+  line-height: 1;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-primary);
-  background: rgba(11, 11, 10, 0.4);
-
-  /* Tactile key. --mx / --my come from useMagneticField (pointer pull);
-     --lift raises the cap on hover. The plinth is a zero-blur offset slab
-     anchored where the key rests, so it trails the cap as it drifts. */
-  --key-plinth-color: var(--key-plinth-neutral);
-  translate: var(--mx, 0px) calc(var(--my, 0px) - var(--lift, 0px));
-  box-shadow: calc(var(--mx, 0px) * -1) calc(var(--plinth, 0px) - var(--my, 0px)) 0 0 var(--key-plinth-color);
+  white-space: nowrap;
+  color: var(--ink);
+  background: transparent;
   transition:
-    border-color var(--duration-fast) var(--ease-out),
-    background-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out),
-    translate var(--duration-slow) var(--ease-out),
-    box-shadow var(--duration-slow) var(--ease-out);
+    border-color var(--duration-base) var(--ease-out),
+    background-color var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out);
 }
 
 .button:hover:not(:disabled) {
-  --lift: var(--key-lift);
-  --plinth: var(--key-plinth);
-  border-color: var(--text-secondary);
-  background: var(--bg-elevated);
-}
-
-.button:active:not(:disabled) {
-  --lift: 0px;
-  --plinth: 0px;
-  transition-duration: var(--duration-fast);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 .button--primary {
-  --key-plinth-color: var(--key-plinth-primary);
-  border-color: var(--lumen-amber);
-  background: var(--lumen-amber);
-  color: var(--text-inverse);
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 .button--primary:hover:not(:disabled) {
-  border-color: var(--lumen-amber-soft);
-  background: var(--lumen-amber-soft);
+  border-color: var(--ink-hover);
+  background: var(--ink-hover);
+}
+
+/* Inside a chamber: the primary key is crisp alabaster with carbon ink, the
+   secondary key a quiet hairline. Labels keep the instrument's mono face. */
+:where(.optical) .button {
+  border-color: var(--border-strong);
+  background: rgba(11, 11, 10, 0.4);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+:where(.optical) .button:hover:not(:disabled) {
+  border-color: var(--text-secondary);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+:where(.optical) .button--primary {
+  border-color: var(--paper);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+:where(.optical) .button--primary:hover:not(:disabled) {
+  border-color: var(--paper-stone);
+  background: var(--paper-stone);
+  color: var(--ink);
 }
 
 .button svg {

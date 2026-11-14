@@ -22,12 +22,12 @@
 }
 
 .elevation-thumb__module[data-diff='added'] {
-  stroke: var(--lumen-amber);
+  stroke: var(--accent);
   stroke-width: 2;
 }
 
 .elevation-thumb__module[data-diff='modified'] {
-  stroke: #ffffff;
+  stroke: var(--text-muted);
   stroke-width: 1.5;
 }
 

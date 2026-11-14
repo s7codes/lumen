@@ -142,7 +142,7 @@ export function SearchGlyph({ className }) {
  * handle loop, drawn on the same 16-unit grid and 1.25 stroke as SearchGlyph
  * so the two navbar keys carry one visual weight at 14 x 14.
  */
-/** The cart glyph. Only the navbar pill carries the `bag-glyph` test hook; the drawer's copies pass testId={null}. */
+/** The cart glyph. Only the navbar key carries the `bag-glyph` test hook; the drawer's copies pass testId={null}. */
 export function BagGlyph({ className, testId = 'bag-glyph' }) {
   return (
     <svg className={className} viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false" data-testid={testId ?? undefined}>
