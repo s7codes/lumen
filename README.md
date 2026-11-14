@@ -1,7 +1,7 @@
-# LUMEN - Architectural Lighting, Modular Shelving & 3D Spatial CAD Platform (v8.4.0)
+# LUMEN - Architectural Lighting, Modular Shelving & 3D Spatial CAD Platform (v8.5.0)
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v8.4.0-e8923a)
+![Release](https://img.shields.io/badge/release-v8.5.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 **Live production: [https://lumen.s7codes.dev](https://lumen.s7codes.dev)**, served from a Hetzner Cloud VPS
@@ -9,20 +9,19 @@ by the Docker Compose and Caddy kit in this repository.
 
 | Playwright E2E | Rendering | AI integration | Backend |
 | --- | --- | --- | --- |
-| 318 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
+| 321 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
 
-Current release: **v8.4.0**, the dual-light hero and unified planner release. The hero is two
-light architectural interiors drawn as inline SVG in true perspective: a sculptural sconce throwing a
-crisp hyperbolic 2700K wash up and down smooth sand-stone plaster beside a molded doorway over
-herringbone oak, then a limestone gallery with a recessed 24V track, a pointer-following linear
-pendant and a lit walnut shelf. They alternate every 5 s on a 1.1 s crossfade, with no noise textures
-and no text on the pictures. Meet our Icons gains a new Act III, a matte black anodized track with
-brass louvers and a glass cylinder spot sweeping a 2700K beam across dark veined marble. Every
-catalog card is now a lifelike daylight interior of its part. The storefront always reads in Visual;
-Visual | Specs lives only in the 3D Room Planner header. The 2D Wall Studio is retired: old
-`/studio-2d` links, shared wall scenes and saved wall projects open on the north wall of the 3D
-Room Planner, which now issues the 1:20 `.SVG` / `.DXF` blueprint of any wall. The account shows
-Saved Spatial Projects and Order History only.
+Current release: **v8.5.0**, the anchored light and smooth vector release. In the hero's limestone
+gallery each track spot's light is now one true cone from its own aperture: the beam leaves the
+fixture and opens onto the scallop it lays on the stone, projected from the same 3D model as the
+spots on a 24V grazer slot. The three Explore the Lumen home rooms (Dining & Living, Bedroom
+Sanctuary, Studio Wall) are redrawn as smooth architectural vectors: crisp one-point perspective
+geometry under smooth gradients, 2700K light cones and pools, oak, walnut and warm plaster, with no
+canvas, noise, grain or filters, sharp at any pixel density. Lumen AI shows only the conversation:
+MCP tool traces, tool names and tools cited as sources never reach the chat, while each reply keeps
+its tool calls as hidden data for automation. The v8.4.0 dual-light hero, the Meet our Icons film,
+the lifelike catalog cards and the single 3D Room Planner (with the retired 2D Wall Studio's links,
+scenes and projects opening on its north wall) carry over unchanged.
 
 ## 1. Executive Overview
 
@@ -54,7 +53,7 @@ comes from the same code everywhere.
   +--------------------------------------------------------------------------+
   | Client studios                                                           |
   |   RoomPlannerPage   room3d/: WebGL2 studio, GLSL, IBL, OBJ, PNG, DXF     |
-  |   HomePage          SVG hero interiors, Canvas 2D film and theatre       |
+  |   HomePage          SVG hero and rooms, Canvas 2D film and theatre       |
   |   ConciergePanel    Lumen AI chat, applies MCP clientActions as one undo |
   |   Catalog, Bag, Checkout, CommandPalette, AccountPage                    |
   +------------------------------------+-------------------------------------+
