@@ -98,7 +98,7 @@ test.describe('lumen cloud http api', () => {
     const response = await request.get('/api/health');
     expect(response.status()).toBe(200);
     expect(await response.json()).toEqual({ ok: true, version: pkg.version, storage: 'server' });
-    expect(pkg.version).toBe('8.2.0');
+    expect(pkg.version).toBe('8.3.0');
     expect(SERVER.file.replaceAll('\\', '/').endsWith(TEST_DATA_FILE)).toBe(true);
     // The container contract: a store on the mounted volume, an explicit file winning over the
     // directory, every bind address from HOST and PORT, and loopback defaults everywhere else.

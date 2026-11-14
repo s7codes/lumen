@@ -1,7 +1,7 @@
-# LUMEN - Architectural Lighting, Modular Shelving & 3D Spatial CAD Platform (v8.2.0)
+# LUMEN - Architectural Lighting, Modular Shelving & 3D Spatial CAD Platform (v8.3.0)
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v8.2.0-e8923a)
+![Release](https://img.shields.io/badge/release-v8.3.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 **Live production: [https://lumen.s7codes.dev](https://lumen.s7codes.dev)**, served from a Hetzner Cloud VPS
@@ -9,14 +9,18 @@ by the Docker Compose and Caddy kit in this repository.
 
 | Playwright E2E | Rendering | AI integration | Backend |
 | --- | --- | --- | --- |
-| 333 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
+| 340 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
 
-Current release: **v8.2.0**, the architectural gallery release. The storefront now reads like a
-printed catalog: warm alabaster paper (`#F5F2EB`), matte carbon ink and keys (`#141311`), square
-corners and hairline rules in place of floating tiles. Live light and 3D simulation keep their own
-deep black optical chambers set into the paper (the hero, the dimming bench, the theatre, the catalog
-plinths and both planner workstations), and warm 2700K amber appears only as light emitted inside
-them. Behind it, v8.1.0's production stack is unchanged: Caddy, HSTS and a same-origin guard on writes.
+Current release: **v8.3.0**, the gallery masterpiece release. The site sits on a warm paper canvas
+(`#FAF9F6`) with matte carbon ink (`#141311`), square corners and hairline rules. Dark cutout boxes
+are gone: the overview alternates calm paper with full-bleed architectural bands. A Venetian plaster
+hero keeps its pointer-tracked pendant while the wall crossfades between two evening washes. A 60 fps
+Canvas 2D film, Meet our Icons, plays three macro acts. The dimming lab sits on a travertine band,
+the 3D theatre on a twilight slate band, and catalog parts hang on plaster walls lit by their own
+2700K wash. Explore the Lumen home shows three painted 3:4 rooms. The account is a split page
+divided by one vertical hairline. Both planners and the engine boot are now light gallery
+workstations around a framed, dark 3D stage. The production stack is unchanged: Caddy, HSTS and a
+same-origin guard on writes.
 
 ## 1. Executive Overview
 
