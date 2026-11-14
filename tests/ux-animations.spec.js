@@ -273,9 +273,9 @@ test.describe('product imagery', () => {
       blur: 'none',
     });
 
-    // The plinth: square, 4:3, a smooth daylight stone wall (never a black void
-    // and never a cloudy texture), flush with the card's top and sides, and the
-    // part drawn in true perspective in it.
+    // The plinth: square, 4:3, a warm daylight wall tone under the photograph
+    // (never a black void and never a cloudy texture), flush with the card's
+    // top and sides, and the part photographed in it at 2K.
     const plinth = card.locator('.product-card__figure');
     const stage = await plinth.evaluate((el) => {
       const style = getComputedStyle(el);
@@ -289,6 +289,8 @@ test.describe('product imagery', () => {
     await expect(plinth).not.toHaveClass(/(^|\s)optical(\s|$)/);
     const visual = plinth.getByTestId('product-visual');
     await expect(visual).toHaveAttribute('data-shape', 'shelf');
+    await expect(visual).toHaveAttribute('data-shown', 'walnut', { timeout: 15_000 });
+    expect(await visual.locator('img[data-finish="walnut"]').evaluate((el) => el.naturalWidth)).toBeGreaterThanOrEqual(1200);
     const [plinthRect, visualRect] = await Promise.all([plinth.boundingBox(), visual.boundingBox()]);
     expect(Math.abs(visualRect.width - plinthRect.width)).toBeLessThanOrEqual(1);
     expect(Math.abs(visualRect.height - plinthRect.height)).toBeLessThanOrEqual(1);
@@ -315,10 +317,10 @@ test.describe('product imagery', () => {
   }) => {
     const card = await settledCatalogCard(page, 'Floating Shelf 110');
     const stage = card.locator('.product-card__figure');
-    const drawing = stage.locator('svg.pv');
+    const drawing = stage.locator('.pv');
 
     await expect(stage).toHaveCSS('overflow', 'hidden');
-    // No outline and no texture: the interior SVG carries the whole picture.
+    // No outline and no texture: the studio photograph carries the whole picture.
     const surface = await stage.evaluate((el) => {
       const style = getComputedStyle(el);
       return { border: style.borderTopWidth, color: style.backgroundColor, image: style.backgroundImage };

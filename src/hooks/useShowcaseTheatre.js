@@ -1,77 +1,36 @@
 import { useEffect, useRef } from 'react';
-import { paintFrame } from '../lib/showcase-painter.js';
-import {
-  ACT_IDS,
-  ACT_SECONDS,
-  actCamera,
-  actSpinRate,
-  angleDelta,
-  buildLuxField,
-  busRuns,
-  createView,
-  easeInOut,
-  EYE_FOV_DEG,
-  EYE_HEIGHT_CM,
-  eyeHeading,
-  eyeIlluminance,
-  floorUnder,
-  gizmoPose,
-  illuminance,
-  isActId,
-  nextAct,
-  PENDANT,
-  SHELF,
-  shelfDimensions,
-  wrap360,
-} from '../lib/showcase-scene.js';
-import { approach, frameDelta, stepSpring } from '../lib/spring.js';
+import { FILM_SECONDS, filmBearing, filmDimPct, filmFloorUnder, filmShelf } from '../lib/showcase-film.js';
+import { ACT_SECONDS, buildLuxField, EYE_FOV_DEG, EYE_HEIGHT_CM, eyeHeading, eyeIlluminance, illuminance, isActId, nextAct, PENDANT, SHELF, shelfDimensions } from '../lib/showcase-scene.js';
+import { frameDelta } from '../lib/spring.js';
 
-// Near-critical (c = 2 * sqrt(k)): act changes glide without overshoot, and
-// the closed-form step traces the same curve at 60, 120 and 240 Hz.
-const CAMERA_SPRING = { stiffness: 14, damping: 7.6 };
-const PARALLAX_SPRING = { stiffness: 90, damping: 19 };
-const PARALLAX_DEG = { yaw: 9, pitch: 6 };
-const PRESENCE_RATE = 5;
-const LIGHT_RATE = 3;
-const SHELF_RATE = 26;
-const MAX_DPR = 2;
-// Every motion here is a closed-form spring, an exponential approach or a
-// function of the act clock, so one long frame is as exact as many short ones.
-// The 7 s acts and the 20 deg/s turntable therefore keep wall-clock time down
-// to 4 fps (a software-raster runner, a busy laptop) instead of slowing with
-// the shared 50 ms cap; past that the cap still absorbs a resumed tab.
+// A resumed tab or a long frame advances the act clock by at most this much.
 const THEATRE_MAX_DT = 0.25;
-// Reduced motion shows one still per act, taken mid-choreography.
-const STILL_T = 1.6;
-const CAM_KEYS = ['yaw', 'pitch', 'dist', 'tx', 'ty', 'tz', 'fov'];
 const UP = [0, 1, 0];
 const PENDANT_FLOOR = [(PENDANT.x0 + PENDANT.x1) / 2, 0, PENDANT.z];
-
-function clampUnit(v) {
-  return Math.max(-1, Math.min(1, v));
-}
-
-function lightLevel(act) {
-  if (act === 'orbit') return 1;
-  if (act === 'isolux') return 0.35;
-  return 0.72;
-}
+const STAGE_ASPECT = 1.5;
 
 function pad(n, width) {
   return String(Math.max(0, Math.round(n))).padStart(width, '0');
 }
 
+function clampUnit(v) {
+  return Math.max(0, Math.min(1, v));
+}
+
 /**
- * The overview theatre engine. One rAF loop integrates every motion with the
- * frame's dt, paints the canvas and writes the HUD text straight into the DOM;
- * React only hears about act changes (every few seconds) through `onAct`.
- * The loop runs only while the stage is on screen, and never under reduced
- * motion, where each act is one still frame.
+ * The overview theatre engine. Each act is a film of the 3D Spatial Studio
+ * engine; one rAF loop, running only while the stage is on screen, reads the
+ * playing film's clock, advances the acts and writes the HUD (bearing, pitch,
+ * lux and the act's readout) straight into the DOM from the same functions
+ * that posed the film, so every figure matches the frame under it. React
+ * only hears about act changes (every few seconds) through `onAct`.
  *
- * Returns a ref to the controller: pick (click: hold or release an act),
- * preview / endPreview (hover).
+ * A film plays only while the stage is visible, never under reduced motion
+ * (each act then rests on its poster, its first frame) and pauses the moment
+ * the stage scrolls away. Returns a ref to the controller: pick (click: hold
+ * or release an act), preview / endPreview (hover).
  */
-export function useShowcaseTheatre({ stageRef, canvasRef, onAct }) {
+export function useShowcaseTheatre({ stageRef, screenRef, onAct }) {
   const controller = useRef(null);
   const onActRef = useRef(onAct);
   useEffect(() => {
@@ -80,10 +39,11 @@ export function useShowcaseTheatre({ stageRef, canvasRef, onAct }) {
 
   useEffect(() => {
     const stage = stageRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!stage || !ctx) return undefined;
+    const screen = screenRef.current;
+    if (!stage || !screen) return undefined;
 
+    const films = {};
+    for (const el of screen.querySelectorAll('video[data-film]')) films[el.dataset.film] = el;
     const hud = {
       az: stage.querySelector('[data-hud="az"]'),
       pitch: stage.querySelector('[data-hud="pitch"]'),
@@ -102,7 +62,6 @@ export function useShowcaseTheatre({ stageRef, canvasRef, onAct }) {
 
     const reducedQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const field = buildLuxField();
-    const start = actCamera('orbit', 0, 0, -24);
     const s = {
       auto: 'orbit',
       locked: null,
@@ -110,19 +69,9 @@ export function useShowcaseTheatre({ stageRef, canvasRef, onAct }) {
       act: 'orbit',
       age: 0,
       cycle: 0,
-      time: 0,
-      spin: start.yaw,
-      cam: { ...start },
-      vel: Object.fromEntries(CAM_KEYS.map((key) => [key, 0])),
-      par: { x: 0, vx: 0, y: 0, vy: 0, tx: 0, ty: 0 },
-      presence: Object.fromEntries(ACT_IDS.map((id) => [id, id === 'orbit' ? 1 : 0])),
-      light: 1,
-      shelf: { x: SHELF.home.x, y: SHELF.home.y, snapped: { ...SHELF.home } },
-      pose: gizmoPose(0),
+      filmT: 0,
+      lastFilmT: null,
       pointer: null,
-      width: 0,
-      height: 0,
-      dpr: 1,
       visible: false,
       reduced: reducedQuery.matches,
       frame: 0,
@@ -132,20 +81,58 @@ export function useShowcaseTheatre({ stageRef, canvasRef, onAct }) {
 
     const notify = () => onActRef.current?.({ act: s.act, locked: s.locked, preview: s.hover });
 
+    const activeFilm = () => films[s.act];
+
+    // A film that cannot play (no codec, a failed source, autoplay refused)
+    // hands its act back to the wall clock; any other film sets the pace.
+    const failed = new Set();
+    const onFilmError = (event) => {
+      const film = event.currentTarget.closest('video');
+      if (film?.dataset.film) failed.add(film.dataset.film);
+    };
+    for (const el of Object.values(films)) {
+      el.addEventListener('error', onFilmError);
+      el.querySelector('source:last-of-type')?.addEventListener('error', onFilmError);
+    }
+    const startFilm = (film) => {
+      if (film.preload !== 'auto') film.preload = 'auto';
+      film.muted = true;
+      const attempt = film.play();
+      attempt?.catch?.((error) => {
+        if (error?.name === 'NotAllowedError' || error?.name === 'NotSupportedError') failed.add(film.dataset.film);
+      });
+    };
+
+    /** Plays the act's film from its first frame, or rests it on its poster. */
+    const cueFilm = () => {
+      for (const [id, el] of Object.entries(films)) {
+        if (id !== s.act && !el.paused) el.pause();
+      }
+      const film = activeFilm();
+      if (!film) return;
+      try {
+        film.currentTime = 0;
+      } catch {
+        /* not seekable yet: it starts at 0 anyway */
+      }
+      s.filmT = 0;
+      s.lastFilmT = null;
+      if (s.visible && !s.reduced) startFilm(film);
+    };
+
     const enter = (act) => {
       s.act = act;
       s.age = 0;
       s.cycle = 0;
-      // The orbit picks up from wherever the camera stands, so the turn never jumps.
-      if (actSpinRate(act) > 0) s.spin = s.cam.yaw;
       notify();
+      cueFilm();
     };
 
     const settle = () => {
       const next = s.hover ?? s.locked ?? s.auto;
       if (next !== s.act) enter(next);
       else notify();
-      if (s.reduced) drawStill();
+      if (s.reduced || !s.frame) drawStill();
     };
 
     const writeFill = (value) => {
@@ -161,62 +148,69 @@ export function useShowcaseTheatre({ stageRef, canvasRef, onAct }) {
       }
     };
 
-    const writeHud = (view, cam, probe) => {
-      write(hud.az, pad(wrap360(cam.yaw) % 360, 3));
-      write(hud.pitch, pad(cam.pitch, 2));
-      const t = s.age % ACT_SECONDS;
+    /** The HUD for film time t: bearing and pitch of the frame, the act's lux and readout. */
+    const writeHud = (t) => {
+      const { az, pitch } = filmBearing(s.act, t);
+      write(hud.az, pad(az, 3));
+      write(hud.pitch, pad(pitch, 2));
+      const shelf = filmShelf(s.act, t);
       let key;
       let line;
       if (s.act === 'inside') {
         key = eyeIlluminance(eyeHeading(t));
         line = `Eye ${EYE_HEIGHT_CM} cm / FOV ${EYE_FOV_DEG} deg / ${Math.round(key)} lx`;
       } else if (s.act === 'gizmo') {
-        const d = shelfDimensions(s.shelf.snapped);
-        key = illuminance([s.shelf.x + SHELF.widthCm / 2, 0, 40], UP, s.shelf.snapped);
+        const d = shelfDimensions(shelf);
+        key = illuminance([shelf.x + SHELF.widthCm / 2, 0, 40], UP, shelf);
         line = `X: ${d.x} cm / Y: ${d.y} cm / R: ${d.r} cm / C: ${d.c} cm`;
       } else if (s.act === 'isolux') {
-        key = field.surfaces[0].peak;
+        key = field.surfaces[0].peak * (filmDimPct(s.act, t) / 100);
         line = `Iso-lux 100 / 250 / 500 lx / Floor peak ${Math.round(key)} lx`;
       } else {
         key = illuminance(PENDANT_FLOOR, UP);
         line = '24V DC daisy chain / 5 nodes / 2700K';
       }
-      write(hud.lux, pad(probe ? illuminance(probe, UP, s.shelf.snapped) : key, 3));
+      const probe = s.pointer ? filmFloorUnder(s.act, t, s.pointer.x, s.pointer.y, STAGE_ASPECT) : null;
+      write(hud.lux, pad(probe ? illuminance(probe, UP, shelf) : key, 3));
       write(hud.line, line);
     };
 
-    const render = (cam, bloom) => {
-      if (s.width === 0 || s.height === 0) return;
-      const view = createView(cam, s.width, s.height);
-      const probe = s.pointer ? floorUnder(view, s.pointer.x, s.pointer.y) : null;
-      const t = s.age % ACT_SECONDS;
-      paintFrame(ctx, {
-        view,
-        dpr: s.dpr,
-        width: s.width,
-        height: s.height,
-        time: s.time,
-        presence: s.presence,
-        light: s.light,
-        shelf: s.shelf,
-        pose: s.pose,
-        runs: busRuns(s.shelf),
-        heading: { now: eyeHeading(t), at: (lag) => eyeHeading(t - lag) },
-        field,
-        bloom,
-        probe,
-      });
-      writeHud(view, cam, probe);
+    /** Reduced motion, or a stage off screen: the act's first frame, which is its poster. */
+    function drawStill() {
+      writeFill(1);
+      writeHud(0);
+    }
+
+    /**
+     * Film time from the playing film's clock. While a film loads or buffers
+     * the clock holds on the frame on screen (its poster at first), so the HUD
+     * never runs ahead of the picture or jumps back when playback starts;
+     * only a film that cannot play at all lets wall time carry its act.
+     */
+    const advance = (dt) => {
+      const film = activeFilm();
+      const span = FILM_SECONDS[s.act] ?? ACT_SECONDS;
+      if (film && !film.paused && film.readyState >= 2 && !film.seeking) {
+        const t = film.currentTime;
+        const step = s.lastFilmT === null ? 0 : (((t - s.lastFilmT) % span) + span) % span;
+        s.lastFilmT = t;
+        s.filmT = t % span;
+        return Math.min(step, THEATRE_MAX_DT);
+      }
+      s.lastFilmT = null;
+      if (!film || failed.has(s.act)) {
+        s.filmT = (s.filmT + dt) % span;
+        return dt;
+      }
+      return 0;
     };
 
-    const viewCamera = () => ({
-      ...s.cam,
-      yaw: s.cam.yaw + s.par.x * PARALLAX_DEG.yaw,
-      pitch: Math.max(5, Math.min(80, s.cam.pitch - s.par.y * PARALLAX_DEG.pitch)),
-    });
-
-    const step = (dt) => {
-      s.time += dt;
+    // The act clock is wall time (an act holds the stage 7 s however the
+    // decoder copes); the HUD reads the film clock, so it never leaves its frame.
+    const loop = (now) => {
+      const dt = frameDelta(now, s.last, THEATRE_MAX_DT);
+      s.last = now;
+      advance(dt);
       s.age += dt;
       const holding = s.locked !== null || s.hover !== null;
       if (!holding) {
@@ -226,128 +220,76 @@ export function useShowcaseTheatre({ stageRef, canvasRef, onAct }) {
           enter(s.auto);
         }
       }
-      const t = s.age % ACT_SECONDS;
-      s.spin += actSpinRate(s.act) * dt;
-      const goal = actCamera(s.act, t, s.age, s.spin);
-      for (const key of CAM_KEYS) {
-        const target = key === 'yaw' ? s.cam.yaw + angleDelta(s.cam.yaw, goal.yaw) : goal[key];
-        [s.cam[key], s.vel[key]] = stepSpring(s.cam[key], s.vel[key], target, dt, CAMERA_SPRING.stiffness, CAMERA_SPRING.damping);
-      }
-      const { stiffness, damping } = PARALLAX_SPRING;
-      [s.par.x, s.par.vx] = stepSpring(s.par.x, s.par.vx, s.par.tx, dt, stiffness, damping);
-      [s.par.y, s.par.vy] = stepSpring(s.par.y, s.par.vy, s.par.ty, dt, stiffness, damping);
-      for (const id of ACT_IDS) s.presence[id] = approach(s.presence[id], id === s.act ? 1 : 0, PRESENCE_RATE, dt);
-      s.light = approach(s.light, lightLevel(s.act), LIGHT_RATE, dt);
-
-      s.pose = s.act === 'gizmo' ? gizmoPose(t) : { ...SHELF.home, axis: null, lock: 0 };
-      s.shelf.snapped = { x: s.pose.x, y: s.pose.y };
-      s.shelf.x = approach(s.shelf.x, s.pose.x, SHELF_RATE, dt);
-      s.shelf.y = approach(s.shelf.y, s.pose.y, SHELF_RATE, dt);
-
-      writeFill(holding ? 1 : Math.min(1, s.cycle / ACT_SECONDS));
-      render(viewCamera(), s.act === 'isolux' ? easeInOut(s.age / 1.6) : 1);
-    };
-
-    const loop = (now) => {
-      const dt = frameDelta(now, s.last, THEATRE_MAX_DT);
-      s.last = now;
-      step(dt);
+      writeFill(holding ? 1 : clampUnit(s.cycle / ACT_SECONDS));
+      writeHud(s.filmT);
       s.frame = requestAnimationFrame(loop);
     };
 
+    // Posters wait for the stage: four photographs nobody has scrolled to are never fetched.
+    const revealPosters = () => {
+      for (const el of Object.values(films)) {
+        if (!el.getAttribute('poster') && el.dataset.poster) el.setAttribute('poster', el.dataset.poster);
+      }
+    };
+
     const startLoop = () => {
+      if (s.visible) revealPosters();
       if (s.frame || s.reduced || !s.visible) return;
       s.last = performance.now();
+      const film = activeFilm();
+      if (film?.paused) startFilm(film);
       s.frame = requestAnimationFrame(loop);
     };
 
     const stopLoop = () => {
       cancelAnimationFrame(s.frame);
       s.frame = 0;
-    };
-
-    /** Reduced motion: the act's still, camera and lights already settled. */
-    function drawStill() {
-      const cam = actCamera(s.act, STILL_T, 3, s.act === 'isolux' ? 32 : -24);
-      for (const id of ACT_IDS) s.presence[id] = id === s.act ? 1 : 0;
-      s.light = lightLevel(s.act);
-      s.age = STILL_T;
-      s.pose = s.act === 'gizmo' ? gizmoPose(STILL_T) : { ...SHELF.home, axis: null, lock: 0 };
-      s.shelf = { x: s.pose.x, y: s.pose.y, snapped: { x: s.pose.x, y: s.pose.y } };
-      s.cam = { ...cam };
-      writeFill(1);
-      render(cam, 1);
-    }
-
-    let stillFrame = 0;
-    const requestStill = () => {
-      if (stillFrame) return;
-      stillFrame = requestAnimationFrame(() => {
-        stillFrame = 0;
-        drawStill();
-      });
-    };
-
-    const resize = () => {
-      const width = canvas.clientWidth;
-      const height = canvas.clientHeight;
-      const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-      if (width === s.width && height === s.height && dpr === s.dpr) return;
-      s.width = width;
-      s.height = height;
-      s.dpr = dpr;
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      if (s.reduced || !s.frame) {
-        if (s.reduced) drawStill();
-        else render(viewCamera(), 1);
-      }
+      for (const el of Object.values(films)) if (!el.paused) el.pause();
     };
 
     const onMove = (event) => {
-      const rect = canvas.getBoundingClientRect();
+      const rect = screen.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      s.pointer = { x, y };
-      const tilt = event.pointerType !== 'touch' && !s.reduced;
-      s.par.tx = tilt ? clampUnit((x / rect.width) * 2 - 1) : 0;
-      s.par.ty = tilt ? clampUnit((y / rect.height) * 2 - 1) : 0;
-      if (s.reduced) requestStill();
+      s.pointer = { x: clampUnit((event.clientX - rect.left) / rect.width), y: clampUnit((event.clientY - rect.top) / rect.height) };
+      if (s.reduced || !s.frame) writeHud(s.reduced ? 0 : s.filmT);
     };
 
     const onLeave = () => {
       s.pointer = null;
-      s.par.tx = 0;
-      s.par.ty = 0;
-      if (s.reduced) requestStill();
+      if (s.reduced || !s.frame) writeHud(s.reduced ? 0 : s.filmT);
     };
 
     const onReducedChange = () => {
       s.reduced = reducedQuery.matches;
       if (s.reduced) {
         stopLoop();
-        s.par = { x: 0, vx: 0, y: 0, vy: 0, tx: 0, ty: 0 };
+        for (const el of Object.values(films)) {
+          try {
+            el.currentTime = 0;
+          } catch {
+            /* not seekable yet */
+          }
+        }
         drawStill();
       } else {
         startLoop();
       }
     };
 
-    const visibility = new IntersectionObserver(([entry]) => {
-      s.visible = entry.isIntersecting;
-      if (s.visible) startLoop();
-      else stopLoop();
-    });
-    const sizing = new ResizeObserver(resize);
+    const visibility = new IntersectionObserver(
+      ([entry]) => {
+        s.visible = entry.isIntersecting;
+        if (s.visible) startLoop();
+        else stopLoop();
+      },
+      { threshold: 0.2 },
+    );
 
-    resize();
-    sizing.observe(canvas);
-    visibility.observe(canvas);
-    canvas.addEventListener('pointermove', onMove, { passive: true });
-    canvas.addEventListener('pointerleave', onLeave);
+    visibility.observe(screen);
+    screen.addEventListener('pointermove', onMove, { passive: true });
+    screen.addEventListener('pointerleave', onLeave);
     reducedQuery.addEventListener('change', onReducedChange);
-    if (s.reduced) drawStill();
+    drawStill();
 
     controller.current = {
       pick(act) {
@@ -376,15 +318,18 @@ export function useShowcaseTheatre({ stageRef, canvasRef, onAct }) {
 
     return () => {
       stopLoop();
-      cancelAnimationFrame(stillFrame);
       visibility.disconnect();
-      sizing.disconnect();
-      canvas.removeEventListener('pointermove', onMove);
-      canvas.removeEventListener('pointerleave', onLeave);
+      for (const el of Object.values(films)) {
+        el.removeEventListener('error', onFilmError);
+        el.querySelector('source:last-of-type')?.removeEventListener('error', onFilmError);
+      }
+      screen.removeEventListener('pointermove', onMove);
+      screen.removeEventListener('pointerleave', onLeave);
       reducedQuery.removeEventListener('change', onReducedChange);
       controller.current = null;
     };
-  }, [stageRef, canvasRef]);
+  }, [stageRef, screenRef]);
 
   return controller;
 }
+

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { compressStatic, isCompressible, negotiateEncoding } from './compress.js';
@@ -13,12 +14,31 @@ import { compressStatic, isCompressible, negotiateEncoding } from './compress.js
  * hit. Text files over 1 KB go out as Brotli or gzip, compressed once on the
  * libuv threadpool and cached beside the original; each coding carries its
  * own ETag, as RFC 9110 asks of distinct representations.
+ *
+ * Media: photographs and films under /media/ are immutable for a year as
+ * well (the page asks for them with a release query, ?v=, so a new release
+ * is a new URL). Uncompressed responses honour a single byte range (RFC 9110
+ * section 14): 206 Partial Content with Content-Range, 416 past the end, so
+ * a video can seek and stream. Files over 1 MB are streamed from disk rather
+ * than held in memory; their ETag is hashed once per change.
  */
 
 export const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 export const REVALIDATE_CACHE_CONTROL = 'no-cache';
 
+/**
+ * The document policy of the app shell, the same directives index.html
+ * carries in its meta tag, plus frame-ancestors, which only a header can
+ * set. Photographs may come from data: and blob: URLs; films from the
+ * origin and blob: only.
+ */
+export const SHELL_CSP_META =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';";
+export const SHELL_CSP = `${SHELL_CSP_META} frame-ancestors 'none'`;
+
 const ASSET_PREFIX = '/assets/';
+const MEDIA_PREFIX = '/media/';
+const STREAM_THRESHOLD_BYTES = 1024 * 1024;
 const SHELL_FILE = 'index.html';
 const ETAG_HASH_CHARS = 27;
 const MAX_PATH_CHARS = 1024;
@@ -45,6 +65,9 @@ const MIME_TYPES = Object.freeze({
   '.woff2': 'font/woff2',
   '.woff': 'font/woff',
   '.wasm': 'application/wasm',
+  '.webm': 'video/webm',
+  '.mp4': 'video/mp4',
+  '.vtt': 'text/vtt; charset=utf-8',
 });
 
 const STATIC_HEADERS = Object.freeze({
@@ -74,6 +97,41 @@ export function etagMatches(header, etag) {
     if ((tag.startsWith('W/') ? tag.slice(2) : tag) === etag) return true;
   }
   return false;
+}
+
+/**
+ * Reads a Range header against a representation of `size` bytes. Returns
+ * null to serve the whole body (no header, another unit, several ranges or a
+ * malformed value, all of which a server may ignore), 'unsatisfiable' for a
+ * range wholly past the end, or { start, end } inclusive.
+ */
+export function parseRange(header, size) {
+  if (typeof header !== 'string' || header.length > 200) return null;
+  const match = /^bytes=(\d{0,15})-(\d{0,15})$/.exec(header.trim());
+  if (!match) return null;
+  const [, first, last] = match;
+  if (first === '' && last === '') return null;
+  if (first === '') {
+    const suffix = Number(last);
+    if (suffix === 0 || size === 0) return 'unsatisfiable';
+    return { start: Math.max(0, size - suffix), end: size - 1 };
+  }
+  const start = Number(first);
+  // A last position before the first makes the whole header invalid: ignore it (RFC 9110 14.1.1).
+  if (last !== '' && Number(last) < start) return null;
+  if (start >= size) return 'unsatisfiable';
+  const end = last === '' ? size - 1 : Math.min(Number(last), size - 1);
+  return { start, end };
+}
+
+function hashFile(file) {
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha256');
+    createReadStream(file)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('error', reject)
+      .on('end', () => resolve(hash.digest('base64url').slice(0, ETAG_HASH_CHARS)));
+  });
 }
 
 /**
@@ -122,13 +180,18 @@ export function createStaticHandler({ root }) {
     if (!info.isFile()) return null;
     const cached = files.get(file);
     if (cached && cached.mtimeMs === info.mtimeMs && cached.size === info.size) return cached;
-    const body = await readFile(file);
-    const hash = createHash('sha256').update(body).digest('base64url').slice(0, ETAG_HASH_CHARS);
+    const type = MIME_TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream';
+    // A film is streamed from disk on every request; only its validator is kept.
+    const streamed = info.size > STREAM_THRESHOLD_BYTES;
+    const body = streamed ? null : await readFile(file);
+    const hash = streamed ? await hashFile(file) : createHash('sha256').update(body).digest('base64url').slice(0, ETAG_HASH_CHARS);
     const entry = {
       mtimeMs: info.mtimeMs,
-      size: body.length,
+      size: streamed ? info.size : body.length,
       body,
-      type: MIME_TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream',
+      file,
+      streamed,
+      type,
       hash,
       etag: `"${hash}"`,
       encoded: new Map(),
@@ -168,12 +231,13 @@ export function createStaticHandler({ root }) {
       }
 
       const isAsset = pathname.startsWith(ASSET_PREFIX);
+      const isMedia = pathname.startsWith(MEDIA_PREFIX);
       let entry = pathname.endsWith('/') ? null : await load(target);
-      let cacheControl = isAsset ? IMMUTABLE_CACHE_CONTROL : REVALIDATE_CACHE_CONTROL;
+      let cacheControl = isAsset || isMedia ? IMMUTABLE_CACHE_CONTROL : REVALIDATE_CACHE_CONTROL;
       if (!entry) {
         // An extensionless path outside /assets/ is a client route: the SPA shell answers it.
         // A missing asset or file stays a 404, so a stale chunk never parses HTML as script.
-        if (isAsset || extname(pathname) !== '') {
+        if (isAsset || isMedia || extname(pathname) !== '') {
           plain(req, res, 404, 'Not Found');
           return;
         }
@@ -185,20 +249,49 @@ export function createStaticHandler({ root }) {
         }
       }
 
-      const compressible = isCompressible(entry.type, entry.size);
+      const compressible = !entry.streamed && isCompressible(entry.type, entry.size);
       const encoding = compressible ? negotiateEncoding(req.headers['accept-encoding']) : null;
       const { body, etag } = encoding ? await encodedVariant(entry, encoding) : entry;
       const headers = { ...STATIC_HEADERS, 'Content-Type': entry.type, 'Cache-Control': cacheControl, ETag: etag };
       if (compressible) headers.Vary = 'Accept-Encoding';
+      if (entry.type.startsWith('text/html')) headers['Content-Security-Policy'] = SHELL_CSP;
       if (etagMatches(req.headers['if-none-match'], etag)) {
         res.writeHead(304, headers);
         res.end();
         return;
       }
-      if (encoding) headers['Content-Encoding'] = encoding;
-      headers['Content-Length'] = body.length;
-      res.writeHead(200, headers);
-      res.end(req.method === 'HEAD' ? undefined : body);
+      if (encoding) {
+        headers['Content-Encoding'] = encoding;
+        headers['Content-Length'] = body.length;
+        res.writeHead(200, headers);
+        res.end(req.method === 'HEAD' ? undefined : body);
+        return;
+      }
+
+      // Identity bytes: a single range is honoured, unless If-Range names another version.
+      headers['Accept-Ranges'] = 'bytes';
+      const ifRange = req.headers['if-range'];
+      const range = ifRange && ifRange !== etag ? null : parseRange(req.headers.range, entry.size);
+      if (range === 'unsatisfiable') {
+        plain(req, res, 416, 'Range Not Satisfiable', { 'Content-Range': `bytes */${entry.size}`, 'Accept-Ranges': 'bytes' });
+        return;
+      }
+      const start = range ? range.start : 0;
+      const end = range ? range.end : entry.size - 1;
+      headers['Content-Length'] = entry.size === 0 ? 0 : end - start + 1;
+      if (range) headers['Content-Range'] = `bytes ${start}-${end}/${entry.size}`;
+      res.writeHead(range ? 206 : 200, headers);
+      if (req.method === 'HEAD' || entry.size === 0) {
+        res.end();
+        return;
+      }
+      if (!entry.streamed) {
+        res.end(range ? entry.body.subarray(start, end + 1) : entry.body);
+        return;
+      }
+      createReadStream(entry.file, { start, end })
+        .on('error', () => res.destroy())
+        .pipe(res);
     } catch (error) {
       if (res.headersSent) {
         res.destroy();

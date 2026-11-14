@@ -4,6 +4,7 @@ import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { useSectionSpy } from '../hooks/useSectionLink.js';
 import { useShowcaseTheatre } from '../hooks/useShowcaseTheatre.js';
 import { launchHref, LAUNCH_PATH } from '../lib/launch-presets.js';
+import { SHOWCASE_MEDIA } from '../lib/media-manifest.js';
 import { prefetchRoute } from '../lib/route-manifest.js';
 import { SHOWCASE_3D_ID } from '../lib/routes.js';
 import { ACTS, STAGE_ROOM } from '../lib/showcase-scene.js';
@@ -120,7 +121,7 @@ function StageFrame() {
   );
 }
 
-function Theatre({ stage, setStageNode, canvasRef, theatre }) {
+function Theatre({ stage, setStageNode, screenRef, theatre }) {
   const current = ACTS.find((act) => act.id === stage.act) ?? ACTS[0];
   return (
     <figure
@@ -132,16 +133,40 @@ function Theatre({ stage, setStageNode, canvasRef, theatre }) {
       data-testid="showcase-stage"
     >
       <div className="theatre">
-        <canvas
-          ref={canvasRef}
-          className="theatre__canvas"
-          data-testid="showcase-stage-canvas"
+        {/* Four films of the 3D Spatial Studio engine, one per act, stacked:
+            the act's film plays and crossfades in, the rest rest paused. */}
+        <div
+          ref={screenRef}
+          className="theatre__screen"
+          data-testid="showcase-stage-screen"
           data-act={stage.act}
           role="img"
-          aria-label={`Animated cutaway of a ${STAGE_ROOM.widthCm} x ${STAGE_ROOM.depthCm} x ${STAGE_ROOM.heightCm} cm room with a lit shelf, linear pendant, corner column and acoustic frame on one 24V bus. ${current.caption}`}
+          aria-label={`Film of the 3D Spatial Studio engine: a ${STAGE_ROOM.widthCm} x ${STAGE_ROOM.depthCm} x ${STAGE_ROOM.heightCm} cm room with a lit shelf, linear pendant, corner column and acoustic frame on one 24V bus. ${current.caption}`}
         >
-          {current.caption}
-        </canvas>
+          {ACTS.map((act) => {
+            const media = SHOWCASE_MEDIA[act.id];
+            return (
+              <video
+                key={act.id}
+                className="theatre__film"
+                data-film={act.id}
+                data-testid={`showcase-film-${act.id}`}
+                data-active={act.id === stage.act || undefined}
+                data-poster={media.poster}
+                muted
+                loop
+                playsInline
+                preload="none"
+                disablePictureInPicture
+                tabIndex={-1}
+                aria-hidden="true"
+              >
+                <source src={media.film.webm} type="video/webm" />
+                <source src={media.film.mp4} type="video/mp4" />
+              </video>
+            );
+          })}
+        </div>
         <div className="theatre__hud" aria-hidden="true">
           <StageFrame />
           <p className="theatre__bar mono">
@@ -269,18 +294,18 @@ function Launchpad() {
 }
 
 /**
- * Overview showcase for the 3D Spatial Studio. The stage is a canvas 2D
- * projection with an HTML and SVG HUD: the overview still downloads no WebGL
- * and no planner chunk until a launch key is pointed at.
+ * Overview showcase for the 3D Spatial Studio. The stage plays films of the
+ * studio engine itself under an HTML and SVG HUD: the overview still
+ * downloads no WebGL and no planner chunk until a launch key is pointed at.
  */
 export function SpatialShowcase() {
   const sectionRef = useRef(null);
   useSectionSpy(sectionRef, SHOWCASE_3D_ID);
   const reveal = useScrollReveal();
   const stageRef = useRef(null);
-  const canvasRef = useRef(null);
+  const screenRef = useRef(null);
   const [stage, setStage] = useState({ act: ACTS[0].id, locked: null, preview: null });
-  const theatre = useShowcaseTheatre({ stageRef, canvasRef, onAct: setStage });
+  const theatre = useShowcaseTheatre({ stageRef, screenRef, onAct: setStage });
 
   const setStageNode = useCallback(
     (node) => {
@@ -320,7 +345,7 @@ export function SpatialShowcase() {
         </header>
 
         <div className="showcase3d__rig">
-          <Theatre stage={stage} setStageNode={setStageNode} canvasRef={canvasRef} theatre={theatre} />
+          <Theatre stage={stage} setStageNode={setStageNode} screenRef={screenRef} theatre={theatre} />
           <ul className="showcase3d__pillars reveal-stagger">
             {PILLARS.map((pillar) => (
               <Pillar

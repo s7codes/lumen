@@ -7,7 +7,7 @@ import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { formatLeadTime, formatUsd, padIndex } from '../lib/format.js';
 import { rgbTriplet } from '../lib/photometry.js';
 import { PlusGlyph } from './icons.jsx';
-import { ProductVisual } from './ProductVisual.jsx';
+import { preloadProductPhoto, ProductVisual } from './ProductVisual.jsx';
 import '../styles/product.css';
 
 /**
@@ -71,7 +71,7 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
         </p>
       </header>
 
-      {/* The plinth: the part in true perspective in a daylight gallery corner, lit by its own 2700K light. */}
+      {/* The plinth: a studio photograph of the part in a daylight gallery corner, lit by its own 2700K light. */}
       <div className="product-card__figure">
         <ProductVisual product={product} finish={finish} />
       </div>
@@ -102,6 +102,7 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
                 key={id}
                 className="swatch"
                 style={{ '--swatch': option.hex, '--swatch-hi': option.highlight, '--swatch-lo': option.shade }}
+                onPointerEnter={() => preloadProductPhoto(product.id, id)}
               >
                 <input
                   className="swatch__input"
@@ -110,6 +111,7 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
                   value={id}
                   checked={id === finishId}
                   onChange={() => selectFinish(id)}
+                  onFocus={() => preloadProductPhoto(product.id, id)}
                 />
                 <span className="swatch__chip" aria-hidden="true" />
                 <span className="visually-hidden">{option.label}</span>

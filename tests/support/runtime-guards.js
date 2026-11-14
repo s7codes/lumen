@@ -33,3 +33,34 @@ export function horizontalOverflow(page) {
 export function storeDisplayMode(page, mode) {
   return page.evaluate((value) => localStorage.setItem('lumen:display-mode', JSON.stringify(value)), mode);
 }
+
+/**
+ * Responses the server answered with 4xx or 5xx. An aborted request (a film
+ * paused mid-range, a navigation) is not a failure and is not listed.
+ */
+export function collectFailedResponses(page) {
+  const failed = [];
+  page.on('response', (response) => {
+    if (response.status() >= 400) failed.push(`${response.status()} ${new URL(response.url()).pathname}`);
+  });
+  return failed;
+}
+
+/** Decoded size of an <img>, or 0 until it has loaded. */
+export function decodedWidth(img) {
+  return img.evaluate((el) => (el.complete ? el.naturalWidth : 0));
+}
+
+/** Current playback time of a <video>. */
+export function playhead(video) {
+  return video.evaluate((el) => el.currentTime);
+}
+
+/**
+ * A media URL from src/lib/media-manifest.js as a pattern that ignores its
+ * release query: Node reads ?v=dev, the build stamps the package version.
+ */
+export function mediaPath(url) {
+  const path = url.split('?')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${path}\\?v=[\\w.-]+$`);
+}

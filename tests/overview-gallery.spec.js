@@ -11,21 +11,29 @@ import {
   loopTime,
 } from '../src/lib/icons-cinema.js';
 import {
-  conePath,
-  convexHull,
-  galleryWeight,
   HERO_CROSSFADE_SECONDS,
   HERO_CYCLE_SECONDS,
+  HERO_FRAME,
   HERO_HOLD_SECONDS,
+  HERO_HOTSPOTS,
   HERO_SCENE_IDS,
   heroSceneAt,
-  heroSceneGeometry,
-  herringbonePlanks,
-  roomCamera,
-  spotScallop,
+  isHeroSceneId,
+  warmWeight,
 } from '../src/lib/hero-scenes.js';
-import { createRoom, INTERIOR_SCENE_IDS, INTERIOR_VIEW, interiorScene } from '../src/lib/interior-painter.js';
-import { collectRuntimeErrors, horizontalOverflow, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
+import { INTERIOR_SCENE_IDS, INTERIOR_SCENES, INTERIOR_VIEW, interiorScene } from '../src/lib/interior-painter.js';
+import { HERO_MEDIA, ROOM_MEDIA } from '../src/lib/media-manifest.js';
+import { getProduct } from '../src/data/products.js';
+import {
+  collectFailedResponses,
+  collectRuntimeErrors,
+  decodedWidth,
+  horizontalOverflow,
+  installCspRecorder,
+  mediaPath,
+  playhead,
+  readCspViolations,
+} from './support/runtime-guards.js';
 
 test.beforeEach(async ({ page }) => {
   await installCspRecorder(page);
@@ -43,28 +51,6 @@ function canvasPrint(canvas) {
     for (let i = 0; i < data.length; i += 4 * 97) sum += data[i] + data[i + 1] * 3 + data[i + 2] * 7;
     return sum;
   });
-}
-
-/** Vertices of an "M x yL x y ... Z" polygon path. */
-function polygonPoints(d) {
-  return d
-    .slice(1, -1)
-    .split('L')
-    .map((pair) => pair.split(' ').map(Number));
-}
-
-/** Point in a convex polygon (either winding), edges included. */
-function insideConvex(points, [x, y]) {
-  let sign = 0;
-  for (let i = 0; i < points.length; i += 1) {
-    const [ax, ay] = points[i];
-    const [bx, by] = points[(i + 1) % points.length];
-    const cross = (bx - ax) * (y - ay) - (by - ay) * (x - ax);
-    if (Math.abs(cross) < 1e-6) continue;
-    if (sign === 0) sign = Math.sign(cross);
-    else if (Math.sign(cross) !== sign) return false;
-  }
-  return true;
 }
 
 function edgeToEdge(page, locator) {
@@ -122,153 +108,137 @@ test.describe('meet our icons clock', () => {
       expect(level).toBeLessThanOrEqual(1 + 1e-9);
     }
 
-    // The interiors are true one-point perspectives: the back wall is the
-    // picture plane scaled about the eye, and every room has a painter.
+    // The three rooms: 4:5 photographs, each with its luminaire placed in the
+    // frame for the hover glow, and a film of its light.
     expect(INTERIOR_SCENE_IDS).toEqual(['dining', 'bedroom', 'studio']);
-    const room = createRoom(300, 400, { vpx: 0.5, horizon: 0.44, depth: 0.5 });
-    const [bx0, by0] = room.project(0, 0, 0);
-    const [bx1] = room.project(1, 0, 0);
-    const [fx0, fy0] = room.project(0, 0, 1);
-    const [fx1] = room.project(1, 0, 1);
-    expect((bx1 - bx0) / (fx1 - fx0)).toBeCloseTo(0.5, 6);
-    expect(fy0).toBeCloseTo(400, 6);
-    expect(by0).toBeLessThan(fy0);
-
-    // Each room is smooth vectors only: crisp paths painted in a hex colour or
-    // a gradient of its own drawing, finite geometry, the luminaire in frame.
+    expect(INTERIOR_VIEW).toEqual({ width: 1600, height: 2000 });
+    expect(INTERIOR_VIEW.width / INTERIOR_VIEW.height).toBe(0.8);
     for (const id of INTERIOR_SCENE_IDS) {
       const art = interiorScene(id);
       expect(art.id).toBe(id);
-      expect(art.shapes.length, id).toBeGreaterThan(100);
-      expect(art.defs.every((def) => ['linear', 'radial', 'clip'].includes(def.type)), id).toBe(true);
-      const ids = new Set(art.defs.map((def) => def.id));
-      for (const shape of art.shapes) {
-        expect(shape.paint === 'none' || /^#[0-9a-f]{6}$/.test(shape.paint) || ids.has(shape.paint), `${id} ${shape.paint}`).toBe(true);
-        expect(shape.d, id).not.toMatch(/NaN|Infinity|undefined/);
-      }
+      expect(art.label).toBe(INTERIOR_SCENES[id].label);
       expect(art.glow.x).toBeGreaterThan(0);
       expect(art.glow.x).toBeLessThan(1);
       expect(art.glow.y).toBeGreaterThan(0);
       expect(art.glow.y).toBeLessThan(1);
+      const media = ROOM_MEDIA[id];
+      expect(media.still).toMatch(new RegExp(`^/media/rooms/${media.slug}-1600\\.webp\\?v=`));
+      expect(media.film.webm).toMatch(new RegExp(`^/media/rooms/${media.slug}\\.webm\\?v=`));
+      expect(media.film.mp4).toMatch(new RegExp(`^/media/rooms/${media.slug}\\.mp4\\?v=`));
     }
+    expect(Object.values(ROOM_MEDIA).map((media) => media.slug)).toEqual(['dining-living', 'bedroom-sanctuary', 'studio-wall']);
     expect(interiorScene('unknown').id).toBe('dining');
-    expect(INTERIOR_VIEW).toEqual({ width: 600, height: 800 });
   });
 
-  test('the hero clock holds each scene 5 s and crossfades 1.1 s, and its rooms are true perspective', () => {
-    expect(HERO_SCENE_IDS).toEqual(['wall-wash', 'gallery']);
+  test('the hero clock holds each scene 5 s and crossfades 1.1 s, and every fixture key sits on its fixture', () => {
+    expect(HERO_SCENE_IDS).toEqual(['daylight', 'warm']);
+    expect(isHeroSceneId('warm')).toBe(true);
+    expect(isHeroSceneId('gallery')).toBe(false);
     expect(HERO_HOLD_SECONDS).toBe(5);
     expect(HERO_CROSSFADE_SECONDS).toBe(1.1);
     expect(HERO_CYCLE_SECONDS).toBeCloseTo(12.2, 9);
-    expect(galleryWeight(0)).toBe(0);
-    expect(galleryWeight(4.99)).toBe(0);
-    expect(galleryWeight(5.55)).toBeCloseTo(0.5, 6);
-    expect(galleryWeight(6.1)).toBe(1);
-    expect(galleryWeight(11.09)).toBe(1);
-    expect(galleryWeight(11.65)).toBeCloseTo(0.5, 6);
-    expect(galleryWeight(12.2 + 2)).toBe(0);
-    expect(galleryWeight(Number.NaN)).toBe(0);
+    expect(warmWeight(0)).toBe(0);
+    expect(warmWeight(4.99)).toBe(0);
+    expect(warmWeight(5.55)).toBeCloseTo(0.5, 6);
+    expect(warmWeight(6.1)).toBe(1);
+    expect(warmWeight(11.09)).toBe(1);
+    expect(warmWeight(11.65)).toBeCloseTo(0.5, 6);
+    expect(warmWeight(12.2 + 2)).toBe(0);
+    expect(warmWeight(Number.NaN)).toBe(0);
     let last = -1;
     for (let t = 5; t <= 6.1; t += 0.05) {
-      expect(galleryWeight(t)).toBeGreaterThanOrEqual(last);
-      last = galleryWeight(t);
+      expect(warmWeight(t)).toBeGreaterThanOrEqual(last);
+      last = warmWeight(t);
     }
-    expect(heroSceneAt(1)).toBe('wall-wash');
-    expect(heroSceneAt(8)).toBe('gallery');
+    expect(heroSceneAt(1)).toBe('daylight');
+    expect(heroSceneAt(8)).toBe('warm');
 
-    // One-point perspective: the back wall spans its rows, and depth scales lateral offsets.
-    const camera = roomCamera({ floorY: 765, ceilingY: 40, height: 280, eyeY: 150, depth: 500, vx: 1000 });
-    expect(camera.project(0, 0, 500)[1]).toBeCloseTo(765, 6);
-    expect(camera.project(0, 280, 500)[1]).toBeCloseTo(40, 6);
-    expect(camera.project(100, 150, 250)[0] - 1000).toBeCloseTo(2 * (camera.project(100, 150, 500)[0] - 1000), 6);
-
-    // Herringbone: two plank families of near equal count, every plank L x W.
-    const planks = herringbonePlanks({ width: 9, length: 54, xMin: -100, xMax: 100, zMin: 300, zMax: 400 });
-    expect(planks.along.length).toBeGreaterThan(20);
-    expect(Math.abs(planks.along.length - planks.across.length)).toBeLessThanOrEqual(planks.along.length * 0.2);
-    for (const plank of [...planks.along.slice(0, 5), ...planks.across.slice(0, 5)]) {
-      const sides = plank.map((p, i) => Math.hypot(plank[(i + 1) % 4][0] - p[0], plank[(i + 1) % 4][1] - p[1]));
-      expect(Math.max(...sides)).toBeCloseTo(54, 6);
-      expect(Math.min(...sides)).toBeCloseTo(9, 6);
+    // Two 2K scenes, each a 1280w and a 2560w WebP and a WebM and MP4 film.
+    expect(HERO_FRAME).toEqual({ width: 2560, height: 1440 });
+    for (const id of HERO_SCENE_IDS) {
+      const media = HERO_MEDIA[id];
+      expect(media.srcSet).toMatch(new RegExp(`^/media/hero/${id}-1280\\.webp\\?v=\\S+ 1280w, /media/hero/${id}-2560\\.webp\\?v=\\S+ 2560w$`));
+      expect(media.film.webm).toMatch(new RegExp(`^/media/hero/${id}\\.webm\\?v=`));
+      expect(media.film.mp4).toMatch(new RegExp(`^/media/hero/${id}\\.mp4\\?v=`));
     }
 
-    // A wall-wash cone is a hyperbola: symmetric about its axis, widening with reach.
-    const d = conePath({ x: 100, y0: 50, dir: 1, reach: 300, halfWidth: 10, knee: 40, steps: 12 });
-    const points = d.slice(1, -1).split('L').map((pair) => pair.split(' ').map(Number));
-    expect(points[0]).toEqual([90, 50]);
-    expect(points.at(-1)).toEqual([110, 50]);
-    const foot = points[12];
-    expect(foot[1]).toBe(350);
-    expect(100 - foot[0]).toBeCloseTo(10 * Math.sqrt(1 + (300 / 40) ** 2), 1);
-
-    // A spot leaning toward a wall: its scallop arches where the wall-side
-    // generator lands, is symmetric about the spot and opens toward the floor
-    // while the lean stays under the half angle.
-    const lean = spotScallop({ apex: [0, 290, 400], wallZ: 420, tilt: 0.1, halfAngle: 0.2, untilY: 100 });
-    expect(lean.top).toBeCloseTo(290 - 20 / Math.tan(0.3), 6);
-    expect(lean.halfWidth(lean.top + 0.01)).toBe(0);
-    expect(lean.bottom).toBe(100);
-    expect(lean.halfWidth(150)).toBeGreaterThan(lean.halfWidth(200));
-    expect(Math.abs(lean.outline[0][0])).toBeLessThan(1e-3);
-    expect(lean.outline[0][1]).toBe(lean.top);
-    for (let i = 0; i < 10; i += 1) expect(lean.outline[i][0]).toBeCloseTo(-lean.outline.at(-1 - i)[0], 9);
-    // Leaning past the half angle closes the scallop into an ellipse above the floor.
-    const steep = spotScallop({ apex: [0, 290, 400], wallZ: 420, tilt: 0.5, halfAngle: 0.2, untilY: 0 });
-    expect(steep.bottom).toBeCloseTo(290 - 20 / Math.tan(0.3), 6);
-    expect(convexHull([[0, 0], [2, 0], [1, 1], [1, 0.2], [2, 2], [0, 2]])).toHaveLength(4);
-
-    // Scene II: each grazer's light is one cone from its own aperture. The
-    // beam starts on the aperture rim, never below it, and holds both the
-    // aperture centre and the arch of the scallop it lays on the limestone.
-    const { spots } = heroSceneGeometry().gallery;
-    expect(spots).toHaveLength(2);
-    for (const spot of spots) {
-      const beam = polygonPoints(spot.beam);
-      const rimTop = Math.min(...spot.apertureRim.map(([, y]) => y));
-      expect(Math.min(...beam.map(([, y]) => y))).toBeCloseTo(rimTop, 0);
-      expect(insideConvex(beam, spot.apex)).toBe(true);
-      expect(insideConvex(beam, spot.scallopTop)).toBe(true);
-      expect(spot.scallopTop[1]).toBeGreaterThan(spot.apex[1]);
-      // The beam's gradient runs from the aperture down past the arch.
-      expect(spot.beamEnd[1]).toBeGreaterThan(spot.scallopTop[1]);
+    // Fixture keys: projected anchors, inside the frame and on the right-hand
+    // set, clear of the copy; each names a real lit catalog part.
+    expect(HERO_HOTSPOTS.map((spot) => spot.id)).toEqual(['track', 'pendant', 'shelf', 'column']);
+    for (const spot of HERO_HOTSPOTS) {
+      expect(spot.x, spot.id).toBeGreaterThan(0.5);
+      expect(spot.x, spot.id).toBeLessThan(1);
+      expect(spot.y, spot.id).toBeGreaterThan(0);
+      expect(spot.y, spot.id).toBeLessThan(1);
+      const product = getProduct(spot.productId);
+      expect(product, spot.id).toBeTruthy();
+      expect(product.watts, spot.id).toBeGreaterThan(0);
+      expect(/^[\x20-\x7e]+$/.test(spot.detail), spot.id).toBe(true);
     }
   });
 });
 
 test.describe('light architectural hero', () => {
-  test('two smooth light interiors alternate on a 5 s hold and 1.1 s crossfade, with crisp 2700K cones and no text on the pictures', async ({
+  test('daylight and warm 2700K crossfade over one room: 2K photographs under live films, fixture keys and a held switch', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
+    const failed = collectFailedResponses(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     const hero = page.getByTestId('ambient-surface');
-    await expect(hero).toHaveAttribute('data-scenes', 'wall-wash gallery');
+    await expect(hero).toHaveAttribute('data-scenes', 'daylight warm');
     expect(await edgeToEdge(page, hero)).toEqual({ left: 0, gap: 0 });
-    // Smooth matte sand-stone, never a dark chamber.
+    // Warm sand-stone under the photographs while they load, never a dark chamber.
     await expect(hero).toHaveCSS('background-color', 'rgb(198, 185, 165)');
     await expect(hero).not.toHaveClass(/(^|\s)optical(\s|$)/);
 
-    // Both scenes are inline SVG interiors; the gallery crossfades over the wall wash.
-    const wallWash = hero.locator('svg.hero-scene--wall-wash');
-    const gallery = hero.locator('svg.hero-scene--gallery');
-    await expect(wallWash).toHaveCount(1);
-    await expect(gallery).toHaveCount(1);
-    const motion = await gallery.evaluate((el) => {
+    // Two 2K photographs: the daylight still is the eager, high-priority LCP picture.
+    for (const id of HERO_SCENE_IDS) {
+      const still = hero.locator(`[data-testid="hero-scene-${id}"] img`);
+      await expect(still).toHaveAttribute('srcset', /-1280\.webp\?v=\S+ 1280w, .+-2560\.webp\?v=\S+ 2560w$/);
+      await expect(still).toHaveAttribute('width', '2560');
+      await expect(still).toHaveAttribute('height', '1440');
+      await expect.poll(() => decodedWidth(still), { timeout: 15_000 }).toBeGreaterThanOrEqual(1200);
+    }
+    const daylightStill = hero.locator('[data-testid="hero-scene-daylight"] img');
+    await expect(daylightStill).toHaveAttribute('fetchpriority', 'high');
+    await expect(daylightStill).toHaveAttribute('loading', 'eager');
+    // At 1440 px the browser takes the 2560 w photograph.
+    expect(await daylightStill.evaluate((el) => new URL(el.currentSrc).pathname)).toBe('/media/hero/daylight-2560.webp');
+
+    // Each still carries its film: WebM first, MP4 second, muted, looped,
+    // inline, with the still it covers as its poster.
+    for (const id of HERO_SCENE_IDS) {
+      const film = hero.locator(`[data-testid="hero-scene-${id}"] video`);
+      const sources = await film.locator('source').evaluateAll((els) => els.map((el) => [el.type, new URL(el.src).pathname]));
+      expect(sources).toEqual([
+        ['video/webm', `/media/hero/${id}.webm`],
+        ['video/mp4', `/media/hero/${id}.mp4`],
+      ]);
+      expect(await film.evaluate((el) => ({ muted: el.muted, loop: el.loop, inline: el.playsInline }))).toEqual({ muted: true, loop: true, inline: true });
+      await expect(film).toHaveAttribute('poster', new RegExp(`/media/hero/${id}-\\d+\\.webp\\?v=`));
+    }
+
+    // On screen the daylight film plays and fades in over its still.
+    const daylight = hero.getByTestId('hero-scene-daylight');
+    const daylightFilm = daylight.locator('video');
+    await expect(daylight).toHaveAttribute('data-video', 'playing', { timeout: 15_000 });
+    const t0 = await playhead(daylightFilm);
+    await expect.poll(() => playhead(daylightFilm)).toBeGreaterThan(t0);
+    await expect.poll(() => daylightFilm.evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(1);
+
+    // The warm scene crossfades over daylight on the CSS clock: 5 s hold,
+    // 1.1 s crossfade, 5 s hold, 1.1 s back.
+    const warm = hero.locator('.hero-scene--warm');
+    const motion = await warm.evaluate((el) => {
       const style = getComputedStyle(el);
-      return {
-        name: style.animationName,
-        duration: style.animationDuration,
-        count: style.animationIterationCount,
-        timing: style.animationTimingFunction,
-        state: style.animationPlayState,
-      };
+      return { name: style.animationName, duration: style.animationDuration, count: style.animationIterationCount, timing: style.animationTimingFunction, state: style.animationPlayState };
     });
     expect(motion).toEqual({ name: 'hero-scene-cycle', duration: '12.2s', count: 'infinite', timing: 'cubic-bezier(0.45, 0, 0.55, 1)', state: 'running' });
-    // Seek the CSS clock: 5 s hold, 1.1 s crossfade, 5 s hold, 1.1 s back.
     const opacityAt = (ms) =>
-      gallery.evaluate((el, at) => {
-        const [animation] = el.getAnimations();
+      warm.evaluate((el, at) => {
+        const [animation] = el.getAnimations().filter((a) => a.animationName === 'hero-scene-cycle');
         animation.pause();
         animation.currentTime = at;
         return Number(getComputedStyle(el).opacity);
@@ -283,108 +253,120 @@ test.describe('light architectural hero', () => {
     const falling = await opacityAt(11650);
     expect(falling).toBeGreaterThan(0.1);
     expect(falling).toBeLessThan(0.9);
-    await gallery.evaluate((el) => el.getAnimations()[0].play());
+    await warm.evaluate((el) => el.getAnimations().forEach((a) => a.play()));
 
-    // Zero cloudy noise: no SVG turbulence filters and no texture images anywhere in the hero.
-    const noise = await hero.evaluate((el) => {
-      const images = [el, ...el.querySelectorAll('*')].map((node) => getComputedStyle(node).backgroundImage).filter((image) => image !== 'none');
-      return {
-        filters: el.querySelectorAll('filter, feTurbulence').length,
-        textures: images.filter((image) => image.includes('url(')).length,
-      };
-    });
-    expect(noise).toEqual({ filters: 0, textures: 0 });
-
-    // Crisp light: the sconce throws a hyperbolic up and down cone, each a
-    // #fffdf7 core falling into a #f5e2c0 halo, drawn with a hard edge.
-    for (const id of ['hw-up-main', 'hw-down-main']) {
-      const stops = await hero.locator(`#${id} stop`).evaluateAll((els) => els.map((el) => el.getAttribute('stop-color')));
-      expect(stops[0], id).toBe('#fffdf7');
-      expect(stops.at(-1), id).toBe('#f5e2c0');
-      await expect(wallWash.locator(`path[fill="url(#${id})"]`), id).toHaveCount(1);
-    }
-    // The gallery: a recessed 24V track slot, a pendant that pools gold on the console, a lit walnut shelf.
-    await expect(gallery.locator('path[fill="url(#hg-wash)"]')).toHaveCount(1);
-    await expect(gallery.locator('[data-depth="pendant"] path[fill="url(#hg-beam)"]')).toHaveCount(1);
-    // Each track spot's light is drawn from its own aperture: in the rendered
-    // picture the beam's top edge is the aperture's, as wide, and runs on below it.
-    const anchors = await gallery.evaluate((svg) =>
-      [...svg.querySelectorAll('[data-spot-beam]')].map((beam) => {
-        const aperture = svg.querySelector(`[data-spot-aperture="${beam.dataset.spotBeam}"]`).getBBox();
-        const box = beam.getBBox();
-        return {
-          gap: Math.abs(box.y - aperture.y),
-          spans: box.x <= aperture.x + 0.5 && box.x + box.width >= aperture.x + aperture.width - 0.5,
-          below: box.y + box.height > aperture.y + aperture.height + 100,
-        };
-      }),
-    );
-    expect(anchors).toHaveLength(2);
-    for (const anchor of anchors) {
-      expect(anchor.gap).toBeLessThan(0.5);
-      expect(anchor).toMatchObject({ spans: true, below: true });
-    }
-
-    // No text overlays on the pictures: the only words in the hero are the copy.
+    // No words on the photographs: the stage is pictures only.
     await expect(hero.locator('.hero__tag, .hero__readout, .hero__atmosphere')).toHaveCount(0);
     expect(await hero.locator('.hero__stage').evaluate((el) => el.textContent.trim())).toBe('');
+    expect(await hero.locator('.hero__stage').evaluate((el) => el.querySelectorAll('svg, canvas, filter').length)).toBe(0);
 
-    // The copy: carbon ink over the plaster, an attribution and a bracketed key.
-    const copy = page.getByTestId('hero-copy');
-    await expect(copy.locator('.index-label')).toHaveCount(0);
-    await expect(copy).not.toContainText('Overview');
-    await expect(copy).not.toContainText('2D');
-    await expect(page.locator('.hero__title')).toHaveCSS('color', 'rgb(20, 19, 17)');
-    const attribution = page.getByTestId('hero-attribution');
-    await expect(attribution).toHaveText(/^Architectural Lighting & Modular\s+Systems\s*\/\s*24V\s+DC$/);
-    await expect(attribution).toHaveCSS('text-transform', 'uppercase');
-    const bracket = page.getByTestId('hero-room-planner');
-    await expect(bracket).toHaveAttribute('href', '/room-3d');
-    await expect(bracket).toHaveText('Open Room Planner');
-    const frame = await bracket.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return {
-        left: `${style.borderLeftWidth} ${style.borderLeftStyle}`,
-        right: `${style.borderRightWidth} ${style.borderRightStyle}`,
-        top: style.borderTopWidth,
-        bottom: style.borderBottomWidth,
-        radius: style.borderTopLeftRadius,
-        surface: style.backgroundColor,
-        transform: style.textTransform,
-        shadow: style.boxShadow,
-      };
-    });
-    expect(frame).toEqual({ left: '1px solid', right: '1px solid', top: '0px', bottom: '0px', radius: '0px', surface: 'rgba(0, 0, 0, 0)', transform: 'uppercase', shadow: 'none' });
+    // Fixture keys sit on their fixtures at this crop and open a hairline callout.
+    const frameBox = await hero.locator('.hero__hotspots .hero__frame').boundingBox();
+    for (const spot of HERO_HOTSPOTS) {
+      const key = hero.getByTestId(`hero-hotspot-${spot.id}`).locator('.hero-hotspot__key');
+      const box = await key.boundingBox();
+      expect(Math.abs(box.x + box.width / 2 - (frameBox.x + spot.x * frameBox.width)), spot.id).toBeLessThan(2);
+      expect(Math.abs(box.y + box.height / 2 - (frameBox.y + spot.y * frameBox.height)), spot.id).toBeLessThan(2);
+      await expect(key, spot.id).toHaveCSS('border-top-left-radius', '0px');
+    }
+    const pendantKey = hero.getByTestId('hero-hotspot-pendant');
+    const callout = pendantKey.getByRole('tooltip');
+    await expect(callout).toBeHidden();
+    await pendantKey.locator('.hero-hotspot__key').hover();
+    await expect(callout).toBeVisible();
+    await expect(callout).toContainText('Linear Suspension Pendant 150');
+    await expect(pendantKey.getByRole('link', { name: 'Linear Suspension Pendant 150' })).toHaveAttribute('href', '/catalog/linear-pendant-150');
+    await page.mouse.move(frameBox.x + 20, 5);
 
-    // Cursor parallax: the pendant slides with the pointer along its track.
-    const box = await hero.boundingBox();
-    const pendant = hero.locator('[data-depth="pendant"]');
-    const travel = () => pendant.evaluate((el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).e);
-    await page.mouse.move(box.x + box.width * 0.74, box.y + box.height * 0.34);
-    await page.mouse.move(box.x + box.width * 0.42, box.y + box.height * 0.34, { steps: 8 });
-    await expect.poll(travel).toBeLessThan(-20);
-    await page.mouse.move(box.x + box.width * 0.5, 5);
+    // The switch holds a scene: one crossfade lands it, the clock stops.
+    const switcher = page.getByTestId('hero-scene-switch');
+    await expect(switcher.getByRole('button')).toHaveText(['Daylight', 'Warm 2700K']);
+    await switcher.getByRole('button', { name: 'Warm 2700K' }).click();
+    await expect(hero).toHaveAttribute('data-scene-hold', 'warm');
+    await expect(switcher.getByRole('button', { name: 'Warm 2700K' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(warm).toHaveCSS('animation-name', 'none');
+    await expect.poll(() => warm.evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(1);
+    await expect(hero.getByTestId('hero-scene-warm')).toHaveAttribute('data-video', 'playing', { timeout: 15_000 });
+    await switcher.getByRole('button', { name: 'Daylight' }).click();
+    await expect(hero).toHaveAttribute('data-scene-hold', 'daylight');
+    await expect.poll(() => warm.evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(0);
+    await switcher.getByRole('button', { name: 'Daylight' }).click();
+    await expect(hero).not.toHaveAttribute('data-scene-hold');
+    await expect(warm).toHaveCSS('animation-name', 'hero-scene-cycle');
 
-    // Out of view the clock holds its place; back in view it runs again.
+    // Cursor parallax: the whole picture drifts a few pixels against the pointer.
+    const heroBox = await hero.boundingBox();
+    const frame = hero.locator('.hero__stage .hero__frame');
+    const drift = () => frame.evaluate((el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).e);
+    await page.mouse.move(heroBox.x + heroBox.width * 0.74, heroBox.y + heroBox.height * 0.34);
+    await page.mouse.move(heroBox.x + heroBox.width * 0.2, heroBox.y + heroBox.height * 0.34, { steps: 8 });
+    await expect.poll(drift).toBeGreaterThan(3);
+    await page.mouse.move(heroBox.x + heroBox.width * 0.5, 5);
+
+    // Out of view the clock holds its place and the films pause; back in view both run again.
     await page.evaluate(() => window.scrollTo(0, document.querySelector('[data-testid="ambient-surface"]').offsetHeight + 400));
     await expect(hero).toHaveAttribute('data-offscreen', '');
-    await expect(gallery).toHaveCSS('animation-play-state', 'paused');
+    await expect(warm).toHaveCSS('animation-play-state', 'paused');
+    await expect.poll(() => daylightFilm.evaluate((el) => el.paused)).toBe(true);
     await page.evaluate(() => window.scrollTo(0, 0));
     await expect(hero).not.toHaveAttribute('data-offscreen');
-    await expect(gallery).toHaveCSS('animation-play-state', 'running');
+    await expect(warm).toHaveCSS('animation-play-state', 'running');
+    await expect(daylight).toHaveAttribute('data-video', 'playing', { timeout: 15_000 });
     expect(await readCspViolations(page)).toEqual([]);
+    expect(failed).toEqual([]);
     expect(errors).toEqual([]);
   });
 
-  test('under reduced motion the hero rests on the wall wash: no crossfade, no parallax', async ({ page }) => {
+  test('under reduced motion the hero rests on the daylight photograph: no clock, no parallax, no film', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     const hero = page.getByTestId('ambient-surface');
-    const gallery = hero.locator('svg.hero-scene--gallery');
-    await expect(gallery).toHaveCSS('animation-name', 'none');
-    await expect(gallery).toHaveCSS('opacity', '0');
-    for (const depth of ['far', 'near', 'pendant']) {
-      await expect(hero.locator(`[data-depth="${depth}"]`).first(), depth).toHaveCSS('transform', 'none');
+    const warm = hero.locator('.hero-scene--warm');
+    await expect(warm).toHaveCSS('animation-name', 'none');
+    await expect(warm).toHaveCSS('opacity', '0');
+    await expect(hero.locator('.hero__stage .hero__frame')).toHaveCSS('transform', 'none');
+    const still = hero.locator('[data-testid="hero-scene-daylight"] img');
+    await expect.poll(() => decodedWidth(still)).toBeGreaterThanOrEqual(1200);
+    // The films never start on their own: the photographs are the hero.
+    for (const id of HERO_SCENE_IDS) {
+      const film = hero.locator(`[data-testid="hero-scene-${id}"] video`);
+      expect(await film.evaluate((el) => ({ paused: el.paused, time: el.currentTime }))).toEqual({ paused: true, time: 0 });
+      await expect(hero.getByTestId(`hero-scene-${id}`)).not.toHaveAttribute('data-video', 'playing');
+    }
+    // A pick still lands at once.
+    await page.getByTestId('hero-scene-switch').getByRole('button', { name: 'Warm 2700K' }).click();
+    await expect(warm).toHaveCSS('opacity', '1');
+  });
+
+  test('wide screens crop the floor first: every fixture key stays whole inside the hero, clear of the navbar', async ({ page }) => {
+    for (const viewport of [
+      { width: 1280, height: 720 },
+      { width: 1440, height: 900 },
+      { width: 1600, height: 700 },
+      { width: 1920, height: 1080 },
+    ]) {
+      const size = `${viewport.width}x${viewport.height}`;
+      await page.setViewportSize(viewport);
+      await page.goto('/');
+      const hero = page.getByTestId('ambient-surface');
+      const heroBox = await hero.boundingBox();
+      const navBox = await page.locator('.navbar').boundingBox();
+      // The cover frame spans the whole hero: the ceiling is never trimmed to make room for the floor.
+      const frameBox = await hero.locator('.hero__stage .hero__frame').boundingBox();
+      expect(frameBox.y, size).toBeLessThanOrEqual(heroBox.y);
+      expect(frameBox.y + frameBox.height, size).toBeGreaterThanOrEqual(heroBox.y + heroBox.height);
+      for (const spot of HERO_HOTSPOTS) {
+        const key = hero.getByTestId(`hero-hotspot-${spot.id}`).locator('.hero-hotspot__key');
+        const box = await key.boundingBox();
+        expect(box.y, `${spot.id} at ${size}`).toBeGreaterThanOrEqual(navBox.y + navBox.height + 6);
+        expect(box.y + box.height, `${spot.id} at ${size}`).toBeLessThanOrEqual(heroBox.y + heroBox.height);
+        // Nothing covers the key: a click at its centre lands on it.
+        const onTop = await key.evaluate((el) => {
+          const rect = el.getBoundingClientRect();
+          return el.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+        });
+        expect(onTop, `${spot.id} at ${size}`).toBe(true);
+      }
     }
   });
 });
@@ -478,8 +460,11 @@ test.describe('meet our icons cinema', () => {
 });
 
 test.describe('explore the lumen home', () => {
-  test('a centred head, three 3:4 vector rooms on a 16 px gutter, captions on the bare paper, then A culture of light', async ({ page }) => {
+  test('a centred head, three 4:5 photographed rooms on a 16 px gutter whose films wake on hover, captions on the bare paper, then A culture of light', async ({
+    page,
+  }) => {
     const errors = collectRuntimeErrors(page);
+    const failed = collectFailedResponses(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     const section = page.getByTestId('workspaces');
@@ -490,42 +475,48 @@ test.describe('explore the lumen home', () => {
 
     const portraits = section.locator('.entry-card__portrait');
     await expect(portraits).toHaveCount(3);
-    const canvases = section.getByTestId('interior-portrait');
+    const pictures = section.getByTestId('interior-portrait');
     for (const [i, scene] of ['dining', 'bedroom', 'studio'].entries()) {
-      await expect(canvases.nth(i)).toHaveAttribute('data-scene', scene);
-      await expect(canvases.nth(i)).toHaveAttribute('data-painted', scene);
-      await expect(canvases.nth(i)).toHaveAttribute('aria-hidden', 'true');
+      const picture = pictures.nth(i);
+      const media = ROOM_MEDIA[scene];
+      await expect(picture).toHaveAttribute('data-scene', scene);
+      await expect(picture).toHaveAttribute('aria-hidden', 'true');
+      // A 1600 x 2000 photograph, decoded: data-painted reports it.
+      const still = picture.locator('img');
+      await expect(still).toHaveAttribute('src', mediaPath(media.still));
+      await expect.poll(() => decodedWidth(still), { timeout: 15_000 }).toBeGreaterThanOrEqual(1200);
+      expect(await still.evaluate((el) => el.naturalWidth / el.naturalHeight)).toBe(0.8);
+      await expect(picture).toHaveAttribute('data-painted', 'true');
+      // Its film waits on the first frame, the photograph, until it is asked for.
+      const film = picture.locator('video');
+      await expect(film).toHaveAttribute('preload', 'metadata');
+      await expect(film).toHaveAttribute('poster', mediaPath(media.still));
+      const sources = await film.locator('source').evaluateAll((els) => els.map((el) => [el.type, new URL(el.src).pathname]));
+      expect(sources).toEqual([
+        ['video/webm', `/media/rooms/${media.slug}.webm`],
+        ['video/mp4', `/media/rooms/${media.slug}.mp4`],
+      ]);
+      expect(await film.evaluate((el) => ({ paused: el.paused, muted: el.muted, loop: el.loop }))).toEqual({ paused: true, muted: true, loop: true });
+      // The hover glow is seated over the room's luminaire.
+      const glow = await portraits.nth(i).evaluate((el) => [el.style.getPropertyValue('--glow-x'), el.style.getPropertyValue('--glow-y')]);
+      expect(glow).toEqual([`${(INTERIOR_SCENES[scene].glow.x * 100).toFixed(1)}%`, `${(INTERIOR_SCENES[scene].glow.y * 100).toFixed(1)}%`]);
     }
-    // Smooth architectural vectors, never procedural noise: inline SVG with
-    // no canvas, filter, turbulence, pattern or bitmap, every path painted in
-    // a flat colour or a gradient that lives in its own picture.
-    const pictures = await portraits.evaluateAll((els) =>
-      els.map((el) => {
-        const svg = el.querySelector('[data-testid="interior-portrait"]');
-        // The painted shapes: the picture's own paths, not the outlines inside its clip paths.
-        const fills = [...svg.querySelectorAll(':scope > path')].map((path) => path.getAttribute('fill'));
-        return {
-          tag: svg.tagName.toLowerCase(),
-          canvases: el.querySelectorAll('canvas').length,
-          noise: svg.querySelectorAll('filter, feTurbulence, pattern, image').length,
-          flat: fills.every((fill) => fill === 'none' || /^#[0-9a-f]{6}$/.test(fill) || /^url\(#[a-z0-9-]+\)$/.test(fill)),
-          unresolved: fills.filter((fill) => fill.startsWith('url(') && !svg.querySelector(fill.slice(4, -1))).length,
-          gradients: svg.querySelectorAll('linearGradient, radialGradient').length,
-          textures: [el, ...el.querySelectorAll('*')].filter((node) => getComputedStyle(node).backgroundImage.includes('url(')).length,
-        };
-      }),
+    // Photographs, never procedural drawing: no SVG, canvas, filter or texture in a room.
+    const rooms = await portraits.evaluateAll((els) =>
+      els.map((el) => ({
+        drawn: el.querySelectorAll('svg, canvas, filter, feTurbulence, pattern').length,
+        textures: [el, ...el.querySelectorAll('*')].filter((node) => getComputedStyle(node).backgroundImage.includes('url(')).length,
+      })),
     );
-    for (const picture of pictures) {
-      expect(picture).toMatchObject({ tag: 'svg', canvases: 0, noise: 0, flat: true, unresolved: 0, textures: 0 });
-      expect(picture.gradients).toBeGreaterThan(20);
-    }
+    for (const room of rooms) expect(room).toEqual({ drawn: 0, textures: 0 });
+
     // Boxes include transforms: measure once the staggered reveal has settled.
     await expect
       .poll(() => section.locator('.explore__cell').evaluateAll((els) => els.every((el) => el.hasAttribute('data-reveal-settled'))))
       .toBe(true);
     const boxes = await Promise.all((await portraits.all()).map((el) => el.boundingBox()));
     for (const box of boxes) {
-      expect(box.width / box.height).toBeCloseTo(0.75, 2);
+      expect(box.width / box.height).toBeCloseTo(0.8, 2);
       expect(Math.abs(box.y - boxes[0].y)).toBeLessThanOrEqual(1);
     }
     expect(Math.round(boxes[1].x - (boxes[0].x + boxes[0].width))).toBe(16);
@@ -545,13 +536,28 @@ test.describe('explore the lumen home', () => {
     await expect(cards.nth(2)).toHaveAccessibleName(/04 \/ Lighting\s+Lighting Studio/);
     await expect(section).not.toContainText('Wall Studio');
 
-    // Hovering a room lets its luminaire breathe on the compositor.
+    // Hovering a room wakes its film: it plays, then crossfades in over the
+    // photograph in 400 ms on the house ease, and its luminaire glows.
+    const first = pictures.first();
+    const firstFilm = first.locator('video');
+    await expect(firstFilm).toHaveCSS('transition', /opacity 0\.4s cubic-bezier\(0\.22, 1, 0\.36, 1\)/);
     const glow = cards.first().locator('.entry-card__glow');
     await expect(glow).toHaveCSS('animation-play-state', 'paused');
     await cards.first().locator('.entry-card__portrait').hover();
+    await expect(first).toHaveAttribute('data-video', 'playing', { timeout: 15_000 });
+    const t0 = await playhead(firstFilm);
+    await expect.poll(() => playhead(firstFilm)).toBeGreaterThan(t0);
+    await expect.poll(() => firstFilm.evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(1);
     await expect.poll(() => glow.evaluate((el) => Number(getComputedStyle(el).opacity))).toBeGreaterThan(0.95);
     await expect(glow).toHaveCSS('animation-name', 'interior-breathe');
     await expect(glow).toHaveCSS('animation-play-state', 'running');
+    // Leaving rests it again: paused, faded out and back on its first frame.
+    await page.mouse.move(4, 4);
+    await expect.poll(() => firstFilm.evaluate((el) => el.paused)).toBe(true);
+    await expect.poll(() => firstFilm.evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(0);
+    await expect.poll(() => playhead(firstFilm)).toBe(0);
+    // The other rooms never woke.
+    for (const i of [1, 2]) expect(await pictures.nth(i).locator('video').evaluate((el) => el.paused && el.currentTime === 0)).toBe(true);
 
     // A culture of light closes the section, centred under the rooms.
     const manifesto = page.getByTestId('culture-of-light');
@@ -564,6 +570,7 @@ test.describe('explore the lumen home', () => {
     const narrow = await Promise.all((await portraits.all()).map((el) => el.boundingBox()));
     expect(narrow[1].y).toBeGreaterThan(narrow[0].y + narrow[0].height);
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+    expect(failed).toEqual([]);
     expect(errors).toEqual([]);
   });
 });

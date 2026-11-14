@@ -102,10 +102,16 @@ test.describe('twelve-part canonical catalog', () => {
     // Every card is a lifelike interior of its own part, lit where the part gives
     // light. The storefront has no Specs layer: no telemetry, no mode switch.
     await filters.getByRole('button', { name: /^all/i }).click();
+    // ...each a 1600 x 1200 studio photograph of the part in its default finish.
     for (const product of PRODUCTS) {
       const visual = page.getByRole('article', { name: product.name }).getByTestId('product-visual');
       await expect(visual, product.id).toHaveAttribute('data-shape', product.shape);
       await expect(visual, product.id).toHaveAttribute('data-lit', String(product.watts > 0));
+      await visual.scrollIntoViewIfNeeded();
+      await expect(visual, product.id).toHaveAttribute('data-shown', product.defaultFinish, { timeout: 15_000 });
+      const photo = visual.locator(`img[data-finish="${product.defaultFinish}"]`);
+      expect(await photo.evaluate((el) => [el.naturalWidth, el.naturalHeight]), product.id).toEqual([1600, 1200]);
+      await expect(photo, product.id).toHaveAttribute('src', new RegExp(`^/media/catalog/${product.id}-${product.defaultFinish}\\.webp\\?v=`));
     }
     await expect(page.getByTestId('product-telemetry')).toHaveCount(0);
     await expect(page.getByTestId('mode-switch')).toHaveCount(0);

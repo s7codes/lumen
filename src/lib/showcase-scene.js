@@ -1,6 +1,7 @@
 /*
  * Scene, photometry and choreography for the overview showcase theatre.
- * Pure data and math, no DOM: the painter and the rAF loop live elsewhere.
+ * Pure data and math, no DOM. The films the theatre plays are posed by
+ * src/lib/showcase-film.js; the HUD reads its lux and dimensions here.
  *
  * Room frame in cm, as in the planner: x along the north wall, y up, z from
  * the north wall toward the south wall. Yaw 0 puts the eye south of the room
@@ -232,7 +233,9 @@ export function wallPresence(view, wall) {
 
 /* ---------- furniture and modules ---------- */
 
-export const SHELF = Object.freeze({ widthCm: 110, depthCm: 25, thickCm: 5, home: Object.freeze({ x: 140, y: 145 }) });
+// The Floating Shelf 110 as the catalog lists it (110 x 8 x 25 cm), so the
+// gizmo readout agrees with the laser dimensions filmed in the planner.
+export const SHELF = Object.freeze({ widthCm: 110, depthCm: 25, thickCm: 8, home: Object.freeze({ x: 140, y: 145 }) });
 export const SHELF_TRAVEL = Object.freeze({ x: [60, 420], y: [100, 210] });
 
 export const OBSERVER = Object.freeze([W / 2, EYE_HEIGHT_CM, 325]);

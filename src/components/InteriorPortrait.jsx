@@ -1,50 +1,23 @@
 import { useEffect, useRef } from 'react';
+import { useViewportVideo } from '../hooks/useViewportVideo.js';
 import { INTERIOR_VIEW, interiorScene } from '../lib/interior-painter.js';
-
-const VIEW_BOX = `0 0 ${INTERIOR_VIEW.width} ${INTERIOR_VIEW.height}`;
-
-function Stops({ stops }) {
-  return stops.map(([offset, color, opacity = 1], i) => <stop key={i} offset={offset} stopColor={color} stopOpacity={opacity} />);
-}
-
-function Def({ def, prefix }) {
-  const id = `${prefix}-${def.id}`;
-  if (def.type === 'clip') {
-    return (
-      <clipPath id={id}>
-        <path d={def.d} />
-      </clipPath>
-    );
-  }
-  const units = def.units === 'user' ? 'userSpaceOnUse' : 'objectBoundingBox';
-  if (def.type === 'radial') {
-    const squash = def.squash === 1 ? undefined : `translate(${def.cx} ${def.cy}) scale(1 ${def.squash}) translate(${-def.cx} ${-def.cy})`;
-    return (
-      <radialGradient id={id} gradientUnits={units} cx={def.cx} cy={def.cy} r={def.r} gradientTransform={squash}>
-        <Stops stops={def.stops} />
-      </radialGradient>
-    );
-  }
-  return (
-    <linearGradient id={id} gradientUnits={units} x1={def.x1} y1={def.y1} x2={def.x2} y2={def.y2}>
-      <Stops stops={def.stops} />
-    </linearGradient>
-  );
-}
-
-const paintOf = (paint, prefix) => (paint === 'none' || paint.startsWith('#') ? paint : `url(#${prefix}-${paint})`);
+import { ROOM_MEDIA } from '../lib/media-manifest.js';
 
 /**
- * One 3:4 interior as smooth architectural vectors: crisp geometry under
- * smooth gradients, no canvas, no grain and no filters, sharp at any pixel
- * density. The luminaire's position lands on the parent as --glow-x and
- * --glow-y, where the hover light breathes (CSS, on the compositor). The
- * picture is decorative: the link around it carries the words.
+ * One 4:5 room: a 2K photograph at rest, its film on hover or focus. The
+ * film crossfades in only once it is actually playing (400 ms, the house
+ * ease) and rewinds to its first frame, which is the photograph, when the
+ * pointer leaves. The luminaire's position lands on the parent as --glow-x
+ * and --glow-y for the hover light; data-painted turns "true" once the
+ * photograph has decoded. The picture is decorative: the link around it
+ * carries the words.
  */
 export function InteriorPortrait({ scene }) {
   const ref = useRef(null);
+  const videoRef = useRef(null);
   const art = interiorScene(scene);
-  const prefix = `interior-${art.id}`;
+  const media = ROOM_MEDIA[art.id];
+  const { engage, release } = useViewportVideo(videoRef, ref, { mode: 'hover', rewindOnRelease: true });
 
   useEffect(() => {
     const host = ref.current?.parentElement;
@@ -52,36 +25,50 @@ export function InteriorPortrait({ scene }) {
     host?.style.setProperty('--glow-y', `${(art.glow.y * 100).toFixed(1)}%`);
   }, [art]);
 
+  // The whole card is the hover target: the link, its caption and the picture.
+  useEffect(() => {
+    const card = ref.current?.closest('.entry-card');
+    if (!card) return undefined;
+    const onLeave = (event) => {
+      if (event.type === 'focusout' && card.contains(event.relatedTarget)) return;
+      release();
+    };
+    card.addEventListener('pointerenter', engage);
+    card.addEventListener('pointerleave', onLeave);
+    card.addEventListener('focusin', engage);
+    card.addEventListener('focusout', onLeave);
+    return () => {
+      card.removeEventListener('pointerenter', engage);
+      card.removeEventListener('pointerleave', onLeave);
+      card.removeEventListener('focusin', engage);
+      card.removeEventListener('focusout', onLeave);
+    };
+  }, [engage, release]);
+
+  // A photograph already in the cache can finish before React attaches onLoad.
+  useEffect(() => {
+    const img = ref.current?.querySelector('img');
+    if (img?.complete && img.naturalWidth > 0) ref.current.dataset.painted = 'true';
+  }, []);
+
   return (
-    <svg
-      ref={ref}
-      className="entry-card__picture"
-      viewBox={VIEW_BOX}
-      preserveAspectRatio="xMidYMid slice"
-      data-testid="interior-portrait"
-      data-scene={art.id}
-      data-painted={art.id}
-      aria-hidden="true"
-      focusable="false"
-    >
-      <defs>
-        {art.defs.map((def) => (
-          <Def key={def.id} def={def} prefix={prefix} />
-        ))}
-      </defs>
-      {art.shapes.map((shape, i) => (
-        <path
-          key={i}
-          d={shape.d}
-          fill={paintOf(shape.paint, prefix)}
-          fillOpacity={shape.opacity}
-          stroke={shape.stroke}
-          strokeWidth={shape.width}
-          strokeOpacity={shape.strokeOpacity}
-          strokeLinecap={shape.stroke ? 'round' : undefined}
-          clipPath={shape.clip ? `url(#${prefix}-${shape.clip})` : undefined}
-        />
-      ))}
-    </svg>
+    <span ref={ref} className="entry-card__picture" data-testid="interior-portrait" data-scene={art.id} data-painted="false" aria-hidden="true">
+      <img
+        className="entry-card__still"
+        src={media.still}
+        width={INTERIOR_VIEW.width}
+        height={INTERIOR_VIEW.height}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onLoad={(event) => {
+          event.currentTarget.parentElement.dataset.painted = 'true';
+        }}
+      />
+      <video ref={videoRef} className="entry-card__film" muted loop playsInline preload="metadata" poster={media.still} disablePictureInPicture tabIndex={-1}>
+        <source src={media.film.webm} type="video/webm" />
+        <source src={media.film.mp4} type="video/mp4" />
+      </video>
+    </span>
   );
 }

@@ -5,14 +5,14 @@
    lit module plinths and the Explore the Lumen home rooms. A band spans the
    page edge to edge; the copy in it keeps the grid. */
 
-/* Hero. Two light architectural interiors (inline SVG, geometry in
-   src/lib/hero-scenes.js) share one CSS clock: each holds the frame for 5 s,
-   then a 1.1 s crossfade hands it over (12.2 s a cycle). useAmbientLight
-   writes --light-x / --light-y and the offsets from rest --light-dx /
-   --light-dy, which drive a subtle parallax and the gallery pendant's travel
-   along its track. Smooth matte plaster and limestone, no noise: the light
-   itself is the texture. The copy owns the lower left in carbon ink; the
-   right track stays open for the luminaires. */
+/* Hero. One limestone gallery room photographed twice from the same stand
+   (src/lib/hero-scenes.js, media in src/lib/media-manifest.js): 2K stills of
+   architectural daylight and of the same room at 2700K after dusk, each under
+   a looping film of its own light. They share one CSS clock: each holds the
+   frame for 5 s, then a 1.1 s crossfade hands it over (12.2 s a cycle), until
+   the switcher holds one. useAmbientLight writes --light-dx / --light-dy,
+   which drive a subtle parallax of the whole picture. The copy owns the lower
+   left in carbon ink; the fixtures on the right carry their hotspot keys. */
 
 .hero {
   --light-x: 74%;
@@ -36,36 +36,81 @@
   isolation: isolate;
 }
 
-/* The stage sizes the pictures from its own box: wide frames crop top and
-   bottom, narrow ones keep the right-hand side, where the light lives. */
-.hero__stage {
+/* The stage and the hotspot layer share one cover frame: 16:9, as wide as
+   the stage or as tall as it, whichever covers it. Wide screens crop the
+   floor first, so the ceiling track, its spot heads and their key stay whole
+   below the navbar; portrait screens slide toward the set, so the pendant,
+   the console and the shelf stay in view. */
+.hero__stage,
+.hero__hotspots {
   position: absolute;
   inset: 0;
-  z-index: -2;
   overflow: hidden;
   container-type: size;
   pointer-events: none;
 }
 
-/* max-width: none lifts the global img/svg reset, which would clamp the
-   right-anchored picture back to the stage width on portrait screens. */
-.hero-scene {
-  position: absolute;
-  top: 0;
-  right: 0;
-  display: block;
-  width: max(100cqw, 150cqh);
-  max-width: none;
-  height: 100cqh;
+.hero__stage {
+  z-index: -2;
 }
 
-.hero-scene--gallery {
+/* Above the copy box, but only the keys take the pointer. */
+.hero__hotspots {
+  z-index: 1;
+}
+
+/* max-width: none lifts the global img/video reset, which would clamp the
+   right-anchored frame back to the stage width on portrait screens. */
+.hero__frame {
+  --frame-w: max(100cqw, calc(100cqh * 16 / 9));
+
+  position: absolute;
+  top: 0;
+  left: clamp(calc(100cqw - var(--frame-w)), calc(50cqw - var(--frame-w) * 0.66), 0px);
+  width: var(--frame-w);
+  max-width: none;
+  aspect-ratio: 16 / 9;
+  transform: translate3d(calc(var(--light-dx) * -14px), calc(var(--light-dy) * -9px), 0) scale(1.035);
+  transform-origin: 60% 50%;
+}
+
+.hero-scene {
+  position: absolute;
+  inset: 0;
+}
+
+.hero-scene__picture {
+  display: contents;
+}
+
+.hero-scene__still,
+.hero-scene__film {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+}
+
+/* The film shows only once it is playing: its first frame is the still. */
+.hero-scene__film {
+  opacity: 0;
+  transition: opacity 900ms var(--ease-cinematic);
+}
+
+.hero-scene[data-video='playing'] .hero-scene__film {
+  opacity: 1;
+}
+
+.hero-scene--warm {
   opacity: 0;
   animation: hero-scene-cycle var(--scene-cycle) var(--scene-ease) infinite;
 }
 
-/* 0 to 5 s the wall wash, 5 to 6.1 s the crossfade, 6.1 to 11.1 s the
-   gallery, 11.1 to 12.2 s back. Each segment eases on --scene-ease. */
+/* 0 to 5 s daylight, 5 to 6.1 s the crossfade, 6.1 to 11.1 s warm 2700K,
+   11.1 to 12.2 s back. Each segment eases on --scene-ease. */
 @keyframes hero-scene-cycle {
   0%,
   40.984% {
@@ -82,24 +127,143 @@
   }
 }
 
-/* Parallax: the far planes drift least, the side wall most, both against
-   the pointer; the pendant slides with it. CSS px are view-box units here. */
-.hero-scene__layer[data-depth='far'] {
-  transform: translate(calc(var(--light-dx) * -10px), calc(var(--light-dy) * -6px));
-}
-
-.hero-scene__layer[data-depth='near'] {
-  transform: translate(calc(var(--light-dx) * -24px), calc(var(--light-dy) * -10px));
-}
-
-/* The pendant's travel is clamped so it never drifts in behind the headline. */
-.hero-scene__layer[data-depth='pendant'] {
-  transform: translate(clamp(-56px, calc(var(--light-dx) * 150px), 40px), calc(var(--light-dy) * -6px));
-}
-
 /* Out of view the clock holds its place: no compositor loop nobody sees. */
-.hero[data-offscreen] .hero-scene--gallery {
+.hero[data-offscreen] .hero-scene--warm {
   animation-play-state: paused;
+}
+
+/* A picked scene holds: the clock stops and one crossfade lands it. */
+.hero[data-scene-hold] .hero-scene--warm {
+  animation: none;
+  transition: opacity 1.1s var(--scene-ease);
+}
+
+.hero[data-scene-hold='warm'] .hero-scene--warm {
+  opacity: 1;
+}
+
+/* Fixture keys: square hairline keys on the fixtures themselves. A key
+   inverts under the pointer or focus and opens a paper callout with the
+   part and one line of its specification. */
+.hero-hotspot {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  translate: -50% -50%;
+  pointer-events: auto;
+}
+
+.hero-hotspot__key {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(250, 249, 246, 0.9);
+  background: rgba(20, 19, 17, 0.32);
+  color: #faf9f6;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.hero-hotspot__key svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+}
+
+.hero-hotspot__key:hover,
+.hero-hotspot__key:focus-visible {
+  background: #faf9f6;
+  color: #141311;
+}
+
+.hero-hotspot__callout {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(20, 19, 17, 0.14);
+  background: #faf9f6;
+  color: #141311;
+  white-space: nowrap;
+  translate: -50% 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    visibility var(--duration-fast) var(--ease-out);
+}
+
+.hero-hotspot[data-callout='below'] .hero-hotspot__callout {
+  top: calc(100% + 10px);
+  bottom: auto;
+}
+
+.hero-hotspot[data-align='end'] .hero-hotspot__callout {
+  left: auto;
+  right: -8px;
+  translate: 0 0;
+}
+
+.hero-hotspot:hover .hero-hotspot__callout,
+.hero-hotspot:focus-within .hero-hotspot__callout {
+  opacity: 1;
+  visibility: visible;
+}
+
+.hero-hotspot__name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.hero-hotspot__detail {
+  font-size: var(--text-2xs);
+  letter-spacing: 0.04em;
+  color: rgba(20, 19, 17, 0.66);
+}
+
+/* Daylight / Warm 2700K: a hairline segmented key, the held scene inverted. */
+.hero__switch {
+  position: absolute;
+  right: var(--hero-inset);
+  bottom: clamp(var(--space-6), 3.5vw, var(--space-9));
+  z-index: 1;
+  display: flex;
+  border: 1px solid rgba(20, 19, 17, 0.22);
+  background: rgba(245, 242, 235, 0.78);
+}
+
+.hero__switch-key {
+  min-height: 36px;
+  padding: 0 14px;
+  font-family: var(--font-sans);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(20, 19, 17, 0.72);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.hero__switch-key + .hero__switch-key {
+  border-left: 1px solid rgba(20, 19, 17, 0.22);
+}
+
+.hero__switch-key:hover {
+  color: #141311;
+}
+
+.hero__switch-key[aria-pressed='true'] {
+  background: #141311;
+  color: #faf9f6;
 }
 
 /* A soft plaster veil under the copy: carbon type over a calm field in both
@@ -213,19 +377,36 @@
     padding-bottom: var(--space-9);
   }
 
+  .hero__switch {
+    position: static;
+    grid-column: 1;
+    justify-self: start;
+    margin-top: var(--space-6);
+  }
+
+  /* On a phone the set sits behind the headline: the keys stay on desktop. */
+  .hero__hotspots {
+    display: none;
+  }
+
   .hero__scrim {
     background: linear-gradient(0deg, rgba(230, 223, 211, 0.72) 0%, rgba(230, 223, 211, 0.4) 52%, rgba(230, 223, 211, 0.12) 100%);
   }
 }
 
-/* Reduced motion rests on the wall wash: no crossfade, no parallax. */
+/* Reduced motion rests on daylight: no clock, no parallax, no film fade. */
 @media (prefers-reduced-motion: reduce) {
-  .hero-scene--gallery {
+  .hero-scene--warm {
     animation: none;
   }
 
-  .hero-scene__layer[data-depth] {
+  .hero__frame {
     transform: none;
+  }
+
+  .hero-scene__film,
+  .hero[data-scene-hold] .hero-scene--warm {
+    transition: none;
   }
 }
 
@@ -902,10 +1083,11 @@
 }
 
 /* 03 / 3D Spatial Studio: Nocturne, light in the dark. A full-bleed band of
-   matte slate wall over a warm concrete floor wash. The stage is a canvas 2D
-   projection under an HTML and SVG HUD, its rAF loop running only while the
-   stage is on screen and never under reduced motion. Beside it, a flush
-   index of the three capabilities in alabaster on the slate. */
+   matte slate wall over a warm concrete floor wash. The stage plays films of
+   the 3D Spatial Studio engine, one per act, under an HTML and SVG HUD; its
+   rAF loop and its films run only while the stage is on screen and never
+   under reduced motion. Beside it, a flush index of the three capabilities
+   in alabaster on the slate. */
 
 .showcase3d {
   --nocturne-pad: var(--section-space);
@@ -978,19 +1160,47 @@
   aspect-ratio: 3 / 2;
 }
 
-.theatre__canvas {
+/* The screen: one film per act, stacked; the act's film crossfades in. */
+.theatre__screen {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #1c1e21;
+  cursor: crosshair;
+}
+
+.theatre__film {
   position: absolute;
   inset: 0;
   display: block;
   width: 100%;
   height: 100%;
-  cursor: crosshair;
+  max-width: none;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 600ms var(--ease-cinematic);
 }
 
+.theatre__film[data-active] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theatre__film {
+    transition: none;
+  }
+}
+
+/* A quiet veil under the HUD lines, so lit plaster never washes the figures
+   out. The registration legs stand 14px in and 2% of the frame along; the
+   lines start 12px past them, so a leg never crosses a letter. */
 .theatre__hud {
+  --hud-inline: calc(26px + (100% - 28px) * 0.02);
+
   position: absolute;
   inset: 0;
   pointer-events: none;
+  background: linear-gradient(180deg, rgba(20, 21, 23, 0.5) 0%, rgba(20, 21, 23, 0) 17%, rgba(20, 21, 23, 0) 80%, rgba(20, 21, 23, 0.52) 100%);
 }
 
 .theatre__frame {
@@ -1023,8 +1233,8 @@
 
 .theatre__bar {
   top: var(--space-5);
-  left: var(--bento-pad);
-  right: var(--bento-pad);
+  left: var(--hud-inline);
+  right: var(--hud-inline);
   display: flex;
   justify-content: space-between;
   gap: var(--space-4);
@@ -1037,7 +1247,7 @@
 }
 
 .theatre__telemetry {
-  left: var(--bento-pad);
+  left: var(--hud-inline);
   bottom: var(--space-5);
   display: flex;
   gap: var(--space-4);
@@ -1053,7 +1263,7 @@
 }
 
 .theatre__readout {
-  right: var(--bento-pad);
+  right: var(--hud-inline);
   bottom: var(--space-5);
   max-width: 58%;
   text-align: right;
@@ -1594,8 +1804,8 @@
   }
 
   .theatre__readout {
-    left: var(--bento-pad);
-    right: var(--bento-pad);
+    left: var(--hud-inline);
+    right: var(--hud-inline);
     bottom: calc(var(--space-5) + 20px);
     max-width: none;
     text-align: left;
@@ -1695,7 +1905,7 @@
 .entry-card__portrait {
   position: relative;
   display: block;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 4 / 5;
   overflow: hidden;
   border-radius: 0;
   background: var(--paper-stone);
@@ -1724,6 +1934,27 @@
   transform: scale(1.03);
 }
 
+/* The photograph at rest; its film crossfades in only once it is playing. */
+.entry-card__still,
+.entry-card__film {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+}
+
+.entry-card__film {
+  opacity: 0;
+  transition: opacity 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.entry-card__picture[data-video='playing'] .entry-card__film {
+  opacity: 1;
+}
+
 /* The breathing light: a warm pool over the luminaire, scaled on the
    compositor. It fades in on hover and its keyframes run only while lit. */
 .entry-card__glow {
@@ -1732,9 +1963,9 @@
   z-index: 1;
   background: radial-gradient(
     circle at var(--glow-x, 50%) var(--glow-y, 40%),
-    rgba(255, 198, 132, 0.46) 0,
-    rgba(255, 172, 98, 0.16) 16%,
-    rgba(255, 172, 98, 0) 42%
+    rgba(255, 198, 132, 0.2) 0,
+    rgba(255, 172, 98, 0.07) 14%,
+    rgba(255, 172, 98, 0) 36%
   );
   mix-blend-mode: screen;
   opacity: 0;

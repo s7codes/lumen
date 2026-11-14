@@ -138,6 +138,17 @@ jobs:
             jq -e '.error.code == "forbidden_origin"' refused.json
           done
 
+          # Films stream through Caddy as byte ranges, with their exact type and a one-year policy.
+          curl -fsSk -D film.head -o film.part -H 'Range: bytes=0-1023' https://localhost/media/showcase/01-envelope.webm
+          grep -qiE '^HTTP/[0-9.]+ 206' film.head
+          grep -qi '^content-type: video/webm' film.head
+          grep -qi '^accept-ranges: bytes' film.head
+          grep -qiE '^content-range: bytes 0-1023/[0-9]+' film.head
+          grep -qi '^cache-control: public, max-age=31536000, immutable' film.head
+          test "$(wc -c < film.part)" = 1024
+          curl -fsSk -D photo.head -o /dev/null https://localhost/media/hero/daylight-2560.webp
+          grep -qi '^content-type: image/webp' photo.head
+
           # Server-Sent Events pass through Caddy unbuffered and unencoded.
           curl -fsSkN -D sse.head -o sse.txt -X POST https://localhost/api/concierge/stream \
             -H "Origin: $SITE" -H 'Content-Type: application/json' --data '{"question":"What does the Linear Lightbar 60 draw?"}'

@@ -1,0 +1,15 @@
+{
+  "name": "lumen-media-studio",
+  "private": true,
+  "description": "Lumen media studio: path-traced stills and films for public/media (offline tool, not part of the app).",
+  "type": "module",
+  "scripts": {
+    "studio": "node ../../../node_modules/vite/bin/vite.js --config vite.config.js"
+  },
+  "dependencies": {
+    "three": "0.187.0",
+    "three-gpu-pathtracer": "0.0.28",
+    "three-mesh-bvh": "0.9.18",
+    "xatlas-web": "0.1.0"
+  }
+}

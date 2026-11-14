@@ -22,4 +22,12 @@
 
 	# The app sends its own security headers, HSTS included.
 	header -Server
+
+	# Photographs and films. reverse_proxy forwards Range and If-Range, and the
+	# app answers 206 Partial Content, so a film seeks and streams through the
+	# edge. The app marks /media/* immutable for a year (each release asks with
+	# a new ?v= query); if a response ever arrives without a cache policy, the
+	# edge supplies the same one.
+	@media path /media/*
+	header @media ?Cache-Control "public, max-age=31536000, immutable"
 }

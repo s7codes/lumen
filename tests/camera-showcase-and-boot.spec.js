@@ -50,8 +50,10 @@ import {
   SNAP_CM,
   STAGE_ROOM,
 } from '../src/lib/showcase-scene.js';
+import { FILM_FILES, FILM_FPS, FILM_SECONDS, filmBearing, filmCamera, filmDimPct, filmFloorUnder, filmShelf, filmView } from '../src/lib/showcase-film.js';
+import { SHOWCASE_MEDIA } from '../src/lib/media-manifest.js';
 import { holdEngineChunk } from './support/engine-gates.js';
-import { collectRuntimeErrors, horizontalOverflow, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
+import { collectFailedResponses, collectRuntimeErrors, horizontalOverflow, installCspRecorder, mediaPath, playhead, readCspViolations } from './support/runtime-guards.js';
 
 const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
 const PLANNER_CHUNK = /\/assets\/(RoomPlannerPage|RoomCanvas)-[\w-]+\.js$/;
@@ -417,7 +419,7 @@ test.describe('navbar order and the overview 3D showcase', () => {
     await expect(navLink).toHaveText('3D Room');
     await expect(navLink).toHaveAttribute('href', '/room-3d');
 
-    // The showcase is a canvas 2D projection: the overview still loads no planner or WebGL chunk.
+    // The showcase plays films of the studio engine: the overview still loads no planner or WebGL chunk.
     const showcase = page.getByTestId('home-3d-showcase');
     await expect(showcase).toHaveAttribute('id', SHOWCASE_3D_ID);
     await showcase.evaluate((el) => el.scrollIntoView());
@@ -425,7 +427,7 @@ test.describe('navbar order and the overview 3D showcase', () => {
       'Step inside a four-walled room before a single hole is drilled.',
     );
     await expect(showcase).toContainText('3D Spatial Studio');
-    await expect(page.getByTestId('showcase-stage-canvas')).toBeVisible();
+    await expect(page.getByTestId('showcase-stage-screen')).toBeVisible();
     for (const title of ['360-Degree Four-Wall Envelope', '165 cm Eye-Level Walkthrough', 'Direct 3D Raycast & Gizmo']) {
       await expect(showcase.getByRole('heading', { level: 3, name: title })).toBeVisible();
     }
@@ -435,9 +437,10 @@ test.describe('navbar order and the overview 3D showcase', () => {
     await expect(cta).toHaveAttribute('href', '/room-3d');
     await page.waitForLoadState('networkidle');
     expect(scripts.filter((path) => PLANNER_CHUNK.test(path))).toEqual([]);
-    expect(
-      await showcase.evaluate((el) => [...el.querySelectorAll('canvas')].map((c) => [Boolean(c.getContext('2d')), c.getContext('webgl'), c.getContext('webgl2')])),
-    ).toEqual([[true, null, null]]);
+    expect(await showcase.evaluate((el) => ({ canvases: el.querySelectorAll('canvas').length, films: el.querySelectorAll('video[data-film]').length }))).toEqual({
+      canvases: 0,
+      films: 4,
+    });
 
     // The showcase keeps its deep link, and the tab reads as the location there.
     await page.goto(`/#${SHOWCASE_3D_ID}`);
@@ -602,7 +605,8 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
       expect(pose.y % SNAP_CM).toBe(0);
       const dims = shelfDimensions(pose);
       expect(dims.x + 110 + dims.r).toBe(STAGE_ROOM.widthCm);
-      expect(dims.y + 5 + dims.c).toBe(STAGE_ROOM.heightCm);
+      // The Floating Shelf 110 is 8 cm thick (110 x 8 x 25 cm in the catalog).
+      expect(dims.y + 8 + dims.c).toBe(STAGE_ROOM.heightCm);
       xs.add(pose.x);
     }
     expect(xs.size).toBeGreaterThan(10);
@@ -718,12 +722,67 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     expect(errors).toEqual([]);
   });
 
-  test('the theatre paints a 2D projection, cycles four acts, holds one on a key or card, probes lux under the cursor and loads no WebGL', async ({
+  test('films: every act is a seamless 60 fps loop posed exactly as the planner camera frames the stage room', () => {
+    expect(FILM_FPS).toBe(60);
+    expect(FILM_SECONDS).toEqual({ orbit: 18, inside: 7, gizmo: 7, isolux: 7 });
+    expect(FILM_FILES).toEqual({ orbit: '01-envelope', inside: '02-walkthrough', gizmo: '03-raycast-gizmo', isolux: '04-iso-lux' });
+    for (const id of ACT_IDS) {
+      expect(SHOWCASE_MEDIA[id].film.webm).toMatch(new RegExp(`^/media/showcase/${FILM_FILES[id]}\\.webm\\?v=`));
+      expect(SHOWCASE_MEDIA[id].poster).toMatch(new RegExp(`^/media/showcase/${FILM_FILES[id]}\\.webp\\?v=`));
+      // Seamless: the frame after the last is the first again.
+      const span = FILM_SECONDS[id];
+      const a = filmCamera(id, 0);
+      const b = filmCamera(id, span);
+      const c = filmCamera(id, span - 1 / FILM_FPS);
+      for (const key of Object.keys(a)) if (typeof a[key] === 'number') expect(b[key], `${id} ${key}`).toBeCloseTo(a[key], 6);
+      // And one frame of motion is small: no jump anywhere in the loop.
+      if (a.mode === 'orbit') expect(Math.abs(((c.yaw - a.yaw + 540) % 360) - 180)).toBeLessThan(0.5);
+    }
+    // The orbit is the calm turntable: one full turn at 20 deg/s, pitch through 27 to 35 deg.
+    const yaws = Array.from({ length: 181 }, (_, i) => filmCamera('orbit', i / 10).yaw);
+    let turned = 0;
+    for (let i = 1; i < yaws.length; i += 1) turned += ((yaws[i] - yaws[i - 1] + 540) % 360) - 180;
+    expect(turned).toBeCloseTo(360, 6);
+    const pitches = Array.from({ length: 181 }, (_, i) => filmCamera('orbit', i / 10).pitch);
+    expect(Math.min(...pitches)).toBeCloseTo(ORBIT_PITCH.min, 6);
+    expect(Math.max(...pitches)).toBeCloseTo(ORBIT_PITCH.max, 6);
+    // The gizmo film slides the shelf on 5 cm ticks and brings it home; iso-lux breathes the pendant 55 to 100 percent.
+    for (let t = 0; t < 7; t += 0.11) {
+      const pose = filmShelf('gizmo', t);
+      expect(pose.x % SNAP_CM).toBe(0);
+      expect(pose.y % SNAP_CM).toBe(0);
+    }
+    expect(filmShelf('gizmo', 0)).toMatchObject({ x: 140, y: 145 });
+    expect(filmDimPct('isolux', 0)).toBe(100);
+    expect(filmDimPct('isolux', 3.5)).toBe(55);
+    expect(filmDimPct('orbit', 3.5)).toBe(100);
+
+    // The HUD's view of a film frame is the planner's own orbit camera for the stage room.
+    const room = sanitizeRoom({ widthCm: STAGE_ROOM.widthCm, depthCm: STAGE_ROOM.depthCm, heightCm: STAGE_ROOM.heightCm });
+    const frame = cameraFrame(room, 1.5, 'north');
+    for (const [act, t] of [['orbit', 0], ['orbit', 6.3], ['gizmo', 2.2], ['isolux', 4.1]]) {
+      const cam = filmCamera(act, t);
+      const planner = cameraPosition(frame, { yaw: cam.yaw, pitch: cam.pitch, zoom: cam.zoom }).map((m) => m * 100);
+      const film = filmView(act, t, 1.5);
+      for (let k = 0; k < 3; k += 1) expect(film.eye[k], `${act} ${t} ${k}`).toBeCloseTo(planner[k], 3);
+      expect(film.target.map((v, k) => Math.abs(v - frame.target[k] * 100)).every((d) => d < 1e-6)).toBe(true);
+    }
+    // The centre of the frame of a pitched orbit lands on the floor inside the room.
+    const centre = filmFloorUnder('isolux', 0, 0.5, 0.7);
+    expect(centre).not.toBeNull();
+    expect(centre[0]).toBeGreaterThan(0);
+    expect(centre[0]).toBeLessThan(STAGE_ROOM.widthCm);
+    expect(filmFloorUnder('isolux', 0, 0.5, 0.02)).toBeNull();
+    expect(filmBearing('inside', 0)).toEqual({ az: 0, pitch: 3 });
+  });
+
+  test('the theatre plays a film of the studio engine per act, cycles four acts, holds one on a key or card, probes lux under the cursor and loads no WebGL', async ({
     page,
   }) => {
     // Three full 7 s acts run in real time here (cycle, hold, cycle again).
     test.setTimeout(90_000);
     const errors = collectRuntimeErrors(page);
+    const failed = collectFailedResponses(page);
     const scripts = [];
     page.on('request', (request) => {
       if (request.resourceType() === 'script') scripts.push(new URL(request.url()).pathname);
@@ -731,43 +790,66 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     const stage = stageOf(page);
-    const canvas = page.getByTestId('showcase-stage-canvas');
+    const screen = page.getByTestId('showcase-stage-screen');
     await stage.scrollIntoViewIfNeeded();
-    await expect(canvas).toBeVisible();
+    await expect(screen).toBeVisible();
     await expect(stage).toHaveAttribute('data-act', 'orbit');
-    await expect(canvas).toHaveAttribute('data-act', 'orbit');
-    await expect(canvas).toHaveAttribute('role', 'img');
+    await expect(screen).toHaveAttribute('data-act', 'orbit');
+    await expect(screen).toHaveAttribute('role', 'img');
+    await expect(screen).toHaveAttribute('aria-label', /^Film of the 3D Spatial Studio engine/);
 
-    // A 2D context at device resolution, with the room actually painted into it.
-    await expect
-      .poll(() =>
-        canvas.evaluate((el) => {
-          const { data } = el.getContext('2d').getImageData(0, 0, el.width, el.height);
-          let lit = 0;
-          for (let i = 3; i < data.length; i += 16) if (data[i] > 0) lit += 1;
-          return lit / (data.length / 16);
-        }),
-      )
-      .toBeGreaterThan(0.2);
-    const surface = await canvas.evaluate((el) => ({ width: el.width, cssWidth: el.clientWidth, webgl: el.getContext('webgl2') }));
-    expect(surface.webgl).toBeNull();
-    expect(surface.width).toBeGreaterThanOrEqual(surface.cssWidth);
+    // One film per act: WebM first, MP4 second, the act's first frame as its
+    // poster; the stage draws nothing itself and opens no WebGL context.
+    const films = screen.locator('video[data-film]');
+    await expect(films).toHaveCount(4);
+    for (const id of ACT_IDS) {
+      const film = page.getByTestId(`showcase-film-${id}`);
+      const sources = await film.locator('source').evaluateAll((els) => els.map((el) => [el.type, new URL(el.src).pathname]));
+      expect(sources).toEqual([
+        ['video/webm', `/media/showcase/${FILM_FILES[id]}.webm`],
+        ['video/mp4', `/media/showcase/${FILM_FILES[id]}.mp4`],
+      ]);
+      await expect(film).toHaveAttribute('poster', mediaPath(SHOWCASE_MEDIA[id].poster));
+      expect(await film.evaluate((el) => ({ muted: el.muted, loop: el.loop, inline: el.playsInline }))).toEqual({ muted: true, loop: true, inline: true });
+    }
+    expect(await screen.evaluate((el) => el.querySelectorAll('canvas').length)).toBe(0);
+    const orbitFilm = page.getByTestId('showcase-film-orbit');
+    await expect(orbitFilm).toHaveAttribute('data-active', 'true');
+    await expect.poll(() => orbitFilm.evaluate((el) => !el.paused && el.currentTime > 0.2), { timeout: 15_000 }).toBe(true);
+    await expect.poll(() => orbitFilm.evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(1);
+    for (const id of ['inside', 'gizmo', 'isolux']) expect(await page.getByTestId(`showcase-film-${id}`).evaluate((el) => el.paused)).toBe(true);
 
     const acts = page.getByRole('group', { name: 'Stage acts' }).getByRole('button');
     await expect(acts).toHaveCount(4);
     for (const id of ACT_IDS) await expect(page.getByTestId(`showcase-act-${id}`)).toBeVisible();
     await expect(page.getByTestId('showcase-act-orbit')).toHaveAttribute('data-active', 'true');
 
-    // The orbit turns on its own and the act clock fills the live key.
+    // The HUD reads the film it sits on: its bearing is the bearing of the frame playing now.
     const az = page.locator('[data-hud="az"]');
     const firstAz = await az.innerText();
     await expect.poll(() => az.innerText()).not.toBe(firstAz);
+    const sample = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              const film = document.querySelector('[data-film="orbit"]');
+              resolve({ t: film.currentTime, az: Number(document.querySelector('[data-hud="az"]').textContent) });
+            }),
+          );
+        }),
+    );
+    const expected = filmBearing('orbit', sample.t).az;
+    expect(Math.abs(((sample.az - expected + 540) % 360) - 180)).toBeLessThanOrEqual(2);
     await expect.poll(() => fillScale(page, 'orbit')).toBeGreaterThan(0.2);
     await expect(page.getByTestId('showcase-readout')).toHaveText('24V DC daisy chain / 5 nodes / 2700K');
 
-    // After one act the stage moves on by itself to the eye-level sweep. The act clock keeps
-    // wall-clock time down to 4 fps (its dt caps at 250 ms); below that it stretches: wait wide.
+    // After one act the stage moves on to the eye-level walkthrough, whose film starts from its first frame.
     await expect(stage).toHaveAttribute('data-act', 'inside', { timeout: 20_000 });
+    const insideFilm = page.getByTestId('showcase-film-inside');
+    await expect(insideFilm).toHaveAttribute('data-active', 'true');
+    await expect.poll(() => insideFilm.evaluate((el) => !el.paused)).toBe(true);
+    await expect.poll(() => orbitFilm.evaluate((el) => el.paused)).toBe(true);
     await expect(page.getByTestId('showcase-pillar-inside')).toHaveAttribute('data-active', 'true');
     await expect(page.getByTestId('showcase-readout')).toHaveText(/^Eye 165 cm \/ FOV 78 deg \/ \d+ lx$/);
     const lux = new Set();
@@ -777,12 +859,14 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     }
     expect(lux.size).toBeGreaterThan(1);
 
-    // A key holds its act past the act length; the shelf slides on 5 cm ticks meanwhile.
+    // A key holds its act past the act length; the filmed shelf slides on 5 cm ticks meanwhile.
     const gizmoKey = page.getByTestId('showcase-act-gizmo');
     await gizmoKey.click();
     await expect(stage).toHaveAttribute('data-act', 'gizmo');
     await expect(gizmoKey).toHaveAttribute('aria-pressed', 'true');
     await expect(stage).toHaveAttribute('data-held', 'true');
+    const gizmoFilm = page.getByTestId('showcase-film-gizmo');
+    await expect.poll(() => gizmoFilm.evaluate((el) => !el.paused)).toBe(true);
     const readout = page.getByTestId('showcase-readout');
     await expect(readout).toHaveText(/^X: \d+ cm \/ Y: \d+ cm \/ R: \d+ cm \/ C: \d+ cm$/);
     const poses = new Set();
@@ -793,13 +877,16 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
       expect(x % SNAP_CM).toBe(0);
       expect(y % SNAP_CM).toBe(0);
       expect(x + 110 + r).toBe(STAGE_ROOM.widthCm);
-      expect(y + 5 + c).toBe(STAGE_ROOM.heightCm);
+      // The Floating Shelf 110 is 8 cm thick, as the filmed laser dimensions read.
+      expect(y + 8 + c).toBe(STAGE_ROOM.heightCm);
       poses.add(text);
       await page.waitForTimeout(150);
     }
     expect(poses.size).toBeGreaterThan(3);
     await expect(stage).toHaveAttribute('data-act', 'gizmo');
     expect(await fillScale(page, 'gizmo')).toBe(1);
+    // Held past its 7 s, the film has looped seamlessly rather than stopped.
+    expect(await gizmoFilm.evaluate((el) => !el.paused && el.loop)).toBe(true);
 
     // Pressing the held key again lets the cycle run on.
     await gizmoKey.click();
@@ -808,6 +895,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await page.mouse.move(4, 400);
     await expect(stage).toHaveAttribute('data-act', 'isolux', { timeout: 20_000 });
     await expect(readout).toHaveText(/^Iso-lux 100 \/ 250 \/ 500 lx \/ Floor peak \d+ lx$/);
+    await expect.poll(() => page.getByTestId('showcase-film-isolux').evaluate((el) => !el.paused)).toBe(true);
 
     // Hovering a capability card previews its act and lights the card; leaving hands the stage back.
     const eyeCard = page.getByTestId('showcase-pillar-inside');
@@ -831,7 +919,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     const luxOut = page.locator('[data-hud="lux"]');
     await expect(luxOut).toHaveText(/^\d{3,}$/);
     const resting = await luxOut.innerText();
-    const box = await canvas.boundingBox();
+    const box = await screen.boundingBox();
     const probed = new Set();
     for (const [fx, fy] of [
       [0.32, 0.62],
@@ -849,10 +937,15 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await page.mouse.move(4, 400);
     await expect(luxOut).toHaveText(resting);
 
+    // Scrolled away, every film pauses at once.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect.poll(() => orbitFilm.evaluate((el) => el.paused)).toBe(true);
+
     await page.waitForLoadState('networkidle');
     expect(scripts.filter((path) => PLANNER_CHUNK.test(path))).toEqual([]);
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     expect(await readCspViolations(page)).toEqual([]);
+    expect(failed).toEqual([]);
     expect(errors).toEqual([]);
   });
 
@@ -866,17 +959,26 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     const az = page.locator('[data-hud="az"]');
     await expect(az).toHaveText(/^\d{3}$/);
     const still = await az.innerText();
+    // Each act rests on its poster, its first frame: no film plays.
+    const orbitFilm = page.getByTestId('showcase-film-orbit');
+    await expect(orbitFilm).toHaveAttribute('poster', mediaPath(SHOWCASE_MEDIA.orbit.poster));
     await page.waitForTimeout(1200);
     await expect(az).toHaveText(still);
+    expect(await playhead(orbitFilm)).toBe(0);
+    expect(await orbitFilm.evaluate((el) => el.paused)).toBe(true);
     expect(await fillScale(page, 'orbit')).toBe(1);
+    // The still's figures are the first frame's.
+    expect(Number(still)).toBe(Math.round(filmBearing('orbit', 0).az) % 360);
 
     await page.getByTestId('showcase-act-isolux').click();
     await expect(stage).toHaveAttribute('data-act', 'isolux');
+    await expect(page.getByTestId('showcase-film-isolux')).toHaveAttribute('data-active', 'true');
     await expect(page.getByTestId('showcase-readout')).toHaveText(/^Iso-lux/);
     await page.mouse.move(4, 400);
     const isoAz = await az.innerText();
     await page.waitForTimeout(800);
     await expect(az).toHaveText(isoAz);
+    expect(await page.getByTestId('showcase-film-isolux').evaluate((el) => el.paused)).toBe(true);
     expect(errors).toEqual([]);
   });
 
@@ -1022,7 +1124,16 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await page.goto(`/#${SHOWCASE_3D_ID}`);
     const stage = stageOf(page);
     await stage.scrollIntoViewIfNeeded();
-    await expect(page.getByTestId('showcase-stage-canvas')).toBeVisible();
+    await expect(page.getByTestId('showcase-stage-screen')).toBeVisible();
+    // The HUD lines start past the registration legs (2% in from the frame), so no leg crosses a letter.
+    const clearance = await stage.evaluate((el) => {
+      const frame = el.querySelector('.theatre__frame').getBoundingClientRect();
+      const legLeft = frame.left + frame.width * 0.02;
+      const legRight = frame.right - frame.width * 0.02;
+      const lines = [...el.querySelectorAll('.theatre__bar, .theatre__telemetry, .theatre__readout')].map((line) => line.getBoundingClientRect());
+      return Math.min(...lines.map((rect) => Math.min(rect.left - legLeft, legRight - rect.right)));
+    });
+    expect(clearance).toBeGreaterThanOrEqual(8);
     const columns = await page
       .getByRole('group', { name: 'Stage acts' })
       .evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
@@ -1153,22 +1264,29 @@ test.describe('page-order scroll-spy, calm turntable and champagne launch key', 
     await expect(page.locator('[data-hud="az"]')).toHaveText(/^\d{3}$/);
     await page.waitForTimeout(800);
 
-    const rate = await page.evaluate(async () => {
-      const el = document.querySelector('[data-hud="az"]');
-      const read = () => Number(el.textContent);
-      let last = read();
-      let turned = 0;
-      const start = performance.now();
-      while (performance.now() - start < 2500) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        const now = read();
-        turned += Math.abs(((((now - last) % 360) + 540) % 360) - 180);
-        last = now;
+    // The held orbit plays its film; every bearing the HUD prints is the
+    // bearing of the frame on screen, wherever the decoder has got to.
+    const film = page.getByTestId('showcase-film-orbit');
+    await expect.poll(() => film.evaluate((el) => !el.paused && el.currentTime > 0.3), { timeout: 15_000 }).toBe(true);
+    const samples = await page.evaluate(async () => {
+      const video = document.querySelector('[data-film="orbit"]');
+      const az = document.querySelector('[data-hud="az"]');
+      const out = [];
+      for (let i = 0; i < 12; i += 1) {
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        out.push({ t: video.currentTime, az: Number(az.textContent) });
+        await new Promise((resolve) => setTimeout(resolve, 150));
       }
-      return turned / ((performance.now() - start) / 1000);
+      return out;
     });
-    expect(rate).toBeGreaterThan(2);
-    expect(rate).toBeLessThanOrEqual(25);
+    for (const sample of samples) {
+      const expected = Math.round(filmBearing('orbit', sample.t).az) % 360;
+      expect(Math.abs(((sample.az - expected + 540) % 360) - 180), `t=${sample.t}`).toBeLessThanOrEqual(2);
+    }
+    expect(samples.at(-1).t).not.toBe(samples[0].t);
+    // The film's own pace is the calm turntable: 20 deg of yaw per second of film.
+    const yawRate = (((filmCamera('orbit', 1.5).yaw - filmCamera('orbit', 0.5).yaw) % 360) + 360) % 360;
+    expect(yawRate).toBeCloseTo(ORBIT_DEG_PER_S, 6);
     expect(errors).toEqual([]);
   });
 

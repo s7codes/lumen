@@ -1,98 +1,76 @@
-import { memo, useId, useMemo } from 'react';
-import { buildProductScene, SCENE_VIEW } from '../lib/product-scene.js';
+import { memo, useEffect, useRef, useState } from 'react';
+import { CATALOG_SIZE, productPhoto } from '../lib/media-manifest.js';
 
-const VIEW_BOX = `0 0 ${SCENE_VIEW.width} ${SCENE_VIEW.height}`;
-
-function resolve(fill, prefix) {
-  return typeof fill === 'string' && fill.startsWith('@') ? `url(#${prefix}-${fill.slice(1)})` : fill;
-}
-
-function points(list) {
-  return list.map(([x, y]) => `${x},${y}`).join(' ');
-}
-
-function Gradient({ spec, prefix }) {
-  const id = `${prefix}-${spec.id}`;
-  const units = spec.units === 'user' ? 'userSpaceOnUse' : undefined;
-  const stops = spec.stops.map(([offset, color, opacity = 1]) => (
-    <stop key={offset} offset={offset} stopColor={color} stopOpacity={opacity} />
-  ));
-  if (spec.type === 'radial') {
-    return (
-      <radialGradient id={id} gradientUnits={units} cx={spec.cx} cy={spec.cy} r={spec.r}>
-        {stops}
-      </radialGradient>
-    );
-  }
-  return (
-    <linearGradient id={id} gradientUnits={units} x1={spec.x1} y1={spec.y1} x2={spec.x2} y2={spec.y2}>
-      {stops}
-    </linearGradient>
-  );
-}
-
-function Shape({ shape, prefix }) {
-  const fill = resolve(shape.fill, prefix);
-  const common = { opacity: shape.opacity };
-  switch (shape.type) {
-    case 'poly':
-      return <polygon points={points(shape.points)} fill={fill} {...common} />;
-    case 'path':
-      return <path d={shape.d} fill={fill} {...common} />;
-    case 'ellipse':
-      return <ellipse cx={shape.cx} cy={shape.cy} rx={shape.rx} ry={shape.ry} fill={fill} {...common} />;
-    case 'line':
-      return (
-        <line
-          x1={shape.from[0]}
-          y1={shape.from[1]}
-          x2={shape.to[0]}
-          y2={shape.to[1]}
-          stroke={resolve(shape.stroke, prefix)}
-          strokeWidth={shape.width}
-          strokeLinecap={shape.cap}
-          {...common}
-        />
-      );
-    case 'polyline':
-      return <polyline points={points(shape.points)} fill="none" stroke={resolve(shape.stroke, prefix)} strokeWidth={shape.width} {...common} />;
-    default:
-      return null;
-  }
+/** Warms the browser cache with a finish's photograph before its swatch is picked. */
+export function preloadProductPhoto(productId, finishId) {
+  const photo = productPhoto(productId, finishId);
+  if (!photo || typeof Image === 'undefined') return;
+  const img = new Image();
+  img.decoding = 'async';
+  img.src = photo.src;
 }
 
 /**
- * A lifelike interior for one catalog part: the module in true perspective
- * in the corner of a daylight gallery room (smooth stone walls, an oak floor,
- * a skirting shadow line and a diagonal band of window light), lit by its
- * own 2700K light where it has one. Geometry comes from
- * src/lib/product-scene.js; this component only maps it to SVG.
+ * The studio photograph of one catalog part: a 1600 x 1200 path-traced still
+ * of the planner's own model in the corner of a daylight gallery room, its
+ * 2700K channel on where it has one. Every finish shown so far stays mounted
+ * as a layer; a newly picked finish crossfades in over the last one only
+ * once its photograph has decoded, so a swatch never flashes the bare wall.
  */
 export const ProductVisual = memo(function ProductVisual({ product, finish, className = 'pv' }) {
-  const prefix = `pv${useId().replace(/[^A-Za-z0-9_-]/g, '')}`;
-  const scene = useMemo(() => buildProductScene(product, finish), [product, finish]);
+  const photo = productPhoto(product.id, finish.id);
+  const [layers, setLayers] = useState(() => [photo.finish]);
+  const [shown, setShown] = useState(null);
+  const wanted = useRef(photo.finish);
+  wanted.current = photo.finish;
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    setLayers((current) => (current.includes(photo.finish) ? current : [...current, photo.finish]));
+  }, [photo.finish]);
+
+  // A photograph already decoded (cached, or loaded before this finish was picked) shows at once.
+  useEffect(() => {
+    const img = rootRef.current?.querySelector(`img[data-finish="${CSS.escape(photo.finish)}"]`);
+    if (img?.complete && img.naturalWidth > 0) setShown(photo.finish);
+  }, [photo.finish, layers]);
+
   const { w, h } = product.dimsCm;
-  const label = `${product.name} in ${finish.name}, ${w} x ${h} cm, shown in a daylight gallery interior${scene.lit ? ' with its 2700K light on' : ''}`;
+  const lit = product.watts > 0;
+  const label = `${product.name} in ${finish.name}, ${w} x ${h} cm, shown in a daylight gallery interior${lit ? ' with its 2700K light on' : ''}`;
 
   return (
-    <svg
+    <div
+      ref={rootRef}
       className={className}
-      viewBox={VIEW_BOX}
-      preserveAspectRatio="xMidYMid slice"
       role="img"
       aria-label={label}
       data-testid="product-visual"
       data-shape={product.shape}
-      data-lit={scene.lit ? 'true' : 'false'}
+      data-lit={lit ? 'true' : 'false'}
+      data-finish={photo.finish}
+      data-shown={shown ?? undefined}
     >
-      <defs>
-        {scene.gradients.map((spec) => (
-          <Gradient key={spec.id} spec={spec} prefix={prefix} />
-        ))}
-      </defs>
-      {scene.shapes.map((shape, i) => (
-        <Shape key={i} shape={shape} prefix={prefix} />
-      ))}
-    </svg>
+      {layers.map((id) => {
+        const src = productPhoto(product.id, id).src;
+        return (
+          <img
+            key={id}
+            className="pv__photo"
+            src={src}
+            width={CATALOG_SIZE.width}
+            height={CATALOG_SIZE.height}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            data-finish={id}
+            data-visible={id === shown || undefined}
+            onLoad={() => {
+              if (id === wanted.current) setShown(id);
+            }}
+          />
+        );
+      })}
+    </div>
   );
 });

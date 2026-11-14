@@ -1,17 +1,16 @@
 import { expect, test } from '@playwright/test';
+import { productPhoto } from '../src/lib/media-manifest.js';
 import {
+  collectFailedResponses,
   collectRuntimeErrors,
+  decodedWidth,
   horizontalOverflow,
   installCspRecorder,
+  mediaPath,
   readCspViolations,
   storeDisplayMode,
   VIEWPORT_WIDTHS,
 } from './support/runtime-guards.js';
-
-/** Faces of the visual painted in exactly this colour. */
-function facesIn(visual, hex) {
-  return visual.locator(`polygon[fill="${hex}"]`);
-}
 
 test.beforeEach(async ({ page }) => {
   await installCspRecorder(page);
@@ -82,35 +81,53 @@ test.describe('product catalog', () => {
     ]);
   });
 
-  test('finish swatches refinish the part inside its lit interior', async ({ page }) => {
+  test('finish swatches swap the studio photograph of the part, crossfading only once the new finish has decoded', async ({ page }) => {
+    const failed = collectFailedResponses(page);
     await page.goto('/catalog');
     const card = page.getByRole('article', { name: 'Floating Shelf 110' });
     const visual = card.getByTestId('product-visual');
     await expect(visual).toHaveAttribute('aria-label', /^Floating Shelf 110 in FSC American Walnut, 110 x 8 cm, shown in a daylight gallery interior with its 2700K light on$/);
+    await expect(visual).toHaveAttribute('role', 'img');
 
     await expect(card).toHaveAttribute('data-finish', 'walnut');
     await expect(card.getByRole('radio', { name: 'Walnut' })).toBeChecked();
-    expect(await facesIn(visual, '#5b3a26').count()).toBeGreaterThan(0);
+    await expect(visual).toHaveAttribute('data-shown', 'walnut', { timeout: 15_000 });
+    const photo = (finish) => visual.locator(`img[data-finish="${finish}"]`);
+    await expect(photo('walnut')).toHaveAttribute('src', mediaPath(productPhoto('floating-shelf-110', 'walnut').src));
+    expect(await decodedWidth(photo('walnut'))).toBeGreaterThanOrEqual(1200);
 
+    // Oak: a second photograph joins the plinth and fades in over walnut once decoded.
     await card.getByRole('radio', { name: 'Oak' }).check();
     await expect(card).toHaveAttribute('data-finish', 'oak');
+    await expect(visual).toHaveAttribute('data-finish', 'oak');
     await expect(visual).toHaveAttribute('aria-label', /Nordic White Oak/);
-    await expect.poll(() => facesIn(visual, '#c4a57c').count()).toBeGreaterThan(0);
-    await expect(facesIn(visual, '#5b3a26')).toHaveCount(0);
+    await expect(photo('oak')).toHaveAttribute('src', mediaPath(productPhoto('floating-shelf-110', 'oak').src));
+    await expect(visual).toHaveAttribute('data-shown', 'oak', { timeout: 15_000 });
+    expect(await decodedWidth(photo('oak'))).toBeGreaterThanOrEqual(1200);
+    await expect(photo('oak')).toHaveCSS('transition', /opacity 0\.42s cubic-bezier\(0\.22, 1, 0\.36, 1\)/);
+    await expect.poll(() => photo('oak').evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(1);
+    await expect.poll(() => photo('walnut').evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(0);
     await expect(card.getByText('Nordic White Oak')).toBeVisible();
 
     await card.getByRole('radio', { name: 'Obsidian' }).check();
-    await expect.poll(() => facesIn(visual, '#2c2e30').count()).toBeGreaterThan(0);
+    await expect(visual).toHaveAttribute('data-shown', 'obsidian', { timeout: 15_000 });
+    // Back to walnut: its photograph is already decoded, so it returns at once.
+    await card.getByRole('radio', { name: 'Walnut' }).check();
+    await expect(visual).toHaveAttribute('data-shown', 'walnut');
+    await expect(visual.locator('img')).toHaveCount(3);
+    await card.getByRole('radio', { name: 'Obsidian' }).check();
 
     const filters = page.getByRole('group', { name: 'Category' });
     await filters.getByRole('button', { name: /^lighting/i }).click();
     await expect(card).toHaveCount(0);
     await filters.getByRole('button', { name: /^all/i }).click();
     await expect(card).toHaveAttribute('data-finish', 'obsidian');
+    await expect(visual).toHaveAttribute('data-shown', 'obsidian', { timeout: 15_000 });
 
     const spot = page.getByRole('article', { name: 'Directional Spot Monopoint' });
     await expect(spot.getByRole('radio')).toHaveCount(2);
     await expect(spot.getByRole('radio', { name: 'Walnut' })).toHaveCount(0);
+    expect(failed).toEqual([]);
   });
 
   test('the storefront always reads in Visual: editorial copy on every card, even with Specs stored', async ({ page }) => {

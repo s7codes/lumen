@@ -1,6 +1,6 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { HeroScenes } from '../components/HeroScenes.jsx';
+import { HeroHotspots, HeroScenes } from '../components/HeroScenes.jsx';
 import { ArrowRight } from '../components/icons.jsx';
 import { InteriorPortrait } from '../components/InteriorPortrait.jsx';
 import { MeetOurIconsCinema } from '../components/MeetOurIconsCinema.jsx';
@@ -14,7 +14,7 @@ import { useOffscreenPause } from '../hooks/useOffscreenPause.js';
 import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { useSectionArrival, useSectionSpy } from '../hooks/useSectionLink.js';
 import { padIndex } from '../lib/format.js';
-import { HERO_SCENE_IDS } from '../lib/hero-scenes.js';
+import { HERO_SCENE_IDS, HERO_SCENES } from '../lib/hero-scenes.js';
 import { INTERIOR_SCENES } from '../lib/interior-painter.js';
 import { launchHref } from '../lib/launch-presets.js';
 import { CORE_MODULES_ID, SHOWCASE_3D_ID, WORKSPACES_ID } from '../lib/routes.js';
@@ -60,8 +60,34 @@ const ENTRIES = [
 
 const ARRIVAL_SECTIONS = Object.freeze([SHOWCASE_3D_ID]);
 
+/**
+ * Daylight / Warm 2700K. Until a scene is picked the two crossfade on the
+ * CSS clock; a pick holds that scene (the crossfade still runs once), and
+ * picking it again hands the room back to the clock.
+ */
+function SceneSwitch({ held, onHold }) {
+  return (
+    <div className="hero__switch" role="group" aria-label="Light scene" data-testid="hero-scene-switch">
+      {HERO_SCENES.map((scene) => (
+        <button
+          key={scene.id}
+          type="button"
+          className="hero__switch-key"
+          aria-pressed={held === scene.id}
+          data-scene={scene.id}
+          title={scene.caption}
+          onClick={() => onHold((current) => (current === scene.id ? null : scene.id))}
+        >
+          {scene.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function AmbientHero() {
   const surfaceRef = useRef(null);
+  const [held, setHeld] = useState(null);
   useAmbientLight(surfaceRef);
   useOffscreenPause(surfaceRef);
 
@@ -71,14 +97,16 @@ function AmbientHero() {
       className="hero"
       data-testid="ambient-surface"
       data-scenes={HERO_SCENE_IDS.join(' ')}
+      data-scene-hold={held ?? undefined}
       aria-labelledby="hero-title"
     >
-      {/* Two light architectural interiors alternate on one CSS clock: a
-          sconce washing smooth plaster beside a molded doorway, then a
-          limestone gallery lit by a 24V track, a pendant and a walnut shelf.
-          No text sits on the pictures; the copy owns the lower left. */}
+      {/* One limestone gallery room photographed twice from the same stand:
+          architectural daylight, then the same room after dusk on its 2700K
+          channels, each a 2K still under a film of its own light. The copy
+          owns the lower left; the fixtures on the right carry their keys. */}
       <HeroScenes />
       <div className="hero__scrim" aria-hidden="true" />
+      <HeroHotspots />
 
       <div className="hero__content" data-testid="hero-copy">
         {/* The slash stays on the line it closes, so a narrow wrap never
@@ -110,6 +138,7 @@ function AmbientHero() {
           </Link>
         </div>
       </div>
+      <SceneSwitch held={held} onHold={setHeld} />
     </section>
   );
 }

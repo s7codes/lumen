@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { PRODUCTS } from '../src/data/products.js';
+import { getFinish, PRODUCTS } from '../src/data/products.js';
 import { applyLightingSceneToRoom } from '../src/lib/lighting-scenes.js';
 import {
   contactShadowMap,
@@ -354,6 +354,15 @@ test.describe('parametric CAD sub-assemblies and volumetric light', () => {
       expect(module.aoShadow.opacity, module.productId).toBeGreaterThan(0);
     }
     expect(allScene.modules.find((module) => module.productId === 'corner-floor-column-140').aoFloor).not.toBeNull();
+
+    // The recessed track bus wears its finish on the channel; the conductors stay copper.
+    const tracked = mountInRoom(createRoomState({ widthCm: 640, depthCm: 520, heightCm: 300 }), 'track-bus-200').state;
+    const trackColors = (roomState) => Object.fromEntries(buildScene({ state: roomState }).modules[0].subparts.map((part) => [part.kind, part.color]));
+    const obsidianTrack = trackColors(tracked);
+    const chalkTrack = trackColors(updateRoomItem(tracked, tracked.items[0].uid, { finish: 'chalk' }));
+    expect(obsidianTrack).toMatchObject({ channel: getFinish('obsidian').hex, 'end-cap': getFinish('obsidian').hex });
+    expect(chalkTrack).toMatchObject({ channel: getFinish('chalk').hex, 'end-cap': getFinish('chalk').hex });
+    expect(chalkTrack.conductor).toBe(obsidianTrack.conductor);
 
     // Beams: a wash, a halo, a graze and a pyramid; dimming scales them, the channel switches them.
     expect(scene.stats.volumetrics).toBe(4);

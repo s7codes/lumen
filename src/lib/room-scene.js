@@ -1034,16 +1034,17 @@ const SUBASSEMBLIES = Object.freeze({
     }
     return parts;
   },
-  // Dark anodised U-channel, twin copper 24V conductors and three twist-lock couplers.
+  // A U-channel in the part's finish (black anodised obsidian or matte chalk), twin copper
+  // 24V conductors and three dark twist-lock couplers.
   track(b) {
     const { x0, x1, y0, y1, z1 } = b;
     const ym = (y0 + y1) / 2;
     return [
-      B('channel-back', 'channel', 'anodised', x0, x1, y0, y1, 0, 0.4, { grain: 'x', shadow: false }),
-      B('channel-top', 'channel', 'anodised', x0, x1, y1 - 0.4, y1, 0.4, z1, { grain: 'x' }),
-      B('channel-bottom', 'channel', 'anodised', x0, x1, y0, y0 + 0.4, 0.4, z1, { grain: 'x' }),
-      B('end-left', 'end-cap', 'anodised', x0, x0 + 0.6, y0 + 0.4, y1 - 0.4, 0.4, z1),
-      B('end-right', 'end-cap', 'anodised', x1 - 0.6, x1, y0 + 0.4, y1 - 0.4, 0.4, z1),
+      B('channel-back', 'channel', 'finish', x0, x1, y0, y1, 0, 0.4, { grain: 'x', shadow: false }),
+      B('channel-top', 'channel', 'finish', x0, x1, y1 - 0.4, y1, 0.4, z1, { grain: 'x' }),
+      B('channel-bottom', 'channel', 'finish', x0, x1, y0, y0 + 0.4, 0.4, z1, { grain: 'x' }),
+      B('end-left', 'end-cap', 'finish', x0, x0 + 0.6, y0 + 0.4, y1 - 0.4, 0.4, z1),
+      B('end-right', 'end-cap', 'finish', x1 - 0.6, x1, y0 + 0.4, y1 - 0.4, 0.4, z1),
       B('conductor-upper', 'conductor', 'copper', x0 + 0.6, x1 - 0.6, y1 - 1.25, y1 - 0.95, 0.4, 1, { grain: 'x', shadow: false }),
       B('conductor-lower', 'conductor', 'copper', x0 + 0.6, x1 - 0.6, y0 + 0.95, y0 + 1.25, 0.4, 1, { grain: 'x', shadow: false }),
       ...[0.2, 0.5, 0.8].map((f, i) =>
