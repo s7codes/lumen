@@ -184,16 +184,17 @@ test.describe('app shell', () => {
       expect(heroBox.y + heroBox.height - (copyBox.y + copyBox.height), label).toBeLessThan(heroBox.height * 0.1);
     }
 
-    // The hero is an optical chamber set into the alabaster paper: alabaster type on #11100e.
+    // The hero is a full-bleed Venetian plaster wall in evening light: alabaster
+    // type over umber plaster (#2c2824), above the warm Flos paper (#faf9f6).
     await expect(page.locator('.hero__title')).toHaveCSS('color', 'rgb(245, 242, 235)');
     await expect(page.locator('.hero__title')).toHaveCSS('font-weight', '360');
     await expect(page.locator('.hero__lede')).toHaveCSS('color', 'rgba(245, 242, 235, 0.74)');
-    await expect(page.getByTestId('ambient-surface')).toHaveCSS('background-color', 'rgb(17, 16, 14)');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(245, 242, 235)');
+    await expect(page.getByTestId('ambient-surface')).toHaveCSS('background-color', 'rgb(44, 40, 36)');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(250, 249, 246)');
     await expect(page.locator('body')).toHaveCSS('color', 'rgb(20, 19, 17)');
   });
 
-  test('home content below the hero sits flush on the paper: square corners, hairline rules, no tiles or glass', async ({
+  test('home content below the hero alternates flush paper with full-bleed bands: square corners, hairline rules, no tiles or glass', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -224,38 +225,38 @@ test.describe('app shell', () => {
     }
     await expect(page.locator('.spec-strip__item.bento, .entry-card.bento, .modules__foot.bento, .lab-panel.bento')).toHaveCount(0);
 
-    // Section heads: an asymmetric split above a full-width hairline.
+    // Section heads: calm and centred, the lede under the title, no rule beneath.
     const head = page.locator('#lab-title').locator('xpath=..');
-    expect((await look(head)).bottom).toBe(HAIRLINE);
+    expect((await look(head)).bottom).toBe('0px none rgb(20, 19, 17)');
+    await expect(head).toHaveCSS('text-align', 'center');
     const [titleBox, ledeBox] = await Promise.all([page.locator('#lab-title').boundingBox(), head.locator('.section-head__lede').boundingBox()]);
-    expect(ledeBox.x).toBeGreaterThan(titleBox.x + titleBox.width * 0.5);
+    expect(ledeBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
+    expect(Math.abs(ledeBox.x + ledeBox.width / 2 - (titleBox.x + titleBox.width / 2))).toBeLessThanOrEqual(1);
 
-    // Surface lab: the dark bench and its stone specification sheet share one square frame.
+    // Surface lab on its travertine band: the umber-plaster bench and its paper
+    // specification sheet share one square frame.
     const rig = await look(page.locator('.lab__rig'));
     expect(rig).toMatchObject({ radius: '0px', top: '1px solid rgba(20, 19, 17, 0.16)' });
-    expect(await look(page.getByTestId('lab-bench'))).toMatchObject({ radius: '0px', surface: 'rgb(17, 16, 14)' });
-    expect(await look(page.getByTestId('lab-panel'))).toMatchObject({ radius: '0px', surface: 'rgb(236, 232, 223)', blur: 'none' });
+    expect(await look(page.getByTestId('lab-bench'))).toMatchObject({ radius: '0px', surface: 'rgb(44, 40, 36)' });
+    expect(await look(page.getByTestId('lab-panel'))).toMatchObject({ radius: '0px', surface: 'rgb(250, 249, 246)', blur: 'none' });
     const [benchBox, panelBox] = await Promise.all([page.getByTestId('lab-bench').boundingBox(), page.getByTestId('lab-panel').boundingBox()]);
     expect(Math.abs(benchBox.x + benchBox.width - panelBox.x)).toBeLessThanOrEqual(1);
 
-    // Core modules close on a carbon rule; workspaces are index rows between carbon rules.
+    // Core modules close on a carbon rule.
     expect(await look(page.locator('.modules__foot'))).toMatchObject({ radius: '0px', surface: 'rgba(0, 0, 0, 0)', top: CARBON_RULE });
-    expect((await look(page.locator('.entries__grid'))).top).toBe(CARBON_RULE);
-    const rows = page.locator('.entry-card');
-    await expect(rows).toHaveCount(3);
-    for (const row of await rows.all()) {
-      expect(await look(row)).toMatchObject({ radius: '0px', surface: 'rgba(0, 0, 0, 0)', blur: 'none', bottom: CARBON_RULE });
+    // Workspaces: three square portrait cards side by side, captions straight on the paper.
+    const cards = page.locator('.entry-card');
+    await expect(cards).toHaveCount(3);
+    for (const card of await cards.all()) {
+      expect(await look(card)).toMatchObject({ radius: '0px', surface: 'rgba(0, 0, 0, 0)', image: 'none', blur: 'none' });
     }
-    // Full-width rows stacked top to bottom: one left edge, one width, increasing tops.
-    const boxes = await Promise.all((await rows.all()).map((row) => row.boundingBox()));
+    const boxes = await Promise.all((await cards.all()).map((card) => card.boundingBox()));
     for (const box of boxes) {
-      expect(Math.abs(box.x - boxes[0].x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(box.y - boxes[0].y)).toBeLessThanOrEqual(1);
       expect(Math.abs(box.width - boxes[0].width)).toBeLessThanOrEqual(1);
     }
-    expect(boxes[1].y).toBeGreaterThan(boxes[0].y + boxes[0].height - 1);
-    expect(boxes[2].y).toBeGreaterThan(boxes[1].y + boxes[1].height - 1);
-    // The line drawing stands bare on the paper: no stage box behind it.
-    expect(await look(rows.first().locator('.entry-card__glyph'))).toMatchObject({ surface: 'rgba(0, 0, 0, 0)', image: 'none' });
+    expect(boxes[1].x).toBeGreaterThan(boxes[0].x + boxes[0].width - 1);
+    expect(boxes[2].x).toBeGreaterThan(boxes[1].x + boxes[1].width - 1);
   });
 
   test('a fresh document load starts at the top instead of inheriting another page scroll', async ({
@@ -286,7 +287,7 @@ test.describe('app shell', () => {
         const style = getComputedStyle(el);
         return { surface: style.backgroundColor, rule: `${style.borderBottomWidth} ${style.borderBottomStyle} ${style.borderBottomColor}`, blur: style.backdropFilter };
       });
-      expect(bar).toEqual({ surface: 'rgba(245, 242, 235, 0.92)', rule: '1px solid rgba(20, 19, 17, 0.12)', blur: 'blur(12px)' });
+      expect(bar).toEqual({ surface: 'rgba(250, 249, 246, 0.92)', rule: '1px solid rgba(20, 19, 17, 0.12)', blur: 'blur(12px)' });
       const pills = [
         navbar.getByTestId('mode-switch'),
         navbar.getByTestId('sign-in'),
@@ -341,7 +342,7 @@ test.describe('app shell', () => {
 
     const engaged = page.locator('.mode-switch__segment[aria-pressed="true"]');
     await expect(engaged).toHaveCSS('background-color', 'rgb(20, 19, 17)');
-    await expect(engaged).toHaveCSS('color', 'rgb(245, 242, 235)');
+    await expect(engaged).toHaveCSS('color', 'rgb(250, 249, 246)');
     await expect(engaged).toHaveCSS('box-shadow', 'none');
     await expect(engaged).toHaveCSS('border-top-left-radius', '0px');
   });

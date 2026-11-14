@@ -1,205 +1,172 @@
-/* Account: a Swiss project and requisition register on the gallery paper.
-   The profile and its telemetry strip open the page; every section below is
-   one full-width ledger row under a carbon rule, its title in the left
-   track and its entries in the right. No tiles, no glass, square corners. */
+/* Account: a serene split page on the gallery paper. The profile owns a
+   narrow left column (about a third), the register the wide right one, and a
+   single vertical hairline divides them. No bars, no section eyebrows, no
+   telemetry table and no drawings: type, hairlines and generous air. */
 
-.account-grid {
+.account-split {
+  --account-rule: rgba(20, 19, 17, 0.08);
+
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 34fr) minmax(0, 66fr);
+  align-items: start;
+  padding-block: clamp(var(--space-8), 7vw, 120px) clamp(var(--space-9), 9vw, 160px);
 }
 
-/* Profile: identity on the left, Sign Out on the top-right corner, then the
-   telemetry strip between a carbon rule and a hairline. */
-
+/* Left column: the heading, the person, one quiet caption and the key. It
+   holds its place while the register scrolls beside it. */
 .account-profile {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    'identity action'
-    'facts facts';
-  gap: var(--space-7) var(--space-6);
-  padding-bottom: clamp(var(--space-7), 5vw, var(--space-8));
+  position: sticky;
+  top: calc(var(--nav-height) + var(--space-7));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-6);
+  min-width: 0;
+  padding-right: clamp(var(--space-6), 4vw, var(--space-9));
+}
+
+.account-profile__heading {
+  font-size: clamp(1.75rem, 1.3rem + 1.2vw, 2.5rem);
+  font-weight: 380;
+  line-height: 1.1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .account-profile__identity {
-  grid-area: identity;
+  display: grid;
+  gap: var(--space-1);
   min-width: 0;
 }
 
 .account-profile__name {
-  margin-top: var(--space-4);
-  font-size: var(--text-xl);
-  font-weight: var(--weight-display);
-  line-height: 1.08;
-  letter-spacing: var(--tracking-headline);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-regular);
+  line-height: 1.2;
+  letter-spacing: -0.015em;
   overflow-wrap: anywhere;
 }
 
 .account-profile__email {
-  margin-top: var(--space-2);
-  font-size: var(--text-xs);
-  letter-spacing: 0.02em;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 
-.account-profile__sign-out {
-  grid-area: action;
-  align-self: start;
+/* The sync caption: values split by quiet slashes, the counts with their
+   terms after them ("01 Projects"). */
+.account-profile__meta {
+  display: grid;
+  gap: var(--space-1);
 }
 
 .account-profile__facts {
-  grid-area: facts;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  border-top: 1px solid var(--rule-ink);
-  border-bottom: 1px solid var(--rule-section);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin: 0;
   font-size: var(--text-2xs);
+  line-height: 1.8;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 
-.account-profile__facts > div {
-  min-width: 0;
-  padding: var(--space-4) var(--space-4) var(--space-4) clamp(var(--space-3), 1.6vw, var(--space-5));
-  border-left: 1px solid var(--rule-section);
+.account-profile__fact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5em;
 }
 
-.account-profile__facts > div:first-child {
-  padding-left: 0;
-  border-left: 0;
-}
-
-.account-profile__facts dt {
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
-  color: var(--text-secondary);
+/* The slash trails its value, so a wrapped caption never opens on one. */
+.account-profile__fact:not(:last-child)::after {
+  content: '/';
+  order: 3;
+  margin-inline: 0.15em 0.6em;
+  color: rgba(20, 19, 17, 0.28);
 }
 
 .account-profile__facts dd {
-  margin-top: var(--space-1);
-  font-size: var(--text-xs);
-  color: var(--text-primary);
+  order: 1;
+  margin: 0;
+  color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 559px) {
-  .account-profile {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      'identity'
-      'action'
-      'facts';
-    gap: var(--space-5);
-  }
-
-  .account-profile__sign-out {
-    justify-self: start;
-  }
-
-  .account-profile__facts {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .account-profile__facts > div:nth-child(odd) {
-    padding-left: 0;
-    border-left: 0;
-  }
-
-  .account-profile__facts > div:nth-child(n + 3) {
-    border-top: 1px solid var(--rule-section);
-  }
+.account-profile__term {
+  order: 2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-@media (min-width: 560px) and (max-width: 1023px) {
-  .account-profile__facts {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .account-profile__facts > div:nth-child(3n + 1) {
-    padding-left: 0;
-    border-left: 0;
-  }
-
-  .account-profile__facts > div:nth-child(n + 4) {
-    border-top: 1px solid var(--rule-section);
-  }
+.account-profile__sign-out {
+  height: 40px;
+  padding-inline: var(--space-5);
 }
 
-/* Ledger rows: the section title in a narrow left track, its entries in the
-   wide right track, one carbon rule above the whole row. */
+/* Right column: three quiet sections under hairlines. */
+.account-register {
+  min-width: 0;
+  padding-left: clamp(var(--space-6), 4vw, var(--space-9));
+  border-left: 1px solid rgba(20, 19, 17, 0.1);
+}
 
 .account-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
-  align-items: start;
-  column-gap: clamp(var(--space-6), 4vw, var(--space-9));
   min-width: 0;
-  padding-block: var(--space-6) clamp(var(--space-7), 5vw, var(--space-8));
-  border-top: 1px solid var(--rule-ink);
+  padding-block: var(--space-7);
+  border-top: 1px solid var(--account-rule);
 }
 
-.account-panel > * {
-  grid-column: 2;
-  min-width: 0;
+.account-panel:first-child {
+  padding-top: 0;
+  border-top: 0;
 }
 
-.account-panel > .account-panel__head {
-  grid-column: 1;
-  grid-row: 1;
+.account-panel:last-child {
+  padding-bottom: 0;
 }
 
 .account-panel__head {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-4);
-}
-
-.account-panel__head--action {
-  gap: var(--space-5);
-}
-
-.account-panel__compare {
-  flex: none;
-  height: 38px;
-  padding-inline: var(--space-4);
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-6);
 }
 
 .account-panel__title {
-  margin-top: var(--space-3);
-  font-size: clamp(1.5rem, 1.15rem + 1vw, 2.125rem);
-  font-weight: var(--weight-display);
-  line-height: 1.1;
-  letter-spacing: -0.025em;
+  font-size: clamp(1.25rem, 1rem + 0.7vw, 1.625rem);
+  font-weight: 380;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
 }
 
 .account-panel__title:focus-visible {
   outline-offset: 6px;
 }
 
-.account-panel__note {
-  margin-top: var(--space-6);
-  font-size: 10px;
-  letter-spacing: 0.02em;
-  color: var(--text-muted);
+.account-panel__compare {
+  flex: none;
+  height: 36px;
+  padding-inline: var(--space-4);
 }
 
 @media (max-width: 959px) {
-  .account-panel {
+  .account-split {
     grid-template-columns: minmax(0, 1fr);
-    row-gap: var(--space-6);
+    row-gap: var(--space-7);
   }
 
-  .account-panel > *,
-  .account-panel > .account-panel__head {
-    grid-column: 1;
-    grid-row: auto;
+  .account-profile {
+    position: static;
+    padding-right: 0;
   }
 
-  .account-panel__head--action {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    justify-content: space-between;
+  .account-register {
+    padding-top: var(--space-7);
+    padding-left: 0;
+    border-top: 1px solid rgba(20, 19, 17, 0.1);
+    border-left: 0;
   }
 }
 
@@ -211,21 +178,22 @@
 
 .project-card {
   display: grid;
-  grid-template-columns: minmax(0, 190px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 168px) minmax(0, 1fr);
   grid-template-areas:
     'thumb head'
     'thumb title'
     'thumb spec'
     'thumb actions';
   grid-template-rows: auto auto 1fr auto;
-  gap: var(--space-3) clamp(var(--space-5), 2.4vw, var(--space-7));
+  gap: var(--space-2) clamp(var(--space-5), 2.4vw, var(--space-7));
   min-width: 0;
   padding-block: var(--space-6);
-  border-bottom: 1px solid var(--rule-section);
+  border-top: 1px solid var(--account-rule);
 }
 
 .project-card:first-child {
   padding-top: 0;
+  border-top: 0;
 }
 
 .project-card__head {
@@ -236,19 +204,27 @@
   gap: var(--space-3);
 }
 
+.project-card__kind {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .project-card__badge {
   font-size: 10px;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .project-card__thumb {
   grid-area: thumb;
   width: 100%;
-  height: 150px;
+  height: 132px;
   padding: var(--space-4);
-  background: var(--bg-stage);
+  background: var(--stone-panel);
 }
 
 .project-card__title {
@@ -265,6 +241,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3) var(--space-5);
   align-content: start;
+  margin-top: var(--space-2);
   font-size: var(--text-2xs);
   letter-spacing: 0.02em;
 }
@@ -279,7 +256,7 @@
 .project-card__spec dt {
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .project-card__spec dd {
@@ -288,18 +265,19 @@
   overflow-wrap: anywhere;
 }
 
-/* Open, Compare and Delete on one row; on a narrow entry Delete drops to its
-   own row instead of crushing the open key. */
+/* Open, Compare and Delete on one row: a compact carbon slab and two
+   hairline keys. On a narrow entry Delete drops to its own row instead of
+   crushing the open key. */
 .project-card__actions {
   grid-area: actions;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .project-card__actions .button {
-  height: 40px;
+  height: 36px;
   padding-inline: var(--space-4);
   white-space: nowrap;
 }
@@ -390,13 +368,13 @@
 
 .cloud-loading__rows {
   display: grid;
-  border-top: 1px solid var(--rule-section);
+  border-top: 1px solid var(--account-rule);
 }
 
 .cloud-loading__row {
   display: block;
   height: 96px;
-  border-bottom: 1px solid var(--rule-section);
+  border-bottom: 1px solid var(--account-rule);
   background: linear-gradient(100deg, transparent 30%, rgba(20, 19, 17, 0.05) 50%, transparent 70%) 0 0 / 250% 100%;
   animation: cloud-loading-sweep 1600ms var(--ease-in-out) infinite;
 }
@@ -435,7 +413,7 @@
   display: grid;
   gap: var(--space-3);
   padding-block: var(--space-5);
-  border-top: 1px solid var(--rule-section);
+  border-top: 1px solid var(--account-rule);
 }
 
 .order-row:first-child {
@@ -501,7 +479,7 @@
 .order-row__meta dt {
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .order-row__meta dd {
@@ -514,13 +492,13 @@
   }
 }
 
-/* Studio engineering tickets: the same register, full width like the rest. */
+/* Studio engineering tickets: the same register. */
 
 .ticket-row {
   display: grid;
   gap: var(--space-3);
   padding-block: var(--space-5);
-  border-top: 1px solid var(--rule-section);
+  border-top: 1px solid var(--account-rule);
 }
 
 .ticket-row:first-child {
@@ -552,7 +530,7 @@
 
 .ticket-row__summary {
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--rule-section);
+  border: 1px solid var(--account-rule);
   border-radius: 0;
   font-size: var(--text-2xs);
   line-height: 1.6;

@@ -76,7 +76,7 @@
   position: sticky;
   top: 0;
   z-index: var(--z-nav);
-  background: rgba(245, 242, 235, 0.92);
+  background: rgba(250, 249, 246, 0.92);
   border-bottom: 1px solid var(--rule);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);

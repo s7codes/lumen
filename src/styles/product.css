@@ -70,18 +70,34 @@
   color: var(--chamber-ink-soft);
 }
 
-/* The plinth: a 4:3 optical vignette in which the elevation drawing glows.
-   On hover the drawing eases forward inside it; overflow keeps the card's
-   footprint fixed. */
+/* The plinth: a 4:3 wall of warm limestone-taupe plaster in which the
+   elevation drawing hangs. The fixture's 2700K light lays a soft wall-wash
+   scallop on the plaster above it, so the part reads lit on a real surface,
+   never floating in a void. On hover the drawing eases forward inside it;
+   overflow keeps the card's footprint fixed. */
 .product-card__figure {
+  --plinth-wash:
+    radial-gradient(ellipse 62% 82% at 50% 22%, rgba(200, 188, 169, 0.4) 0%, rgba(200, 188, 169, 0.16) 40%, rgba(200, 188, 169, 0) 72%),
+    radial-gradient(ellipse 30% 44% at 50% 30%, rgba(var(--light-rgb), 0.14) 0%, rgba(var(--light-rgb), 0) 72%);
+  --plinth-wall:
+    var(--plaster-trowel),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0) 78%, rgba(0, 0, 0, 0.12) 100%),
+    linear-gradient(180deg, #3d3731 0%, #36312b 62%, #2c2824 100%);
+
   position: relative;
   display: grid;
   place-items: center;
   aspect-ratio: 4 / 3;
   padding: 52px 9% 9%;
   border-radius: 0;
-  background-color: var(--chamber-plinth);
-  background-image: radial-gradient(ellipse 78% 66% at 50% 48%, #1d1a16 0%, rgba(20, 18, 16, 0) 72%);
+  background-color: var(--plaster-umber);
+  background-image: var(--plinth-wash), var(--plinth-wall);
+  background-size:
+    auto,
+    auto,
+    240px 240px,
+    auto,
+    auto;
   overflow: hidden;
   isolation: isolate;
 }
@@ -110,18 +126,28 @@
   transform: scale(var(--hover-zoom));
 }
 
+/* Specs mode lays the drafting grid in amber over the same plaster wall. */
 .product-card[data-mode='technical'] .product-card__figure {
   background-image:
-    linear-gradient(rgba(232, 146, 58, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(232, 146, 58, 0.06) 1px, transparent 1px),
-    radial-gradient(ellipse 78% 66% at 50% 48%, #1d1a16 0%, rgba(20, 18, 16, 0) 72%);
+    var(--plinth-wash),
+    linear-gradient(rgba(232, 146, 58, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 146, 58, 0.08) 1px, transparent 1px),
+    var(--plinth-wall);
   background-size:
+    auto,
+    auto,
     12px 12px,
     12px 12px,
+    240px 240px,
+    auto,
     auto;
   background-position:
+    0 0,
+    0 0,
     -1px -1px,
     -1px -1px,
+    0 0,
+    0 0,
     0 0;
 }
 

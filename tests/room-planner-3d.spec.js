@@ -299,7 +299,7 @@ test.describe('brand mark and display mode switch', () => {
     expect(frame).toEqual({ border: '1px solid', color: 'rgb(20, 19, 17)' });
 
     await expect(arch).toHaveAttribute('aria-pressed', 'true');
-    expect(await paint(arch)).toEqual({ background: 'rgb(20, 19, 17)', color: 'rgb(245, 242, 235)', shadow: 'none' });
+    expect(await paint(arch)).toEqual({ background: 'rgb(20, 19, 17)', color: 'rgb(250, 249, 246)', shadow: 'none' });
 
     await tech.click();
     await expect(html).toHaveAttribute('data-mode', 'technical');
@@ -308,7 +308,7 @@ test.describe('brand mark and display mode switch', () => {
     // Polled: the inversion eases over 120 ms.
     await expect
       .poll(() => paint(tech))
-      .toEqual({ background: 'rgb(20, 19, 17)', color: 'rgb(245, 242, 235)', shadow: 'none' });
+      .toEqual({ background: 'rgb(20, 19, 17)', color: 'rgb(250, 249, 246)', shadow: 'none' });
     await expect.poll(async () => (await paint(arch)).background).toBe('rgba(0, 0, 0, 0)');
     expect((await paint(arch)).shadow).toBe('none');
 

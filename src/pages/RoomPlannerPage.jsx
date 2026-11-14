@@ -271,7 +271,7 @@ export default function RoomPlannerPage() {
     <>
       <div
         ref={workstationRef}
-        className="room3d-workstation optical"
+        className="room3d-workstation"
         data-mode={mode}
         data-zen={zen || undefined}
         data-camera-mode={cameraMode}

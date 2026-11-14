@@ -298,40 +298,44 @@ export function SpatialShowcase() {
     <section
       ref={sectionRef}
       id={SHOWCASE_3D_ID}
-      className="showcase3d container"
+      className="showcase3d optical"
       aria-labelledby="showcase3d-title"
       data-testid="home-3d-showcase"
       tabIndex={-1}
     >
-      <header ref={reveal} className="section-head showcase3d__head reveal-up">
-        <p className="index-label">
-          <span className="index-label__num">03</span> / 3D Spatial Studio
-        </p>
-        <h2 id="showcase3d-title" className="section-head__title showcase3d__title">
-          Step inside a four-walled room before a single hole is drilled.
-        </h2>
-        <p className="section-head__lede">
-          The 3D Spatial Studio builds the room to the centimetre, lights it from fixture data and lets you stand in it.
-          Plan all four walls, then walk the result at eye level.
-        </p>
-      </header>
+      {/* Nocturne: a full-bleed twilight band of slate wall and warm concrete
+          wash. The theatre, its act keys and the launch bar sit on the grid. */}
+      <div className="showcase3d__inner container">
+        <header ref={reveal} className="section-head showcase3d__head reveal-up">
+          <p className="index-label">
+            <span className="index-label__num">03</span> / 3D Spatial Studio
+          </p>
+          <h2 id="showcase3d-title" className="section-head__title showcase3d__title">
+            Step inside a four-walled room before a single hole is drilled.
+          </h2>
+          <p className="section-head__lede">
+            The 3D Spatial Studio builds the room to the centimetre, lights it from fixture data and lets you stand in
+            it. Plan all four walls, then walk the result at eye level.
+          </p>
+        </header>
 
-      <div className="showcase3d__rig">
-        <Theatre stage={stage} setStageNode={setStageNode} canvasRef={canvasRef} theatre={theatre} />
-        <ul className="showcase3d__pillars reveal-stagger">
-          {PILLARS.map((pillar) => (
-            <Pillar
-              key={pillar.index}
-              pillar={pillar}
-              active={stage.act === pillar.act}
-              held={stage.locked === pillar.act}
-              theatre={theatre}
-            />
-          ))}
-        </ul>
+        <div className="showcase3d__rig">
+          <Theatre stage={stage} setStageNode={setStageNode} canvasRef={canvasRef} theatre={theatre} />
+          <ul className="showcase3d__pillars reveal-stagger">
+            {PILLARS.map((pillar) => (
+              <Pillar
+                key={pillar.index}
+                pillar={pillar}
+                active={stage.act === pillar.act}
+                held={stage.locked === pillar.act}
+                theatre={theatre}
+              />
+            ))}
+          </ul>
+        </div>
+
+        <Launchpad />
       </div>
-
-      <Launchpad />
     </section>
   );
 }

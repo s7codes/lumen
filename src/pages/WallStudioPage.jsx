@@ -153,8 +153,8 @@ export default function WallStudioPage() {
         ]}
       />
 
-      {/* The workstation is an optical chamber set into the gallery page. */}
-      <div className="studio-layout container optical" data-mode={mode}>
+      {/* A light gallery workstation on the paper; only the elevation stage stays optical. */}
+      <div className="studio-layout container" data-mode={mode}>
         <div className="studio-layout__main">
           <WallStage
             layout={live}

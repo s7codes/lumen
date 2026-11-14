@@ -248,7 +248,7 @@ async function settledCatalogCard(page, name) {
 }
 
 test.describe('product imagery', () => {
-  test('a catalog card is a naked plinth: a square 4:3 optical vignette over the specification on bare paper', async ({
+  test('a catalog card is a naked plinth: a square 4:3 plaster wall over the specification on bare paper', async ({
     page,
   }) => {
     const card = await settledCatalogCard(page, 'Floating Shelf 110');
@@ -273,7 +273,8 @@ test.describe('product imagery', () => {
       blur: 'none',
     });
 
-    // The plinth: square, 4:3, deep warm black, flush with the card's top and sides.
+    // The plinth: square, 4:3, a limestone-taupe plaster wall (never a black void),
+    // flush with the card's top and sides.
     const plinth = card.locator('.product-card__figure');
     const stage = await plinth.evaluate((el) => {
       const style = getComputedStyle(el);
@@ -281,7 +282,7 @@ test.describe('product imagery', () => {
       return { radius: style.borderTopLeftRadius, surface: style.backgroundColor, ratio: box.width / box.height };
     });
     expect(stage.radius).toBe('0px');
-    expect(stage.surface).toBe('rgb(20, 18, 16)');
+    expect(stage.surface).toBe('rgb(61, 55, 49)');
     expect(stage.ratio).toBeCloseTo(4 / 3, 1);
     const [cardBox, plinthBox] = await Promise.all([card.boundingBox(), plinth.boundingBox()]);
     expect(Math.abs(plinthBox.y - cardBox.y)).toBeLessThanOrEqual(1);
@@ -295,7 +296,7 @@ test.describe('product imagery', () => {
     await expect(card.locator('.swatch__chip').first()).toHaveCSS('border-top-left-radius', '0px');
     const add = card.getByRole('button', { name: /add to cart/i });
     await expect(add).toHaveCSS('background-color', 'rgb(20, 19, 17)');
-    await expect(add).toHaveCSS('color', 'rgb(245, 242, 235)');
+    await expect(add).toHaveCSS('color', 'rgb(250, 249, 246)');
     await expect(add).toHaveCSS('border-top-left-radius', '0px');
   });
 
@@ -307,7 +308,7 @@ test.describe('product imagery', () => {
     const drawing = stage.locator('svg.elev');
 
     await expect(stage).toHaveCSS('overflow', 'hidden');
-    // No outline: the plinth is a deep warm black under a soft vignette.
+    // No outline: the plinth is umber plaster under the fixture's soft wall-wash scallop.
     const surface = await stage.evaluate((el) => {
       const style = getComputedStyle(el);
       return {
@@ -316,7 +317,7 @@ test.describe('product imagery', () => {
         image: style.backgroundImage.startsWith('radial-gradient'),
       };
     });
-    expect(surface).toEqual({ border: '0px', color: 'rgb(20, 18, 16)', image: true });
+    expect(surface).toEqual({ border: '0px', color: 'rgb(61, 55, 49)', image: true });
     const timing = await drawing.evaluate((el) => {
       const style = getComputedStyle(el);
       return { duration: style.transitionDuration, easing: style.transitionTimingFunction };
@@ -413,7 +414,7 @@ test.describe('tactile keys', () => {
     await expect(explore).toHaveCSS('border-top-color', 'rgb(20, 19, 17)');
     await explore.hover();
     await expect(explore).toHaveCSS('background-color', 'rgb(20, 19, 17)');
-    await expect(explore).toHaveCSS('color', 'rgb(245, 242, 235)');
+    await expect(explore).toHaveCSS('color', 'rgb(250, 249, 246)');
   });
 
   test('arrow keys slide their arrow 4px and the sync keys carry one', async ({ page }) => {

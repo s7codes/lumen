@@ -1,13 +1,14 @@
-/* Overview. One optical chamber opens the page (the ambient hero, where a
-   pendant lights a ribbed wall), then the gallery paper takes over: a ledger
-   strip, asymmetric section heads over hairline rules, the dimming bench and
-   the theatre set into the paper as square chambers, naked catalog plinths
-   and an index of the three workspaces. */
+/* Overview. A full-bleed Venetian plaster hero opens the page (a pendant on
+   a track lights an evening wall that breathes between two atmospheres),
+   then the gallery paper alternates with full-bleed architectural bands: the
+   ledger strip, the Meet our Icons film, the travertine dimming band, the
+   Nocturne twilight theatre, plaster plinths and the Explore the Lumen home
+   rooms. A band spans the page edge to edge; the copy in it keeps the grid. */
 
 /* Ambient hero: lighting coordinates are written by useAmbientLight.
-   Two tracks: the type owns the left, the right track stays empty so the
-   pendant has open air to swing through. The inset scales with the viewport,
-   so the copy holds a measured margin instead of pressing on the edge. */
+   Two tracks: the type owns the left, the right track stays open so the
+   pendant has air to swing through. The inset scales with the viewport, so
+   the copy holds a measured margin instead of pressing on the edge. */
 
 .hero {
   --light-x: 74%;
@@ -15,6 +16,10 @@
   --light-energy: 0;
   --lamp-y: max(var(--light-y), 56px);
   --hero-inset: clamp(24px, 9vw, 220px);
+  /* One crossfade clock for the wall, its wash and the atmosphere caption:
+     6.5 s per atmosphere, held at each end, eased through the middle. */
+  --atmosphere-cycle: 6.5s;
+  --atmosphere-ease: cubic-bezier(0.45, 0, 0.55, 1);
 
   position: relative;
   display: grid;
@@ -23,7 +28,7 @@
   min-height: max(640px, calc(100svh - var(--nav-height)));
   padding: var(--space-7) var(--hero-inset) clamp(var(--space-6), 3.5vw, var(--space-9));
   overflow: hidden;
-  background: var(--chamber);
+  background: var(--plaster-shadow);
   isolation: isolate;
 }
 
@@ -34,48 +39,111 @@
   pointer-events: none;
 }
 
-.hero__ribs {
+/* The wall: plaster lighter toward the ceiling, falling to umber at the
+   floor, with soft trowelled modulation across it. */
+.hero__plaster {
   position: absolute;
   inset: 0;
-  background-image: linear-gradient(
-    90deg,
-    rgba(255, 236, 214, 0.09) 0,
-    rgba(255, 236, 214, 0.02) 3px,
-    rgba(0, 0, 0, 0) 9px,
-    rgba(0, 0, 0, 0.32) 17px,
-    rgba(0, 0, 0, 0) 18px
-  );
-  background-size: 18px 100%;
-  -webkit-mask-image: radial-gradient(
-    ellipse 46% 70% at var(--light-x) var(--lamp-y),
-    #000 0%,
-    rgba(0, 0, 0, 0.4) 45%,
-    transparent 100%
-  );
-  mask-image: radial-gradient(
-    ellipse 46% 70% at var(--light-x) var(--lamp-y),
-    #000 0%,
-    rgba(0, 0, 0, 0.4) 45%,
-    transparent 100%
-  );
+  background-image:
+    var(--plaster-mottle-light),
+    var(--plaster-mottle-dark),
+    linear-gradient(
+      90deg,
+      rgba(255, 240, 222, 0.04),
+      rgba(0, 0, 0, 0.05) 17%,
+      rgba(255, 240, 222, 0.03) 38%,
+      rgba(0, 0, 0, 0.06) 63%,
+      rgba(255, 240, 222, 0.03) 84%,
+      rgba(0, 0, 0, 0.04)
+    ),
+    var(--plaster-wall);
+  background-size:
+    360px 360px,
+    440px 440px,
+    auto,
+    auto;
 }
 
+/* Warm Venetian Plaster, 2700K. */
+.hero__plaster--venetian {
+  --plaster-wall: linear-gradient(200deg, #8c7c68 0%, #716353 26%, #564a3f 56%, #3d3731 80%, #2c2824 100%);
+}
+
+/* Soft Limestone Evening Wash, 2400K: a cooler stone in a deeper dusk. */
+.hero__plaster--limestone {
+  --plaster-wall: linear-gradient(200deg, #81796d 0%, #665f56 28%, #4b4741 58%, #35322e 82%, #242220 100%);
+  opacity: 0;
+  animation: hero-atmosphere-in var(--atmosphere-cycle) var(--atmosphere-ease) infinite alternate;
+}
+
+/* Grazing light shows the trowel marks only near the lamp. */
+.hero__relief {
+  position: absolute;
+  inset: 0;
+  background-image: var(--plaster-mottle-light), var(--plaster-mottle-dark);
+  background-size:
+    280px 280px,
+    340px 340px;
+  opacity: 0.6;
+  -webkit-mask-image: radial-gradient(
+    ellipse 38% 60% at var(--light-x) var(--lamp-y),
+    #000 0%,
+    rgba(0, 0, 0, 0.35) 50%,
+    transparent 100%
+  );
+  mask-image: radial-gradient(ellipse 38% 60% at var(--light-x) var(--lamp-y), #000 0%, rgba(0, 0, 0, 0.35) 50%, transparent 100%);
+}
+
+/* The pendant's indirect wall wash: lit plaster round the lamp and the
+   filament's own hot spot. The 2700K wash hands over to a warmer, dimmer
+   2400K one in step with the wall. */
 .hero__wash {
   position: absolute;
   inset: 0;
   background:
     radial-gradient(
       circle at var(--light-x) var(--lamp-y),
-      rgba(255, 196, 128, calc(0.22 + var(--light-energy) * 0.1)) 0,
-      rgba(232, 146, 58, 0.1) 14%,
-      transparent 42%
+      rgba(255, 214, 160, calc(0.34 + var(--light-energy) * 0.12)) 0,
+      rgba(240, 170, 100, 0.12) 12%,
+      transparent 34%
     ),
     radial-gradient(
-      ellipse 80% 90% at var(--light-x) var(--lamp-y),
-      rgba(232, 146, 58, 0.07) 0,
-      transparent 70%
+      ellipse 54% 76% at var(--light-x) var(--lamp-y),
+      rgba(214, 196, 168, 0.42) 0%,
+      rgba(200, 188, 169, 0.2) 34%,
+      rgba(160, 140, 116, 0.07) 62%,
+      transparent 84%
+    );
+  animation: hero-atmosphere-out var(--atmosphere-cycle) var(--atmosphere-ease) infinite alternate;
+}
+
+.hero__wash--evening {
+  background:
+    radial-gradient(
+      circle at var(--light-x) var(--lamp-y),
+      rgba(255, 184, 116, calc(0.3 + var(--light-energy) * 0.1)) 0,
+      rgba(228, 138, 70, 0.12) 13%,
+      transparent 36%
     ),
-    linear-gradient(180deg, rgba(17, 16, 14, 0) 55%, rgba(17, 16, 14, 0.85) 100%);
+    radial-gradient(
+      ellipse 48% 70% at var(--light-x) var(--lamp-y),
+      rgba(206, 170, 128, 0.34) 0%,
+      rgba(178, 150, 116, 0.16) 36%,
+      rgba(130, 110, 90, 0.05) 64%,
+      transparent 86%
+    );
+  opacity: 0;
+  animation-name: hero-atmosphere-in;
+}
+
+/* The copy stands in the wall's own shadow: a low umber scrim keeps the
+   alabaster type legible wherever the pendant swings. */
+.hero__scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(0deg, rgba(24, 20, 16, 0.66) 0%, rgba(24, 20, 16, 0.3) 34%, rgba(24, 20, 16, 0) 62%),
+    linear-gradient(90deg, rgba(24, 20, 16, 0.4) 0%, rgba(24, 20, 16, 0) 58%);
 }
 
 .hero__rail {
@@ -144,14 +212,76 @@
   width: 1px;
 }
 
+/* Track tag, top left: the fixture, then the atmosphere on the wall, its two
+   names crossfading on the same clock as the plaster. */
 .hero__tag {
   position: absolute;
   top: var(--space-5);
   left: var(--hero-inset);
+  right: var(--hero-inset);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--space-3);
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--chamber-ink-muted);
+}
+
+.hero__atmosphere {
+  display: inline-grid;
+}
+
+.hero__atmosphere::before {
+  content: '/';
+  grid-area: 1 / 1;
+  margin-right: var(--space-3);
+  justify-self: start;
+}
+
+.hero__atmosphere-name {
+  grid-area: 1 / 1;
+  padding-left: calc(1ch + var(--space-3));
+  white-space: nowrap;
+  color: var(--chamber-ink-soft);
+}
+
+.hero__atmosphere-name--venetian {
+  animation: hero-atmosphere-out var(--atmosphere-cycle) var(--atmosphere-ease) infinite alternate;
+}
+
+.hero__atmosphere-name--limestone {
+  opacity: 0;
+  animation: hero-atmosphere-in var(--atmosphere-cycle) var(--atmosphere-ease) infinite alternate;
+}
+
+/* Out of view the wall holds its breath: no compositor loop nobody sees. */
+.hero[data-offscreen] :is(.hero__plaster--limestone, .hero__wash, .hero__atmosphere-name) {
+  animation-play-state: paused;
+}
+
+@keyframes hero-atmosphere-in {
+  0%,
+  20% {
+    opacity: 0;
+  }
+
+  80%,
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes hero-atmosphere-out {
+  0%,
+  20% {
+    opacity: 1;
+  }
+
+  80%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .hero__content {
@@ -162,11 +292,25 @@
   text-align: left;
 }
 
-.hero .index-label {
+/* An architectural attribution in place of a section index: tracked
+   capitals, one quiet slash. */
+.hero__attribution {
+  max-width: 44ch;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.7;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
   color: var(--chamber-ink-soft);
 }
 
-.hero .index-label__num {
+.hero__attribution-keep {
+  white-space: nowrap;
+}
+
+.hero__attribution-rule {
+  margin-left: 0.9em;
+  margin-right: 0.45em;
   color: var(--chamber-ink-muted);
 }
 
@@ -194,27 +338,20 @@
 .hero__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
   margin-top: var(--space-7);
 }
 
-/* The hero is a gallery chamber, not an instrument: its keys keep the sans. */
+/* The hero is a gallery wall, not an instrument: its keys keep the sans. */
 .hero .button {
   font-family: var(--font-sans);
 }
 
-/* Inside the chamber the secondary key is a naked alabaster hairline that
-   inverts to alabaster on hover; the primary key is alabaster already. */
-.hero .button:not(.button--primary) {
-  border-color: rgba(245, 242, 235, 0.55);
-  background: transparent;
-  color: var(--chamber-ink);
-}
-
-.hero .button:not(.button--primary):hover {
-  border-color: var(--chamber-ink);
-  background: var(--chamber-ink);
-  color: var(--ink);
+/* The bracketed key stands as tall as the alabaster slab beside it. */
+.hero__bracket {
+  min-height: 44px;
+  padding-inline: 1.5rem;
 }
 
 /* The overview pulls into focus once on load, one line of the spec at a time. */
@@ -266,6 +403,14 @@
   .hero__readout {
     left: var(--hero-inset);
     right: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero__plaster--limestone,
+  .hero__wash,
+  .hero__atmosphere-name {
+    animation: none;
   }
 }
 
@@ -344,68 +489,123 @@
   }
 }
 
-/* Section heads: an asymmetric split above a full-width hairline. The caption
-   and a light headline own the left track; the lede settles into the right
-   columns on the headline's last line. */
+/* Section heads: calm and centred. A tracked caption, a light title with
+   room above its cap height and below its descenders, and the lede under it.
+   No negative margins and nothing that clips: the title carries a little
+   block padding so a reveal blur never shaves the tops of the letters. */
 
 .section-head {
-  display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-  grid-template-areas:
-    'caption caption'
-    'title lede';
-  align-items: end;
-  column-gap: clamp(var(--space-6), 4vw, var(--space-9));
-  margin-bottom: clamp(var(--space-7), 5vw, var(--space-9));
-  padding-bottom: clamp(var(--space-5), 2.5vw, var(--space-7));
-  border-bottom: 1px solid var(--rule-section);
-}
-
-.section-head > .index-label {
-  grid-area: caption;
-  margin-bottom: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 940px;
+  margin: 0 auto clamp(var(--space-7), 5vw, 88px);
+  padding-top: var(--space-3);
+  text-align: center;
 }
 
 .section-head__title {
-  grid-area: title;
-  max-width: 17ch;
-  font-size: var(--text-headline);
-  font-weight: var(--weight-display);
-  line-height: var(--leading-display);
-  letter-spacing: var(--tracking-headline);
+  max-width: 21ch;
+  margin-top: var(--space-5);
+  padding-block: 0.06em;
+  font-size: var(--text-section);
+  font-weight: 380;
+  line-height: 1.14;
+  letter-spacing: -0.022em;
   text-wrap: balance;
 }
 
 .section-head__lede {
-  grid-area: lede;
-  max-width: 44ch;
+  max-width: 58ch;
+  margin-top: var(--space-5);
   font-size: var(--text-md);
   font-weight: var(--weight-regular);
-  line-height: 1.55;
+  line-height: 1.6;
   letter-spacing: -0.005em;
   color: var(--text-secondary);
+  text-wrap: pretty;
 }
 
-@media (max-width: 959px) {
-  .section-head {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      'caption'
-      'title'
-      'lede';
-  }
+/* Full-bleed bands. The flow already spans the viewport, so a band at 100%
+   is edge to edge (100vw without the scrollbar overflow). The copy inside
+   sits on the grid in a .container. */
 
-  .section-head__lede {
-    margin-top: var(--space-5);
-  }
+.band {
+  position: relative;
+  padding-block: var(--section-space);
 }
 
-/* 02 / Surface and dimming lab: the dark bench and its specification sheet
-   share one square frame with no gap between them. */
-
-.lab {
-  padding-top: var(--section-space);
+.band--travertine {
+  background: var(--travertine);
 }
+
+/* Meet our Icons: the full-bleed film. The canvas paints the loop; a soft
+   umber veil seats the white title and the bracketed key over any frame. */
+
+.cinema {
+  --focus-ring: #e5c799;
+
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: clamp(460px, 76vh, 760px);
+  margin-top: var(--section-space);
+  overflow: hidden;
+  background: #1c1814;
+  color: #ffffff;
+  isolation: isolate;
+}
+
+.cinema__canvas {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cinema__veil {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(56% 46% at 50% 50%, rgba(14, 11, 8, 0.46) 0%, rgba(14, 11, 8, 0.14) 62%, rgba(14, 11, 8, 0) 100%),
+    linear-gradient(0deg, rgba(14, 11, 8, 0.4) 0%, rgba(14, 11, 8, 0) 26%);
+  pointer-events: none;
+}
+
+.cinema__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+  padding-inline: var(--grid-margin);
+  text-align: center;
+}
+
+.cinema__title {
+  font-size: clamp(2rem, 3.6vw, 3.25rem);
+  font-weight: 380;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+.cinema__caption {
+  position: absolute;
+  left: var(--grid-margin);
+  right: var(--grid-margin);
+  bottom: var(--space-5);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+/* 02 / Surface and dimming lab: a full-bleed travertine band. The bench (a
+   slat wall in a dim umber room) and its paper specification sheet share one
+   square instrument frame with no gap between them. */
 
 .lab__rig {
   display: grid;
@@ -413,6 +613,7 @@
   align-items: stretch;
   border: 1px solid var(--rule-frame);
   border-radius: 0;
+  background: var(--paper);
 }
 
 /* Bench lighting model. --lab-level is the dimmer duty (0-1), --lab-light the
@@ -434,7 +635,7 @@
   min-height: clamp(480px, 46vw, 680px);
   overflow: hidden;
   border-radius: 0;
-  background: var(--chamber);
+  background: var(--plaster-shadow);
   isolation: isolate;
 }
 
@@ -465,9 +666,9 @@
   inset: 0;
   background: radial-gradient(
     ellipse calc(42% + var(--lab-level) * 46%) calc(48% + var(--lab-level) * 70%) at 50% 0%,
-    rgba(17, 16, 14, calc(0.9 - var(--lab-level) * 0.86)) 0%,
-    rgba(17, 16, 14, calc(0.93 - var(--lab-level) * 0.5)) 55%,
-    rgba(17, 16, 14, calc(0.96 - var(--lab-level) * 0.18)) 100%
+    rgba(44, 40, 36, calc(0.9 - var(--lab-level) * 0.86)) 0%,
+    rgba(44, 40, 36, calc(0.93 - var(--lab-level) * 0.5)) 55%,
+    rgba(44, 40, 36, calc(0.96 - var(--lab-level) * 0.18)) 100%
   );
 }
 
@@ -554,7 +755,7 @@
   font-size: 10px;
   letter-spacing: var(--tracking-label);
   color: var(--lumen-amber-soft);
-  background: rgba(17, 16, 14, 0.7);
+  background: rgba(44, 40, 36, 0.72);
   transform: translate(50%, 50%);
 }
 
@@ -563,7 +764,7 @@
   bottom: var(--space-4);
   left: var(--space-4);
   padding: 2px 6px;
-  background: rgba(17, 16, 14, 0.72);
+  background: rgba(44, 40, 36, 0.78);
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
@@ -583,7 +784,7 @@
   gap: var(--space-7);
   min-width: 0;
   padding: var(--bento-pad);
-  background: var(--paper-stone);
+  background: var(--paper);
   color: var(--text-primary);
 }
 
@@ -933,15 +1134,41 @@
   }
 }
 
-/* 03 / 3D Spatial Studio showcase. The stage is a canvas 2D projection under
-   an HTML and SVG HUD in a square chamber; its rAF loop runs only while the
-   stage is on screen, and never under reduced motion. Beside it, a flush
-   index of the three capabilities on the paper. */
+/* 03 / 3D Spatial Studio: Nocturne, light in the dark. A full-bleed band of
+   matte slate wall over a warm concrete floor wash. The stage is a canvas 2D
+   projection under an HTML and SVG HUD, its rAF loop running only while the
+   stage is on screen and never under reduced motion. Beside it, a flush
+   index of the three capabilities in alabaster on the slate. */
 
 .showcase3d {
-  padding-top: var(--section-space);
-  /* Lands the section head, not its top padding, just under the navbar. */
-  scroll-margin-top: calc(var(--nav-height) + var(--space-5) - var(--section-space));
+  --nocturne-pad: var(--section-space);
+  --nocturne-rule: rgba(245, 242, 235, 0.55);
+
+  position: relative;
+  padding-block: var(--nocturne-pad);
+  background:
+    radial-gradient(120% 70% at 50% 108%, rgba(176, 130, 86, 0.22) 0%, rgba(176, 130, 86, 0.07) 42%, rgba(176, 130, 86, 0) 72%),
+    radial-gradient(70% 46% at 50% 0%, rgba(245, 242, 235, 0.05) 0%, rgba(245, 242, 235, 0) 72%),
+    var(--slate);
+  color: var(--chamber-ink);
+  /* Lands the section head 48 px under the navbar, clear of its hairline. */
+  scroll-margin-top: calc(var(--nav-height) + var(--space-7) - var(--nocturne-pad));
+}
+
+.showcase3d .index-label {
+  color: var(--chamber-ink-soft);
+}
+
+.showcase3d .index-label__num {
+  color: var(--chamber-ink-muted);
+}
+
+.showcase3d .section-head__title {
+  color: var(--chamber-ink);
+}
+
+.showcase3d .section-head__lede {
+  color: var(--chamber-ink-soft);
 }
 
 .showcase3d:focus {
@@ -961,6 +1188,8 @@
 
 /* ---------- theatre ---------- */
 
+/* The theatre settles into the twilight: a deeper slate stage with a warm
+   floor pool, framed by its corner marks rather than a box. */
 .showcase3d__stage {
   display: flex;
   flex-direction: column;
@@ -969,9 +1198,9 @@
   overflow: hidden;
   border-radius: 0;
   background:
-    radial-gradient(70% 60% at 50% 46%, rgba(232, 146, 58, 0.1) 0%, rgba(232, 146, 58, 0) 70%),
-    radial-gradient(120% 80% at 50% 0%, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0) 60%),
-    linear-gradient(180deg, #151310 0%, var(--chamber) 100%);
+    radial-gradient(70% 60% at 50% 58%, rgba(232, 146, 58, 0.09) 0%, rgba(232, 146, 58, 0) 70%),
+    radial-gradient(120% 80% at 50% 0%, rgba(245, 242, 235, 0.04) 0%, rgba(245, 242, 235, 0) 60%),
+    linear-gradient(180deg, #2a2c2f 0%, #1c1e21 100%);
 }
 
 /* 3:2 at rest; beside the taller index the stage grows into the spare height
@@ -1173,12 +1402,12 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  border-top: 1px solid var(--rule-ink);
+  border-top: 1px solid var(--nocturne-rule);
 }
 
 .showcase3d__pillar-cell {
   min-width: 0;
-  border-bottom: 1px solid var(--rule-section);
+  border-bottom: 1px solid var(--chamber-rule);
 }
 
 .showcase3d__pillar {
@@ -1198,7 +1427,7 @@
 }
 
 .showcase3d__pillar:hover {
-  background: rgba(20, 19, 17, 0.025);
+  background: rgba(245, 242, 235, 0.03);
 }
 
 /* The decorative top row hands its two cells to the row grid. */
@@ -1216,7 +1445,7 @@
   font-weight: var(--weight-medium);
   line-height: 1;
   letter-spacing: 0.04em;
-  color: var(--text-muted);
+  color: var(--chamber-ink-muted);
   transition:
     color var(--duration-base) var(--ease-out),
     background-color var(--duration-base) var(--ease-out);
@@ -1228,7 +1457,7 @@
   place-items: center;
   width: 28px;
   height: 28px;
-  color: var(--text-secondary);
+  color: var(--chamber-ink-soft);
   transition: color var(--duration-base) var(--ease-out);
 }
 
@@ -1237,13 +1466,14 @@
   height: 26px;
 }
 
+/* On the slate the capability on stage inverts flat to alabaster. */
 .showcase3d__pillar[data-active] .showcase3d__pillar-index {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--chamber-ink);
+  color: var(--slate);
 }
 
 .showcase3d__pillar[data-active] .showcase3d__pillar-badge {
-  color: var(--text-primary);
+  color: var(--chamber-ink);
 }
 
 .showcase3d__pillar-title {
@@ -1252,7 +1482,7 @@
   font-weight: var(--weight-regular);
   line-height: 1.2;
   letter-spacing: -0.02em;
-  color: var(--text-primary);
+  color: var(--chamber-ink);
 }
 
 .showcase3d__pillar-key {
@@ -1278,7 +1508,7 @@
   font-size: var(--text-sm);
   font-weight: var(--weight-regular);
   line-height: 1.65;
-  color: var(--text-secondary);
+  color: var(--chamber-ink-soft);
 }
 
 /* Key figures as naked tracked text, split by a quiet slash: no pills. */
@@ -1302,20 +1532,20 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
-  color: var(--text-primary);
+  color: var(--chamber-ink);
 }
 
 .showcase3d__pillar-chip + .showcase3d__pillar-chip::before {
   content: '/';
-  color: var(--text-muted);
+  color: var(--chamber-ink-muted);
 }
 
 /* ---------- launch bar ---------- */
 
-/* One full-width bar under the rig between a carbon rule and a hairline:
-   the headline, three quick-launch keys and the studio key. Its height is
-   the key's (54 px) plus a 20 px inset, under 110 px on a desktop; narrower
-   frames wrap it to two rows, phones stack it. */
+/* One full-width bar under the rig between an alabaster rule and a
+   hairline: the headline, three quick-launch keys and the bracketed studio
+   key. Its height is the key's (54 px) plus a 20 px inset, under 110 px on a
+   desktop; narrower frames wrap it to two rows, phones stack it. */
 .launchpad {
   position: relative;
   display: grid;
@@ -1325,8 +1555,8 @@
   gap: var(--space-4) var(--space-5);
   margin-top: var(--space-5);
   padding: 20px 0;
-  border-top: 1px solid var(--rule-ink);
-  border-bottom: 1px solid var(--rule-section);
+  border-top: 1px solid var(--nocturne-rule);
+  border-bottom: 1px solid var(--chamber-rule);
   border-radius: 0;
   background: none;
 }
@@ -1339,11 +1569,11 @@
   line-height: 1.2;
   letter-spacing: -0.02em;
   text-wrap: balance;
-  color: var(--text-primary);
+  color: var(--chamber-ink);
 }
 
 /* Quick-launch keys: a line glyph, a short label and an arrow that is the
-   only part to travel. Square hairlines that firm to carbon on hover. */
+   only part to travel. Square alabaster hairlines that firm on hover. */
 .launchpad__presets {
   grid-area: presets;
   display: flex;
@@ -1361,10 +1591,10 @@
   gap: var(--space-2);
   height: 40px;
   padding: 0 14px 0 10px;
-  border: 1px solid rgba(20, 19, 17, 0.28);
+  border: 1px solid rgba(245, 242, 235, 0.28);
   border-radius: 0;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--chamber-ink);
   font-size: 13px;
   font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
@@ -1376,8 +1606,8 @@
 
 .launchpad__preset:hover,
 .launchpad__preset:focus-visible {
-  border-color: var(--ink);
-  background: rgba(20, 19, 17, 0.03);
+  border-color: var(--chamber-ink);
+  background: rgba(245, 242, 235, 0.05);
 }
 
 .launchpad__preset:focus-visible {
@@ -1402,7 +1632,7 @@
   flex: none;
   width: 12px;
   height: 12px;
-  color: var(--text-secondary);
+  color: var(--chamber-ink-soft);
   transition:
     transform var(--duration-base) var(--ease-out),
     color var(--duration-base) var(--ease-out);
@@ -1411,12 +1641,13 @@
 .launchpad__preset:hover .launchpad__preset-arrow,
 .launchpad__preset:focus-visible .launchpad__preset-arrow {
   transform: translateX(3px);
-  color: var(--text-primary);
+  color: var(--chamber-ink);
 }
 
-/* The flagship key: a matte carbon slab in sentence case with paper ink. It
-   stays anchored on hover: a deeper carbon layer fades in under the label
-   and only the arrow moves. */
+/* The flagship key, bracketed: two alabaster hairlines frame a tracked
+   capital label over the slate, no top or bottom edge, no fill. It stays
+   anchored on hover: a faint alabaster wash fades in under the label and
+   only the arrow moves. */
 .button.launchpad__cta {
   grid-area: cta;
   position: relative;
@@ -1426,13 +1657,15 @@
   min-height: 54px;
   padding: 0 28px;
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: var(--weight-medium);
-  letter-spacing: -0.01em;
-  text-transform: none;
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--paper);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border: 0;
+  border-left: 1px solid rgba(245, 242, 235, 0.75);
+  border-right: 1px solid rgba(245, 242, 235, 0.75);
+  background: transparent;
+  color: var(--chamber-ink);
 }
 
 .button.launchpad__cta::before {
@@ -1440,16 +1673,16 @@
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: var(--ink-hover);
+  background: rgba(245, 242, 235, 0.08);
   opacity: 0;
   transition: opacity var(--duration-base) var(--ease-out);
 }
 
 .button.launchpad__cta:hover:not(:disabled),
 .button.launchpad__cta:active:not(:disabled) {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--paper);
+  border-color: var(--chamber-ink);
+  background: transparent;
+  color: var(--chamber-ink);
 }
 
 .button.launchpad__cta:hover:not(:disabled)::before,
@@ -1554,7 +1787,7 @@
   font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  opacity: 0.66;
+  opacity: 0.62;
 }
 
 /* Narrower desktops: the headline takes the first row, keys the second. */
@@ -1663,85 +1896,151 @@
   }
 }
 
-/* 05 / Workspaces: a horizontal editorial index. Three full-width rows
-   between carbon rules, each a four-column line: index, title, description,
-   then a bare line drawing over the way in. */
+/* 05 / Explore the Lumen home: a centred head, three tall 3:4 interiors side
+   by side on a 16 px gutter, the caption straight on the paper under each,
+   then A culture of light. Square corners throughout. */
 
 .entries {
-  padding-top: var(--section-space);
+  padding-block: var(--section-space);
 }
 
-.entries__grid {
+.explore__trio {
   display: grid;
-  border-top: 1px solid var(--rule-ink);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.explore__cell {
+  min-width: 0;
 }
 
 .entry-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-radius: 0;
+  color: inherit;
+}
+
+/* The portrait: a painted room in a 3:4 frame. On hover the picture eases a
+   step closer and the luminaire breathes; nothing else moves. */
+.entry-card__portrait {
+  position: relative;
+  display: block;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border-radius: 0;
+  background: var(--paper-stone);
+  isolation: isolate;
+}
+
+.entry-card__portrait::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgba(22, 17, 12, 0.38) 0%, rgba(22, 17, 12, 0) 30%);
+  pointer-events: none;
+}
+
+.entry-card__canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transition: transform var(--duration-hover) var(--ease-cinematic);
+}
+
+.entry-card:hover .entry-card__canvas,
+.entry-card:focus-visible .entry-card__canvas {
+  transform: scale(1.03);
+}
+
+/* The breathing light: a warm pool over the luminaire, scaled on the
+   compositor. It fades in on hover and its keyframes run only while lit. */
+.entry-card__glow {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: radial-gradient(
+    circle at var(--glow-x, 50%) var(--glow-y, 40%),
+    rgba(255, 198, 132, 0.46) 0,
+    rgba(255, 172, 98, 0.16) 16%,
+    rgba(255, 172, 98, 0) 42%
+  );
+  mix-blend-mode: screen;
+  opacity: 0;
+  transform-origin: var(--glow-x, 50%) var(--glow-y, 40%);
+  transition: opacity 700ms var(--ease-out);
+  animation: interior-breathe 3.2s ease-in-out infinite alternate;
+  animation-play-state: paused;
+  pointer-events: none;
+}
+
+.entry-card:hover .entry-card__glow,
+.entry-card:focus-visible .entry-card__glow {
+  opacity: 1;
+  animation-play-state: running;
+}
+
+@keyframes interior-breathe {
+  from {
+    transform: scale(0.94);
+  }
+
+  to {
+    transform: scale(1.08);
+  }
+}
+
+.entry-card__room {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--space-5);
+  z-index: 2;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.18em;
+  text-align: center;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.94);
+}
+
+/* The caption on the bare paper: index and the way in on one line, then the
+   title and one sentence. */
+.entry-card__caption {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 2.1fr) minmax(0, 2.8fr) minmax(0, 1.8fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
-    'index title body glyph'
-    'index title body cta';
-  grid-template-rows: 1fr auto;
-  column-gap: clamp(var(--space-4), 2.6vw, 40px);
-  row-gap: var(--space-4);
-  padding-block: clamp(var(--space-6), 3vw, var(--space-7));
-  border-bottom: 1px solid var(--rule-ink);
-  transition: background-color var(--duration-slow) var(--ease-out);
+    'index cta'
+    'title title'
+    'body body';
+  gap: var(--space-2) var(--space-4);
+  padding-top: var(--space-5);
 }
 
-.entry-card:hover {
-  background: rgba(20, 19, 17, 0.025);
-}
-
-.entry-card > .index-label {
+.entry-card__caption > .index-label {
   grid-area: index;
-  padding-top: 6px;
 }
 
 .entry-card__title {
   grid-area: title;
-  font-size: clamp(1.5rem, 1.1rem + 1.2vw, 2.25rem);
-  font-weight: var(--weight-display);
-  line-height: 1.08;
-  letter-spacing: -0.03em;
+  margin-top: var(--space-1);
+  font-size: clamp(1.25rem, 1rem + 0.6vw, 1.625rem);
+  font-weight: 380;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
 }
 
 .entry-card__body {
   grid-area: body;
-  max-width: 44ch;
-  padding-top: 6px;
+  max-width: 42ch;
   font-size: var(--text-sm);
   font-weight: var(--weight-regular);
-  line-height: 1.65;
+  line-height: 1.6;
   color: var(--text-secondary);
-}
-
-/* The line drawing stands bare on the paper: no stage, no box. */
-.entry-card__glyph {
-  grid-area: glyph;
-  display: block;
-  justify-self: end;
-  width: min(100%, 168px);
-  color: var(--text-secondary);
-  transition: color var(--duration-slow) var(--ease-out);
-}
-
-.entry-card__glyph svg {
-  width: 100%;
-  height: auto;
-  max-height: 92px;
-  transition: transform var(--duration-hover) var(--ease-cinematic);
-  transform-origin: 100% 50%;
-}
-
-.entry-card:hover .entry-card__glyph {
-  color: var(--text-primary);
-}
-
-.entry-card:hover .entry-card__glyph svg {
-  transform: scale(var(--hover-zoom));
 }
 
 .entry-card__cta {
@@ -1767,26 +2066,48 @@
   transform: translateX(4px);
 }
 
+.entry-card:hover .entry-card__title {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+/* A culture of light: a centred editorial statement under the rooms. */
+.manifesto {
+  max-width: 760px;
+  margin: clamp(var(--space-9), 10vw, var(--space-11)) auto 0;
+  text-align: center;
+}
+
+.manifesto__title {
+  font-size: clamp(1.5rem, 1.1rem + 1.2vw, 2.25rem);
+  font-weight: 380;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.manifesto__body {
+  margin-top: var(--space-5);
+  font-size: var(--text-md);
+  line-height: 1.7;
+  color: var(--text-secondary);
+  text-wrap: balance;
+}
+
 @media (max-width: 959px) {
-  .entry-card {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      'index glyph'
-      'title glyph'
-      'body body'
-      'cta cta';
-    grid-template-rows: auto;
+  .explore__trio {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entry-card__glow {
+    animation: none;
   }
 
-  .entry-card__glyph {
-    width: 112px;
-  }
-
-  .entry-card__body {
-    padding-top: 0;
-  }
-
-  .entry-card__cta {
-    justify-self: start;
+  .entry-card__canvas {
+    transition: none;
   }
 }

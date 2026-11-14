@@ -596,7 +596,7 @@ export function RoomViewport({
       <div className="workspace-frame__viewport room3d-stage__viewport">
         <div
           ref={hostRef}
-          className="room3d-stage__canvas"
+          className="room3d-stage__canvas optical"
           data-testid="room-viewport"
           data-renderer={renderer}
           data-lighting={room.lighting}

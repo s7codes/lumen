@@ -483,6 +483,12 @@ test.describe('navbar order and the overview 3D showcase', () => {
     expect(cover).toMatchObject({ parent: 'BODY', position: 'fixed', zIndex: '9999', x: 0, y: 0, coversNav: true });
     expect(cover.width).toBe(cover.innerWidth);
     expect(cover.height).toBe(cover.innerHeight);
+    // A serene alabaster veil: carbon ink, square corners and a razor-thin 1px carbon progress line.
+    expect(cover.background).toBe('rgb(250, 249, 246)');
+    await expect(boot).toHaveCSS('color', 'rgb(20, 19, 17)');
+    await expect(boot.locator('.studio-boot__bar')).toHaveCSS('height', '1px');
+    await expect(boot.locator('.studio-boot__fill')).toHaveCSS('background-color', 'rgb(20, 19, 17)');
+    await expect(boot.getByTestId('skip-studio-boot')).toHaveCSS('border-top-left-radius', '0px');
     await expect(boot).toContainText(ENGINE_LABEL);
     // Layout sizes, not painted boxes: the panel itself is still pulling focus from 1.05.
     await expect(boot.locator('.studio-boot__mark')).toHaveCSS('width', '56px');
@@ -502,6 +508,20 @@ test.describe('navbar order and the overview 3D showcase', () => {
     await expect
       .poll(() => page.locator('.room3d-workstation').evaluate((el) => getComputedStyle(el).transform))
       .toBe('none');
+
+    // It lands as a light gallery workstation: paper chrome, the active wall a square carbon slab
+    // with paper ink, and the WebGL canvas the one optical volume inside the hairline frame.
+    const workstation = page.locator('.room3d-workstation');
+    await expect(workstation).not.toHaveClass(/(^|\s)optical(\s|$)/);
+    await expect(workstation).toHaveCSS('background-color', 'rgb(250, 249, 246)');
+    await expect(page.locator('.room3d-workstation__header')).toHaveCSS('background-color', 'rgb(250, 249, 246)');
+    const activeWall = page.getByTestId('wall-tab-north');
+    await expect(activeWall).toHaveAttribute('aria-pressed', 'true');
+    await expect(activeWall).toHaveCSS('background-color', 'rgb(20, 19, 17)');
+    await expect(activeWall).toHaveCSS('color', 'rgb(250, 249, 246)');
+    await expect(activeWall).toHaveCSS('border-top-left-radius', '0px');
+    await expect(viewport(page)).toHaveClass(/(^|\s)optical(\s|$)/);
+    await expect(page.locator('.room3d-workstation .room3d-stage')).toHaveCSS('border-top-left-radius', '0px');
 
     expect(await readCspViolations(page)).toEqual([]);
     expect(errors).toEqual([]);
@@ -961,9 +981,9 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await expect(pad).toBeVisible();
     await expect(pad).toHaveAttribute('data-reveal-settled', '');
     await expect(pad.getByRole('heading', { level: 3, name: 'Step inside the 3D Spatial Workstation.' })).toBeVisible();
-    // A full-width footer bar on the paper: a carbon rule over it, a hairline under it, no box.
-    await expect(pad).toHaveCSS('border-top-color', 'rgb(20, 19, 17)');
-    await expect(pad).toHaveCSS('border-bottom-color', 'rgba(20, 19, 17, 0.14)');
+    // A full-width footer bar on the Nocturne slate: an alabaster rule over it, a hairline under it, no box.
+    await expect(pad).toHaveCSS('border-top-color', 'rgba(245, 242, 235, 0.55)');
+    await expect(pad).toHaveCSS('border-bottom-color', 'rgba(245, 242, 235, 0.14)');
     await expect(pad).toHaveCSS('border-top-left-radius', '0px');
     expect(await pad.evaluate((el) => getComputedStyle(el).backgroundImage)).toBe('none');
     await expect(pad).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -981,7 +1001,8 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await expect(cta).toHaveCSS('min-height', '54px');
     await expect(cta).toHaveCSS('padding-left', '28px');
     await expect(cta).toHaveCSS('padding-right', '28px');
-    await expect(cta).toHaveCSS('font-size', '15px');
+    await expect(cta).toHaveCSS('font-size', '13px');
+    await expect(cta).toHaveCSS('text-transform', 'uppercase');
     await expect(cta).toHaveCSS('font-weight', '500');
     await expect(cta.locator('.launchpad__cta-glyph svg')).toBeVisible();
     const ctaBox = await cta.boundingBox();
@@ -1027,9 +1048,9 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
       for (const layer of look.layers) expect(layer === 'none' || layer.includes('inset'), layer).toBe(true);
       expect(look.layers.join(' ')).not.toContain('111, 82, 48');
     }
-    // The slab deepens in place: a #2b2925 layer fades in under the label, the glyph holds still.
+    // The bracket fills in place: a faint alabaster wash fades in under the label, the glyph holds still.
     await expect.poll(() => cta.evaluate((el) => getComputedStyle(el, '::before').opacity)).toBe('1');
-    expect(await cta.evaluate((el) => getComputedStyle(el, '::before').backgroundColor)).toBe('rgb(43, 41, 37)');
+    expect(await cta.evaluate((el) => getComputedStyle(el, '::before').backgroundColor)).toBe('rgba(245, 242, 235, 0.08)');
     await expect(cta.locator('.launchpad__cta-glyph svg')).toHaveCSS('transform', 'none');
     await expect(cta).toHaveCSS('box-shadow', 'none');
     // Lifted, not lit: nothing under a hovered preset or the studio key carries blur.
@@ -1264,7 +1285,7 @@ test.describe('page-order scroll-spy, calm turntable and champagne launch key', 
       expect(text.match(/[.!?]/g), text).toHaveLength(1);
       expect(text.endsWith('.')).toBe(true);
       expect(/^[\x20-\x7e]*$/.test(text)).toBe(true);
-      await expect(summary).toHaveCSS('color', 'rgb(87, 83, 78)');
+      await expect(summary).toHaveCSS('color', 'rgba(245, 242, 235, 0.74)');
       const type = await summary.evaluate((el) => {
         const style = getComputedStyle(el);
         return { size: Number.parseFloat(style.fontSize), leading: Number.parseFloat(style.lineHeight) };
@@ -1281,33 +1302,38 @@ test.describe('page-order scroll-spy, calm turntable and champagne launch key', 
       expect(look).toMatchObject({ radius: '0px', width: '0px', surface: 'rgba(0, 0, 0, 0)', shadow: 'none' });
       expect(look.family).toContain('IBM Plex Mono');
       await expect(card.locator('.showcase3d__pillar-spec')).toHaveCount(0);
-      // A flush index row on the paper: no tile, no glass, divided by a hairline.
+      // A flush index row on the Nocturne slate: no tile, no glass, divided by an alabaster hairline.
       const row = await card.evaluate((el) => {
         const style = getComputedStyle(el);
         const cell = getComputedStyle(el.parentElement);
         return { radius: style.borderTopLeftRadius, surface: style.backgroundColor, blur: style.backdropFilter, rule: cell.borderBottom };
       });
-      expect(row).toEqual({ radius: '0px', surface: 'rgba(0, 0, 0, 0)', blur: 'none', rule: '1px solid rgba(20, 19, 17, 0.14)' });
+      expect(row).toEqual({ radius: '0px', surface: 'rgba(0, 0, 0, 0)', blur: 'none', rule: '1px solid rgba(245, 242, 235, 0.14)' });
     }
-    // The capability on stage inverts its index to carbon; holding one pins it there.
+    // The capability on stage inverts its index flat to alabaster on the slate; holding one pins it there.
     const held = page.getByTestId('showcase-pillar-inside');
     await held.getByRole('button', { name: '165 cm Eye-Level Walkthrough' }).click();
     await expect(held).toHaveAttribute('data-active', 'true');
-    await expect(held.locator('.showcase3d__pillar-index')).toHaveCSS('background-color', 'rgb(20, 19, 17)');
-    await expect(held.locator('.showcase3d__pillar-index')).toHaveCSS('color', 'rgb(245, 242, 235)');
+    await expect(held.locator('.showcase3d__pillar-index')).toHaveCSS('background-color', 'rgb(245, 242, 235)');
+    await expect(held.locator('.showcase3d__pillar-index')).toHaveCSS('color', 'rgb(35, 37, 40)');
   });
 
-  test('the launch key is a square matte carbon slab with a light trace round its edge on a 6 s loop, with no blurred glow', async ({ page }) => {
+  test('the launch key is a bracketed alabaster hairline key with a light trace round its edge on a 6 s loop, with no blurred glow', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     const cta = page.getByTestId('launch-3d-studio-cta');
     await cta.scrollIntoViewIfNeeded();
-    // No orange fill and no champagne cap: matte carbon, paper ink, square corners.
+    // No orange fill and no champagne cap: two alabaster hairlines on the slate,
+    // no top or bottom edge, alabaster ink, square corners.
     await expect(cta).toHaveCSS('background-image', 'none');
-    await expect(cta).toHaveCSS('background-color', 'rgb(20, 19, 17)');
+    await expect(cta).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(cta).toHaveCSS('color', 'rgb(245, 242, 235)');
     await expect(cta).toHaveCSS('border-top-left-radius', '0px');
+    await expect(cta).toHaveCSS('border-left', '1px solid rgba(245, 242, 235, 0.75)');
+    await expect(cta).toHaveCSS('border-right', '1px solid rgba(245, 242, 235, 0.75)');
+    await expect(cta).toHaveCSS('border-top-width', '0px');
+    await expect(cta).toHaveCSS('border-bottom-width', '0px');
     expect(await cta.evaluate(maxBlurPx)).toBe(0);
     await expect(cta).toHaveCSS('box-shadow', 'none');
 

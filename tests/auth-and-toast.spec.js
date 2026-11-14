@@ -225,7 +225,7 @@ test.describe('account dashboard', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
   });
 
-  test('the account is a ledger register: a telemetry strip, then full-width rows under carbon rules, Sign Out top right', async ({
+  test('the account is a serene split page: the profile left, a quiet sync caption, the register right of one vertical hairline', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -236,7 +236,7 @@ test.describe('account dashboard', () => {
     const profile = page.getByTestId('account-profile');
     const rows = [page.getByTestId('account-projects'), page.getByTestId('account-orders'), page.getByTestId('account-tickets-section')];
     for (const tile of [profile, ...rows]) {
-      // Each row rises in as it scrolls into view.
+      // Each part rises in as it scrolls into view.
       await tile.scrollIntoViewIfNeeded();
       await expect.poll(() => tile.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
       const look = await tile.evaluate((el) => {
@@ -246,72 +246,91 @@ test.describe('account dashboard', () => {
       // No tiles, no glass, no lit edges: everything sits on the paper.
       expect(look).toEqual({ radius: '0px', surface: 'rgba(0, 0, 0, 0)', image: 'none', blur: 'none', shadow: 'none' });
     }
-    // Each section is one ledger row under a carbon rule.
-    for (const row of rows) {
-      await expect(row).toHaveCSS('border-top-width', '1px');
-      await expect(row).toHaveCSS('border-top-color', 'rgb(20, 19, 17)');
+    // No heavy carbon bars and no numbered eyebrows: quiet sections under faint hairlines.
+    await expect(page.getByTestId('account-page').locator('.index-label')).toHaveCount(0);
+    await expect(rows[0]).toHaveCSS('border-top-width', '0px');
+    for (const row of rows.slice(1)) await expect(row).toHaveCSS('border-top', '1px solid rgba(20, 19, 17, 0.08)');
+
+    // One vertical hairline splits the frame about a third of the way across.
+    const register = page.locator('.account-register');
+    await expect(register).toHaveCSS('border-left', '1px solid rgba(20, 19, 17, 0.1)');
+    const split = await page.locator('.account-split').evaluate((el) => {
+      const style = getComputedStyle(el);
+      const box = el.getBoundingClientRect();
+      const left = box.left + Number.parseFloat(style.paddingLeft);
+      const width = box.width - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight);
+      return (el.querySelector('.account-register').getBoundingClientRect().left - left) / width;
+    });
+    expect(split).toBeGreaterThan(0.32);
+    expect(split).toBeLessThan(0.36);
+
+    // The left column: an uppercase heading, the person, the caption and Sign Out.
+    const heading = page.getByRole('heading', { level: 1 });
+    await expect(heading).toHaveText('Account');
+    await expect(heading).toHaveCSS('text-transform', 'uppercase');
+    await expect(profile.getByRole('heading', { level: 2 })).toHaveText(GUEST.name);
+    await expect(page.getByTestId('account-user')).toContainText(GUEST.email);
+    const registerBox = await register.boundingBox();
+    expect((await profile.boundingBox()).x + (await profile.boundingBox()).width).toBeLessThanOrEqual(registerBox.x + 1);
+
+    // The sync state is a quiet mono caption, not a table: no rules, no cells.
+    const meta = page.getByTestId('account-meta');
+    await expect(page.getByTestId('account-fact-sync')).toHaveText('Up to date');
+    for (const id of ['transport', 'library', 'sync', 'projects', 'quotes']) {
+      await expect(meta.getByTestId(`account-fact-${id}`)).toBeVisible();
     }
-
-    // The telemetry strip: a flush table between a carbon rule and a hairline.
-    const facts = profile.locator('.account-profile__facts');
-    await expect(facts).toHaveCSS('border-top-color', 'rgb(20, 19, 17)');
-    await expect(facts).toHaveCSS('border-bottom-color', 'rgba(20, 19, 17, 0.14)');
-    await expect(facts).toHaveCSS('border-top-left-radius', '0px');
-
-    // Profile and every row span the same frame, stacked top to bottom.
-    const [profileBox, ...rowBoxes] = await Promise.all([profile, ...rows].map((tile) => tile.boundingBox()));
-    let floor = profileBox.y + profileBox.height;
-    for (const box of rowBoxes) {
-      expect(Math.abs(box.x - profileBox.x)).toBeLessThanOrEqual(1);
-      expect(Math.abs(box.width - profileBox.width)).toBeLessThanOrEqual(1);
-      expect(box.y).toBeGreaterThanOrEqual(floor - 1);
-      floor = box.y + box.height;
+    for (const facts of await meta.locator('.account-profile__facts').all()) {
+      const look = await facts.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { display: style.display, top: style.borderTopWidth, bottom: style.borderBottomWidth, family: style.fontFamily };
+      });
+      expect(look).toMatchObject({ display: 'flex', top: '0px', bottom: '0px' });
+      expect(look.family).toContain('IBM Plex Mono');
     }
+    // The counts read value first ("00 Projects"); the term keeps its markup order for screen readers.
+    const count = meta.locator('.account-profile__facts--counts .account-profile__fact').first();
+    const [valueBox, termBox] = await Promise.all([count.locator('dd').boundingBox(), count.locator('dt').boundingBox()]);
+    expect(valueBox.x).toBeLessThan(termBox.x);
+    await expect(count.locator('dt')).toHaveText('Projects');
+    const metaBox = await meta.boundingBox();
+    expect(metaBox.height).toBeLessThan(80);
 
-    // The title owns the left track, its entries the right one.
+    // Sign Out: a crisp rectangular hairline key under the caption.
+    const signOut = profile.getByTestId('sign-out');
+    await expect(signOut).toBeVisible();
+    await expect(signOut).toHaveCSS('border-top-left-radius', '0px');
+    await expect(signOut).toHaveCSS('border-top-color', 'rgb(20, 19, 17)');
+    expect((await signOut.boundingBox()).y).toBeGreaterThanOrEqual(metaBox.y + metaBox.height - 1);
+
+    // The register owns the right column; empty states are bare type with sharp keys and no drawings.
     const projects = rows[0];
     const [titleBox, emptyBox] = await Promise.all([
       projects.getByRole('heading', { level: 2, name: 'Saved Spatial Projects' }).boundingBox(),
       projects.getByTestId('saved-projects-empty').boundingBox(),
     ]);
-    expect(emptyBox.x).toBeGreaterThan(titleBox.x + titleBox.width);
-    // A compact, left-aligned empty state: a small drawing, sharp carbon and hairline keys.
+    expect(titleBox.x).toBeGreaterThan(registerBox.x);
+    expect(emptyBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
     const empty = projects.getByTestId('saved-projects-empty');
     await expect(empty).toHaveCSS('text-align', 'left');
-    expect((await empty.locator('svg.empty-art').boundingBox()).width).toBeLessThanOrEqual(80);
+    await expect(page.getByTestId('account-page').locator('svg.empty-art')).toHaveCount(0);
     const start = empty.getByRole('link', { name: 'Start 2D Wall Studio' });
     await expect(start).toHaveCSS('background-color', 'rgb(20, 19, 17)');
     await expect(start).toHaveCSS('border-top-left-radius', '0px');
     await expect(empty.getByRole('link', { name: 'Open Room Planner' })).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
-    // Sign Out lives in the profile tile, on its top-right padding corner.
-    const signOut = profile.getByTestId('sign-out');
-    await expect(signOut).toBeVisible();
-    const corner = await profile.evaluate((el) => {
-      const style = getComputedStyle(el);
-      const box = el.getBoundingClientRect();
-      return {
-        top: box.top + Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.paddingTop),
-        right: box.right - Number.parseFloat(style.borderRightWidth) - Number.parseFloat(style.paddingRight),
-      };
-    });
-    const signOutBox = await signOut.boundingBox();
-    expect(Math.abs(signOutBox.x + signOutBox.width - corner.right)).toBeLessThanOrEqual(1);
-    expect(Math.abs(signOutBox.y - corner.top)).toBeLessThanOrEqual(1);
-    await expect(profile.getByRole('heading', { level: 2 })).toHaveText(GUEST.name);
-    await expect(page.getByTestId('account-user')).toContainText(GUEST.email);
-
-    // The register sits on the fixed page ground: flat alabaster paper, no washes.
+    // The page sits on the fixed paper ground: flat Flos paper, no washes.
     const backdrop = page.getByTestId('ambient-backdrop');
     await expect(backdrop).toHaveAttribute('data-atmosphere', 'account');
     const atmosphere = await backdrop.evaluate((el) => {
       const style = getComputedStyle(el);
       return { position: style.position, image: style.backgroundImage, surface: style.backgroundColor, events: style.pointerEvents };
     });
-    expect(atmosphere).toEqual({ position: 'fixed', image: 'none', surface: 'rgb(245, 242, 235)', events: 'none' });
+    expect(atmosphere).toEqual({ position: 'fixed', image: 'none', surface: 'rgb(250, 249, 246)', events: 'none' });
 
-    // Phone width: the action drops under the identity and nothing overflows.
+    // Phone width: one column, the register under the profile, nothing overflows.
     await page.setViewportSize({ width: 360, height: 800 });
+    const [narrowProfile, narrowRegister] = await Promise.all([profile.boundingBox(), register.boundingBox()]);
+    expect(narrowRegister.y).toBeGreaterThanOrEqual(narrowProfile.y + narrowProfile.height - 1);
     const narrow = await signOut.boundingBox();
     const identity = await page.getByTestId('account-user').boundingBox();
     expect(narrow.y).toBeGreaterThanOrEqual(identity.y + identity.height);
@@ -365,7 +384,7 @@ test.describe('toast notifications', () => {
       };
     });
     expect(slab).toEqual({ animation: 'toast-in', radius: '0px', background: 'rgb(20, 19, 17)', backdrop: 'none', shadow: 'none' });
-    await expect(toast.getByTestId('toast-message')).toHaveCSS('color', 'rgb(245, 242, 235)');
+    await expect(toast.getByTestId('toast-message')).toHaveCSS('color', 'rgb(250, 249, 246)');
     await expect(toast.getByRole('button', { name: 'Dismiss notification' })).toHaveCSS('border-top-left-radius', '0px');
 
     // Still up at three seconds, unmounted shortly after the four-second mark.

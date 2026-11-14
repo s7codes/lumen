@@ -122,7 +122,7 @@ export function StudioBootOverlay({ ready, replay = 0, revealRef = null }) {
 
   return createPortal(
     <div
-      className="studio-boot optical"
+      className="studio-boot"
       data-testid="studio-boot-overlay"
       data-state={phase}
       data-run={run.id}

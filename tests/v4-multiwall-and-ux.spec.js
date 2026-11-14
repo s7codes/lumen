@@ -501,14 +501,14 @@ test.describe('human-friendly UX and header polish', () => {
     await expect(shelf.locator('.wall-module__tag')).toContainText('Floating Shelf 110');
     expect(await shelf.evaluate((el) => getComputedStyle(el).boxShadow)).toContain('inset');
 
-    // Sidebars: Title Case sans headings on soft cards; palette rows read size and power plainly.
+    // Sidebars: Title Case sans headings on flush paper panels; palette rows read size and power plainly.
     const heading = page.locator('.studio-palette .studio-panel__heading').first();
     await expect(heading).toHaveText('Wall Setup');
     await expect(heading).toHaveCSS('font-weight', '600');
     await expect(heading).toHaveCSS('text-transform', 'none');
     const card = page.locator('.studio-palette .studio-panel__section').first();
-    await expect(card).toHaveCSS('border-top-left-radius', '12px');
-    await expect(card).toHaveCSS('background-color', 'rgba(255, 255, 255, 0.03)');
+    await expect(card).toHaveCSS('border-top-left-radius', '0px');
+    await expect(card).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     const metas = await page.locator('.studio-palette .palette-item__meta').allTextContents();
     expect(metas.length).toBeGreaterThan(0);
     for (const meta of metas) expect(meta).toMatch(/^\d+ x \d+ cm, (\d+ W|passive)$/);
@@ -685,15 +685,16 @@ test.describe('product mini-icons', () => {
 });
 
 test.describe('page atmosphere', () => {
-  test('the overview, the 2D Wall Studio and the account sit on flat alabaster paper with zero overflow at 360 and 1440 px', async ({ page }) => {
+  test('the overview, the 2D Wall Studio and the account sit on flat Flos paper with full-bleed bands and zero overflow at 360 and 1440 px', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/');
     await seed(page, [[SESSION_KEY, JSON.stringify(GUEST)]]);
     for (const width of [360, 1440]) {
       await page.setViewportSize({ width, height: 900 });
 
-      // Overview: the paper starts at the hero chamber's foot. No washes, no drafting
-      // lattice; each section opens on its own hairline-ruled head.
+      // Overview: the paper starts at the hero wall's foot. No washes and no drafting
+      // lattice on the paper itself; the full-bleed bands carry their own surfaces and
+      // every section opens on a calm, centred head with no rule beneath it.
       await page.goto('/');
       const flow = page.getByTestId('home-atmosphere');
       // Layout offsets: the hero copy pulls into focus with a transform on load.
@@ -704,14 +705,27 @@ test.describe('page atmosphere', () => {
       expect(seam, `${width}px`).toBe(0);
       const paper = await computedLayers(flow);
       expect(paper.image, `${width}px paper`).toBe('none');
-      expect(await flow.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(245, 242, 235)');
+      expect(await flow.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(250, 249, 246)');
       for (const pseudo of ['::before', '::after']) {
         expect(await flow.evaluate((el, which) => getComputedStyle(el, which).content, pseudo), pseudo).toBe('none');
       }
+      for (const [section, surface] of [
+        ['.lab', 'rgb(239, 236, 229)'],
+        ['.modules', 'rgba(0, 0, 0, 0)'],
+        ['.entries', 'rgba(0, 0, 0, 0)'],
+      ]) {
+        const band = flow.locator(`:scope > ${section}`);
+        expect((await computedLayers(band)).image, section).toBe('none');
+        expect(await band.evaluate((el) => getComputedStyle(el).backgroundColor), section).toBe(surface);
+      }
+      // Nocturne: matte slate with a warm concrete floor wash, edge to edge.
+      const nocturne = flow.locator(':scope > .showcase3d');
+      expect(await nocturne.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(35, 37, 40)');
+      expect(radials((await computedLayers(nocturne)).image)).toBeGreaterThanOrEqual(1);
       for (const section of ['.lab', '.showcase3d', '.modules', '.entries']) {
-        expect((await computedLayers(flow.locator(`:scope > ${section}`))).image, section).toBe('none');
         const head = flow.locator(`:scope > ${section} .section-head`);
-        expect(await head.evaluate((el) => getComputedStyle(el).borderBottom), section).toBe('1px solid rgba(20, 19, 17, 0.14)');
+        const look = await head.evaluate((el) => ({ rule: getComputedStyle(el).borderBottomWidth, align: getComputedStyle(el).textAlign }));
+        expect(look, section).toEqual({ rule: '0px', align: 'center' });
       }
       await expect(page.getByTestId('ambient-backdrop')).toHaveAttribute('data-atmosphere', 'home');
       expect(await horizontalOverflow(page), `/ ${width}px`).toBeLessThanOrEqual(0);
@@ -728,21 +742,23 @@ test.describe('page atmosphere', () => {
         const layers = await computedLayers(backdrop);
         expect(layers).toMatchObject({ position: 'fixed', events: 'none', image: 'none' });
         expect(radials(layers.image), `${path} washes`).toBe(0);
-        expect(await backdrop.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(245, 242, 235)');
+        expect(await backdrop.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(250, 249, 246)');
         expect(await backdrop.evaluate((el) => getComputedStyle(el, '::after').content)).toBe('none');
         expect(await backdrop.boundingBox(), `${path} ${width}px`).toEqual({ x: 0, y: 0, width, height: 900 });
-        // The page header reads straight on the paper: nothing paints a slab behind it.
-        const header = page.locator('.page-header');
+        // The page header (on the account, its profile column) reads straight on the
+        // paper: nothing paints a slab behind it.
+        const header = page.locator(path === '/account' ? '.account-profile' : '.page-header');
         expect(await header.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
         expect(await horizontalOverflow(page), `${path} ${width}px`).toBeLessThanOrEqual(0);
       }
     }
-    // The 2D Wall Studio workstation is a square optical chamber set into the paper.
+    // The 2D Wall Studio is a light gallery workstation on the paper; only its stage stays optical.
     await page.goto('/studio-2d');
-    const chamber = page.locator('.studio-layout');
-    await expect(chamber).toHaveClass(/(^|\s)optical(\s|$)/);
-    await expect(chamber).toHaveCSS('background-color', 'rgb(17, 16, 14)');
-    await expect(chamber).toHaveCSS('border-top-left-radius', '0px');
+    const workstation = page.locator('.studio-layout');
+    await expect(workstation).not.toHaveClass(/(^|\s)optical(\s|$)/);
+    await expect(workstation).toHaveCSS('background-color', 'rgb(250, 249, 246)');
+    await expect(workstation).toHaveCSS('border-top-left-radius', '0px');
+    await expect(page.locator('.studio-stage__viewport')).toHaveClass(/(^|\s)optical(\s|$)/);
     // Account: the profile sits on the paper, no backlight and no lit inner edge.
     await page.goto('/account');
     const profile = page.getByTestId('account-profile');

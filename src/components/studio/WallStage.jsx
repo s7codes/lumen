@@ -713,7 +713,7 @@ export function WallStage({
 
       {toolbar}
 
-      <div className="workspace-frame__viewport studio-stage__viewport" data-surface={wall.surface}>
+      <div className="workspace-frame__viewport studio-stage__viewport optical" data-surface={wall.surface}>
         <StudioAtmosphere />
         <div ref={hostRef} className="studio-stage__fit">
           <div

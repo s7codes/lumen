@@ -18,6 +18,14 @@
   gap: var(--space-3) var(--space-5);
 }
 
+/* Bare: copy and keys only, one column, no drawing. */
+.empty-state[data-bare] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'copy'
+    'actions';
+}
+
 /* 160-unit viewBox drawn at 80px: the 0.8 stroke stays a crisp hairline. */
 .empty-art {
   grid-area: art;

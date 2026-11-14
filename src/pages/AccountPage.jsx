@@ -13,7 +13,6 @@ import {
 import { ElevationThumb } from '../components/ElevationThumb.jsx';
 import { EmptyState } from '../components/EmptyState.jsx';
 import { ArrowRight } from '../components/icons.jsx';
-import { PageHeader } from '../components/PageHeader.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
@@ -95,10 +94,8 @@ function ProjectCard({ record, index, deleting, onDelete, onCompare }) {
       data-busy={deleting || undefined}
       aria-busy={deleting || undefined}
     >
-      <header className="project-card__head">
-        <p className="index-label">
-          <span className="index-label__num">{padIndex(index)}</span> / {view.kindLabel}
-        </p>
+      <header className="project-card__head" data-index={padIndex(index)}>
+        <p className="project-card__kind">{view.kindLabel}</p>
         <span className="project-card__badge mono" data-testid="saved-project-revision">
           Rev {padIndex(record.revision)}
         </span>
@@ -395,7 +392,10 @@ export default function AccountPage() {
     );
   };
 
-  const facts = [
+  // One quiet caption instead of a table: the transport, library and sync
+  // state on one line, the two counts on the next. The terms stay in the
+  // markup for assistive technology; only the counts show theirs.
+  const status = [
     {
       term: 'Transport',
       value: loading && transport.mode === 'idle' ? '--' : transport.label,
@@ -403,175 +403,171 @@ export default function AccountPage() {
     },
     { term: 'Library', value: LIBRARY_LABELS[scope], attrs: { 'data-scope': scope } },
     { term: 'Sync', value: SYNC_LABELS[cloud.status] },
+  ];
+  const counts = [
     { term: 'Projects', value: count(cloud.projects) },
     { term: 'Quotes', value: count(cloud.quotes) },
   ];
 
   return (
     <div className="account-page" data-testid="account-page">
-      <PageHeader
-        index="06"
-        section="Account"
-        title="Account"
-        lede="Saved spatial projects and submitted requisitions, synced through Lumen Cloud. Save a wall or room from its planner and it appears here with its revision."
-      />
-
-      <div className="container account-grid reveal-stagger" aria-busy={loading || undefined}>
+      {/* A serene split: the profile in a narrow left column, the register in
+          the wide right one, one vertical hairline between them. */}
+      <div className="container account-split" aria-busy={loading || undefined}>
         <section
           ref={reveal}
           className="account-profile reveal-up"
           aria-labelledby="account-profile-title"
           data-testid="account-profile"
         >
+          <h1 className="account-profile__heading">Account</h1>
           <div className="account-profile__identity" data-testid="account-user">
-            <p className="index-label">
-              <span className="index-label__num">01</span> / Profile
-            </p>
             <h2 id="account-profile-title" className="account-profile__name">
               {user.name}
             </h2>
-            <p className="account-profile__email mono">{user.email}</p>
+            <p className="account-profile__email">{user.email}</p>
+          </div>
+          <div className="account-profile__meta" data-testid="account-meta">
+            <dl className="account-profile__facts mono" aria-label="Lumen Cloud sync">
+              {status.map(({ term, value, attrs }) => (
+                <div key={term} className="account-profile__fact">
+                  <dt className="visually-hidden">{term}</dt>
+                  <dd data-testid={`account-fact-${term.toLowerCase()}`} {...attrs}>
+                    {value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <dl className="account-profile__facts account-profile__facts--counts mono" aria-label="Library contents">
+              {counts.map(({ term, value }) => (
+                <div key={term} className="account-profile__fact">
+                  <dt className="account-profile__term">{term}</dt>
+                  <dd data-testid={`account-fact-${term.toLowerCase()}`}>{value}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
           <button type="button" className="button account-profile__sign-out" data-testid="sign-out" onClick={leave}>
             Sign Out
           </button>
-          <dl className="account-profile__facts mono">
-            {facts.map(({ term, value, attrs }) => (
-              <div key={term}>
-                <dt>{term}</dt>
-                <dd data-testid={`account-fact-${term.toLowerCase()}`} {...attrs}>
-                  {value}
-                </dd>
-              </div>
-            ))}
-          </dl>
         </section>
 
-        <section
-          ref={reveal}
-          className="account-panel reveal-up"
-          aria-labelledby="account-projects-title"
-          data-testid="account-projects"
-        >
-          <header className="account-panel__head account-panel__head--action">
-            <div>
-              <p className="index-label">
-                <span className="index-label__num">02</span> / Projects
-              </p>
+        <div className="account-register">
+          <section
+            ref={reveal}
+            className="account-panel reveal-up"
+            aria-labelledby="account-projects-title"
+            data-testid="account-projects"
+          >
+            <header className="account-panel__head">
               <h2 id="account-projects-title" className="account-panel__title" tabIndex={-1}>
                 Saved Spatial Projects
               </h2>
-            </div>
-            {!loading && cloud.projects.length >= 2 && (
-              <button
-                type="button"
-                className="button account-panel__compare"
-                data-testid="open-project-compare"
-                aria-haspopup="dialog"
-                onClick={(event) => openCompare(null, event.currentTarget)}
-              >
-                Compare Projects
-              </button>
+              {!loading && cloud.projects.length >= 2 && (
+                <button
+                  type="button"
+                  className="button account-panel__compare"
+                  data-testid="open-project-compare"
+                  aria-haspopup="dialog"
+                  onClick={(event) => openCompare(null, event.currentTarget)}
+                >
+                  Compare Projects
+                </button>
+              )}
+            </header>
+            {loading ? (
+              <CloudLoading testId="projects-loading" rows={2} />
+            ) : cloud.projects.length > 0 ? (
+              <div className="project-grid" data-testid="saved-projects">
+                {cloud.projects.map((record, i) => (
+                  <ProjectCard
+                    key={record.id}
+                    record={record}
+                    index={i + 1}
+                    deleting={cloud.deleting.has(record.id)}
+                    onDelete={remove}
+                    onCompare={(focus, trigger) => openCompare(focus.id, trigger)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                art={null}
+                testId="saved-projects-empty"
+                title="No spatial projects yet."
+                body="Compose a wall or plan a room, then save it to Lumen Cloud."
+                actions={[
+                  { to: '/studio-2d', label: 'Start 2D Wall Studio', primary: true },
+                  { to: '/room-3d', label: 'Open Room Planner' },
+                ]}
+              />
             )}
-          </header>
-          {loading ? (
-            <CloudLoading testId="projects-loading" rows={2} />
-          ) : cloud.projects.length > 0 ? (
-            <div className="project-grid" data-testid="saved-projects">
-              {cloud.projects.map((record, i) => (
-                <ProjectCard
-                  key={record.id}
-                  record={record}
-                  index={i + 1}
-                  deleting={cloud.deleting.has(record.id)}
-                  onDelete={remove}
-                  onCompare={(focus, trigger) => openCompare(focus.id, trigger)}
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              art="cube"
-              testId="saved-projects-empty"
-              title="No spatial projects yet."
-              body="Compose a wall or plan a room, then save it to Lumen Cloud."
-              actions={[
-                { to: '/studio-2d', label: 'Start 2D Wall Studio', primary: true },
-                { to: '/room-3d', label: 'Open Room Planner' },
-              ]}
-            />
-          )}
-        </section>
+          </section>
 
-        <section
-          ref={reveal}
-          className="account-panel reveal-up"
-          aria-labelledby="account-orders-title"
-          data-testid="account-orders"
-        >
-          <header className="account-panel__head">
-            <p className="index-label">
-              <span className="index-label__num">03</span> / Quotes
-            </p>
-            <h2 id="account-orders-title" className="account-panel__title">
-              Order History
-            </h2>
-          </header>
-          {loading ? (
-            <CloudLoading testId="orders-loading" rows={3} />
-          ) : cloud.quotes.length > 0 ? (
-            <ol className="order-list" data-testid="order-history">
-              {cloud.quotes.map((quote) => (
-                <OrderRow key={quote.ref} quote={quote} />
-              ))}
-            </ol>
-          ) : (
-            <EmptyState
-              art="sheet"
-              compact
-              testId="order-history-empty"
-              title="No quotes submitted yet."
-              body="Submit a requisition from checkout and it is tracked here."
-              actions={[{ to: '/catalog', label: 'Browse Catalog' }]}
-            />
-          )}
-        </section>
+          <section
+            ref={reveal}
+            className="account-panel reveal-up"
+            aria-labelledby="account-orders-title"
+            data-testid="account-orders"
+          >
+            <header className="account-panel__head">
+              <h2 id="account-orders-title" className="account-panel__title">
+                Order History
+              </h2>
+            </header>
+            {loading ? (
+              <CloudLoading testId="orders-loading" rows={3} />
+            ) : cloud.quotes.length > 0 ? (
+              <ol className="order-list" data-testid="order-history">
+                {cloud.quotes.map((quote) => (
+                  <OrderRow key={quote.ref} quote={quote} />
+                ))}
+              </ol>
+            ) : (
+              <EmptyState
+                art={null}
+                compact
+                testId="order-history-empty"
+                title="No quotes submitted yet."
+                body="Submit a requisition from checkout and it is tracked here."
+                actions={[{ to: '/catalog', label: 'Browse Catalog' }]}
+              />
+            )}
+          </section>
 
-        <section
-          ref={reveal}
-          className="account-panel account-panel--tickets reveal-up"
-          aria-labelledby="account-tickets-title"
-          aria-busy={tickets.status === 'loading' || undefined}
-          data-testid="account-tickets-section"
-          data-state={tickets.status}
-          data-count={tickets.list.length}
-        >
-          <header className="account-panel__head">
-            <p className="index-label">
-              <span className="index-label__num">04</span> / Support
-            </p>
-            <h2 id="account-tickets-title" className="account-panel__title">
-              Studio Engineering Tickets
-            </h2>
-          </header>
-          {tickets.status === 'loading' ? (
-            <CloudLoading testId="tickets-loading" rows={2} />
-          ) : tickets.list.length > 0 ? (
-            <ol className="order-list ticket-list" data-testid="account-tickets">
-              {tickets.list.map((ticket) => (
-                <TicketRow key={ticket.ref} ticket={ticket} />
-              ))}
-            </ol>
-          ) : (
-            <EmptyState
-              art="sheet"
-              compact
-              testId="account-tickets-empty"
-              title="No engineering tickets."
-              body="Studio AI answers most questions directly. A ticket opens only when it cannot, and it is tracked here."
-            />
-          )}
-        </section>
+          <section
+            ref={reveal}
+            className="account-panel account-panel--tickets reveal-up"
+            aria-labelledby="account-tickets-title"
+            aria-busy={tickets.status === 'loading' || undefined}
+            data-testid="account-tickets-section"
+            data-state={tickets.status}
+            data-count={tickets.list.length}
+          >
+            <header className="account-panel__head">
+              <h2 id="account-tickets-title" className="account-panel__title">
+                Studio Engineering Tickets
+              </h2>
+            </header>
+            {tickets.status === 'loading' ? (
+              <CloudLoading testId="tickets-loading" rows={2} />
+            ) : tickets.list.length > 0 ? (
+              <ol className="order-list ticket-list" data-testid="account-tickets">
+                {tickets.list.map((ticket) => (
+                  <TicketRow key={ticket.ref} ticket={ticket} />
+                ))}
+              </ol>
+            ) : (
+              <EmptyState
+                art={null}
+                compact
+                testId="account-tickets-empty"
+                title="No engineering tickets."
+                body="Studio AI answers most questions directly. A ticket opens only when it cannot, and it is tracked here."
+              />
+            )}
+          </section>
+        </div>
       </div>
 
       {compare && (

@@ -312,9 +312,13 @@ test.describe('wall studio drafting backdrop', () => {
     expect(surround.image).toContain('rgba(232, 168, 92, 0.11) 0%');
     expect(surround.image).toContain('rgba(46, 39, 32, 0.28) 48%');
     expect(surround.image).toContain('rgba(15, 14, 13, 0.96) 100%');
-    expect(await page.locator('.studio-layout').evaluate((el) => getComputedStyle(el).backgroundImage)).toContain(
-      'radial-gradient',
-    );
+    // The stage is the one optical volume; the workstation around it is flat Flos paper.
+    await expect(viewport).toHaveClass(/(^|\s)optical(\s|$)/);
+    const layout = await page.locator('.studio-layout').evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { color: style.backgroundColor, image: style.backgroundImage };
+    });
+    expect(layout).toEqual({ color: 'rgb(250, 249, 246)', image: 'none' });
 
     const backdrop = page.getByTestId('studio-backdrop');
     await expect(backdrop).toBeVisible();

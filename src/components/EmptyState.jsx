@@ -50,15 +50,18 @@ const ART = { cube: CubeArt, shelf: ShelfArt, sheet: SheetArt };
 
 /**
  * Empty state: a hairline drawing, one line of copy and the next action.
- * `actions` is a list of { to, label, primary }.
+ * `actions` is a list of { to, label, primary }. Pass `art={null}` for the
+ * bare typographic version (the account register carries no drawings).
  */
 export function EmptyState({ art = 'cube', title, body, actions = [], testId, compact = false }) {
-  const Art = ART[art] ?? CubeArt;
+  const Art = art === null ? null : (ART[art] ?? CubeArt);
   return (
-    <div className="empty-state" data-compact={compact || undefined} data-testid={testId}>
-      <svg className="empty-art" viewBox="0 0 160 136" fill="none" aria-hidden="true" focusable="false">
-        <Art />
-      </svg>
+    <div className="empty-state" data-compact={compact || undefined} data-bare={Art ? undefined : true} data-testid={testId}>
+      {Art && (
+        <svg className="empty-art" viewBox="0 0 160 136" fill="none" aria-hidden="true" focusable="false">
+          <Art />
+        </svg>
+      )}
       <div className="empty-state__copy">
         <p className="empty-state__title">{title}</p>
         {body && <p className="empty-state__body mono">{body}</p>}

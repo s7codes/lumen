@@ -206,12 +206,26 @@
   padding: var(--space-5);
 }
 
-.auth-field__input {
+/* Sign-in fields: a bare underline on the sheet, no box and no fill. */
+.auth-field .auth-field__input {
   height: 40px;
+  padding-inline: 0;
+  border: none;
+  border-bottom: 1px solid #c4bfb6;
+  border-radius: 0;
+  background: transparent;
 }
 
-.auth-field[data-invalid] .field__input {
-  border-color: var(--signal-fault);
+.auth-field .auth-field__input:hover {
+  border-bottom-color: var(--text-secondary);
+}
+
+.auth-field .auth-field__input:focus-visible {
+  border-bottom-color: var(--ink);
+}
+
+.auth-field[data-invalid] .auth-field__input {
+  border-bottom-color: var(--signal-fault);
 }
 
 .auth-field__error,

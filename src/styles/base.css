@@ -242,6 +242,51 @@ input[type='number']::-webkit-outer-spin-button {
   color: var(--ink);
 }
 
+/* Bracketed hairline key: two vertical hairlines frame a tracked capital
+   label, with no top or bottom edge. Square and flat; hover closes the frame
+   into a faint wash. Nothing lifts and nothing glows. The light variant sits
+   on the full-bleed bands and the cinema. */
+.bracket-cta {
+  --bracket-ink: var(--ink);
+  --bracket-rule: rgba(20, 19, 17, 0.75);
+  --bracket-wash: rgba(20, 19, 17, 0.06);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 34px;
+  padding: 0.45rem 1.25rem;
+  border: 0;
+  border-left: 1px solid var(--bracket-rule);
+  border-right: 1px solid var(--bracket-rule);
+  border-radius: 0;
+  background: transparent;
+  color: var(--bracket-ink);
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: var(--weight-medium);
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition:
+    background-color var(--duration-base) var(--ease-out),
+    border-color var(--duration-base) var(--ease-out);
+}
+
+.bracket-cta:hover,
+.bracket-cta:focus-visible {
+  border-color: var(--bracket-ink);
+  background: var(--bracket-wash);
+}
+
+.bracket-cta--light {
+  --bracket-ink: #ffffff;
+  --bracket-rule: rgba(255, 255, 255, 0.75);
+  --bracket-wash: rgba(255, 255, 255, 0.1);
+}
+
 .button svg {
   flex: none;
   width: 14px;
