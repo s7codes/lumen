@@ -47,12 +47,15 @@
   pointer-events: none;
 }
 
+/* max-width: none lifts the global img/svg reset, which would clamp the
+   right-anchored picture back to the stage width on portrait screens. */
 .hero-scene {
   position: absolute;
   top: 0;
   right: 0;
   display: block;
   width: max(100cqw, 150cqh);
+  max-width: none;
   height: 100cqh;
 }
 
