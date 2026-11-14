@@ -1,7 +1,7 @@
-# LUMEN - Architectural Lighting, Modular Shelving & 3D Spatial CAD Platform (v8.1.0)
+# LUMEN - Architectural Lighting, Modular Shelving & 3D Spatial CAD Platform (v8.2.0)
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v8.1.0-e8923a)
+![Release](https://img.shields.io/badge/release-v8.2.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 **Live production: [https://lumen.s7codes.dev](https://lumen.s7codes.dev)**, served from a Hetzner Cloud VPS
@@ -11,11 +11,12 @@ by the Docker Compose and Caddy kit in this repository.
 | --- | --- | --- | --- |
 | 333 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
 
-Current release: **v8.1.0**, the production deployment release. Behind Caddy the API now resolves
-the browser's real origin from a trusted hop's `X-Forwarded-Proto` and `X-Forwarded-Host`, guards
-every write with a scheme-aware same-origin check, and pins HTTPS with HSTS. The server reads its
-bind address and data directory from the container environment, and a turnkey Docker Compose +
-Caddy stack ships with the code. CI builds that image and boots the stack on every push to `main`.
+Current release: **v8.2.0**, the architectural gallery release. The storefront now reads like a
+printed catalog: warm alabaster paper (`#F5F2EB`), matte carbon ink and keys (`#141311`), square
+corners and hairline rules in place of floating tiles. Live light and 3D simulation keep their own
+deep black optical chambers set into the paper (the hero, the dimming bench, the theatre, the catalog
+plinths and both planner workstations), and warm 2700K amber appears only as light emitted inside
+them. Behind it, v8.1.0's production stack is unchanged: Caddy, HSTS and a same-origin guard on writes.
 
 ## 1. Executive Overview
 
