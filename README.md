@@ -1,7 +1,7 @@
-# LUMEN - Architectural Lighting, Modular Shelving & 3D Spatial CAD Platform (v8.5.0)
+# LUMEN - Architectural Lighting, Modular Shelving & 3D Spatial CAD Platform (v9.0.0)
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v8.5.0-e8923a)
+![Release](https://img.shields.io/badge/release-v9.0.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 **Live production: [https://lumen.s7codes.dev](https://lumen.s7codes.dev)**, served from a Hetzner Cloud VPS
@@ -9,19 +9,22 @@ by the Docker Compose and Caddy kit in this repository.
 
 | Playwright E2E | Rendering | AI integration | Backend |
 | --- | --- | --- | --- |
-| 321 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
+| 328 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
 
-Current release: **v8.5.0**, the anchored light and smooth vector release. In the hero's limestone
-gallery each track spot's light is now one true cone from its own aperture: the beam leaves the
-fixture and opens onto the scallop it lays on the stone, projected from the same 3D model as the
-spots on a 24V grazer slot. The three Explore the Lumen home rooms (Dining & Living, Bedroom
-Sanctuary, Studio Wall) are redrawn as smooth architectural vectors: crisp one-point perspective
-geometry under smooth gradients, 2700K light cones and pools, oak, walnut and warm plaster, with no
-canvas, noise, grain or filters, sharp at any pixel density. Lumen AI shows only the conversation:
-MCP tool traces, tool names and tools cited as sources never reach the chat, while each reply keeps
-its tool calls as hidden data for automation. The v8.4.0 dual-light hero, the Meet our Icons film,
-the lifelike catalog cards and the single 3D Room Planner (with the retired 2D Wall Studio's links,
-scenes and projects opening on its north wall) carry over unchanged.
+Current release: **v9.0.0**, the real media and cinema release. The overview now shows photographs
+and films instead of drawings. The hero is one limestone gallery room photographed twice from the
+same stand, architectural daylight and the same room after dusk on its 2700K channels, as 2K WebP
+stills (1280 and 2560 w) under looping films of the room's own light, with a Daylight / Warm 2700K
+switch and fixture keys placed on the real fixtures. The three Explore the Lumen home rooms are
+1600 x 2000 photographs whose films turn the room from day to dusk on hover. The 3D Spatial
+Studio theatre plays four 60 fps films captured from the studio engine itself, its HUD read from
+the same choreography as the frame on screen. Every catalog part is a 1600 x 1200 studio
+photograph in each finish it ships in (42 in all), and a swatch crossfades the plinth to that
+finish. The stills are path-traced renders of the planner's own parametric parts and furniture,
+so the photograph and the planner show the same object. Films play only on screen, pause the
+moment they leave it and rest on their posters under reduced motion; the production server
+streams them with byte ranges (206) and an immutable one-year policy under a `media-src 'self'`
+policy, all from `public/media/` on the same origin.
 
 ## 1. Executive Overview
 
@@ -53,7 +56,7 @@ comes from the same code everywhere.
   +--------------------------------------------------------------------------+
   | Client studios                                                           |
   |   RoomPlannerPage   room3d/: WebGL2 studio, GLSL, IBL, OBJ, PNG, DXF     |
-  |   HomePage          SVG hero and rooms, Canvas 2D film and theatre       |
+  |   HomePage          2K stills and films, engine-film theatre, Canvas 2D  |
   |   ConciergePanel    Lumen AI chat, applies MCP clientActions as one undo |
   |   Catalog, Bag, Checkout, CommandPalette, AccountPage                    |
   +------------------------------------+-------------------------------------+
@@ -91,7 +94,7 @@ comes from the same code everywhere.
 `src/components/room3d/`, `src/lib/pbr-materials.js`, `src/lib/room-scene.js`, `src/lib/room-walkthrough.js`
 
 - three r187 on WebGL2 through React Three Fiber, shipped in a lazy `RoomCanvas` chunk: a cold
-  load of `/` requests no Three.js code, and the homepage theatre is 2D canvas projection math.
+  load of `/` requests no Three.js code; the homepage theatre plays films of this engine.
 - Custom GLSL: a soft-penumbra window gobo shader (an 8% feather at the glass widening to 28% deep
   in the room), additive volumetric beams, and an `onBeforeCompile` analytic specular patch.
 - Procedural PBR: 8 materials (walnut, oak, obsidian, steel, felt, chalk, parquet, plaster)
@@ -103,6 +106,22 @@ comes from the same code everywhere.
 - Walkthrough: a 165 cm eye, a `WASD` gait of 145 cm/s (215 with Shift) whose ramp is exact per
   frame, so 60, 120 and 240 Hz displays trace the same path; 32 cm wall and 20 cm furniture
   buffers; the camera is written from the frame loop and committed to React once, at rest.
+
+### 2K photography and cinema media
+
+`public/media/`, `src/lib/media-manifest.js`, `src/lib/viewport-video.js`, `src/lib/showcase-film.js`, `scripts/media/`
+
+- 71 files: two hero scenes (1280 and 2560 w WebP, VP9 WebM and H.264 MP4 films), three 4:5 rooms,
+  four showcase acts with posters and 42 catalog finishes, every URL versioned with `?v=`.
+- Stills are path-traced (three-gpu-pathtracer) from the planner's parametric CAD parts and
+  furniture, rendered as separate light passes (sky, sun, each LED channel), cleaned by a guided
+  a-trous filter on albedo-demodulated light and graded through AgX. Light transport is linear, so
+  every hero and room film frame is a weighted sum of those passes: seamless 60 fps loops.
+- The showcase films are captures of `RoomCanvas` itself, posed frame by frame from
+  `src/lib/showcase-film.js`; the overview HUD reads the same functions against the film clock.
+- `createViewportVideo`: an `IntersectionObserver` plays a film only on screen in a visible tab,
+  pauses it at once off screen, waits for the pointer on hover films and leaves reduced-motion
+  visitors on the poster; a film fades in only once it is actually playing.
 
 ### 24V DC bus and Sabine RT60 acoustics
 
@@ -151,6 +170,9 @@ comes from the same code everywhere.
   cookies, so there is no ambient credential to forge a request with. Placeholder secrets are refused.
 - The store serializes writes through a FIFO mutex with a 256-write queue (`503 busy` past it),
   writes with fsync and an atomic rename, and parks an unreadable file instead of overwriting it.
+- Static media: `.webp`, `.webm` and `.mp4` with exact types, single byte ranges (`206`, `416`,
+  `If-Range`), files over 1 MB streamed from disk, `/media/*` immutable for a year, and the shell's
+  CSP as a header too (`img-src 'self' data: blob:`, `media-src 'self' blob:`, `frame-ancestors`).
 - Input boundary: 64 KB JSON bodies (`413`, `415`); `safeJsonParse` drops `__proto__`,
   `constructor` and `prototype` at every depth; text loses C0 and C1 controls and bidi overrides;
   `.SVG`, `.DXF` and `.OBJ` exports escape every label.
@@ -164,7 +186,7 @@ npm install
 npm run dev                  # app and API on http://127.0.0.1:5173
 npm run build && npm start   # the build and /api from one process on http://127.0.0.1:8787
 npx playwright install chromium
-npx playwright test          # builds, serves dist/ with vite preview, runs all 332 tests
+npx playwright test          # builds, serves dist/ with vite preview, runs all 328 tests
 ```
 
 ### Hetzner VPS with Docker Compose and Caddy
