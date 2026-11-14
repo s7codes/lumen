@@ -1,4 +1,5 @@
 import { CAMERA_MODE_LABELS } from '../../lib/room-walkthrough.js';
+import { ModeSwitch } from '../ModeSwitch.jsx';
 import { Switch } from '../studio/controls.jsx';
 import { WallSwitcher } from './WallSwitcher.jsx';
 
@@ -73,7 +74,8 @@ export function CameraLensSwitcher({ mode, onChange }) {
 
 /**
  * Workstation header: the page title and envelope, the active wall, the
- * camera lens, transform snapping and the zen viewport key in one bar.
+ * camera lens, the Visual | Specs view mode (it lives only here, in the
+ * planner), transform snapping and the zen viewport key in one bar.
  */
 export function StudioHeader({ room, activeWall, counts, onWall, cameraMode, onCameraMode, snapOn, onSnap, zen, onZen }) {
   return (
@@ -90,6 +92,7 @@ export function StudioHeader({ room, activeWall, counts, onWall, cameraMode, onC
 
       <div className="room3d-workstation__tools">
         <CameraLensSwitcher mode={cameraMode} onChange={onCameraMode} />
+        <ModeSwitch />
         <div className="room3d-workstation__snap">
           <Switch
             label="Grid Snap"

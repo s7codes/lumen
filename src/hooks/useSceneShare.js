@@ -8,8 +8,10 @@ import { decodeSceneParam, encodeSceneParam, SCENE_PARAM, stripSceneParam } from
  * Consumes `?scene=` once on arrival. A valid link replaces the workspace
  * through `apply`; a broken one leaves the draft alone. Either way the
  * parameter is dropped from the address bar so a reload never re-applies it.
+ * `kinds` lists the scene kinds the workspace accepts, first match wins; the
+ * decoded scene carries its `kind` so the workspace can adapt it.
  */
-export function useSharedSceneLoader(kind, apply) {
+export function useSharedSceneLoader(kinds, apply) {
   const location = useLocation();
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -26,7 +28,8 @@ export function useSharedSceneLoader(kind, apply) {
     if (handled.current === raw) return;
     handled.current = raw;
 
-    const decoded = decodeSceneParam(kind, raw);
+    const accepted = Array.isArray(kinds) ? kinds : [kinds];
+    const decoded = accepted.map((kind) => decodeSceneParam(kind, raw)).find(Boolean) ?? null;
     navigate(
       { pathname: location.pathname, search: stripSceneParam(location.search), hash: location.hash },
       { replace: true, state: location.state, preventScrollReset: true },

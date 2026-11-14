@@ -9,8 +9,7 @@ export const QUERY_MAX = 64;
 export const WORKSPACES = Object.freeze([
   { id: 'ws-overview', label: 'Overview', path: '/', summary: 'The Lumen home page', keywords: 'home index start lumen' },
   { id: 'ws-catalog', label: 'Catalog', path: '/catalog', summary: 'Browse every part', keywords: 'parts products modules index browse' },
-  { id: 'ws-room', label: '3D Room Planner', path: '/room-3d', summary: 'Plan a whole room in 3D', keywords: 'room planner webgl spatial 3d obj' },
-  { id: 'ws-studio', label: '2D Wall Studio', path: '/studio-2d', summary: 'Compose a single wall', keywords: 'wall studio elevation 2d layout' },
+  { id: 'ws-room', label: '3D Room Planner', path: '/room-3d', summary: 'Plan a room and its walls in 3D', keywords: 'room planner webgl spatial 3d obj wall elevation layout studio' },
   { id: 'ws-checkout', label: 'Project Quote', path: '/checkout', summary: 'Review your quote', keywords: 'checkout quote requisition bom' },
   { id: 'ws-account', label: 'Account', path: '/account', summary: 'Projects and orders', keywords: 'account profile projects library orders' },
 ]);
@@ -33,9 +32,10 @@ export function productSubtitle(product) {
  * palette executes; nothing here touches React, the router or storage.
  * `summary` is the plain subtitle Visual mode shows; `detail` (a path or a
  * SKU) and a part's wattage (`metaTech`) are Specs-mode detail, kept in the
- * entry so search still matches them.
+ * entry so search still matches them. The Visual | Specs command is listed
+ * only inside the 3D Room Planner (`planner`), the one place the mode applies.
  */
-export function buildCommandIndex({ mode, currency, signedIn }) {
+export function buildCommandIndex({ mode, currency, signedIn, planner = false }) {
   const workspaces = WORKSPACES.map((entry) => ({
     id: entry.id,
     group: 'workspaces',
@@ -65,16 +65,17 @@ export function buildCommandIndex({ mode, currency, signedIn }) {
 
   const nextMode = mode === 'technical' ? 'architectural' : 'technical';
   const modeLabel = MODE_LABELS[nextMode];
+  const modeCommand = {
+    id: 'cmd-mode',
+    group: 'commands',
+    label: `Switch to ${modeLabel} Mode`,
+    detail: 'Display mode',
+    meta: '',
+    keywords: 'mode display view toggle visual specs technical architectural tech arch',
+    action: { type: 'mode', mode: nextMode },
+  };
   const commands = [
-    {
-      id: 'cmd-mode',
-      group: 'commands',
-      label: `Switch to ${modeLabel} Mode`,
-      detail: 'Display mode',
-      meta: '',
-      keywords: 'mode display view toggle visual specs technical architectural tech arch',
-      action: { type: 'mode', mode: nextMode },
-    },
+    ...(planner ? [modeCommand] : []),
     ...CURRENCIES.map((entry) => ({
       id: `cmd-currency-${entry.code.toLowerCase()}`,
       group: 'commands',

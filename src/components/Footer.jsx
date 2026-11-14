@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useSectionLink } from '../hooks/useSectionLink.js';
-import { NAV_ROUTES, SHOWCASE_3D_ID } from '../lib/routes.js';
+import { NAV_ROUTES } from '../lib/routes.js';
 import { LumenMark } from './icons.jsx';
 
 const SYSTEM_ROWS = [
@@ -10,7 +9,6 @@ const SYSTEM_ROWS = [
 ];
 
 export function Footer() {
-  const toShowcase = useSectionLink(SHOWCASE_3D_ID);
   return (
     <footer className="footer">
       <div className="footer__inner container">
@@ -29,7 +27,7 @@ export function Footer() {
           <ul className="footer__list">
             {NAV_ROUTES.map((route) => (
               <li key={route.path}>
-                <Link to={route.path} className="footer__link" onClick={route.hash ? toShowcase : undefined}>
+                <Link to={route.path} className="footer__link">
                   <span className="footer__link-index mono">{route.index}</span>
                   {route.label}
                 </Link>

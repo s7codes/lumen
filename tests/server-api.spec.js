@@ -13,6 +13,7 @@ import {
 } from '../src/api/client.js';
 import { SESSION_STORAGE_KEY, SESSION_TOKEN_STORAGE_KEY } from '../src/lib/auth.js';
 import { buildQuote } from '../src/lib/quote.js';
+import { createRoomState, importFromWallStudio, ROOM_STORAGE_KEY, serializeRoomState } from '../src/lib/room-3d.js';
 import { layoutFromPreset, serializeLayout, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
 import { collectRuntimeErrors, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
@@ -28,6 +29,9 @@ const GUEST = { name: 'Studio Guest', email: 'guest@lumen.com' };
 // Test value for the local API under test; the server only length-checks it.
 const TEST_PASSWORD = 'nordic-test-0042';
 const WALL = serializeLayout(layoutFromPreset('nordic-reading-wall'));
+// The planner the UI saves from: the default composition on the north wall.
+const ROOM = serializeRoomState(importFromWallStudio(createRoomState()).state);
+const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
 const BAG = [{ id: 'modular-cube-36', finish: 'oak', qty: 2 }];
 const QUOTE_BODY = {
   quote: { currency: 'USD', promo: null, includeDriver: true, items: BAG },
@@ -125,25 +129,26 @@ test.describe('lumen cloud http api', () => {
     expect(headers['access-control-allow-origin']).toBeUndefined();
   });
 
-  test('wall save, account delete and checkout travel over /api and persist on the server', async ({ page, request }) => {
+  test('room save, account delete and checkout travel over /api and persist on the server', async ({ page, request }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/');
     await seed(page, [
       [SESSION_KEY, JSON.stringify(GUEST)],
-      [WALL_KEY, JSON.stringify(WALL)],
+      [ROOM_KEY, JSON.stringify(ROOM)],
       [BAG_KEY, JSON.stringify(BAG)],
     ]);
 
-    await page.goto('/studio-2d');
-    const save = page.getByTestId('save-wall-to-cloud');
+    await page.goto('/room-3d');
+    const save = page.getByTestId('save-room-to-cloud');
     const [saveCall] = await Promise.all([page.waitForRequest(isApiCall('POST', '/api/projects')), save.click()]);
     const ns = saveCall.headers()['x-lumen-client'];
     expect(ns).toMatch(/^[a-f0-9]{32}$/);
     expect(ns).toBe(await readJson(page, CLIENT_KEY));
-    expect(saveCall.postDataJSON()).toMatchObject({ kind: 'wall', name: 'Wall A', data: { format: 'lumen.wall' } });
+    expect(saveCall.postDataJSON()).toMatchObject({ kind: 'room', name: 'Room', data: { format: 'lumen.room3d' } });
     expect((await saveCall.response()).status()).toBe(201);
     await expect(save).toHaveAttribute('data-state', 'saved');
-    await expect(lastToast(page)).toHaveText('Wall A saved to Lumen Cloud. Revision 01.');
+    await expect(lastToast(page)).toHaveText('Room saved to Lumen Cloud. Revision 01.');
+    await expect(save).toHaveAttribute('data-state', 'idle', { timeout: 5000 });
 
     await page.getByTestId('project-name-input').fill('North Elevation');
     await save.click();
@@ -152,8 +157,8 @@ test.describe('lumen cloud http api', () => {
     const api = cloud(request, ns);
     const listed = await (await api.get('/api/projects')).json();
     expect(listed.projects.map((project) => [project.id, project.revision])).toEqual([
-      ['wall-north-elevation', 1],
-      ['wall', 1],
+      ['room-north-elevation', 1],
+      ['room', 1],
     ]);
     // The response is sent only after the atomic write, so the file already holds it.
     expect((await readStore()).namespaces[ns].projects).toHaveLength(2);
@@ -163,16 +168,16 @@ test.describe('lumen cloud http api', () => {
     await expect(fact).toHaveText(TRANSPORT_LABELS.http);
     await expect(fact).toHaveAttribute('data-mode', 'http');
     await expect(page.getByTestId('account-fact-sync')).toHaveText('Up to date');
-    const north = page.locator('[data-project-id="wall-north-elevation"]');
+    const north = page.locator('[data-project-id="room-north-elevation"]');
     const [deleteCall] = await Promise.all([
-      page.waitForRequest(isApiCall('DELETE', '/api/projects/wall-north-elevation')),
+      page.waitForRequest(isApiCall('DELETE', '/api/projects/room-north-elevation')),
       north.getByTestId('delete-saved-project').click(),
     ]);
     expect((await deleteCall.response()).status()).toBe(200);
     await expect(north).toHaveCount(0);
     await expect(lastToast(page)).toHaveText('North Elevation deleted from Lumen Cloud.');
-    expect((await (await api.get('/api/projects')).json()).projects.map((project) => project.id)).toEqual(['wall']);
-    expect((await readJson(page, PROJECTS_KEY)).map((project) => project.id)).toEqual(['wall']);
+    expect((await (await api.get('/api/projects')).json()).projects.map((project) => project.id)).toEqual(['room']);
+    expect((await readJson(page, PROJECTS_KEY)).map((project) => project.id)).toEqual(['room']);
 
     await page.goto('/checkout');
     await page.getByTestId('project-reference').fill(QUOTE_BODY.project.reference);
@@ -205,15 +210,15 @@ test.describe('lumen cloud http api', () => {
     for (const [i, context] of profiles.entries()) {
       const page = await context.newPage();
       await page.goto('/');
-      await seed(page, [[WALL_KEY, JSON.stringify(WALL)]]);
-      await page.goto('/studio-2d');
+      await seed(page, [[ROOM_KEY, JSON.stringify(ROOM)]]);
+      await page.goto('/room-3d');
       await page.getByTestId('project-name-input').fill(`Profile ${i + 1}`);
       const [call] = await Promise.all([
         page.waitForRequest(isApiCall('POST', '/api/projects')),
-        page.getByTestId('save-wall-to-cloud').click(),
+        page.getByTestId('save-room-to-cloud').click(),
       ]);
       namespaces.push(call.headers()['x-lumen-client']);
-      await expect(page.getByTestId('save-wall-to-cloud')).toHaveAttribute('data-state', 'saved');
+      await expect(page.getByTestId('save-room-to-cloud')).toHaveAttribute('data-state', 'saved');
     }
     expect(namespaces[0]).not.toBe(namespaces[1]);
     for (const [i, ns] of namespaces.entries()) {
@@ -422,16 +427,16 @@ test.describe('offline fallback', () => {
     await page.goto('/');
     await seed(page, [
       [SESSION_KEY, JSON.stringify(GUEST)],
-      [WALL_KEY, JSON.stringify(WALL)],
+      [ROOM_KEY, JSON.stringify(ROOM)],
       [BAG_KEY, JSON.stringify(BAG)],
     ]);
 
-    await page.goto('/studio-2d');
-    const save = page.getByTestId('save-wall-to-cloud');
+    await page.goto('/room-3d');
+    const save = page.getByTestId('save-room-to-cloud');
     await save.click();
     await expect(save).toHaveAttribute('data-state', 'saved');
     await expect(lastToast(page)).toHaveText(
-      'Wall A saved on this device. Revision 01. Lumen Cloud syncs it when the API is reachable.',
+      'Room saved on this device. Revision 01. Lumen Cloud syncs it when the API is reachable.',
     );
     expect(blocked).toContain('/api/projects');
     expect(await readJson(page, PROJECTS_KEY)).toHaveLength(1);
@@ -456,11 +461,11 @@ test.describe('offline fallback', () => {
     await page.unroute('**/api/**');
     const ns = await readJson(page, CLIENT_KEY);
     const [syncCall] = await Promise.all([page.waitForRequest(isApiCall('POST', '/api/sync')), page.goto('/account')]);
-    expect(syncCall.postDataJSON()).toMatchObject({ mode: 'replace', projects: [{ id: 'wall', revision: 1 }] });
+    expect(syncCall.postDataJSON()).toMatchObject({ mode: 'replace', projects: [{ id: 'room', revision: 1 }] });
     await expect(page.getByTestId('account-fact-transport')).toHaveText(TRANSPORT_LABELS.http);
     await expect(page.getByTestId('account-fact-sync')).toHaveText('Up to date');
     const { projects } = await (await cloud(request, ns).get('/api/projects')).json();
-    expect(projects.map((project) => project.id)).toEqual(['wall']);
+    expect(projects.map((project) => project.id)).toEqual(['room']);
 
     // Aborted requests log a network line; nothing may surface as an uncaught error or rejection.
     expect(errors.filter((line) => !line.includes('Failed to load resource'))).toEqual([]);

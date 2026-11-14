@@ -9,8 +9,9 @@ const FIRST = CINEMA_ACTS[0];
  * Meet our Icons: a full-bleed procedural film across the overview. A Canvas
  * 2D loop sweeps a macro camera through three cross-dissolving acts (the
  * obsidian dome on its travertine column, the triple-aperture diffuser and a
- * pair of plaster wall sconces), with a calm editorial title and a bracketed
- * key over it. Pure 2D: the overview still loads no WebGL.
+ * matte black 24V track whose brass louvers and glass cylinder spot sweep a
+ * 2700K beam across dark veined marble), with only a calm editorial title and
+ * a bracketed key over it. Pure 2D: the overview still loads no WebGL.
  */
 export function MeetOurIconsCinema() {
   const sectionRef = useRef(null);
@@ -31,7 +32,7 @@ export function MeetOurIconsCinema() {
         className="cinema__canvas"
         data-testid="icons-cinema-canvas"
         role="img"
-        aria-label="A looping macro film of three Lumen icons: a glossy obsidian dome over a travertine column, a triple-aperture diffuser with three 2700K lenses, and two plaster wall sconces washing light up and down the wall."
+        aria-label="A looping macro film of three Lumen icons: a glossy obsidian dome over a travertine column, a triple-aperture diffuser with three 2700K lenses, and a matte black 24V track with brushed brass louvers and a glass cylinder spot sweeping a 2700K beam across dark veined marble and brushed metal."
       />
       <div className="cinema__veil" aria-hidden="true" />
       <div className="cinema__copy">
@@ -42,9 +43,6 @@ export function MeetOurIconsCinema() {
           Discover More
         </Link>
       </div>
-      <p className="cinema__caption mono" aria-hidden="true" data-cinema-caption>
-        Act {FIRST.numeral} / {FIRST.label}
-      </p>
     </section>
   );
 }

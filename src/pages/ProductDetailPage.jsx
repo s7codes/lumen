@@ -25,7 +25,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { MAX_LINE_QTY } from '../lib/bag.js';
 import { formatLeadTime, formatUsd, padIndex } from '../lib/format.js';
 import { appendToRoom } from '../lib/room-3d.js';
-import { appendToWallStudio, MAX_WALL_ITEMS } from '../lib/wall-studio.js';
+import { MAX_WALL_ITEMS } from '../lib/wall-studio.js';
 import { isOneOf, isSafeId, sanitizeText } from '../security/sanitize.js';
 import '../styles/pages.css';
 import '../styles/product.css';
@@ -285,15 +285,6 @@ function ProductDetail({ product }) {
 
             <div className="detail__launchers">
               <p className="index-label">Place in a workspace</p>
-              <button
-                type="button"
-                className="button detail__launch"
-                data-testid="launch-in-wall-studio"
-                onClick={() => launch(appendToWallStudio, '/studio-2d', 'The wall')}
-              >
-                Mount in 2D Wall Studio
-                <ArrowRight />
-              </button>
               <button
                 type="button"
                 className="button detail__launch"

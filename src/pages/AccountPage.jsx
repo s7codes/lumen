@@ -7,8 +7,8 @@ import {
   LIBRARY_LABELS,
   loadProjects,
   loadQuotes,
-  loadSupportTickets,
   subscribeCloudTransport,
+  syncQueuedTickets,
 } from '../api/client.js';
 import { ElevationThumb } from '../components/ElevationThumb.jsx';
 import { EmptyState } from '../components/EmptyState.jsx';
@@ -22,15 +22,17 @@ import { formatUsd, padIndex } from '../lib/format.js';
 import { loadProjectName, persistProjectName } from '../lib/project-library.js';
 import { formatMoney, getCurrency } from '../lib/quote.js';
 import {
+  createRoomState,
   DEFAULT_ROOM_WALL,
   getFurniture,
   LIGHTING_MODES,
   loadRoomState,
   persistRoomState,
+  roomFromWallLayout,
   wallCounts,
   wallOf,
 } from '../lib/room-3d.js';
-import { loadLayout, persistLayout, summarizeWall } from '../lib/wall-studio.js';
+import { loadLayout, summarizeWall } from '../lib/wall-studio.js';
 import '../styles/pages.css';
 import '../styles/account.css';
 
@@ -46,20 +48,23 @@ function formatSavedAt(iso) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+// Every saved project opens in the 3D Room Planner. A wall elevation saved
+// before the planners were unified lands on the north wall of a fresh room,
+// with its width, height, modules and light carried across.
 function describeProject(record) {
   const { kind, data } = record;
   if (kind === 'wall') {
     const { widthCm, heightCm, surface, slope } = data.wall;
     return {
-      kindLabel: '2D Wall Studio',
-      href: '/studio-2d',
-      action: 'Open in Wall Studio',
+      kindLabel: 'Wall Elevation',
+      href: '/room-3d',
+      action: 'Open Room Planner',
       envelope: `${widthCm} x ${heightCm} cm${slope ? ', attic slope' : ''}`,
       context: surface === 'daylight' ? 'Daylight elevation' : 'Ambient elevation',
       thumb: { widthCm, heightCm, slope, items: data.items },
       restore: () => {
-        persistLayout(data);
-        persistProjectName('wall', record.name);
+        persistRoomState(roomFromWallLayout(createRoomState(), data, DEFAULT_ROOM_WALL));
+        persistProjectName('room', record.name);
       },
     };
   }
@@ -211,80 +216,6 @@ function OrderRow({ quote }) {
   );
 }
 
-const TICKET_REASONS = Object.freeze({
-  unresolved_query: 'Studio AI could not resolve',
-  marked_unhelpful: 'Marked as not resolving the issue',
-});
-
-function TicketRow({ ticket }) {
-  const status = ticket.status.toLowerCase().replace(/\s+/g, '-');
-  return (
-    <li
-      className="ticket-row"
-      data-testid="account-ticket"
-      data-ticket-ref={ticket.ref}
-      data-reason={ticket.reason}
-      data-pending={ticket.pending || undefined}
-    >
-      <div className="order-row__head">
-        <span className="ticket-row__ref mono" data-testid="account-ticket-ref">
-          {ticket.ref}
-        </span>
-        <span className="ticket-row__status mono" data-status={status} data-testid="account-ticket-status">
-          {ticket.status}
-        </span>
-      </div>
-      <p className="order-row__project" data-testid="account-ticket-subject">
-        {ticket.subject}
-      </p>
-      <dl className="order-row__meta mono">
-        <div>
-          <dt>Submitted</dt>
-          <dd data-testid="account-ticket-time">{formatSavedAt(ticket.submittedAt)}</dd>
-        </div>
-        <div>
-          <dt>Escalation</dt>
-          <dd>{TICKET_REASONS[ticket.reason]}</dd>
-        </div>
-        <div>
-          <dt>Turns</dt>
-          <dd>{padIndex(ticket.turns)}</dd>
-        </div>
-        <div>
-          <dt>Reply To</dt>
-          <dd>{ticket.email}</dd>
-        </div>
-      </dl>
-      <p className="ticket-row__inquiry">Escalated inquiry: {ticket.inquiry}</p>
-      {ticket.workspaceSummary && (
-        <p className="ticket-row__summary mono" data-testid="account-ticket-summary">
-          {ticket.workspaceSummary}
-        </p>
-      )}
-      {ticket.pending && (
-        <p className="order-row__ref mono" data-testid="account-ticket-pending">
-          Device copy. It transmits through the Studio AI gatekeeper when Lumen Cloud is reachable.
-        </p>
-      )}
-    </li>
-  );
-}
-
-function useSupportTickets() {
-  const [tickets, setTickets] = useState({ status: 'loading', list: [] });
-  useEffect(() => {
-    let live = true;
-    loadSupportTickets().then(
-      (list) => live && setTickets({ status: 'ready', list }),
-      () => live && setTickets({ status: 'error', list: [] }),
-    );
-    return () => {
-      live = false;
-    };
-  }, []);
-  return tickets;
-}
-
 function CloudLoading({ testId, rows }) {
   return (
     <div className="cloud-loading" data-testid={testId} role="status">
@@ -305,6 +236,9 @@ function useCloudAccount() {
 
   useEffect(() => {
     let live = true;
+    // Engineering tickets queued offline replay through the gatekeeper here; the
+    // account does not list them (engineers reply by email with the reference).
+    syncQueuedTickets().catch(() => {});
     Promise.all([loadProjects(), loadQuotes()]).then(
       ([projects, quotes]) => {
         const status = getCloudTransport().mode === 'local' ? 'offline' : 'ready';
@@ -354,7 +288,6 @@ export default function AccountPage() {
   const { user, signOut } = useAuth();
   const { addToast } = useToast();
   const cloud = useCloudAccount();
-  const tickets = useSupportTickets();
   const transport = useSyncExternalStore(subscribeCloudTransport, getCloudTransport, getCloudTransport);
   const reveal = useScrollReveal();
   const loading = cloud.status === 'loading';
@@ -374,8 +307,10 @@ export default function AccountPage() {
   const [compare, setCompare] = useState(null);
   const closeCompare = useCallback(() => setCompare(null), []);
   const openCompare = (focusId, trigger) => {
+    // A wall drawn before the planners were unified stays comparable; an empty one is left out.
+    const wallDraft = loadLayout();
     const drafts = {
-      wall: { state: loadLayout(), name: loadProjectName('wall') },
+      ...(wallDraft.items.length > 0 ? { wall: { state: wallDraft, name: loadProjectName('wall') } } : {}),
       room: { state: loadRoomState(), name: loadProjectName('room') },
     };
     setCompare({ trigger, view: accountDiffSources(cloud.projects, drafts, focusId) });
@@ -495,11 +430,8 @@ export default function AccountPage() {
                 art={null}
                 testId="saved-projects-empty"
                 title="No spatial projects yet."
-                body="Compose a wall or plan a room, then save it to Lumen Cloud."
-                actions={[
-                  { to: '/studio-2d', label: 'Start 2D Wall Studio', primary: true },
-                  { to: '/room-3d', label: 'Open Room Planner' },
-                ]}
+                body="Plan a room and its walls in 3D, then save it to Lumen Cloud."
+                actions={[{ to: '/room-3d', label: 'Open 3D Room Planner', primary: true }]}
               />
             )}
           </section>
@@ -535,38 +467,6 @@ export default function AccountPage() {
             )}
           </section>
 
-          <section
-            ref={reveal}
-            className="account-panel account-panel--tickets reveal-up"
-            aria-labelledby="account-tickets-title"
-            aria-busy={tickets.status === 'loading' || undefined}
-            data-testid="account-tickets-section"
-            data-state={tickets.status}
-            data-count={tickets.list.length}
-          >
-            <header className="account-panel__head">
-              <h2 id="account-tickets-title" className="account-panel__title">
-                Studio Engineering Tickets
-              </h2>
-            </header>
-            {tickets.status === 'loading' ? (
-              <CloudLoading testId="tickets-loading" rows={2} />
-            ) : tickets.list.length > 0 ? (
-              <ol className="order-list ticket-list" data-testid="account-tickets">
-                {tickets.list.map((ticket) => (
-                  <TicketRow key={ticket.ref} ticket={ticket} />
-                ))}
-              </ol>
-            ) : (
-              <EmptyState
-                art={null}
-                compact
-                testId="account-tickets-empty"
-                title="No engineering tickets."
-                body="Studio AI answers most questions directly. A ticket opens only when it cannot, and it is tracked here."
-              />
-            )}
-          </section>
         </div>
       </div>
 

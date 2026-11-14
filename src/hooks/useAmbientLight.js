@@ -17,8 +17,10 @@ function formatPercent(value) {
 
 /**
  * Drives `--light-x`, `--light-y` and `--light-energy` on the surface element
- * from pointer position, integrated through a damped spring. The rAF loop only
- * runs while the light is moving.
+ * from pointer position, integrated through a damped spring, plus the
+ * unitless offsets from rest `--light-dx` / `--light-dy` that CSS multiplies
+ * into parallax and the pendant's travel. The rAF loop only runs while the
+ * light is moving.
  */
 export function useAmbientLight(surfaceRef, readoutRef) {
   useEffect(() => {
@@ -42,6 +44,8 @@ export function useAmbientLight(surfaceRef, readoutRef) {
       surface.style.setProperty('--light-x', formatPercent(s.x));
       surface.style.setProperty('--light-y', formatPercent(s.y));
       surface.style.setProperty('--light-energy', s.energy.toFixed(3));
+      surface.style.setProperty('--light-dx', (s.x - LIGHT_REST.x).toFixed(4));
+      surface.style.setProperty('--light-dy', (s.y - LIGHT_REST.y).toFixed(4));
       const readout = readoutRef?.current;
       if (readout) readout.textContent = `X ${s.x.toFixed(3)}  Y ${s.y.toFixed(3)}`;
     };

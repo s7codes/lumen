@@ -82,14 +82,15 @@ test.describe('surface and dimming lab', () => {
     await expect(page.getByTestId('lab-level')).toHaveText('0%');
   });
 
-  test('technical mode overlays the isolux contours on the bench', async ({ page }) => {
+  test('the bench reads in Visual on the storefront, with no Specs overlay even when Specs is stored', async ({ page }) => {
     await page.goto('/');
-    const contours = page.getByTestId('lab-bench').locator('.lab-bench__isolux');
-    await expect(contours).toBeHidden();
-
-    await page.getByRole('group', { name: 'Display mode' }).getByRole('button', { name: /technical/i }).click();
-    await expect(contours).toBeVisible();
-    await expect(contours.locator('.lab-bench__contour')).toHaveCount(3);
+    await storeDisplayMode(page, 'technical');
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-mode', 'architectural');
+    await expect(page.getByTestId('mode-switch')).toHaveCount(0);
+    const bench = page.getByTestId('lab-bench');
+    await expect(bench.locator('.lab-bench__isolux, .tech-only')).toHaveCount(0);
+    await expect(bench.locator('.lab-bench__tag').first()).toBeVisible();
   });
 });
 
@@ -133,7 +134,8 @@ test.describe('home showcase integrity', () => {
       for (const width of VIEWPORT_WIDTHS) {
         await page.setViewportSize({ width, height: 900 });
         await page.goto('/');
-        await expect(page.locator('html')).toHaveAttribute('data-mode', mode);
+        // The stored planner preference never reaches the overview.
+        await expect(page.locator('html')).toHaveAttribute('data-mode', 'architectural');
         await expect(page.getByTestId('core-modules').getByRole('article')).toHaveCount(3);
         expect(await horizontalOverflow(page), `${mode} at ${width}px`).toBeLessThanOrEqual(0);
       }

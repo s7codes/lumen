@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import { formatInt } from '../../lib/format.js';
 import { BusTelemetryCell } from '../BusTelemetryCell.jsx';
 import { CloudSaveButton, CompareChangesButton } from '../CloudSaveButton.jsx';
@@ -10,7 +9,7 @@ import { ArrowRight } from '../icons.jsx';
 /**
  * Primary strip: the four key figures beside the project name, cloud save
  * and cart sync. Below a hairline, engineering telemetry and the CAD bridge
- * (2D wall exchange for the active wall, .OBJ export, .PNG studio render,
+ * (the 1:20 blueprint of the active wall, .OBJ export, .PNG studio render,
  * share link) share a structured sub-grid that Specs mode lifts forward.
  */
 export function RoomSummary({
@@ -27,8 +26,8 @@ export function RoomSummary({
   syncRef,
   cloudStatus,
   project,
-  onImport,
-  onExport,
+  blueprintOpen = false,
+  onOpenBlueprint,
   onExportObj,
   onCapturePng,
   onSave,
@@ -82,7 +81,7 @@ export function RoomSummary({
           <p className="studio-summary__note" data-conflicts={conflictCount > 0 || undefined}>
             {conflictCount > 0
               ? `${conflictCount} ${conflictCount === 1 ? 'module' : 'modules'} in conflict`
-              : `2D bridge on the ${wallLabel}`}
+              : `CAD bridge on the ${wallLabel}`}
           </p>
         </div>
 
@@ -115,29 +114,19 @@ export function RoomSummary({
           )}
         </dl>
 
-        <div className="room3d-bridge" role="group" aria-label="2D and CAD bridge">
+        <div className="room3d-bridge" role="group" aria-label="CAD bridge">
           <button
             type="button"
             className="tool-button"
-            data-testid="import-from-wall-studio"
-            title={`Replace the ${wallLabel} with the saved 2D wall`}
-            onClick={onImport}
-          >
-            Load from 2D Wall Studio
-          </button>
-          <button
-            type="button"
-            className="tool-button"
-            data-testid="export-to-wall-studio"
-            title={`Send the ${wallLabel} to the 2D studio`}
+            aria-haspopup="dialog"
+            aria-expanded={blueprintOpen}
+            data-testid="open-blueprint-sheet"
+            title={`The 1:20 ISO blueprint of the ${wallLabel}, as .SVG or AutoCAD .DXF`}
             disabled={wallCount === 0}
-            onClick={onExport}
+            onClick={(event) => onOpenBlueprint(event.currentTarget)}
           >
-            Push to 2D Wall Studio
+            Blueprint .SVG / .DXF
           </button>
-          <Link to="/studio-2d" className="tool-button room3d-bridge__link">
-            Open Wall Studio
-          </Link>
           <span className="studio-toolbar__divider" aria-hidden="true" />
           <button type="button" className="tool-button" data-testid="export-room-obj" onClick={onExportObj}>
             Export 3D .OBJ

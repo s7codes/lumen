@@ -1,25 +1,28 @@
-/* Overview. A full-bleed Venetian plaster hero opens the page (a pendant on
-   a track lights an evening wall that breathes between two atmospheres),
-   then the gallery paper alternates with full-bleed architectural bands: the
-   ledger strip, the Meet our Icons film, the travertine dimming band, the
-   Nocturne twilight theatre, plaster plinths and the Explore the Lumen home
-   rooms. A band spans the page edge to edge; the copy in it keeps the grid. */
+/* Overview. A full-bleed light architectural hero opens the page (two
+   interiors alternate on one calm clock), then the gallery paper alternates
+   with full-bleed architectural bands: the ledger strip, the Meet our Icons
+   film, the travertine dimming band, the Nocturne twilight theatre, the
+   lit module plinths and the Explore the Lumen home rooms. A band spans the
+   page edge to edge; the copy in it keeps the grid. */
 
-/* Ambient hero: lighting coordinates are written by useAmbientLight.
-   Two tracks: the type owns the left, the right track stays open so the
-   pendant has air to swing through. The inset scales with the viewport, so
-   the copy holds a measured margin instead of pressing on the edge. */
+/* Hero. Two light architectural interiors (inline SVG, geometry in
+   src/lib/hero-scenes.js) share one CSS clock: each holds the frame for 5 s,
+   then a 1.1 s crossfade hands it over (12.2 s a cycle). useAmbientLight
+   writes --light-x / --light-y and the offsets from rest --light-dx /
+   --light-dy, which drive a subtle parallax and the gallery pendant's travel
+   along its track. Smooth matte plaster and limestone, no noise: the light
+   itself is the texture. The copy owns the lower left in carbon ink; the
+   right track stays open for the luminaires. */
 
 .hero {
   --light-x: 74%;
   --light-y: 34%;
+  --light-dx: 0;
+  --light-dy: 0;
   --light-energy: 0;
-  --lamp-y: max(var(--light-y), 56px);
   --hero-inset: clamp(24px, 9vw, 220px);
-  /* One crossfade clock for the wall, its wash and the atmosphere caption:
-     6.5 s per atmosphere, held at each end, eased through the middle. */
-  --atmosphere-cycle: 6.5s;
-  --atmosphere-ease: cubic-bezier(0.45, 0, 0.55, 1);
+  --scene-cycle: 12.2s;
+  --scene-ease: cubic-bezier(0.45, 0, 0.55, 1);
 
   position: relative;
   display: grid;
@@ -28,260 +31,84 @@
   min-height: max(640px, calc(100svh - var(--nav-height)));
   padding: var(--space-7) var(--hero-inset) clamp(var(--space-6), 3.5vw, var(--space-9));
   overflow: hidden;
-  background: var(--plaster-shadow);
+  background: #c6b9a5;
+  color: var(--text-primary);
   isolation: isolate;
 }
 
-.hero__layers {
+/* The stage sizes the pictures from its own box: wide frames crop top and
+   bottom, narrow ones keep the right-hand side, where the light lives. */
+.hero__stage {
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: -2;
+  overflow: hidden;
+  container-type: size;
   pointer-events: none;
 }
 
-/* The wall: plaster lighter toward the ceiling, falling to umber at the
-   floor, with soft trowelled modulation across it. */
-.hero__plaster {
-  position: absolute;
-  inset: 0;
-  background-image:
-    var(--plaster-mottle-light),
-    var(--plaster-mottle-dark),
-    linear-gradient(
-      90deg,
-      rgba(255, 240, 222, 0.04),
-      rgba(0, 0, 0, 0.05) 17%,
-      rgba(255, 240, 222, 0.03) 38%,
-      rgba(0, 0, 0, 0.06) 63%,
-      rgba(255, 240, 222, 0.03) 84%,
-      rgba(0, 0, 0, 0.04)
-    ),
-    var(--plaster-wall);
-  background-size:
-    360px 360px,
-    440px 440px,
-    auto,
-    auto;
-}
-
-/* Warm Venetian Plaster, 2700K. */
-.hero__plaster--venetian {
-  --plaster-wall: linear-gradient(200deg, #8c7c68 0%, #716353 26%, #564a3f 56%, #3d3731 80%, #2c2824 100%);
-}
-
-/* Soft Limestone Evening Wash, 2400K: a cooler stone in a deeper dusk. */
-.hero__plaster--limestone {
-  --plaster-wall: linear-gradient(200deg, #81796d 0%, #665f56 28%, #4b4741 58%, #35322e 82%, #242220 100%);
-  opacity: 0;
-  animation: hero-atmosphere-in var(--atmosphere-cycle) var(--atmosphere-ease) infinite alternate;
-}
-
-/* Grazing light shows the trowel marks only near the lamp. */
-.hero__relief {
-  position: absolute;
-  inset: 0;
-  background-image: var(--plaster-mottle-light), var(--plaster-mottle-dark);
-  background-size:
-    280px 280px,
-    340px 340px;
-  opacity: 0.6;
-  -webkit-mask-image: radial-gradient(
-    ellipse 38% 60% at var(--light-x) var(--lamp-y),
-    #000 0%,
-    rgba(0, 0, 0, 0.35) 50%,
-    transparent 100%
-  );
-  mask-image: radial-gradient(ellipse 38% 60% at var(--light-x) var(--lamp-y), #000 0%, rgba(0, 0, 0, 0.35) 50%, transparent 100%);
-}
-
-/* The pendant's indirect wall wash: lit plaster round the lamp and the
-   filament's own hot spot. The 2700K wash hands over to a warmer, dimmer
-   2400K one in step with the wall. */
-.hero__wash {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(
-      circle at var(--light-x) var(--lamp-y),
-      rgba(255, 214, 160, calc(0.34 + var(--light-energy) * 0.12)) 0,
-      rgba(240, 170, 100, 0.12) 12%,
-      transparent 34%
-    ),
-    radial-gradient(
-      ellipse 54% 76% at var(--light-x) var(--lamp-y),
-      rgba(214, 196, 168, 0.42) 0%,
-      rgba(200, 188, 169, 0.2) 34%,
-      rgba(160, 140, 116, 0.07) 62%,
-      transparent 84%
-    );
-  animation: hero-atmosphere-out var(--atmosphere-cycle) var(--atmosphere-ease) infinite alternate;
-}
-
-.hero__wash--evening {
-  background:
-    radial-gradient(
-      circle at var(--light-x) var(--lamp-y),
-      rgba(255, 184, 116, calc(0.3 + var(--light-energy) * 0.1)) 0,
-      rgba(228, 138, 70, 0.12) 13%,
-      transparent 36%
-    ),
-    radial-gradient(
-      ellipse 48% 70% at var(--light-x) var(--lamp-y),
-      rgba(206, 170, 128, 0.34) 0%,
-      rgba(178, 150, 116, 0.16) 36%,
-      rgba(130, 110, 90, 0.05) 64%,
-      transparent 86%
-    );
-  opacity: 0;
-  animation-name: hero-atmosphere-in;
-}
-
-/* The copy stands in the wall's own shadow: a low umber scrim keeps the
-   alabaster type legible wherever the pendant swings. */
-.hero__scrim {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(0deg, rgba(24, 20, 16, 0.66) 0%, rgba(24, 20, 16, 0.3) 34%, rgba(24, 20, 16, 0) 62%),
-    linear-gradient(90deg, rgba(24, 20, 16, 0.4) 0%, rgba(24, 20, 16, 0) 58%);
-}
-
-.hero__rail {
+.hero-scene {
   position: absolute;
   top: 0;
-  left: 0;
   right: 0;
-  height: 4px;
-  background: var(--alu-sheen);
-  opacity: 0.55;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+  display: block;
+  width: max(100cqw, 150cqh);
+  height: 100cqh;
 }
 
-.hero__pendant {
-  position: absolute;
-  inset: 0;
-}
-
-.hero__carriage {
-  position: absolute;
-  top: 0;
-  left: var(--light-x);
-  width: 14px;
-  height: 8px;
-  background: var(--alu-sheen);
-  transform: translateX(-50%);
-}
-
-.hero__cable {
-  position: absolute;
-  top: 8px;
-  left: var(--light-x);
-  width: 1px;
-  height: calc(var(--lamp-y) - 30px);
-  background: linear-gradient(180deg, rgba(220, 222, 223, 0.5), rgba(220, 222, 223, 0.25));
-  transform: translateX(-50%);
-}
-
-.hero__lamp {
-  position: absolute;
-  top: calc(var(--lamp-y) - 22px);
-  left: var(--light-x);
-  width: 10px;
-  height: 22px;
-  background: linear-gradient(90deg, #8e9295, #d3d6d8 45%, #767b7f);
-  box-shadow: 0 2px 0 -1px var(--lumen-amber-soft), 0 8px 24px 4px var(--lumen-amber-glow);
-  transform: translateX(-50%);
-}
-
-.hero__crosshair {
-  position: absolute;
-  background: rgba(232, 146, 58, 0.28);
-}
-
-.hero__crosshair--x {
-  top: var(--lamp-y);
-  left: 0;
-  right: 0;
-  height: 1px;
-}
-
-.hero__crosshair--y {
-  top: 0;
-  bottom: 0;
-  left: var(--light-x);
-  width: 1px;
-}
-
-/* Track tag, top left: the fixture, then the atmosphere on the wall, its two
-   names crossfading on the same clock as the plaster. */
-.hero__tag {
-  position: absolute;
-  top: var(--space-5);
-  left: var(--hero-inset);
-  right: var(--hero-inset);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px var(--space-3);
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--chamber-ink-muted);
-}
-
-.hero__atmosphere {
-  display: inline-grid;
-}
-
-.hero__atmosphere::before {
-  content: '/';
-  grid-area: 1 / 1;
-  margin-right: var(--space-3);
-  justify-self: start;
-}
-
-.hero__atmosphere-name {
-  grid-area: 1 / 1;
-  padding-left: calc(1ch + var(--space-3));
-  white-space: nowrap;
-  color: var(--chamber-ink-soft);
-}
-
-.hero__atmosphere-name--venetian {
-  animation: hero-atmosphere-out var(--atmosphere-cycle) var(--atmosphere-ease) infinite alternate;
-}
-
-.hero__atmosphere-name--limestone {
+.hero-scene--gallery {
   opacity: 0;
-  animation: hero-atmosphere-in var(--atmosphere-cycle) var(--atmosphere-ease) infinite alternate;
+  animation: hero-scene-cycle var(--scene-cycle) var(--scene-ease) infinite;
 }
 
-/* Out of view the wall holds its breath: no compositor loop nobody sees. */
-.hero[data-offscreen] :is(.hero__plaster--limestone, .hero__wash, .hero__atmosphere-name) {
+/* 0 to 5 s the wall wash, 5 to 6.1 s the crossfade, 6.1 to 11.1 s the
+   gallery, 11.1 to 12.2 s back. Each segment eases on --scene-ease. */
+@keyframes hero-scene-cycle {
+  0%,
+  40.984% {
+    opacity: 0;
+  }
+
+  50%,
+  90.984% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Parallax: the far planes drift least, the side wall most, both against
+   the pointer; the pendant slides with it. CSS px are view-box units here. */
+.hero-scene__layer[data-depth='far'] {
+  transform: translate(calc(var(--light-dx) * -10px), calc(var(--light-dy) * -6px));
+}
+
+.hero-scene__layer[data-depth='near'] {
+  transform: translate(calc(var(--light-dx) * -24px), calc(var(--light-dy) * -10px));
+}
+
+/* The pendant's travel is clamped so it never drifts in behind the headline. */
+.hero-scene__layer[data-depth='pendant'] {
+  transform: translate(clamp(-56px, calc(var(--light-dx) * 150px), 40px), calc(var(--light-dy) * -6px));
+}
+
+/* Out of view the clock holds its place: no compositor loop nobody sees. */
+.hero[data-offscreen] .hero-scene--gallery {
   animation-play-state: paused;
 }
 
-@keyframes hero-atmosphere-in {
-  0%,
-  20% {
-    opacity: 0;
-  }
-
-  80%,
-  100% {
-    opacity: 1;
-  }
-}
-
-@keyframes hero-atmosphere-out {
-  0%,
-  20% {
-    opacity: 1;
-  }
-
-  80%,
-  100% {
-    opacity: 0;
-  }
+/* A soft plaster veil under the copy: carbon type over a calm field in both
+   scenes, the pictures still reading through it. */
+.hero__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(70% 62% at 6% 100%, rgba(230, 223, 211, 0.6) 0%, rgba(230, 223, 211, 0.3) 46%, rgba(230, 223, 211, 0) 78%),
+    linear-gradient(90deg, rgba(230, 223, 211, 0.26) 0%, rgba(230, 223, 211, 0) 50%);
+  pointer-events: none;
 }
 
 .hero__content {
@@ -301,7 +128,7 @@
   line-height: 1.7;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--chamber-ink-soft);
+  color: rgba(20, 19, 17, 0.72);
 }
 
 .hero__attribution-keep {
@@ -311,13 +138,13 @@
 .hero__attribution-rule {
   margin-left: 0.9em;
   margin-right: 0.45em;
-  color: var(--chamber-ink-muted);
+  color: rgba(20, 19, 17, 0.42);
 }
 
 .hero__title {
   max-width: 12ch;
   margin-top: var(--space-6);
-  color: var(--chamber-ink);
+  color: var(--text-primary);
   font-size: var(--text-hero);
   font-weight: var(--weight-display);
   line-height: var(--leading-display);
@@ -329,10 +156,10 @@
   max-width: 44ch;
   margin-top: var(--space-7);
   font-size: var(--text-lg);
-  font-weight: var(--weight-light);
+  font-weight: var(--weight-regular);
   line-height: 1.45;
   letter-spacing: -0.01em;
-  color: var(--chamber-ink-soft);
+  color: rgba(20, 19, 17, 0.8);
 }
 
 .hero__actions {
@@ -348,7 +175,7 @@
   font-family: var(--font-sans);
 }
 
-/* The bracketed key stands as tall as the alabaster slab beside it. */
+/* The bracketed key stands as tall as the carbon slab beside it. */
 .hero__bracket {
   min-height: 44px;
   padding-inline: 1.5rem;
@@ -372,23 +199,6 @@
   animation-delay: 340ms;
 }
 
-.hero__readout {
-  position: absolute;
-  right: var(--hero-inset);
-  bottom: var(--space-5);
-  display: flex;
-  gap: var(--space-3);
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  white-space: pre;
-  color: var(--chamber-ink-muted);
-}
-
-.hero__readout-label {
-  color: var(--emission-soft);
-}
-
 @media (max-width: 959px) {
   .hero {
     grid-template-columns: minmax(0, 1fr);
@@ -400,17 +210,19 @@
     padding-bottom: var(--space-9);
   }
 
-  .hero__readout {
-    left: var(--hero-inset);
-    right: auto;
+  .hero__scrim {
+    background: linear-gradient(0deg, rgba(230, 223, 211, 0.72) 0%, rgba(230, 223, 211, 0.4) 52%, rgba(230, 223, 211, 0.12) 100%);
   }
 }
 
+/* Reduced motion rests on the wall wash: no crossfade, no parallax. */
 @media (prefers-reduced-motion: reduce) {
-  .hero__plaster--limestone,
-  .hero__wash,
-  .hero__atmosphere-name {
+  .hero-scene--gallery {
     animation: none;
+  }
+
+  .hero-scene__layer[data-depth] {
+    transform: none;
   }
 }
 
@@ -425,12 +237,19 @@
 }
 
 /* Specification ledger: three columns between two hairline rules, divided by
-   vertical hairlines, straight on the paper. */
+   vertical hairlines, straight on the paper. The strip and its cells carry
+   generous block padding, and a scroll landing clears the sticky navbar, so
+   no line of it ever sits under the header. */
+
+.spec-strip {
+  padding: 2.75rem 0;
+  scroll-margin-top: calc(var(--nav-height) + var(--space-5));
+}
 
 .spec-strip__grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding-top: var(--section-space);
+  padding-top: calc(var(--section-space) - 2.75rem);
 }
 
 .spec-strip__item {
@@ -438,7 +257,7 @@
   flex-direction: column;
   gap: var(--space-5);
   min-width: 0;
-  padding: var(--space-6) var(--space-6) var(--space-6) clamp(var(--space-5), 2.4vw, var(--space-7));
+  padding: 2.75rem var(--space-6) 2.75rem clamp(var(--space-5), 2.4vw, var(--space-7));
   border-top: 1px solid var(--rule-section);
   border-bottom: 1px solid var(--rule-section);
   border-left: 1px solid var(--rule-section);
@@ -592,17 +411,6 @@
   color: #ffffff;
 }
 
-.cinema__caption {
-  position: absolute;
-  left: var(--grid-margin);
-  right: var(--grid-margin);
-  bottom: var(--space-5);
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.62);
-}
-
 /* 02 / Surface and dimming lab: a full-bleed travertine band. The bench (a
    slat wall in a dim umber room) and its paper specification sheet share one
    square instrument frame with no gap between them. */
@@ -713,50 +521,6 @@
   background: rgba(var(--lab-light), calc(0.2 + var(--lab-level) * 0.8));
   box-shadow: 0 0 calc(4px + var(--lab-level) * 22px) calc(var(--lab-level) * 5px)
     rgba(var(--lab-light), calc(var(--lab-level) * 0.85));
-}
-
-.lab-bench__isolux {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-:root[data-mode='technical'] .lab-bench__isolux {
-  display: block;
-}
-
-.lab-bench__contour {
-  --reach: 1;
-  position: absolute;
-  top: 35px;
-  left: 50%;
-  width: calc((24% + var(--lab-level) * 52%) * var(--reach));
-  aspect-ratio: 1.4;
-  border: 1px dashed rgba(232, 146, 58, 0.45);
-  border-top: 0;
-  border-radius: 0 0 50% 50% / 0 0 100% 100%;
-  transform: translateX(-50%);
-}
-
-.lab-bench__contour[data-level='100'] {
-  --reach: 0.45;
-}
-
-.lab-bench__contour[data-level='50'] {
-  --reach: 0.75;
-}
-
-.lab-bench__contour-label {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  padding: 0 4px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: var(--tracking-label);
-  color: var(--lumen-amber-soft);
-  background: rgba(44, 40, 36, 0.72);
-  transform: translate(50%, 50%);
 }
 
 .lab-bench__tag {

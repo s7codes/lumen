@@ -93,11 +93,6 @@
     white-space: nowrap;
   }
 
-  .navbar__controls .mode-switch__segment {
-    padding-inline: 6px;
-    font-size: 11px;
-    letter-spacing: 0.02em;
-  }
 }
 
 /* Palette */

@@ -516,16 +516,16 @@ export default function CheckoutPage() {
           index="05"
           section="Checkout"
           title="Project Quote"
-          lede="The cart is empty, so there is nothing to quote yet. Specify parts in the catalog or send a planned wall or room to the cart."
+          lede="The cart is empty, so there is nothing to quote yet. Specify parts in the catalog or send a planned room to the cart."
         />
         <div className="container checkout-empty" data-testid="checkout-empty">
           <div className="checkout-empty__card">
             <EmptyState
               art="shelf"
               title="No parts specified yet."
-              body="Compose a wall in the studio or specify parts from the catalog. The quote, driver sizing and VAT build here."
+              body="Plan a room in 3D or specify parts from the catalog. The quote, driver sizing and VAT build here."
               actions={[
-                { to: '/studio-2d', label: 'Start 2D Wall Studio', primary: true },
+                { to: '/room-3d', label: 'Open 3D Room Planner', primary: true },
                 { to: '/catalog', label: 'Browse Catalog' },
               ]}
             />

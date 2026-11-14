@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { HeroScenes } from '../components/HeroScenes.jsx';
 import { ArrowRight } from '../components/icons.jsx';
 import { InteriorPortrait } from '../components/InteriorPortrait.jsx';
 import { MeetOurIconsCinema } from '../components/MeetOurIconsCinema.jsx';
@@ -13,7 +14,9 @@ import { useOffscreenPause } from '../hooks/useOffscreenPause.js';
 import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { useSectionArrival, useSectionSpy } from '../hooks/useSectionLink.js';
 import { padIndex } from '../lib/format.js';
+import { HERO_SCENE_IDS } from '../lib/hero-scenes.js';
 import { INTERIOR_SCENES } from '../lib/interior-painter.js';
+import { launchHref } from '../lib/launch-presets.js';
 import { CORE_MODULES_ID, SHOWCASE_3D_ID, WORKSPACES_ID } from '../lib/routes.js';
 import '../styles/home.css';
 
@@ -25,9 +28,9 @@ const SPECS = [
   { value: 'FSC Walnut & Anodized Aluminum', detail: 'Oiled solid walnut / 6063-T5' },
 ];
 
-// Same order and indices as the navbar, which the overview scrolls through left
-// to right. Each workspace opens on a room: dining and living for the planner,
-// a bedroom for the catalog, a studio wall for the elevation studio.
+// Each workspace opens on a room: dining and living for the planner, a
+// bedroom for the catalog, a lit studio wall for the lighting studio, which
+// is the planner at 165 cm eye level, reading the light where you will stand.
 const ENTRIES = [
   {
     to: '/room-3d',
@@ -46,66 +49,36 @@ const ENTRIES = [
     scene: INTERIOR_SCENES.bedroom,
   },
   {
-    to: '/studio-2d',
+    to: launchHref({ lens: 'inside' }),
     index: '04',
-    section: 'Wall Studio',
-    title: 'Wall Studio',
-    body: 'Compose shelves, lights and panels on a to-scale elevation, check clearances, send the parts list to the cart.',
+    section: 'Lighting',
+    title: 'Lighting Studio',
+    body: 'Stand in the planned room at 165 cm eye level, dim each 24V channel and read the lux on every wall before it is wired.',
     scene: INTERIOR_SCENES.studio,
   },
-];
-
-// The two evening atmospheres the hero wall breathes between, 6.5 s apiece.
-const ATMOSPHERES = [
-  { id: 'venetian', label: 'Warm Venetian Plaster / 2700K' },
-  { id: 'limestone', label: 'Soft Limestone Evening Wash / 2400K' },
 ];
 
 const ARRIVAL_SECTIONS = Object.freeze([SHOWCASE_3D_ID]);
 
 function AmbientHero() {
   const surfaceRef = useRef(null);
-  const readoutRef = useRef(null);
-  useAmbientLight(surfaceRef, readoutRef);
+  useAmbientLight(surfaceRef);
   useOffscreenPause(surfaceRef);
 
   return (
     <section
       ref={surfaceRef}
-      className="hero optical"
+      className="hero"
       data-testid="ambient-surface"
-      data-atmospheres={ATMOSPHERES.map((atmosphere) => atmosphere.id).join(' ')}
+      data-scenes={HERO_SCENE_IDS.join(' ')}
       aria-labelledby="hero-title"
     >
-      {/* A full-bleed Venetian plaster wall in evening light. Two atmospheres
-          crossfade on the compositor while the pendant answers the pointer. */}
-      <div className="hero__layers" aria-hidden="true">
-        <div className="hero__plaster hero__plaster--venetian" />
-        <div className="hero__plaster hero__plaster--limestone" />
-        <div className="hero__relief" />
-        <div className="hero__wash" />
-        <div className="hero__wash hero__wash--evening" />
-        <div className="hero__scrim" />
-        <div className="hero__rail" />
-        <div className="hero__crosshair hero__crosshair--x tech-only" />
-        <div className="hero__crosshair hero__crosshair--y tech-only" />
-        <div className="hero__pendant">
-          <span className="hero__carriage" />
-          <span className="hero__cable" />
-          <span className="hero__lamp" />
-        </div>
-      </div>
-
-      <p className="hero__tag mono" aria-hidden="true">
-        <span>Track T-24 / Pendant P-1</span>
-        <span className="hero__atmosphere">
-          {ATMOSPHERES.map(({ id, label }) => (
-            <span key={id} className={`hero__atmosphere-name hero__atmosphere-name--${id}`}>
-              {label}
-            </span>
-          ))}
-        </span>
-      </p>
+      {/* Two light architectural interiors alternate on one CSS clock: a
+          sconce washing smooth plaster beside a molded doorway, then a
+          limestone gallery lit by a 24V track, a pendant and a walnut shelf.
+          No text sits on the pictures; the copy owns the lower left. */}
+      <HeroScenes />
+      <div className="hero__scrim" aria-hidden="true" />
 
       <div className="hero__content" data-testid="hero-copy">
         {/* The slash stays on the line it closes, so a narrow wrap never
@@ -124,24 +97,19 @@ function AmbientHero() {
           Light and storage on one modular spine.
         </h1>
         <p className="hero__lede">
-          Pendants, wall rails and shelving share a single 24V DC bus. Plan a room in 3D, compose a
-          wall in 2D, then order the exact bill of materials.
+          Pendants, wall rails and shelving share a single 24V DC bus. Plan the room in 3D, read its light,
+          then order the exact bill of materials.
         </p>
         <div className="hero__actions">
           <Link to="/catalog" className="button button--primary">
             Browse catalog
             <ArrowRight />
           </Link>
-          <Link to="/room-3d" className="bracket-cta bracket-cta--light hero__bracket" data-testid="hero-room-planner">
+          <Link to="/room-3d" className="bracket-cta hero__bracket" data-testid="hero-room-planner">
             Open Room Planner
           </Link>
         </div>
       </div>
-
-      <p className="hero__readout mono" aria-hidden="true">
-        <span className="hero__readout-label">Light</span>
-        <span ref={readoutRef} />
-      </p>
     </section>
   );
 }
@@ -161,11 +129,10 @@ function SectionHead({ index, section, titleId, title, lede }) {
   );
 }
 
-function ExploreHome({ sectionRef }) {
+function ExploreHome() {
   const reveal = useScrollReveal();
   return (
     <section
-      ref={sectionRef}
       id={WORKSPACES_ID}
       className="entries explore container"
       aria-labelledby="entries-title"
@@ -176,7 +143,7 @@ function ExploreHome({ sectionRef }) {
         section="Workspaces"
         titleId="entries-title"
         title="Explore the Lumen home"
-        lede="Start from a room, a part or a wall. Every workspace draws on one parts index and one 24V bus, so a room, a wall and a cart always agree on the bill of materials."
+        lede="Start from a room, a part or the light itself. Every workspace draws on one parts index and one 24V bus, so the room, its light and the cart always agree on the bill of materials."
       />
 
       <ul className="entries__grid explore__trio reveal-stagger">
@@ -223,9 +190,8 @@ export default function HomePage() {
   useSectionArrival(ARRIVAL_SECTIONS);
   const reveal = useScrollReveal();
   const modulesRef = useRef(null);
-  const workspacesRef = useRef(null);
   useSectionSpy(modulesRef, CORE_MODULES_ID);
-  useSectionSpy(workspacesRef, WORKSPACES_ID);
+  // Workspaces is not spied: no tab stands for it, so Catalog holds through the close of the page.
 
   return (
     <>
@@ -302,7 +268,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <ExploreHome sectionRef={workspacesRef} />
+        <ExploreHome />
       </div>
     </>
   );

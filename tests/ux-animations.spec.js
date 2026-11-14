@@ -248,7 +248,7 @@ async function settledCatalogCard(page, name) {
 }
 
 test.describe('product imagery', () => {
-  test('a catalog card is a naked plinth: a square 4:3 plaster wall over the specification on bare paper', async ({
+  test('a catalog card is a naked plinth: a square 4:3 lit daylight interior over the specification on bare paper', async ({
     page,
   }) => {
     const card = await settledCatalogCard(page, 'Floating Shelf 110');
@@ -273,17 +273,27 @@ test.describe('product imagery', () => {
       blur: 'none',
     });
 
-    // The plinth: square, 4:3, a limestone-taupe plaster wall (never a black void),
-    // flush with the card's top and sides.
+    // The plinth: square, 4:3, a smooth daylight stone wall (never a black void
+    // and never a cloudy texture), flush with the card's top and sides, and the
+    // part drawn in true perspective in it.
     const plinth = card.locator('.product-card__figure');
     const stage = await plinth.evaluate((el) => {
       const style = getComputedStyle(el);
       const box = el.getBoundingClientRect();
-      return { radius: style.borderTopLeftRadius, surface: style.backgroundColor, ratio: box.width / box.height };
+      return { radius: style.borderTopLeftRadius, surface: style.backgroundColor, image: style.backgroundImage, ratio: box.width / box.height };
     });
     expect(stage.radius).toBe('0px');
-    expect(stage.surface).toBe('rgb(61, 55, 49)');
+    expect(stage.surface).toBe('rgb(228, 221, 209)');
+    expect(stage.image).toBe('none');
     expect(stage.ratio).toBeCloseTo(4 / 3, 1);
+    await expect(plinth).not.toHaveClass(/(^|\s)optical(\s|$)/);
+    const visual = plinth.getByTestId('product-visual');
+    await expect(visual).toHaveAttribute('data-shape', 'shelf');
+    const [plinthRect, visualRect] = await Promise.all([plinth.boundingBox(), visual.boundingBox()]);
+    expect(Math.abs(visualRect.width - plinthRect.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(visualRect.height - plinthRect.height)).toBeLessThanOrEqual(1);
+    // The captions over the interior read in carbon ink.
+    await expect(card.locator('.product-card__head .index-label')).toHaveCSS('color', 'rgba(20, 19, 17, 0.72)');
     const [cardBox, plinthBox] = await Promise.all([card.boundingBox(), plinth.boundingBox()]);
     expect(Math.abs(plinthBox.y - cardBox.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(plinthBox.width - cardBox.width)).toBeLessThanOrEqual(1);
@@ -300,24 +310,20 @@ test.describe('product imagery', () => {
     await expect(add).toHaveCSS('border-top-left-radius', '0px');
   });
 
-  test('hovering a catalog card lights the plinth under the pointer and eases the drawing forward; the card never tilts', async ({
+  test('hovering a catalog card lights the plinth under the pointer and eases the interior forward; the card never tilts', async ({
     page,
   }) => {
     const card = await settledCatalogCard(page, 'Floating Shelf 110');
     const stage = card.locator('.product-card__figure');
-    const drawing = stage.locator('svg.elev');
+    const drawing = stage.locator('svg.pv');
 
     await expect(stage).toHaveCSS('overflow', 'hidden');
-    // No outline: the plinth is umber plaster under the fixture's soft wall-wash scallop.
+    // No outline and no texture: the interior SVG carries the whole picture.
     const surface = await stage.evaluate((el) => {
       const style = getComputedStyle(el);
-      return {
-        border: style.borderTopWidth,
-        color: style.backgroundColor,
-        image: style.backgroundImage.startsWith('radial-gradient'),
-      };
+      return { border: style.borderTopWidth, color: style.backgroundColor, image: style.backgroundImage };
     });
-    expect(surface).toEqual({ border: '0px', color: 'rgb(61, 55, 49)', image: true });
+    expect(surface).toEqual({ border: '0px', color: 'rgb(228, 221, 209)', image: 'none' });
     const timing = await drawing.evaluate((el) => {
       const style = getComputedStyle(el);
       return { duration: style.transitionDuration, easing: style.transitionTimingFunction };
@@ -342,7 +348,7 @@ test.describe('product imagery', () => {
     const lit = await readTilt(card);
     expect(lit).toMatchObject({ inline: '', computed: 'none', perspective: null });
     expect(lit.glowOpacity).toBeGreaterThan(0.95);
-    expect(lit.glowImage).toContain('rgba(255, 167, 87, 0.16)');
+    expect(lit.glowImage).toContain('rgba(255, 167, 87, 0.2)');
     // The light sits under the pointer, measured from the card's top-left.
     expect(Math.abs(lit.glowX - pointer.x)).toBeLessThan(16);
     expect(Math.abs(lit.glowY - pointer.y)).toBeLessThan(16);
@@ -418,15 +424,15 @@ test.describe('tactile keys', () => {
   });
 
   test('arrow keys slide their arrow 4px and the sync keys carry one', async ({ page }) => {
-    await page.goto('/studio-2d');
-    await page.getByRole('button', { name: 'Load preset Nordic Reading Wall' }).click();
-    const sync = page.getByTestId('sync-wall-to-bag');
+    await page.goto('/room-3d');
+    await page.getByRole('button', { name: 'Mount Floating Shelf 110', exact: true }).click();
+    const sync = page.getByTestId('sync-room-to-bag');
     const arrow = sync.locator('svg');
     await expect(arrow).toHaveCount(1);
     await sync.scrollIntoViewIfNeeded();
     await expect(arrow).toHaveCSS('transform', 'none');
     await sync.hover();
     await expect(arrow).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 4, 0)');
-    await expect(sync).toHaveAccessibleName('Sync Wall to Cart');
+    await expect(sync).toHaveAccessibleName('Sync Room to Cart');
   });
 });

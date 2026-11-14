@@ -1,36 +1,23 @@
 import { useCallback, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { efficacyLmPerW, getCategory, getFinish, STOCK_LABELS } from '../data/products.js';
+import { getCategory, getFinish, STOCK_LABELS } from '../data/products.js';
 import { useBag } from '../hooks/useBag.js';
 import { useCursorGlow } from '../hooks/useCursorGlow.js';
-import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { formatLeadTime, formatUsd, padIndex } from '../lib/format.js';
 import { rgbTriplet } from '../lib/photometry.js';
 import { PlusGlyph } from './icons.jsx';
-import { ProductElevation } from './ProductElevation.jsx';
+import { ProductVisual } from './ProductVisual.jsx';
 import '../styles/product.css';
 
-function telemetryRows(product) {
-  const efficacy = efficacyLmPerW(product);
-  return [
-    ['SKU', product.sku],
-    ['24V DC load', `${product.watts} W`],
-    ['Output', product.lumens > 0 ? `${product.lumens} lm` : '--'],
-    ['Efficacy', efficacy === null ? '--' : `${efficacy.toFixed(1)} lm/W`],
-    ['CRI', product.cri ? `${product.cri}+` : '--'],
-    ['CCT', product.kelvin ? `${product.kelvin} K` : '--'],
-    ['Mounting', `${product.mountingPoints} pts`],
-    ['Lead time', formatLeadTime(product.leadWeeks)],
-  ];
-}
-
 /**
- * Finish selection is uncontrolled by default. Pass `finishId` and
- * `onFinishChange` to keep the choice alive while the card is filtered out.
+ * A storefront card: a lifelike interior of the part on top, the
+ * specification straight on the paper below. The storefront always reads in
+ * Visual mode; engineering detail lives on the product page and in the 3D
+ * Room Planner. Finish selection is uncontrolled by default. Pass `finishId`
+ * and `onFinishChange` to keep the choice alive while the card is filtered out.
  */
 export function ProductCard({ product, index, finishId: controlledFinish, onFinishChange }) {
-  const [mode] = useDisplayMode();
   const { add, quantityOf } = useBag();
   const [ownFinish, setOwnFinish] = useState(product.defaultFinish);
   const uid = useId();
@@ -53,7 +40,6 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
   const finishId = product.finishes.includes(controlledFinish) ? controlledFinish : ownFinish;
   const finish = getFinish(finishId);
   const category = getCategory(product.category);
-  const technical = mode === 'technical';
   const inBag = quantityOf(product.id, finishId);
   const headingId = `${uid}-name`;
   const { w, h, d } = product.dimsCm;
@@ -64,12 +50,8 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
     else setOwnFinish(id);
   };
 
-  const style = {
-    '--finish-base': finish.hex,
-    '--finish-hi': finish.highlight,
-    '--finish-shade': finish.shade,
-    '--light-rgb': rgbTriplet(product.kelvin ?? 2700),
-  };
+  // The cursor light on the plinth takes the fixture's own colour temperature.
+  const style = { '--light-rgb': rgbTriplet(product.kelvin ?? 2700) };
 
   return (
     <article
@@ -77,7 +59,6 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
       className="product-card reveal-card"
       aria-labelledby={headingId}
       data-finish={finishId}
-      data-mode={mode}
       data-sku={product.sku}
       style={style}
     >
@@ -90,9 +71,9 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
         </p>
       </header>
 
-      {/* The plinth: a square optical chamber where the fixture's own light falls. */}
-      <div className="product-card__figure optical">
-        <ProductElevation product={product} finish={finish} technical={technical} />
+      {/* The plinth: the part in true perspective in a daylight gallery corner, lit by its own 2700K light. */}
+      <div className="product-card__figure">
+        <ProductVisual product={product} finish={finish} />
       </div>
 
       <div className="product-card__body">
@@ -108,18 +89,7 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
         <p className="product-card__dims mono">
           W {w} / H {h} / D {d} cm
         </p>
-        {technical ? (
-          <dl className="telemetry" data-testid="product-telemetry">
-            {telemetryRows(product).map(([term, value]) => (
-              <div key={term} className="telemetry__cell">
-                <dt>{term}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : (
-          <p className="product-card__summary">{product.summary}</p>
-        )}
+        <p className="product-card__summary">{product.summary}</p>
       </div>
 
       <fieldset className="swatches">
@@ -148,7 +118,7 @@ export function ProductCard({ product, index, finishId: controlledFinish, onFini
           })}
           <span className="swatches__name">{finish.name}</span>
         </div>
-        {!technical && <p className="swatches__surface mono">{finish.surface}</p>}
+        <p className="swatches__surface mono">{finish.surface}</p>
       </fieldset>
 
       <footer className="product-card__foot">

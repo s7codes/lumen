@@ -5,12 +5,11 @@ import { computeBusTopology, FEED_DATUM, formatBusTelemetry } from '../src/lib/b
 import { LOOP_OHM_PER_M } from '../src/lib/electrical.js';
 import { ACTIVE_NAMES_STORAGE_KEY } from '../src/lib/project-library.js';
 import { buildQuote } from '../src/lib/quote.js';
-import { createRoomState, importFromWallStudio, ROOM_STORAGE_KEY, serializeRoomState } from '../src/lib/room-3d.js';
+import { createRoomState, importFromWallStudio, ROOM_STORAGE_KEY, roomFromWallLayout, serializeRoomState } from '../src/lib/room-3d.js';
 import { decodeSceneParam, encodeSceneParam, SCENE_MAX_LENGTH } from '../src/lib/scene-codec.js';
-import { createLayout, layoutFromPreset, serializeLayout, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
-import { collectRuntimeErrors, installCspRecorder, readCspViolations, storeDisplayMode } from './support/runtime-guards.js';
+import { createLayout, layoutFromPreset } from '../src/lib/wall-studio.js';
+import { collectRuntimeErrors, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
-const WALL_KEY = `lumen:${WALL_STORAGE_KEY}`;
 const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
 const BAG_KEY = `lumen:${BAG_STORAGE_KEY}`;
 const NAMES_KEY = `lumen:${ACTIVE_NAMES_STORAGE_KEY}`;
@@ -22,6 +21,7 @@ const BUS_WALL = createLayout({ widthCm: 300, heightCm: 250 }, [
 ]);
 const NORDIC = layoutFromPreset('nordic-reading-wall');
 const ROOM = importFromWallStudio(createRoomState()).state;
+const BUS_ROOM = roomFromWallLayout(createRoomState(), BUS_WALL);
 
 async function seed(page, entries) {
   await page.evaluate((pairs) => {
@@ -33,52 +33,27 @@ function lastToast(page) {
   return page.getByTestId('toast').last();
 }
 
-function overlay(page) {
-  return page.getByTestId('bus-topology-overlay');
-}
-
-async function openStudioWith(page, layout, name) {
+async function openRoomWith(page, state, name) {
   await page.goto('/');
-  const entries = [[WALL_KEY, JSON.stringify(serializeLayout(layout))]];
-  if (name) entries.push([NAMES_KEY, JSON.stringify({ wall: name, room: 'Room' })]);
+  const entries = [[ROOM_KEY, JSON.stringify(serializeRoomState(state))]];
+  if (name) entries.push([NAMES_KEY, JSON.stringify({ wall: 'Wall', room: name })]);
   await seed(page, entries);
-  await page.goto('/studio-2d');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
+  await page.goto('/room-3d');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
 }
 
-/** Rebuilds the visible wall from the DOM so expectations follow whatever the UI placed. */
-async function readWall(page) {
-  return page.evaluate(() => {
-    const canvas = document.querySelector('[data-testid="wall-canvas"]');
-    return {
-      wall: { widthCm: Number(canvas.dataset.widthCm), heightCm: Number(canvas.dataset.heightCm) },
-      items: [...document.querySelectorAll('[data-testid="wall-module"]')].map((el) => ({
-        uid: el.dataset.uid,
-        productId: el.dataset.product,
-        finish: el.dataset.finish,
-        xCm: Number(el.dataset.xCm),
-        yCm: Number(el.dataset.yCm),
-        led: el.dataset.led === 'true',
-      })),
-    };
-  });
-}
-
-async function expectOverlayMatches(page) {
-  const expected = computeBusTopology(await readWall(page));
-  const node = overlay(page);
-  await expect(node).toHaveAttribute('data-nodes', String(expected.nodes.length));
-  await expect(node).toHaveAttribute('data-run-m', String(expected.totalRunM));
-  await expect(node).toHaveAttribute('data-current-a', String(expected.currentA));
-  await expect(node).toHaveAttribute('data-drop-pct', String(expected.voltageDropPct));
-  await expect(node).toHaveAttribute('data-within-spec', 'true');
-  await expect(page.getByTestId('bus-node')).toHaveCount(expected.nodes.length);
-  await expect(page.getByTestId('bus-segment')).toHaveCount(expected.segments.length);
-  await expect(page.getByTestId('bus-node').locator('.wall-bus__node-label')).toHaveText(
-    expected.nodes.map((n) => n.label),
+/** Reads the room's modules from the DOM mirror. */
+async function readRoomItems(page) {
+  return page.getByTestId('room-module').evaluateAll((nodes) =>
+    nodes.map((el) => ({
+      uid: el.dataset.uid,
+      productId: el.dataset.product,
+      finish: el.dataset.finish,
+      xCm: Number(el.dataset.xCm),
+      yCm: Number(el.dataset.yCm),
+      led: el.dataset.led === 'true',
+    })),
   );
-  await expect(page.getByTestId('bus-run-telemetry')).toHaveText(formatBusTelemetry(expected));
-  return expected;
 }
 
 test.beforeEach(async ({ page }) => {
@@ -86,82 +61,13 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('24V bus topology', () => {
-  test('the 24V Bus switch draws the routed chain and follows added and moved modules', async ({ page }) => {
-    const errors = collectRuntimeErrors(page);
-    await openStudioWith(page, BUS_WALL);
-
-    const expected = computeBusTopology(BUS_WALL);
-    await expect(overlay(page)).toHaveCount(0);
-    await expect(page.getByTestId('bus-run-telemetry')).toHaveText(formatBusTelemetry(expected));
-    await expect(page.getByTestId('bus-run-telemetry')).toHaveText(/^Run \d+\.\d m \/ \d+\.\d{2} A \/ \d+\.\d{2} V drop \(\d+\.\d%\)$/);
-
-    const toggle = page.getByTestId('toggle-bus-topology');
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    await expect(overlay(page)).toBeVisible();
-
-    // The unlit shelf stays off the chain; feed at the utility datum.
-    const origin = page.getByTestId('bus-psu-origin');
-    await expect(origin).toHaveAttribute('data-kind', 'datum');
-    await expect(origin).toHaveText('PSU 24V FEED');
-    await expect(page.locator('[data-testid="bus-node"][data-uid="m3"]')).toHaveCount(0);
-    await expect(page.getByTestId('bus-run-callout')).toHaveCount(2);
-    await expect(page.getByTestId('bus-run-callout').first()).toHaveText(`${expected.nodes[0].hopM.toFixed(2)} m`);
-    const first = await expectOverlayMatches(page);
-    expect(first.currentA).toBeCloseTo((14 + 12) / 24, 3);
-
-    const leftBefore = await origin.evaluate((el) => parseFloat(el.style.left));
-    const ppcm = Number(await page.getByTestId('wall-canvas').getAttribute('data-ppcm'));
-    expect(leftBefore).toBeCloseTo(FEED_DATUM.xCm * ppcm, 1);
-
-    await page.getByRole('button', { name: 'Mount Acoustic Art Frame 50x70', exact: true }).click();
-    await expect(page.getByTestId('wall-module')).toHaveCount(4);
-    const added = await expectOverlayMatches(page);
-    expect(added.nodes).toHaveLength(3);
-    expect(added.currentA).toBeCloseTo((14 + 12 + 15) / 24, 3);
-
-    const cube = page.locator('[data-testid="wall-module"][data-uid="m2"]');
-    const cubeNode = page.locator('[data-testid="bus-node"][data-uid="m2"]');
-    const nodeBottom = () => cubeNode.evaluate((el) => parseFloat(el.style.bottom));
-    const bottomBefore = await nodeBottom();
-    await cube.click();
-    await cube.press('Shift+ArrowRight');
-    await cube.press('Shift+ArrowUp');
-    await expect(cube).toHaveAttribute('data-x-cm', '210');
-    await expect(cube).toHaveAttribute('data-y-cm', '110');
-    const moved = await expectOverlayMatches(page);
-    expect(moved.nodes.find((n) => n.uid === 'm2')).toMatchObject({ xCm: 228, yCm: 110 });
-    expect(await nodeBottom()).toBeCloseTo(bottomBefore + 10 * ppcm, 1);
-    expect(moved.voltageDropPct).toBeLessThan(3);
-
-    await toggle.click();
-    await expect(overlay(page)).toHaveCount(0);
-
-    await page.getByTestId('mode-switch').getByRole('button', { name: 'Technical' }).click();
-    await expect(page.locator('.studio-layout')).toHaveAttribute('data-mode', 'technical');
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    await expect(overlay(page)).toBeVisible();
-    await expectOverlayMatches(page);
-
-    expect(errors).toEqual([]);
-    expect(await readCspViolations(page)).toEqual([]);
-  });
-
   test('a mounted track bus becomes the feed and the room summary reports the same run', async ({ page }) => {
-    await page.goto('/');
-    await storeDisplayMode(page, 'technical');
-    await openStudioWith(page, NORDIC);
-
     const expected = computeBusTopology(NORDIC);
     const track = NORDIC.items.find((item) => item.productId === 'track-bus-200');
-    await expect(page.getByTestId('bus-psu-origin')).toHaveAttribute('data-kind', 'track');
-    await expect(page.locator(`[data-testid="bus-node"][data-uid="${track.uid}"]`)).toHaveCount(0);
     expect(expected.origin).toMatchObject({ xCm: track.xCm, yCm: track.yCm + 1.5, kind: 'track' });
-    await expectOverlayMatches(page);
+    expect(expected.nodes.some((node) => node.uid === track.uid)).toBe(false);
 
-    await seed(page, [[ROOM_KEY, JSON.stringify(serializeRoomState(ROOM))]]);
-    await page.goto('/room-3d');
+    await openRoomWith(page, ROOM);
     await expect(page.getByTestId('room-modules')).toHaveText('09');
     await expect(page.getByTestId('bus-run-telemetry')).toHaveText(formatBusTelemetry(computeBusTopology(ROOM)));
     await expect(page.getByTestId('bus-run-telemetry')).toHaveAttribute('data-within-spec', 'true');
@@ -213,19 +119,9 @@ test.describe('24V bus topology', () => {
 });
 
 test.describe('shareable scene links', () => {
-  test('wall: Share Link copies a URL that restores modules and name in a fresh context', async ({ page, browser }) => {
-    const errors = collectRuntimeErrors(page);
-    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-    await openStudioWith(page, NORDIC, 'Halvorsen Living Wall');
-
-    const share = page.getByTestId('copy-share-link');
-    await share.click();
-    await expect(lastToast(page)).toContainText('Shareable scene link copied.');
-    await expect(lastToast(page)).toHaveAttribute('data-tone', 'success');
-    const url = await share.getAttribute('data-share-url');
-    expect(url).toMatch(/^http:\/\/127\.0\.0\.1:4173\/studio-2d\?scene=[A-Za-z0-9_-]+$/);
+  test('a legacy wall link restores its modules and name on the north wall in a fresh context', async ({ browser }) => {
+    const url = `http://127.0.0.1:4173/studio-2d?scene=${encodeSceneParam('wall', NORDIC, 'Halvorsen Living Wall')}`;
     expect(new URL(url).searchParams.get('scene').length).toBeLessThanOrEqual(SCENE_MAX_LENGTH);
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(url);
 
     const context = await browser.newContext();
     const fresh = await context.newPage();
@@ -233,23 +129,22 @@ test.describe('shareable scene links', () => {
     const freshErrors = collectRuntimeErrors(fresh);
     await fresh.goto(url);
     await expect(fresh.getByTestId('toast-message').last()).toHaveText('Loaded shared scene: Halvorsen Living Wall.');
-    await expect(fresh).toHaveURL(/\/studio-2d$/);
+    await expect(fresh).toHaveURL(/\/room-3d$/);
     await expect(fresh.getByTestId('project-name-input')).toHaveValue('Halvorsen Living Wall');
-    const restored = await readWall(fresh);
-    expect(restored.wall).toEqual({ widthCm: NORDIC.wall.widthCm, heightCm: NORDIC.wall.heightCm });
-    expect(restored.items).toEqual(
+    await expect(fresh.getByTestId('room-viewport')).toHaveAttribute('data-room-width', String(NORDIC.wall.widthCm));
+    await expect(fresh.getByTestId('room-module')).toHaveCount(NORDIC.items.length);
+    expect(await readRoomItems(fresh)).toEqual(
       NORDIC.items.map(({ uid, productId, finish, xCm, yCm, led }) => ({ uid, productId, finish, xCm, yCm, led })),
     );
 
     // Stripped from the address bar, so a reload keeps the local draft and does not re-announce.
     await fresh.reload();
-    await expect(fresh.getByTestId('wall-module')).toHaveCount(NORDIC.items.length);
+    await expect(fresh.getByTestId('room-module')).toHaveCount(NORDIC.items.length);
     await expect(fresh.getByTestId('toast')).toHaveCount(0);
 
     expect(freshErrors).toEqual([]);
     expect(await readCspViolations(fresh)).toEqual([]);
     await context.close();
-    expect(errors).toEqual([]);
   });
 
   test('room: Share Link restores the room, camera, modules and name in a fresh context', async ({ page, browser }) => {
@@ -290,7 +185,7 @@ test.describe('shareable scene links', () => {
     expect(errors).toEqual([]);
   });
 
-  test('tampered, oversized, wrong-kind and hostile scene links are rejected and the draft is kept', async ({ page }) => {
+  test('tampered, oversized and hostile scene links are rejected and the draft is kept', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     const b64 = (text) => Buffer.from(text, 'utf8').toString('base64url');
     const wallLink = encodeSceneParam('wall', NORDIC, 'Wall A');
@@ -298,7 +193,6 @@ test.describe('shareable scene links', () => {
       ['bad alphabet', '%3Cscript%3Ealert(1)%3C%2Fscript%3E'],
       ['oversized', 'A'.repeat(SCENE_MAX_LENGTH + 4)],
       ['not json', b64('lumen-not-a-scene')],
-      ['wrong kind', encodeSceneParam('room', ROOM, 'Room')],
       ['prototype key', b64('{"v":1,"k":"w","n":"x","__proto__":{"polluted":1},"w":[300,250,0,0,"ambient"],"i":[]}')],
       ['escaped prototype key', b64('{"v":1,"k":"w","n":"x","\\u005f_proto__":{},"w":[300,250,0,0,"ambient"],"i":[]}')],
       ['constructor key', b64('{"v":1,"k":"w","n":"x","w":[300,250,0,0,"ambient"],"i":[],"constructor":{"prototype":{}}}')],
@@ -306,21 +200,23 @@ test.describe('shareable scene links', () => {
       ['truncated', wallLink.slice(0, -7)],
     ];
 
-    await openStudioWith(page, BUS_WALL, 'Draft Wall');
-    for (const [label, raw] of hostile) {
-      await page.goto(`/studio-2d?scene=${raw}&ref=keep`);
+    await openRoomWith(page, BUS_ROOM, 'Draft Room');
+    for (const [i, [label, raw]] of hostile.entries()) {
+      // Legacy wall addresses redirect first, keeping the query, then reject the same way.
+      const path = i % 2 === 0 ? '/room-3d' : '/studio-2d';
+      await page.goto(`${path}?scene=${raw}&ref=keep`);
       const toast = page.getByTestId('toast').last();
       await expect(toast, label).toHaveAttribute('data-tone', 'error');
       await expect(toast.getByTestId('toast-message'), label).toHaveText('Shared scene link is invalid.');
-      await expect(page, label).toHaveURL(/\/studio-2d\?ref=keep$/);
-      await expect(page.getByTestId('wall-module'), label).toHaveCount(BUS_WALL.items.length);
-      await expect(page.getByTestId('project-name-input'), label).toHaveValue('Draft Wall');
+      await expect(page, label).toHaveURL(/\/room-3d\?ref=keep$/);
+      await expect(page.getByTestId('room-module'), label).toHaveCount(BUS_ROOM.items.length);
+      await expect(page.getByTestId('project-name-input'), label).toHaveValue('Draft Room');
     }
     expect(await page.evaluate(() => ({}).polluted)).toBeUndefined();
 
     // A script-shaped name is data: it loads as plain text and never reaches the DOM as markup.
     const xssName = '<img src=x onerror=alert(1)>';
-    await page.goto(`/studio-2d?scene=${encodeSceneParam('wall', BUS_WALL, xssName)}`);
+    await page.goto(`/room-3d?scene=${encodeSceneParam('wall', BUS_WALL, xssName)}`);
     await expect(page.getByTestId('project-name-input')).toHaveValue(xssName);
     await expect(page.locator('img[src="x"]')).toHaveCount(0);
 

@@ -28,7 +28,7 @@ function StructuralGrid() {
 function atmosphereFor(pathname) {
   if (pathname === '/') return 'home';
   const [, section] = pathname.split('/');
-  return ['room-3d', 'studio-2d', 'catalog', 'checkout', 'account'].includes(section) ? section : 'default';
+  return ['room-3d', 'catalog', 'checkout', 'account'].includes(section) ? section : 'default';
 }
 
 /**

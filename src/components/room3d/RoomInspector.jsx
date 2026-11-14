@@ -38,7 +38,7 @@ function ModuleList({ items, activeWall, conflicts, onSelect, onFocus }) {
   return (
     <PanelSection title="Modules" hint={items.length > 0 ? 'Scene outliner, grouped by wall.' : undefined}>
       {items.length === 0 ? (
-        <p className="studio-panel__empty">No modules in the room yet. Pick a wall, then mount a component or load the 2D wall.</p>
+        <p className="studio-panel__empty">No modules in the room yet. Pick a wall, then mount a component from the parts index.</p>
       ) : (
         <div className="room3d-outliner" data-testid="room-module-list">
           {ROOM_WALLS.map((wall) => {

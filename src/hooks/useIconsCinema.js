@@ -24,8 +24,8 @@ function makeCanvas(width, height) {
  * frame's dt and paints straight into the canvas; nothing here touches React
  * state. The loop runs only while the section is on screen and never under
  * reduced motion, which holds one composed still. The section mirrors the act
- * on screen as `data-act` and the loop state as `data-playing`, and the act
- * caption is written straight into the DOM when the act changes.
+ * on screen as `data-act` and the loop state as `data-playing`; nothing but
+ * the title and its key is ever written over the picture.
  */
 export function useIconsCinema(sectionRef, canvasRef) {
   useEffect(() => {
@@ -34,7 +34,6 @@ export function useIconsCinema(sectionRef, canvasRef) {
     const ctx = canvas?.getContext('2d');
     if (!section || !ctx) return undefined;
 
-    const caption = section.querySelector('[data-cinema-caption]');
     const reducedQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const assets = createCinemaAssets(makeCanvas);
     const buffer = makeCanvas(1, 1);
@@ -53,9 +52,7 @@ export function useIconsCinema(sectionRef, canvasRef) {
     const showAct = (index) => {
       if (index === s.act) return;
       s.act = index;
-      const act = CINEMA_ACTS[index];
-      section.dataset.act = act.id;
-      if (caption) caption.textContent = `Act ${act.numeral} / ${act.label}`;
+      section.dataset.act = CINEMA_ACTS[index].id;
     };
 
     const paint = () => {

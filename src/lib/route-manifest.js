@@ -9,7 +9,6 @@ const loadRoomCanvas = () => import('../components/room3d/RoomCanvas.jsx');
 
 export const ROUTE_LOADERS = Object.freeze({
   '/room-3d': () => import('../pages/RoomPlannerPage.jsx'),
-  '/studio-2d': () => import('../pages/WallStudioPage.jsx'),
 });
 
 // The room planner's WebGL engine is a second lazy chunk behind the page.

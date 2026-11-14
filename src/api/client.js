@@ -682,6 +682,22 @@ export function submitSupportTicket(payload) {
   });
 }
 
+/**
+ * Replays this library's queued device tickets through the server gatekeeper
+ * and resolves with the number still waiting. Silent offline: the outbox
+ * simply keeps them for the next attempt. The account calls it on load.
+ */
+export function syncQueuedTickets() {
+  return roundTrip(async (trip) => {
+    try {
+      await flushTicketOutbox(trip);
+    } catch (error) {
+      goOffline(trip, error);
+    }
+    return outboxFor(libraryOwner()).length;
+  });
+}
+
 /** Resolves with this library's engineering tickets, newest first, queued device tickets included. */
 export function loadSupportTickets() {
   return roundTrip(async (trip) => {

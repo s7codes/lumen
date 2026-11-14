@@ -3,44 +3,16 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useBag, useBagDrawer } from '../hooks/useBag.js';
 import { useCommandPalette } from '../hooks/useCommandPalette.js';
-import { useCurrentSection, useSectionLink } from '../hooks/useSectionLink.js';
+import { useCurrentSection } from '../hooks/useSectionLink.js';
 import { prefetchRoute } from '../lib/route-manifest.js';
 import { NAV_ROUTES } from '../lib/routes.js';
 import { AuthModal } from './AuthModal.jsx';
 import { BagDrawer } from './BagDrawer.jsx';
 import { CommandPalette, PALETTE_SHORTCUT_LABEL } from './CommandPalette.jsx';
 import { BagGlyph, LumenMark, SearchGlyph } from './icons.jsx';
-import { ModeSwitch } from './ModeSwitch.jsx';
 
 function linkClass(current) {
   return current ? 'navbar__link active' : 'navbar__link';
-}
-
-/**
- * A primary link into an overview section: glides there, reads as the page
- * inside its workspace and as the location while the overview is scrolled
- * through its section.
- */
-function SectionNavLink({ route, section }) {
-  const { pathname } = useLocation();
-  const onClick = useSectionLink(route.hash);
-  const warm = () => prefetchRoute(route.prefetch);
-  let current;
-  if (pathname === route.activePath) current = 'page';
-  else if (pathname === '/' && section === route.hash) current = 'location';
-  return (
-    <Link
-      to={route.path}
-      className={linkClass(current)}
-      aria-current={current}
-      data-testid={route.testId}
-      onClick={onClick}
-      onPointerEnter={warm}
-      onFocus={warm}
-    >
-      {route.label}
-    </Link>
-  );
 }
 
 /**
@@ -54,7 +26,14 @@ function RouteNavLink({ route, section }) {
   if (pathname === route.path || pathname.startsWith(`${route.path}/`)) current = 'page';
   else if (pathname === '/' && route.spy && section === route.spy) current = 'location';
   return (
-    <Link to={route.path} className={linkClass(current)} aria-current={current} onPointerEnter={warm} onFocus={warm}>
+    <Link
+      to={route.path}
+      className={linkClass(current)}
+      aria-current={current}
+      data-testid={route.testId}
+      onPointerEnter={warm}
+      onFocus={warm}
+    >
       {route.label}
     </Link>
   );
@@ -115,9 +94,7 @@ export function Navbar() {
             <ul className="navbar__links">
               {NAV_ROUTES.map((route) => (
                 <li key={route.path}>
-                  {route.hash ? (
-                    <SectionNavLink route={route} section={section} />
-                  ) : route.path === '/' ? (
+                  {route.path === '/' ? (
                     <OverviewNavLink route={route} section={section} />
                   ) : (
                     <RouteNavLink route={route} section={section} />
@@ -143,7 +120,6 @@ export function Navbar() {
               <SearchGlyph />
               <span className="palette-trigger__label">Search</span>
             </button>
-            <ModeSwitch />
             {user ? (
               <NavLink
                 ref={accountRef}

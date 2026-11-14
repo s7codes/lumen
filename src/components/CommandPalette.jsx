@@ -5,7 +5,7 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { useBagDrawer } from '../hooks/useBag.js';
 import { CommandPaletteContext, useCommandPalette } from '../hooks/useCommandPalette.js';
 import { useCurrency } from '../hooks/useCurrency.js';
-import { useDisplayMode } from '../hooks/useDisplayMode.js';
+import { useDisplayMode, useModeScoped } from '../hooks/useDisplayMode.js';
 import { useModalDialog } from '../hooks/useModalDialog.js';
 import { buildCommandIndex, QUERY_MAX, searchCommands } from '../lib/command-index.js';
 import { MODE_LABELS } from '../lib/display-mode.js';
@@ -88,13 +88,17 @@ function PaletteDialog({ returnFocus, onClose, onSignIn }) {
   const { openBag } = useBagDrawer();
   const { user } = useAuth();
   const [mode, setMode] = useDisplayMode();
+  const planner = useModeScoped();
   const [currency, setCurrency] = useCurrency();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
 
   useModalDialog({ open: true, panelRef, initialFocusRef: inputRef, returnFocus, onClose });
 
-  const index = useMemo(() => buildCommandIndex({ mode, currency, signedIn: Boolean(user) }), [mode, currency, user]);
+  const index = useMemo(
+    () => buildCommandIndex({ mode, currency, signedIn: Boolean(user), planner }),
+    [mode, currency, user, planner],
+  );
   const groups = useMemo(() => searchCommands(index, query), [index, query]);
   const flat = useMemo(() => groups.flatMap((group) => group.entries), [groups]);
   const position = useMemo(() => new Map(flat.map((entry, i) => [entry.id, i])), [flat]);

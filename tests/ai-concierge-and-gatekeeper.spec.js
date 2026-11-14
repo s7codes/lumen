@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { TICKET_OUTBOX_STORAGE_KEY } from '../src/api/client.js';
+import { CLIENT_STORAGE_KEY, TICKET_OUTBOX_STORAGE_KEY } from '../src/api/client.js';
+import { SESSION_TOKEN_STORAGE_KEY } from '../src/lib/auth.js';
 import { getProduct } from '../src/data/products.js';
 import { BAG_STORAGE_KEY } from '../src/lib/bag.js';
 import { computeBusTopology } from '../src/lib/bus-topology.js';
@@ -32,6 +33,21 @@ import { createRoomState, findRoomConflicts, mountInRoom, ROOM_STORAGE_KEY, seri
 import { computeEnvironmentalPhysics } from '../src/lib/room-physics.js';
 import { layoutFromPreset, serializeLayout, summarizeWall, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
 import { collectRuntimeErrors, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
+
+/** This browser's engineering tickets straight from the API, with the page's own namespace and session. */
+async function listTickets(page) {
+  const { token, client } = await page.evaluate(
+    ([tokenKey, clientKey]) => ({
+      token: JSON.parse(localStorage.getItem(tokenKey) ?? 'null'),
+      client: JSON.parse(localStorage.getItem(clientKey) ?? 'null'),
+    }),
+    [`lumen:${SESSION_TOKEN_STORAGE_KEY}`, `lumen:${CLIENT_STORAGE_KEY}`],
+  );
+  const headers = { 'X-Lumen-Client': client, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  const response = await page.request.get('/api/tickets', { headers });
+  expect(response.status()).toBe(200);
+  return (await response.json()).tickets;
+}
 
 // Test value for the local API under test; the server only length-checks it.
 const TEST_PASSWORD = 'nordic-test-0042';
@@ -536,12 +552,12 @@ test.describe('Studio AI concierge widget', () => {
     await page.keyboard.press('Escape');
     await expect(panel).toBeHidden();
     await expect(trigger).toBeFocused();
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Wall Studio' }).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: '3D Room' }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
     await trigger.click();
     await expect(page.getByTestId('concierge-reply')).toHaveCount(3);
-    await expect(page.getByTestId('concierge-quick-prompt')).toHaveText(quickPromptsFor('/studio-2d'));
-    await expect(page.getByTestId('concierge-context')).toHaveText('Context: 2D Wall Studio');
+    await expect(page.getByTestId('concierge-quick-prompt')).toHaveText(quickPromptsFor('/room-3d'));
+    await expect(page.getByTestId('concierge-context')).toHaveText('Context: 3D Room Planner');
     await page.getByTestId('concierge-close').click();
     await expect(panel).toBeHidden();
     expect(errors).toEqual([]);
@@ -582,8 +598,8 @@ test.describe('Studio AI concierge widget', () => {
 
   test('path B: marking a resolved answer as not resolving the issue unlocks contact', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
-    await page.goto('/studio-2d');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
+    await page.goto('/room-3d');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
     const panel = await openConcierge(page);
     const reply = await ask(page, DRIVER_PROMPT);
     await expect(reply).toHaveAttribute('data-resolved', 'true');
@@ -600,11 +616,11 @@ test.describe('Studio AI concierge widget', () => {
     await expect(panel).toHaveAttribute('data-escalation', 'unlocked');
     await expect(panel).toHaveAttribute('data-escalation-reason', 'marked_unhelpful');
     await expect(page.getByTestId('concierge-escalation-form')).toBeVisible();
-    await expect(page.getByTestId('concierge-ticket-summary')).toContainText('Asked from 2D Wall Studio (/studio-2d).');
+    await expect(page.getByTestId('concierge-ticket-summary')).toContainText('Asked from 3D Room Planner (/room-3d).');
     expect(errors).toEqual([]);
   });
 
-  test('transmits a ticket, confirms the LMN-T reference and lists it under Account', async ({ page }) => {
+  test('transmits a ticket, confirms the LMN-T reference and files it in the account library', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     const email = uniqueEmail('concierge');
     await page.goto('/');
@@ -645,19 +661,16 @@ test.describe('Studio AI concierge widget', () => {
     await expect(page.getByTestId('concierge-escalation-form')).toHaveCount(0);
     await expect(page.getByTestId('toast-message').filter({ hasText: ticket.ref })).toContainText('transmitted');
 
-    await confirmation.getByRole('link', { name: 'View in Account' }).click();
-    await expect(page.getByTestId('concierge-panel')).toBeHidden();
-    const section = page.getByTestId('account-tickets-section');
-    await expect(section).toHaveAttribute('data-state', 'ready');
-    await expect(section.getByRole('heading', { name: 'Studio Engineering Tickets' })).toBeVisible();
-    const row = section.locator(`[data-testid="account-ticket"][data-ticket-ref="${ticket.ref}"]`);
-    await expect(row).toBeVisible();
-    await expect(row.getByTestId('account-ticket-ref')).toHaveText(ticket.ref);
-    await expect(row.getByTestId('account-ticket-subject')).toHaveText(subject);
-    await expect(row.getByTestId('account-ticket-status')).toHaveText(TICKET_QUEUED);
-    await expect(row.getByTestId('account-ticket-time')).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
-    await expect(row.getByTestId('account-ticket-summary')).toContainText('2D wall');
-    await expect(row).toHaveAttribute('data-reason', 'unresolved_query');
+    // Engineers reply by email: no account link in the confirmation, and no tickets register on /account.
+    await expect(confirmation.getByRole('link', { name: 'View in Account' })).toHaveCount(0);
+    const filed = (await listTickets(page)).find((entry) => entry.ref === ticket.ref);
+    expect(filed).toMatchObject({ subject, status: TICKET_QUEUED, reason: 'unresolved_query' });
+    expect(filed.workspaceSummary).toContain('2D wall');
+    await page.getByTestId('concierge-close').click();
+    await page.getByTestId('account-link').click();
+    await expect(page.getByTestId('account-page')).toBeVisible();
+    await expect(page.getByTestId('account-tickets-section')).toHaveCount(0);
+    await expect(page.getByTestId('account-page')).not.toContainText(/engineering tickets/i);
     expect(errors).toEqual([]);
     expect(await readCspViolations(page)).toEqual([]);
   });
@@ -676,10 +689,7 @@ test.describe('Studio AI concierge widget', () => {
     await page.getByTestId('concierge-close').click();
 
     await signIn(page, uniqueEmail('claim'));
-    await page.getByTestId('account-link').click();
-    const row = page.locator(`[data-testid="account-ticket"][data-ticket-ref="${ref}"]`);
-    await expect(row).toBeVisible();
-    await expect(row).toHaveAttribute('data-reason', 'marked_unhelpful');
+    await expect.poll(async () => (await listTickets(page)).find((entry) => entry.ref === ref)?.reason).toBe('marked_unhelpful');
   });
 
   test('offline: the same engine answers on the device and a queued ticket replays through the gatekeeper', async ({ page }) => {
@@ -717,11 +727,10 @@ test.describe('Studio AI concierge widget', () => {
       page.getByTestId('account-link').click(),
     ]);
     expect(replay.status()).toBe(201);
-    const row = page.getByTestId('account-ticket');
-    await expect(row).toHaveCount(1);
-    await expect(row).not.toHaveAttribute('data-pending');
-    await expect(row.getByTestId('account-ticket-subject')).toContainText('Engineering review');
-    expect(await page.evaluate((key) => localStorage.getItem(key), `lumen:${TICKET_OUTBOX_STORAGE_KEY}`)).toBeNull();
+    await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), `lumen:${TICKET_OUTBOX_STORAGE_KEY}`)).toBeNull();
+    const tickets = await listTickets(page);
+    expect(tickets).toHaveLength(1);
+    expect(tickets[0].subject).toContain('Engineering review');
     expect(errors.filter((line) => !line.includes('net::ERR_FAILED'))).toEqual([]);
   });
 
@@ -803,8 +812,8 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     const open = evaluateConciergeQuery(OPEN_3D, { route: '/' });
     expect(open).toMatchObject({ category: 'guide', resolved: true, suggestedActions: LAUNCH_ACTIONS });
     expect(open.confidence).toBeGreaterThanOrEqual(0.9);
-    expect(open.answer).toContain('Clicking 3D Room in the top navigation bar scrolls to the interactive 3D Spatial Studio preview');
-    expect(open.answer).toContain('click Launch 3D Spatial Studio in that section, or use the direct launch button right below this message');
+    expect(open.answer).toContain('Clicking 3D Room in the top navigation bar opens the 3D Room Planner (/room-3d) directly');
+    expect(open.answer).toContain('click 3D Room in the top bar, or use the direct launch button right below this message');
     // A fault report gets the checks that clear it.
     expect(open.answer).toContain('hardware acceleration');
     expect(open.answer).not.toContain(ESCALATION_NOTICE);
@@ -852,7 +861,9 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     for (const fact of ['Ctrl+K (Cmd+K on a Mac)', 'Ctrl+Z undoes', 'Ctrl+Y or Ctrl+Shift+Z', 'Zen, at the right of the 3D studio header']) {
       expect(keys.answer, fact).toContain(fact);
     }
-    expect(evaluateConciergeQuery('What does the top bar do?').answer).toContain('3D Room (it scrolls to the 3D Spatial Studio preview');
+    const chrome = evaluateConciergeQuery('What does the top bar do?').answer;
+    expect(chrome).toContain('Pages: Overview, 3D Room (it opens the 3D Room Planner) and Catalog');
+    expect(chrome).not.toContain('Wall Studio');
 
     // Greetings and "what is Lumen" get a warm tour of the platform, never the escalation notice.
     for (const question of ['Hi', 'Hello', 'What can you do?', 'What is Lumen?', 'How is this platform architected?']) {
@@ -1032,7 +1043,10 @@ test.describe('Lumen AI conversational guide, resilient fallback and stealth pan
     await expect(reply.getByTestId('concierge-metrics')).toBeVisible();
     await expect(reply.getByTestId('concierge-confidence')).toBeHidden();
     await expect(reply.getByTestId('concierge-citations')).toBeHidden();
-    await page.getByTestId('mode-switch').getByRole('button', { name: /^Specs/ }).click();
+    await page.getByTestId('concierge-close').click();
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: '3D Room' }).click();
+    await page.getByTestId('studio-header').getByTestId('mode-switch').getByRole('button', { name: /^Specs/ }).click();
+    await trigger.click();
     await expect(reply.getByTestId('concierge-confidence')).toBeVisible();
     await expect(reply.getByTestId('concierge-confidence')).toHaveText(/^Resolved \d+%$/);
     await expect(reply.getByTestId('concierge-citations')).toBeVisible();

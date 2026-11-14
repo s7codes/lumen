@@ -37,13 +37,13 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('lumen cloud client', () => {
-  test('wall studio saves through a simulated round trip with a locked, spinning save key', async ({ page }) => {
+  test('the room planner saves through a simulated round trip with a locked, spinning save key', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/');
-    await seed(page, [[WALL_KEY, JSON.stringify(serializeLayout(WALL))]]);
-    await page.goto('/studio-2d');
+    await seed(page, [[ROOM_KEY, JSON.stringify(serializeRoomState(ROOM))]]);
+    await page.goto('/room-3d');
 
-    const save = page.getByTestId('save-wall-to-cloud');
+    const save = page.getByTestId('save-room-to-cloud');
     await expect(save).toHaveAccessibleName('Save to Cloud');
     await expect(save).toBeEnabled();
 
@@ -61,12 +61,12 @@ test.describe('lumen cloud client', () => {
     await expect(save).toHaveAttribute('data-state', 'saved');
     expect(Date.now() - started).toBeGreaterThanOrEqual(LATENCY_MS.min - 50);
     await expect(save).toHaveAccessibleName('Project Saved');
-    await expect(page.getByTestId('toast-message').last()).toHaveText('Wall A saved to Lumen Cloud. Revision 01.');
+    await expect(page.getByTestId('toast-message').last()).toHaveText('Room saved to Lumen Cloud. Revision 01.');
 
     const stored = await readJson(page, PROJECTS_KEY);
     expect(stored).toHaveLength(1);
-    expect(stored[0]).toMatchObject({ kind: 'wall', revision: 1 });
-    expect(stored[0].data.items).toHaveLength(WALL.items.length);
+    expect(stored[0]).toMatchObject({ kind: 'room', revision: 1 });
+    expect(stored[0].data.items).toHaveLength(ROOM.items.length);
 
     await expect(save).toHaveAttribute('data-state', 'idle', { timeout: 5000 });
     await expect(save).toHaveAccessibleName('Save to Cloud');
@@ -86,13 +86,13 @@ test.describe('lumen cloud client', () => {
     expect(await readCspViolations(page)).toEqual([]);
   });
 
-  test('save is disabled on an empty wall and the save key never shifts width between states', async ({ page }) => {
-    await page.goto('/studio-2d');
-    const save = page.getByTestId('save-wall-to-cloud');
-    await expect(page.getByTestId('wall-module')).toHaveCount(0);
+  test('save is disabled on an empty room and the save key never shifts width between states', async ({ page }) => {
+    await page.goto('/room-3d');
+    const save = page.getByTestId('save-room-to-cloud');
+    await expect(page.getByTestId('room-module')).toHaveCount(0);
     await expect(save).toBeDisabled();
 
-    await seed(page, [[WALL_KEY, JSON.stringify(serializeLayout(WALL))]]);
+    await seed(page, [[ROOM_KEY, JSON.stringify(serializeRoomState(ROOM))]]);
     await page.reload();
     const idleWidth = await save.evaluate((el) => el.getBoundingClientRect().width);
     const release = await holdProjectSaves(page);
@@ -115,18 +115,13 @@ test.describe('lumen cloud client', () => {
     }
   });
 
-  test('room planner saves its own project slot and the account lists both, newest first', async ({ page }) => {
+  test('the room planner saves each named project in its own slot and the account lists them newest first', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/');
     await seed(page, [
       [SESSION_KEY, JSON.stringify(GUEST)],
-      [WALL_KEY, JSON.stringify(serializeLayout(WALL))],
       [ROOM_KEY, JSON.stringify(serializeRoomState(ROOM))],
     ]);
-
-    await page.goto('/studio-2d');
-    await page.getByTestId('save-wall-to-cloud').click();
-    await expect(page.getByTestId('save-wall-to-cloud')).toHaveAttribute('data-state', 'saved');
 
     await page.goto('/room-3d');
     const save = page.getByTestId('save-room-to-cloud');
@@ -134,13 +129,22 @@ test.describe('lumen cloud client', () => {
     await expect(save).toBeDisabled();
     await expect(save).toHaveAttribute('data-state', 'saved');
     await expect(page.getByTestId('toast-message').last()).toHaveText('Room saved to Lumen Cloud. Revision 01.');
+    await expect(save).toHaveAttribute('data-state', 'idle', { timeout: 5000 });
+
+    const name = page.getByTestId('project-name-input');
+    await name.fill('Atelier Loft');
+    await name.press('Enter');
+    await save.click();
+    await expect(page.getByTestId('toast-message').last()).toHaveText('Atelier Loft saved to Lumen Cloud. Revision 01.');
 
     await page.goto('/account');
     await expect(page.getByTestId('projects-loading')).toBeVisible();
     const cards = page.getByTestId('saved-project');
     await expect(cards).toHaveCount(2);
     await expect(cards.nth(0)).toHaveAttribute('data-project', 'room');
-    await expect(cards.nth(1)).toHaveAttribute('data-project', 'wall');
+    await expect(cards.nth(1)).toHaveAttribute('data-project', 'room');
+    await expect(cards.nth(0).locator('.project-card__title')).toHaveText('Atelier Loft');
+    await expect(cards.nth(1).locator('.project-card__title')).toHaveText('Room');
     await expect(cards.nth(0).getByTestId('saved-project-modules')).toHaveText(padIndex(ROOM.items.length));
     expect(errors).toEqual([]);
   });
@@ -219,7 +223,7 @@ test.describe('lumen cloud client', () => {
     expect(errors).toEqual([]);
   });
 
-  test('an empty cart renders the hairline empty state with a path into the studio', async ({ page }) => {
+  test('an empty cart renders the hairline empty state with a path into the 3D Room Planner', async ({ page }) => {
     await page.goto('/checkout');
     const empty = page.getByTestId('checkout-empty');
     await expect(empty).toContainText('No parts specified yet.');
@@ -228,7 +232,8 @@ test.describe('lumen cloud client', () => {
     expect(await art.locator('.empty-art__edge').first().evaluate((el) => getComputedStyle(el).strokeWidth)).toBe('0.8px');
     await expect(empty.locator('.empty-state__title')).toHaveCSS('color', 'rgb(87, 83, 78)');
     await expect(empty.locator('.empty-state')).toHaveCSS('text-align', 'left');
-    await empty.getByRole('link', { name: 'Start 2D Wall Studio' }).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
+    await expect(empty).not.toContainText(/wall studio/i);
+    await empty.getByRole('link', { name: 'Open 3D Room Planner' }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
   });
 });

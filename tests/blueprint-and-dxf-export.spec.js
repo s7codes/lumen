@@ -12,10 +12,11 @@ import {
 import { computeBusTopology } from '../src/lib/bus-topology.js';
 import { buildBlueprintDxf, DXF_LAYERS, dxfText } from '../src/lib/dxf-export.js';
 import { ACTIVE_NAMES_STORAGE_KEY } from '../src/lib/project-library.js';
-import { createLayout, moveModules, serializeLayout, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
+import { createRoomState, importFromWallStudio, ROOM_STORAGE_KEY, serializeRoomState, wallLayoutFromRoom } from '../src/lib/room-3d.js';
+import { createLayout, moveModules } from '../src/lib/wall-studio.js';
 import { collectRuntimeErrors, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
-const WALL_KEY = `lumen:${WALL_STORAGE_KEY}`;
+const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
 const NAMES_KEY = `lumen:${ACTIVE_NAMES_STORAGE_KEY}`;
 const DATE = '2026-11-11';
 
@@ -32,6 +33,18 @@ const SLOPE_WALL = createLayout({ widthCm: 320, heightCm: 260, slope: true }, [
 ]);
 
 const PROJECT = 'Atelier "Nord" & Sons';
+
+// The planner draws the blueprint of its active wall: rooms whose north wall
+// carries the same modules as the walls above.
+const ROOM_ENVELOPE = { widthCm: 320, depthCm: 280, heightCm: 260, furniture: 'none', lighting: 'night' };
+const NORDIC_ROOM = importFromWallStudio(createRoomState()).state;
+const PAIR_ROOM = createRoomState({ ...ROOM_ENVELOPE, widthCm: 300, heightCm: 250 }, PAIR_WALL.items);
+const STRAIGHT_ROOM = createRoomState(ROOM_ENVELOPE, SLOPE_WALL.items);
+
+/** The 2D layout of the north wall exactly as the planner hands it to the sheet. */
+function northWall(state) {
+  return wallLayoutFromRoom(state, createLayout()).layout;
+}
 
 function anchorTuples(sheet) {
   return sheet.anchors.map((a) => [a.anchorId, a.moduleIndex, a.sku, a.xCm, a.yCm]);
@@ -65,38 +78,24 @@ function dxfEntities(pairs) {
   return entities;
 }
 
-async function openStudioWith(page, layout, name) {
+async function openRoomWith(page, state, name) {
   await page.goto('/');
   await page.evaluate(
-    ([wallKey, wall, namesKey, names]) => {
-      localStorage.setItem(wallKey, wall);
+    ([roomKey, room, namesKey, names]) => {
+      localStorage.setItem(roomKey, room);
       localStorage.setItem(namesKey, names);
     },
-    [WALL_KEY, JSON.stringify(serializeLayout(layout)), NAMES_KEY, JSON.stringify({ wall: name, room: 'Room' })],
+    [ROOM_KEY, JSON.stringify(serializeRoomState(state)), NAMES_KEY, JSON.stringify({ wall: 'Wall', room: name })],
   );
-  await page.goto('/studio-2d');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
+  await page.goto('/room-3d');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+  await expect(page.getByTestId('room-module')).toHaveCount(state.items.length);
 }
 
-async function readWall(page) {
-  return page.evaluate(() => {
-    const canvas = document.querySelector('[data-testid="wall-canvas"]');
-    return {
-      wall: {
-        widthCm: Number(canvas.dataset.widthCm),
-        heightCm: Number(canvas.dataset.heightCm),
-        slope: canvas.dataset.slope === 'true',
-      },
-      items: [...document.querySelectorAll('[data-testid="wall-module"]')].map((el) => ({
-        uid: el.dataset.uid,
-        productId: el.dataset.product,
-        finish: el.dataset.finish,
-        xCm: Number(el.dataset.xCm),
-        yCm: Number(el.dataset.yCm),
-        led: el.dataset.led === 'true',
-      })),
-    };
-  });
+async function commitField(page, testId, value) {
+  const field = page.getByTestId(testId);
+  await field.fill(String(value));
+  await field.press('Enter');
 }
 
 async function openBlueprint(page) {
@@ -275,23 +274,20 @@ test.describe('blueprint sheet compiler', () => {
   });
 });
 
-test.describe('blueprint sheet in /studio-2d', () => {
+test.describe('blueprint sheet in the 3D Room Planner', () => {
   test('the Blueprint dialog shows the 1:20 sheet, title block and drilling schedule and downloads the SVG', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
-    await openStudioWith(page, SLOPE_WALL, PROJECT);
-
-    await page.getByRole('button', { name: 'Load preset Nordic Reading Wall' }).click();
-    await expect(page.getByTestId('wall-module')).toHaveCount(9);
+    await openRoomWith(page, NORDIC_ROOM, PROJECT);
 
     const trigger = page.getByTestId('open-blueprint-sheet');
-    await expect(trigger).toHaveText('Blueprint');
+    await expect(trigger).toHaveText('Blueprint .SVG / .DXF');
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
     const modal = await openBlueprint(page);
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
 
-    const expected = compileBlueprintSheet(await readWall(page), { projectName: PROJECT, dateIso: DATE });
+    const expected = compileBlueprintSheet(northWall(NORDIC_ROOM), { projectName: PROJECT, dateIso: DATE });
     expect(expected.anchors.length).toBeGreaterThan(9);
 
     const block = modal.getByTestId('blueprint-title-block');
@@ -361,11 +357,11 @@ test.describe('blueprint sheet in /studio-2d', () => {
   });
 
   test('moving a module updates the schedule coordinates', async ({ page }) => {
-    await openStudioWith(page, PAIR_WALL, PROJECT);
-    const cube = page.locator('[data-testid="wall-module"][data-uid="m1"]');
-    await cube.click();
-    await cube.press('Shift+ArrowRight');
-    await cube.press('Shift+ArrowUp');
+    await openRoomWith(page, PAIR_ROOM, PROJECT);
+    await page.getByTestId('room-module-list').locator('[data-uid="m1"]').click();
+    await commitField(page, 'room-module-x', 210);
+    await commitField(page, 'room-module-y', 110);
+    const cube = page.locator('[data-testid="room-module"][data-uid="m1"]');
     await expect(cube).toHaveAttribute('data-x-cm', '210');
     await expect(cube).toHaveAttribute('data-y-cm', '110');
 
@@ -382,10 +378,9 @@ test.describe('blueprint sheet in /studio-2d', () => {
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
-    await openStudioWith(page, SLOPE_WALL, PROJECT);
-    await expect(page.getByTestId('wall-module')).toHaveCount(SLOPE_WALL.items.length);
+    await openRoomWith(page, STRAIGHT_ROOM, PROJECT);
     const modal = await openBlueprint(page);
-    const expected = compileBlueprintSheet(await readWall(page), { projectName: PROJECT, dateIso: DATE });
+    const expected = compileBlueprintSheet(northWall(STRAIGHT_ROOM), { projectName: PROJECT, dateIso: DATE });
 
     const downloadPromise = page.waitForEvent('download');
     await modal.getByTestId('download-blueprint-dxf').click();
@@ -448,15 +443,13 @@ test.describe('blueprint sheet in /studio-2d', () => {
       expect(outline.length).toBeGreaterThan(0);
     }
 
+    // The room has no attic slope: the north wall is a plain 320 x 260 cm rectangle.
     const wallLines = entities.filter((e) => e.type === 'LINE' && e.layer === 'LUMEN_WALL');
-    const slopeCut = wallLines.find(
-      (e) =>
-        Number(e.codes.get(10)) === 320 &&
-        Number(e.codes.get(20)) === 170 &&
-        Number(e.codes.get(11)) === 230 &&
-        Number(e.codes.get(21)) === 260,
+    const topEdge = wallLines.find(
+      (e) => Number(e.codes.get(20)) === 260 && Number(e.codes.get(21)) === 260 && Math.abs(Number(e.codes.get(11)) - Number(e.codes.get(10))) === 320,
     );
-    expect(slopeCut).toBeTruthy();
+    expect(topEdge).toBeTruthy();
+    expect(northWall(STRAIGHT_ROOM).wall).toMatchObject({ widthCm: 320, heightCm: 260, slope: false });
 
     const busLines = entities.filter((e) => e.type === 'LINE' && e.layer === 'LUMEN_24V_BUS');
     expect(busLines.length).toBeGreaterThanOrEqual(expected.bus.segments.length);

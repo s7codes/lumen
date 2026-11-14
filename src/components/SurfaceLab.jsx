@@ -7,7 +7,6 @@ const SOURCE = getProduct('floating-shelf-110');
 const SLAT_COUNT = 14;
 const SLATS = Array.from({ length: SLAT_COUNT }, (_, i) => i);
 const DEFAULT_LEVEL = 72;
-const ISOLUX = [100, 50, 25];
 
 /**
  * 24V constant-voltage strips dim by PWM: duty cycle scales power and flux
@@ -75,13 +74,6 @@ export function SurfaceLab() {
         </div>
         <div className="lab-bench__shade" />
         <div className="lab-bench__falloff" />
-        <div className="lab-bench__isolux tech-only">
-          {ISOLUX.map((pct) => (
-            <span key={pct} className="lab-bench__contour" data-level={pct}>
-              <span className="lab-bench__contour-label">{pct}%</span>
-            </span>
-          ))}
-        </div>
         <div className="lab-bench__source">
           <span className="lab-bench__emitter" />
         </div>

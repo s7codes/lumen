@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate, useLocation } from 'react-router-dom';
 import { LayoutShell } from './components/LayoutShell.jsx';
 import { RouteError, RouteFallback } from './components/RouteFallback.jsx';
 import { RequireAuth } from './contexts/AuthContext.jsx';
@@ -13,10 +13,19 @@ import ProductDetailPage from './pages/ProductDetailPage.jsx';
 
 export { prefetchRoute } from './lib/route-manifest.js';
 
-// The two planners are the heaviest views (the room planner also pulls the
-// WebGL engine behind it), so each ships as its own chunk on first visit.
+// The room planner is the heaviest view (it also pulls the WebGL engine
+// behind it), so it ships as its own chunk on first visit.
 const RoomPlannerPage = lazy(ROUTE_LOADERS['/room-3d']);
-const WallStudioPage = lazy(ROUTE_LOADERS['/studio-2d']);
+
+/**
+ * The 2D Wall Studio is retired: every wall is planned in the 3D Room Planner.
+ * Old addresses land there, keeping the query and hash, so a legacy ?scene=
+ * share link still opens (on the north wall).
+ */
+function LegacyStudioRedirect() {
+  const { search, hash } = useLocation();
+  return <Navigate to={{ pathname: '/room-3d', search, hash }} replace />;
+}
 
 function deferred(Page, label) {
   return (
@@ -45,7 +54,8 @@ export const router = createBrowserRouter([
       { path: 'catalog/:id', element: <ProductDetailPage /> },
       { path: 'checkout', element: <CheckoutPage /> },
       { path: 'room-3d', element: deferred(RoomPlannerPage, 'Loading spatial engine'), errorElement: <RouteError /> },
-      { path: 'studio-2d', element: deferred(WallStudioPage, 'Loading wall studio'), errorElement: <RouteError /> },
+      { path: 'studio-2d', element: <LegacyStudioRedirect /> },
+      { path: 'studio', element: <LegacyStudioRedirect /> },
       {
         path: 'account',
         element: (

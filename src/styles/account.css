@@ -492,52 +492,6 @@
   }
 }
 
-/* Studio engineering tickets: the same register. */
-
-.ticket-row {
-  display: grid;
-  gap: var(--space-3);
-  padding-block: var(--space-5);
-  border-top: 1px solid var(--account-rule);
-}
-
-.ticket-row:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-
-.ticket-row__ref {
-  font-size: var(--text-xs);
-  color: var(--text-primary);
-}
-
-.ticket-row__status {
-  padding: 3px 7px;
-  border-radius: 0;
-  box-shadow: inset 0 0 0 1px var(--border-strong);
-  font-size: 10px;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--text-primary);
-}
-
-.ticket-row__inquiry {
-  font-size: var(--text-sm);
-  line-height: 1.55;
-  color: var(--text-secondary);
-  overflow-wrap: anywhere;
-}
-
-.ticket-row__summary {
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--account-rule);
-  border-radius: 0;
-  font-size: var(--text-2xs);
-  line-height: 1.6;
-  color: var(--text-secondary);
-  overflow-wrap: anywhere;
-}
-
 .order-row__ref {
   font-size: 10px;
   letter-spacing: 0.02em;

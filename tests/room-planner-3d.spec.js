@@ -17,7 +17,8 @@ import {
   serializeRoomState,
 } from '../src/lib/room-3d.js';
 import { buildScene, cameraFrame, cameraFromPosition, cameraPosition, orbitLimits } from '../src/lib/room-scene.js';
-import { aggregateBagLines, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
+import { encodeSceneParam } from '../src/lib/scene-codec.js';
+import { aggregateBagLines, createLayout, DEFAULT_WALL } from '../src/lib/wall-studio.js';
 import {
   collectRuntimeErrors,
   horizontalOverflow,
@@ -28,7 +29,6 @@ import {
 } from './support/runtime-guards.js';
 
 const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
-const WALL_KEY = `lumen:${WALL_STORAGE_KEY}`;
 const BAG_KEY = `lumen:${BAG_STORAGE_KEY}`;
 
 // The editing scenario runs as three tests, each opening on the room the one before it stores.
@@ -73,11 +73,9 @@ async function openSeededRoom(page, state, extra = []) {
   await seed.dispose();
 }
 
-// The navbar 3D Room link opens the overview showcase; its launch key enters the planner.
+// The navbar 3D Room link opens the planner directly.
 async function enterRoomFromNav(page) {
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /3d room/i }).click();
-  await expect(page.getByTestId('home-3d-showcase')).toBeInViewport();
-  await page.getByTestId('launch-3d-studio-cta').click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
 }
 
@@ -276,10 +274,13 @@ test.describe('brand mark and display mode switch', () => {
     expect(favicon).toContain('<rect x="14.25" y="8.5" width="2" height="6.5" fill="#e8923a"/>');
   });
 
-  test('Visual / Specs is a flat inverting segment switch with zero glowing status dots', async ({ page }) => {
+  test('Visual / Specs lives only in the planner header: a flat inverting segment switch with zero glowing status dots', async ({ page }) => {
+    // The storefront has no mode switch; the 3D Room Planner header carries it.
     await page.goto('/');
+    await expect(page.getByRole('group', { name: 'Display mode' })).toHaveCount(0);
+    await openRoom(page);
     const html = page.locator('html');
-    const group = page.getByRole('group', { name: 'Display mode' });
+    const group = page.getByTestId('studio-header').getByRole('group', { name: 'Display mode' });
     const arch = group.getByRole('button', { name: 'Architectural' });
     const tech = group.getByRole('button', { name: 'Technical' });
     await expect(group.getByRole('button')).toHaveText(['Visual', 'Specs']);
@@ -295,8 +296,10 @@ test.describe('brand mark and display mode switch', () => {
       const style = getComputedStyle(el);
       return { border: `${style.borderTopWidth} ${style.borderTopStyle}`, color: style.borderTopColor };
     });
-    // A square carbon hairline toggle; the engaged segment inverts to carbon.
-    expect(frame).toEqual({ border: '1px solid', color: 'rgb(20, 19, 17)' });
+    // A square hairline toggle on the workstation rule; the engaged segment inverts to carbon.
+    expect(frame.border).toBe('1px solid');
+    await expect(group).toHaveCSS('height', '34px');
+    await expect(group).toHaveCSS('border-top-left-radius', '0px');
 
     await expect(arch).toHaveAttribute('aria-pressed', 'true');
     expect(await paint(arch)).toEqual({ background: 'rgb(20, 19, 17)', color: 'rgb(250, 249, 246)', shadow: 'none' });
@@ -315,7 +318,7 @@ test.describe('brand mark and display mode switch', () => {
     await arch.click();
     await expect(html).toHaveAttribute('data-mode', 'architectural');
 
-    for (const path of ['/', '/catalog', '/studio-2d', '/room-3d']) {
+    for (const path of ['/', '/catalog', '/room-3d']) {
       for (const mode of ['architectural', 'technical']) {
         await storeDisplayMode(page, mode);
         await page.goto(path);
@@ -338,7 +341,11 @@ test.describe('room planner', () => {
     await expect(viewport(page)).toHaveAttribute('data-room-height', '250');
     await expect(page.getByTestId('room-modules')).toHaveText('00');
     await expect(page.getByTestId('sync-room-to-bag')).toBeDisabled();
-    await expect(page.getByTestId('export-to-wall-studio')).toBeDisabled();
+    // The CAD bridge: the blueprint of an empty wall has nothing to draw.
+    await expect(page.getByTestId('open-blueprint-sheet')).toBeDisabled();
+    await expect(page.getByTestId('import-from-wall-studio')).toHaveCount(0);
+    await expect(page.getByTestId('export-to-wall-studio')).toHaveCount(0);
+    await expect(page.getByTestId('room-summary')).not.toContainText(/wall studio/i);
 
     await mount(page, 'Floating Shelf 110');
     await expect(page.getByTestId('room-notice')).toHaveText('Mounted Floating Shelf 110 at X 105 / Y 146 cm.');
@@ -750,33 +757,28 @@ test.describe('room planner', () => {
   });
 });
 
-test.describe('2D and 3D bridge', () => {
-  test('a custom 2D wall loads into the room exactly, pushes back and syncs to the bag', async ({ page }) => {
+test.describe('legacy wall links', () => {
+  test('a /studio-2d wall link lands on the north wall of a fresh room, exactly, and syncs to the cart', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
-    await page.goto('/studio-2d');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
+    const wall = {
+      ...createLayout({ ...DEFAULT_WALL, widthCm: 360, surface: 'daylight' }),
+      items: [
+        { uid: 'm1', productId: 'compact-sideboard-75', finish: 'walnut', xCm: 40, yCm: 30, led: true, locked: false },
+        { uid: 'm2', productId: 'acoustic-art-frame-50x70', finish: 'chalk', xCm: 24, yCm: 120, led: false, locked: false },
+        { uid: 'm3', productId: 'linear-lightbar-60', finish: 'obsidian', xCm: 200, yCm: 200, led: true, locked: false },
+        { uid: 'm4', productId: 'acoustic-art-frame-50x70', finish: 'oak', xCm: 260, yCm: 110, led: true, locked: false },
+      ],
+    };
+    const param = encodeSceneParam('wall', wall, 'Gallery Wall');
+    expect(param).toBeTruthy();
 
-    await openDimensions(page, 'wall-dimensions');
-    await commitField(page, 'wall-width', 360);
-    await page.getByRole('button', { name: 'Mount Compact Sideboard 75', exact: true }).click();
-    await page.getByRole('button', { name: 'Mount Acoustic Art Frame 50x70', exact: true }).click();
-    await page.getByRole('button', { name: 'Mount Linear Lightbar 60', exact: true }).click();
-    await page.getByTestId('studio-inspector').getByRole('radio', { name: 'Chalk' }).check();
-    await commitField(page, 'module-x', 24);
-    await page.getByRole('button', { name: 'Mount Acoustic Art Frame 50x70', exact: true }).click();
-    await page.getByTestId('studio-inspector').getByTestId('led-channel').click();
-    await page.getByRole('radio', { name: 'Daylight Elevation' }).check();
-
-    const wall = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), WALL_KEY);
-    expect(wall.wall.widthCm).toBe(360);
-    expect(wall.items).toHaveLength(4);
-
-    await enterRoomFromNav(page);
-    await page.getByTestId('import-from-wall-studio').click();
-    await expect(page.getByTestId('room-notice')).toHaveText('Loaded 4 modules from Wall Studio. Main wall 360 x 250 cm.');
+    // The retired address redirects with its query, and the planner adapts the wall.
+    await page.goto(`/studio-2d?scene=${param}`);
+    await expect(page).toHaveURL((url) => url.pathname === '/room-3d' && url.search === '');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    await expect(page.getByTestId('room-notice')).toHaveText('Loaded shared scene Gallery Wall: 4 modules.');
     await expect(viewport(page)).toHaveAttribute('data-room-width', '360');
     await expect(viewport(page)).toHaveAttribute('data-lighting', 'daylight');
-
     await expect(page.getByTestId('room-module')).toHaveCount(wall.items.length);
     for (const item of wall.items) {
       const el = roomModule(page, item.uid);
@@ -787,31 +789,9 @@ test.describe('2D and 3D bridge', () => {
       await expect(el).toHaveAttribute('data-y-cm', String(item.yCm));
       await expect(el).toHaveAttribute('data-led', String(item.led));
       await expect(el).toHaveAttribute('data-dims', `${w}x${h}x${d}`);
+      await expect(el).toHaveAttribute('data-wall', 'north');
     }
 
-    // Edit in 3D, push back, and read it in the 2D studio.
-    const moved = wall.items[0];
-    await page.getByTestId('room-module-list').locator(`[data-uid="${moved.uid}"]`).click();
-    await commitField(page, 'room-module-x', moved.xCm + 30);
-    await openDimensions(page, 'room-dimensions');
-    await commitField(page, 'room-width', 450);
-    await page.getByTestId('export-to-wall-studio').click();
-    await expect(page.getByTestId('room-bridge-status')).toHaveText(
-      'Pushed 4 modules to Wall Studio, wall 400 x 250 cm. Wall capped at 400 cm; 0 modules pulled inside.',
-    );
-    const pushed = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), WALL_KEY);
-    expect(pushed.wall).toMatchObject({ widthCm: 400, heightCm: 250, slope: false, surface: 'daylight' });
-    expect(pushed.items.find((item) => item.uid === moved.uid).xCm).toBe(moved.xCm + 30);
-
-    await page.getByRole('link', { name: 'Open Wall Studio' }).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
-    await expect(page.getByTestId('wall-label')).toHaveText('Elevation / Wall A / 400 x 250 cm');
-    await expect(page.locator(`[data-testid="wall-module"][data-uid="${moved.uid}"]`)).toHaveAttribute(
-      'data-x-cm',
-      String(moved.xCm + 30),
-    );
-
-    await enterRoomFromNav(page);
     const items = (await readStoredRoom(page)).items;
     const lines = aggregateBagLines(items);
     const priceUsd = items.reduce((sum, item) => sum + getProduct(item.productId).priceUsd, 0);
@@ -822,9 +802,7 @@ test.describe('2D and 3D bridge', () => {
     await page.getByTestId('sync-room-to-bag').click();
     const drawer = page.getByRole('dialog', { name: 'Cart' });
     await expect(drawer).toBeVisible();
-    await expect(page.getByTestId('room-bridge-status')).toHaveText(
-      `Synced 4 modules as ${lines.length} cart lines.`,
-    );
+    await expect(page.getByTestId('room-bridge-status')).toHaveText(`Synced 4 modules as ${lines.length} cart lines.`);
     await expect(drawer.getByTestId('bag-line')).toHaveCount(lines.length);
     for (const line of lines) {
       await expect(
@@ -839,17 +817,6 @@ test.describe('2D and 3D bridge', () => {
     await expect(drawer).toBeHidden();
     await expect(page.getByTestId('sync-room-to-bag')).toBeFocused();
     expect(errors).toEqual([]);
-  });
-
-  test('an empty 2D wall loads the default composition', async ({ page }) => {
-    await openRoom(page);
-    await page.getByTestId('import-from-wall-studio').click();
-    await expect(page.getByTestId('room-notice')).toHaveText(
-      'Wall Studio is empty. Loaded the default composition: 9 modules.',
-    );
-    await expect(page.getByTestId('room-module')).toHaveCount(9);
-    await expect(viewport(page)).toHaveAttribute('data-room-width', '300');
-    await expect(page.getByTestId('room-modules')).toHaveText('09');
   });
 });
 

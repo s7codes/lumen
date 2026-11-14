@@ -17,7 +17,7 @@ export const SOURCE_GROUPS = Object.freeze({
   baseline: 'Baselines',
 });
 
-const KIND_LABELS = Object.freeze({ wall: 'Wall Studio', room: 'Room Planner' });
+const KIND_LABELS = Object.freeze({ wall: 'Wall Elevation', room: 'Room Planner' });
 
 function savedStamp(iso) {
   return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
@@ -88,14 +88,15 @@ export function plannerDiffSources(kind, draft, name, projects, lastSaved = null
  */
 export function accountDiffSources(projects, drafts, focusId = null) {
   const records = Array.isArray(projects) ? projects : [];
-  const draftSources = ['wall', 'room'].map((kind) => draftSource(kind, drafts[kind].state, drafts[kind].name));
+  // A draft kind may be absent: the account leaves out an empty legacy wall draft.
+  const draftSources = ['wall', 'room'].filter((kind) => drafts[kind]).map((kind) => draftSource(kind, drafts[kind].state, drafts[kind].name));
   const sources = [...records.map(cloudSource), ...draftSources];
 
   const focus = records.find((record) => record.id === focusId) ?? null;
   if (!focus) {
     if (records.length >= 2) return { sources, baseId: `cloud:${records[1].id}`, targetId: `cloud:${records[0].id}` };
     if (records.length === 1) return { sources, baseId: `cloud:${records[0].id}`, targetId: `draft:${records[0].kind}` };
-    return { sources, baseId: 'draft:wall', targetId: 'draft:room' };
+    return { sources, baseId: drafts.wall ? 'draft:wall' : 'draft:room', targetId: 'draft:room' };
   }
   const others = records.filter((record) => record !== focus);
   const partner = others.find((record) => record.kind === focus.kind) ?? others[0] ?? null;

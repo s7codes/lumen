@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ProjectDiffModal } from '../components/ProjectDiffModal.jsx';
+import { BlueprintSheetModal } from '../components/studio/BlueprintSheetModal.jsx';
 import { RoomControls } from '../components/room3d/RoomControls.jsx';
 import { RoomInspector } from '../components/room3d/RoomInspector.jsx';
 import { RoomSummary } from '../components/room3d/RoomSummary.jsx';
@@ -10,7 +11,7 @@ import { StudioHeader } from '../components/room3d/StudioHeader.jsx';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useBag, useBagDrawer } from '../hooks/useBag.js';
 import { useCloudSave } from '../hooks/useCloudSave.js';
-import { useDisplayMode } from '../hooks/useDisplayMode.js';
+import { useDisplayMode, usePlannerModeScope } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { useDraftDiff } from '../hooks/useDraftDiff.js';
 import { useHistoryShortcuts } from '../hooks/useHistoryShortcuts.js';
@@ -28,12 +29,14 @@ import { computeEnvironmentalPhysics } from '../lib/room-physics.js';
 import { downloadBlob, downloadText } from '../lib/download.js';
 import { buildRoomObj, countObjObjects, OBJ_MIME, objFilename } from '../lib/obj-export.js';
 import {
+  createRoomState,
   DEFAULT_ROOM_WALL,
-  exportToWallStudio,
   findRoomConflicts,
+  roomFromWallLayout,
   ROOM_SIZE_PRESETS,
   unrolledRoom,
   WALL_LABELS,
+  wallLayoutFromRoom,
 } from '../lib/room-3d.js';
 import { FREE_SNAP_CM, GRID_SNAP_CM, sanitizeAxisLock } from '../lib/room-raycast.js';
 import {
@@ -59,7 +62,7 @@ import {
   turnWalk,
   WALL_LOOK_HEADING,
 } from '../lib/room-walkthrough.js';
-import { aggregateBagLines, summarizeWall } from '../lib/wall-studio.js';
+import { aggregateBagLines, createLayout, summarizeWall } from '../lib/wall-studio.js';
 import { subscribeWorkspaceMutations } from '../lib/workspace-events.js';
 import '../styles/pages.css';
 import '../styles/studio.css';
@@ -71,12 +74,18 @@ function plural(count, word) {
 
 const LAUNCH_OPTIONS = Object.freeze({ lenses: CAMERA_MODES, scales: ROOM_SIZE_PRESETS.map((preset) => preset.id) });
 
+// Room links, and wall links shared before the planners were unified: a wall
+// opens on the north wall of a fresh room.
+const SHARED_KINDS = Object.freeze(['room', 'wall']);
+
 function sameStance(a, b) {
   return a.xCm === b.xCm && a.zCm === b.zCm && a.headingDeg === b.headingDeg && a.pitchDeg === b.pitchDeg;
 }
 
 export default function RoomPlannerPage() {
   useDocumentTitle('Room Planner');
+  // Visual | Specs applies only inside the planner, while it is mounted.
+  usePlannerModeScope();
   const [mode] = useDisplayMode();
   const { state, selected, activeWall, counts, notice, canUndo, canRedo, actions } = useRoom3d();
   const { addMany } = useBag();
@@ -95,6 +104,8 @@ export default function RoomPlannerPage() {
   const [snapOn, setSnapOn] = useState(true);
   const [axisLock, setAxisLock] = useState('free');
   const [zen, setZen] = useState(false);
+  const [blueprint, setBlueprint] = useState(null);
+  const closeBlueprint = useCallback(() => setBlueprint(null), []);
   const syncRef = useRef(null);
   const captureRef = useRef(null);
   const cloud = useCloudSave('room');
@@ -108,9 +119,10 @@ export default function RoomPlannerPage() {
   );
   useHistoryShortcuts(actions);
   useLaunchedModule(state.items, actions);
-  useSharedSceneLoader('room', ({ state: shared, name }) => {
+  useSharedSceneLoader(SHARED_KINDS, ({ kind, state: shared, name }) => {
+    const next = kind === 'wall' ? roomFromWallLayout(createRoomState(), shared, DEFAULT_ROOM_WALL) : shared;
     project.change(name);
-    actions.replace(shared, `Loaded shared scene ${name}: ${plural(shared.items.length, 'module')}.`);
+    actions.replace(next, `Loaded shared scene ${name}: ${plural(next.items.length, 'module')}.`);
     setStatus('');
   });
   // A quick-launch link: the envelope is one undo step, and the stance follows
@@ -216,15 +228,11 @@ export default function RoomPlannerPage() {
     [room, activeWall],
   );
 
-  const pushToWall = () => {
-    const { layout, moved, capped } = exportToWallStudio(state, activeWall);
-    const { widthCm, heightCm } = layout.wall;
-    const which = activeWall === DEFAULT_ROOM_WALL ? '' : `${WALL_LABELS[activeWall]} `;
-    let text = `Pushed ${layout.items.length} ${which}${layout.items.length === 1 ? 'module' : 'modules'} to Wall Studio, wall ${widthCm} x ${heightCm} cm.`;
-    if (capped) text += ` Wall capped at ${widthCm} cm; ${plural(moved, 'module')} pulled inside.`;
-    setStatus(text);
-    actions.announce(text, capped && moved > 0 ? 'warn' : 'info');
-    addToast(`Room saved to Wall Studio: ${plural(layout.items.length, 'module')}.`, capped && moved > 0 ? 'warn' : 'success');
+  // The 1:20 ISO blueprint of the active wall, drawn from the room as it stands.
+  const openBlueprint = (trigger) => {
+    const { layout } = wallLayoutFromRoom(state, createLayout(), activeWall);
+    const which = activeWall === DEFAULT_ROOM_WALL ? '' : ` / ${WALL_LABELS[activeWall]}`;
+    setBlueprint({ trigger, layout, name: `${project.commit()}${which}` });
   };
 
   const syncToBag = () => {
@@ -374,12 +382,9 @@ export default function RoomPlannerPage() {
             status={status}
             syncRef={syncRef}
             cloudStatus={cloud.status}
-            onImport={() => {
-              actions.importWall();
-              setStatus('');
-            }}
             project={project}
-            onExport={pushToWall}
+            blueprintOpen={blueprint !== null}
+            onOpenBlueprint={openBlueprint}
             onExportObj={exportObj}
             onCapturePng={capturePng}
             onSave={() => cloud.save(state, project.commit())}
@@ -393,6 +398,14 @@ export default function RoomPlannerPage() {
       </div>
 
       <StudioBootOverlay ready={engineReady} replay={bootReplay} revealRef={workstationRef} />
+
+      <BlueprintSheetModal
+        open={blueprint !== null}
+        onClose={closeBlueprint}
+        layout={blueprint?.layout ?? null}
+        projectName={blueprint?.name ?? ''}
+        returnFocus={blueprint?.trigger ?? null}
+      />
 
       <ProjectDiffModal
         open={draftDiff.session !== null}

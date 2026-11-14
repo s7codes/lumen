@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { collectRuntimeErrors, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
-const PLANNER_CHUNK = /\/assets\/(RoomPlannerPage|WallStudioPage|RoomCanvas)-[\w-]+\.js$/;
+const PLANNER_CHUNK = /\/assets\/(RoomPlannerPage|RoomCanvas)-[\w-]+\.js$/;
 
 test.beforeEach(async ({ page }) => {
   await installCspRecorder(page);
@@ -55,8 +55,8 @@ test.describe('code splitting', () => {
   });
 
   test('a failed chunk download lands on a reload prompt instead of a blank frame', async ({ page }) => {
-    await page.route(/\/assets\/WallStudioPage-[\w-]+\.js$/, (route) => route.abort());
-    await page.goto('/studio-2d');
+    await page.route(/\/assets\/RoomPlannerPage-[\w-]+\.js$/, (route) => route.abort());
+    await page.goto('/room-3d');
     const error = page.getByTestId('route-error');
     await expect(error).toBeVisible();
     await expect(error).toContainText('Workspace did not load.');

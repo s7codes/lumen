@@ -31,7 +31,7 @@ const GUEST = { name: 'Studio Guest', email: 'guest@lumen.com' };
 const WALL = layoutFromPreset('nordic-reading-wall');
 const BASE_ROOM = importFromWallStudio(createRoomState()).state;
 const ROOM = { ...BASE_ROOM, room: { ...BASE_ROOM.room, furniture: 'sofa-200' } };
-const PLANNER_CHUNK = /\/assets\/(RoomPlannerPage|WallStudioPage|RoomCanvas)-[\w-]+\.js$/;
+const PLANNER_CHUNK = /\/assets\/(RoomPlannerPage|RoomCanvas)-[\w-]+\.js$/;
 
 async function seed(page, entries) {
   await page.evaluate((pairs) => {
@@ -92,13 +92,12 @@ test.describe('command palette', () => {
       /Overview/,
       /Catalog/,
       /3D Room Planner/,
-      /2D Wall Studio/,
       /Project Quote/,
       /Account/,
     ]);
     await expect(items.and(page.locator('[data-group="modules"]'))).toHaveCount(PRODUCTS.length);
+    // Visual | Specs is a planner setting: the storefront palette offers no mode command.
     await expect(items.and(page.locator('[data-group="commands"]'))).toHaveText([
-      /Switch to Specs Mode/,
       /Set Currency: USD/,
       /Set Currency: EUR/,
       /Set Currency: HUF/,
@@ -198,11 +197,15 @@ test.describe('command palette', () => {
     await expect(page.getByTestId('command-palette-footer')).toHaveText(/^Up\/Down to navigate - Enter to open - Esc to close/);
     await expect(page.getByTestId('command-palette-footer').locator('.palette__hint')).toBeVisible();
     await expect(page.getByTestId('command-palette-footer').locator('kbd')).toHaveCount(0);
-    await expect(page.getByTestId('command-palette-count')).toHaveText(`${PRODUCTS.length + 11} results`);
+    await expect(page.getByTestId('command-palette-count')).toHaveText(`${PRODUCTS.length + 9} results`);
     await page.keyboard.press('Escape');
 
-    // Specs mode brings the codes and the wattage back.
+    // Inside the 3D Room Planner the palette gains the mode command, and Specs
+    // brings the codes and the wattage back.
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: '3D Room' }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
     await page.keyboard.press('Control+k');
+    await expect(page.getByTestId('command-palette-count')).toHaveText(`${PRODUCTS.length + 10} results`);
     await page.getByTestId('command-palette-input').fill('technical');
     await page.keyboard.press('Enter');
     await expect(page.locator('html')).toHaveAttribute('data-mode', 'technical');
@@ -223,19 +226,14 @@ test.describe('command palette', () => {
     await page.goto('/checkout');
     await expect(page.getByTestId('quote-currency')).toHaveText('USD / Base currency');
 
+    // On the storefront there is no mode command to find.
     await page.keyboard.press('Control+k');
     const input = page.getByTestId('command-palette-input');
-    await input.fill('technical');
+    await input.fill('specs mode');
     const items = page.getByTestId('command-palette-item');
-    await expect(items.first()).toHaveText(/Switch to Specs Mode/);
-    await page.keyboard.press('Enter');
-    await expect(palette(page)).toBeHidden();
-    await expect(page.locator('html')).toHaveAttribute('data-mode', 'technical');
-    await expect(lastToast(page)).toHaveText('Display mode: Specs.');
-    expect(await readJson(page, 'lumen:display-mode')).toBe('technical');
+    await expect(items).toHaveCount(0);
 
     // Arrow keys move through the matches and wrap at both ends.
-    await page.keyboard.press('Control+k');
     await input.fill('currency');
     await expect(items).toHaveText([/Set Currency: USD/, /Set Currency: EUR/, /Set Currency: HUF/]);
     await expect(items.nth(0)).toHaveAttribute('aria-selected', 'true');
@@ -253,6 +251,18 @@ test.describe('command palette', () => {
     await expect(page.getByTestId('currency-EUR')).toHaveAttribute('aria-pressed', 'true');
     await expect(lastToast(page)).toHaveText('Quote currency set to EUR, Euro.');
     expect(await readJson(page, 'lumen:lumen_currency_v1')).toBe('EUR');
+
+    // Inside the planner the mode command runs from the keyboard.
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: '3D Room' }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    await page.keyboard.press('Control+k');
+    await input.fill('technical');
+    await expect(items.first()).toHaveText(/Switch to Specs Mode/);
+    await page.keyboard.press('Enter');
+    await expect(palette(page)).toBeHidden();
+    await expect(page.locator('html')).toHaveAttribute('data-mode', 'technical');
+    await expect(lastToast(page)).toHaveText('Display mode: Specs.');
+    expect(await readJson(page, 'lumen:display-mode')).toBe('technical');
 
     await page.keyboard.press('Control+k');
     await input.fill('mode');
@@ -323,16 +333,12 @@ test.describe('command palette', () => {
     await expect.poll(() => scripts.some((path) => /\/RoomCanvas-/.test(path))).toBe(true);
     expect(page.url()).toMatch(/\/$/);
 
-    await nav.getByRole('link', { name: /wall studio/i }).focus();
-    await expect.poll(() => scripts.some((path) => /\/WallStudioPage-/.test(path))).toBe(true);
+    await expect(nav.getByRole('link', { name: /wall studio/i })).toHaveCount(0);
 
-    // A second hover reuses the warmed chunk. 3D Room opens the overview
-    // showcase, and its launch key enters the planner on the cached chunk.
+    // A second hover reuses the warmed chunk, and 3D Room opens the planner on it.
     const before = scripts.length;
     await nav.getByRole('link', { name: /3d room/i }).hover();
     await nav.getByRole('link', { name: /3d room/i }).click();
-    await expect(page.getByTestId('home-3d-showcase')).toBeInViewport();
-    await page.getByTestId('launch-3d-studio-cta').click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
     expect(scripts.slice(before).filter((path) => /\/RoomPlannerPage-/.test(path))).toEqual([]);
     expect(errors).toEqual([]);
@@ -353,32 +359,30 @@ test.describe('named cloud project library', () => {
     expect(sanitizeProjectName('a\u0000b\nc', 'wall')).toBe('ab c');
   });
 
-  test('two named walls and a named room save separately, list on /account and delete one', async ({ page }) => {
+  test('three named rooms save separately, list on /account and delete one', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/');
     await seed(page, [
       [SESSION_KEY, JSON.stringify(GUEST)],
-      [WALL_KEY, JSON.stringify(serializeLayout(WALL))],
       [ROOM_KEY, JSON.stringify(serializeRoomState(ROOM))],
     ]);
 
-    await page.goto('/studio-2d');
+    await page.goto('/room-3d');
     const name = page.getByTestId('project-name-input');
-    await expect(name).toHaveValue('Wall A');
-    await saveNamed(page, 'save-wall-to-cloud', 'North Elevation');
+    await expect(name).toHaveValue('Room');
+    await saveNamed(page, 'save-room-to-cloud', 'North Elevation');
     await expect(lastToast(page)).toHaveText('North Elevation saved to Lumen Cloud. Revision 01.');
-    await saveNamed(page, 'save-wall-to-cloud', 'Reading Nook');
+    await saveNamed(page, 'save-room-to-cloud', 'Reading Nook');
     await expect(lastToast(page)).toHaveText('Reading Nook saved to Lumen Cloud. Revision 01.');
-    await expect(page.getByTestId('save-wall-to-cloud')).toHaveAttribute('data-state', 'idle', { timeout: 5000 });
-    await saveNamed(page, 'save-wall-to-cloud', 'Reading Nook');
+    await expect(page.getByTestId('save-room-to-cloud')).toHaveAttribute('data-state', 'idle', { timeout: 5000 });
+    await saveNamed(page, 'save-room-to-cloud', 'Reading Nook');
     await expect(lastToast(page)).toHaveText('Reading Nook saved to Lumen Cloud. Revision 02.');
 
     // The name travels with the draft: a reload keeps it.
     await page.reload();
     await expect(name).toHaveValue('Reading Nook');
 
-    await page.goto('/room-3d');
-    await expect(name).toHaveValue('Room');
+    await expect(page.getByTestId('save-room-to-cloud')).toHaveAttribute('data-state', 'idle', { timeout: 5000 });
     await saveNamed(page, 'save-room-to-cloud', '  Loft\tPlan  ');
     await expect(lastToast(page)).toHaveText('Loft Plan saved to Lumen Cloud. Revision 01.');
     await expect(name).toHaveValue('Loft Plan');
@@ -386,8 +390,8 @@ test.describe('named cloud project library', () => {
     const stored = await readJson(page, PROJECTS_KEY);
     expect(stored.map((record) => [record.id, record.name, record.revision])).toEqual([
       ['room-loft-plan', 'Loft Plan', 1],
-      ['wall-reading-nook', 'Reading Nook', 2],
-      ['wall-north-elevation', 'North Elevation', 1],
+      ['room-reading-nook', 'Reading Nook', 2],
+      ['room-north-elevation', 'North Elevation', 1],
     ]);
 
     await page.goto('/account');
@@ -395,29 +399,29 @@ test.describe('named cloud project library', () => {
     await expect(cards).toHaveCount(3);
     await expect(cards.getByRole('heading', { level: 3 })).toHaveText(['Loft Plan', 'Reading Nook', 'North Elevation']);
     await expect(page.getByTestId('account-fact-projects')).toHaveText('03');
-    const nook = page.locator('[data-project-id="wall-reading-nook"]');
+    const nook = page.locator('[data-project-id="room-reading-nook"]');
     await expect(nook.getByTestId('saved-project-revision')).toHaveText('Rev 02');
 
-    const north = page.locator('[data-project-id="wall-north-elevation"]');
+    const north = page.locator('[data-project-id="room-north-elevation"]');
     const remove = north.getByTestId('delete-saved-project');
     await expect(remove).toHaveAccessibleName('Delete North Elevation');
     await remove.click();
     await expect(north).toHaveAttribute('aria-busy', 'true');
     await expect(remove).toBeDisabled();
-    await expect(north.getByRole('link', { name: 'Open in Wall Studio' })).toHaveAttribute('aria-disabled', 'true');
+    await expect(north.getByRole('link', { name: 'Open Room Planner' })).toHaveAttribute('aria-disabled', 'true');
     await expect(north).toHaveCount(0);
     await expect(lastToast(page)).toHaveText('North Elevation deleted from Lumen Cloud.');
     await expect(cards).toHaveCount(2);
     await expect(page.getByTestId('account-fact-projects')).toHaveText('02');
-    expect((await readJson(page, PROJECTS_KEY)).map((record) => record.id)).toEqual(['room-loft-plan', 'wall-reading-nook']);
+    expect((await readJson(page, PROJECTS_KEY)).map((record) => record.id)).toEqual(['room-loft-plan', 'room-reading-nook']);
 
     await page.reload();
     await expect(cards).toHaveCount(2);
 
     // Opening a named project checks out its revision and its name over the current draft.
     await seed(page, [['lumen:lumen_project_names_v1', JSON.stringify({ wall: 'Wall A', room: 'Room' })]]);
-    await nook.getByRole('link', { name: 'Open in Wall Studio' }).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
+    await nook.getByRole('link', { name: 'Open Room Planner' }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
     await expect(page.getByTestId('project-name-input')).toHaveValue('Reading Nook');
 
     for (const width of [360, 1280]) {
@@ -430,24 +434,24 @@ test.describe('named cloud project library', () => {
 
   test('a full library refuses a new name, still revises an existing one, and drops forged ids', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
-    const data = serializeLayout(WALL);
+    const data = serializeRoomState(ROOM);
     const library = Array.from({ length: MAX_STORED_PROJECTS }, (_, i) => ({
-      id: `wall-plan-${i + 1}`,
-      kind: 'wall',
+      id: `room-plan-${i + 1}`,
+      kind: 'room',
       name: `Plan ${i + 1}`,
       revision: 1,
       savedAt: new Date(Date.UTC(2026, 9, 1 + i)).toISOString(),
       data,
     }));
     const forged = [
-      { ...library[0], id: 'room-plan-1' },
+      { ...library[0], id: 'wall-plan-1' },
       { ...library[0], id: '__proto__' },
-      { ...library[0], id: 'wall-<img>' },
+      { ...library[0], id: 'room-<img>' },
     ];
     await page.goto('/');
     await seed(page, [
       [SESSION_KEY, JSON.stringify(GUEST)],
-      [WALL_KEY, JSON.stringify(data)],
+      [ROOM_KEY, JSON.stringify(data)],
       [PROJECTS_KEY, JSON.stringify([...forged, ...library])],
     ]);
 
@@ -455,8 +459,8 @@ test.describe('named cloud project library', () => {
     await expect(page.getByTestId('saved-project')).toHaveCount(MAX_STORED_PROJECTS);
     await expect(page.getByTestId('saved-project').first().getByRole('heading', { level: 3 })).toHaveText('Plan 12');
 
-    await page.goto('/studio-2d');
-    const save = page.getByTestId('save-wall-to-cloud');
+    await page.goto('/room-3d');
+    const save = page.getByTestId('save-room-to-cloud');
     await page.getByTestId('project-name-input').fill('Plan 13');
     await save.click();
     await expect(save).toHaveAttribute('data-state', 'error');
@@ -465,12 +469,12 @@ test.describe('named cloud project library', () => {
     );
     expect(await readJson(page, PROJECTS_KEY)).toHaveLength(MAX_STORED_PROJECTS + forged.length);
 
-    await saveNamed(page, 'save-wall-to-cloud', 'Plan 3');
+    await saveNamed(page, 'save-room-to-cloud', 'Plan 3');
     await expect(lastToast(page)).toHaveText('Plan 3 saved to Lumen Cloud. Revision 02.');
     const stored = await readJson(page, PROJECTS_KEY);
     expect(stored).toHaveLength(MAX_STORED_PROJECTS);
-    expect(stored[0]).toMatchObject({ id: 'wall-plan-3', revision: 2 });
-    expect(stored.some((record) => record.id === 'room-plan-1' || record.id === '__proto__')).toBe(false);
+    expect(stored[0]).toMatchObject({ id: 'room-plan-3', revision: 2 });
+    expect(stored.some((record) => record.id === 'wall-plan-1' || record.id === '__proto__')).toBe(false);
     expect(await page.evaluate(() => ({}).polluted)).toBeUndefined();
     // The rejected save was an expected API fault, surfaced as a toast only.
     expect(errors).toEqual([]);

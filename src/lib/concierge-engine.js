@@ -47,17 +47,7 @@ import {
 import { OCTAVE_ALPHA, OCTAVE_BANDS, OCTAVE_LABELS, STI_GRADES, TASK_TARGET_LUX, computeEnvironmentalPhysics } from './room-physics.js';
 import { AXIS_LOCK_LABELS } from './room-raycast.js';
 import { CAMERA_MODE_LABELS, CAMERA_MODES, EYE_HEIGHT_CM, INSIDE_FOV, INSIDE_FOV_DEG } from './room-walkthrough.js';
-import {
-  EYE_DATUM_CM,
-  findConflicts,
-  GRID_STEP_CM,
-  HISTORY_LIMIT,
-  MAX_WALL_ITEMS,
-  sanitizeLayout,
-  summarizeWall,
-  WALL_HEIGHT,
-  WALL_WIDTH,
-} from './wall-studio.js';
+import { findConflicts, GRID_STEP_CM, HISTORY_LIMIT, MAX_WALL_ITEMS, sanitizeLayout, summarizeWall } from './wall-studio.js';
 
 /**
  * Lumen Spec Concierge. A deterministic retrieval engine over the 12-part
@@ -788,7 +778,8 @@ const CITE = Object.freeze({
 const ACTIONS = Object.freeze({
   room: { label: 'Open 3D Spatial Studio', to: '/room-3d' },
   inside: { label: 'Walk Inside at 165 cm', to: launchHref({ lens: 'inside' }) },
-  wall: { label: 'Open Wall Studio', to: '/studio-2d' },
+  // The 2D Wall Studio is retired: a wall opens flat, to scale, in the planner's Elevation lens.
+  wall: { label: 'Open Elevation Lens', to: launchHref({ lens: 'elevation' }) },
   checkout: { label: 'Open Checkout Spec', to: '/checkout' },
   catalog: { label: 'Browse Catalog', to: '/catalog' },
   launch: { label: 'Launch 3D Spatial Studio', to: '/room-3d' },
@@ -1370,16 +1361,16 @@ function composeSpatial(analysis) {
   }
   if (subs.has('exports')) {
     units.push({
-      lead: 'Both planners export production files.',
+      lead: 'The 3D Room Planner exports production files.',
       bullets: [
-        'Blueprint: Wall Studio > Blueprint, the 1:20 ISO 5457 / 7200 A3 sheet as .SVG or AutoCAD R12 .DXF',
+        'Blueprint: Blueprint .SVG / .DXF in the planner dock, the 1:20 ISO 5457 / 7200 A3 sheet of the active wall',
         '3D model: Wavefront .OBJ in cm units from the 3D Room Planner',
         'Render: Capture .PNG, a 1600 x 1000 studio card with the room specification',
       ],
       brief: ['Exports: 1:20 .SVG / .DXF blueprint, .OBJ model and .PNG render card'],
     });
     citations.push(CITE.cad);
-    actions.push(ACTIONS.wall, ACTIONS.room);
+    actions.push(ACTIONS.room);
   }
   if (subs.has('compare')) {
     units.push({
@@ -1401,13 +1392,13 @@ function composeSpatial(analysis) {
   }
   if (subs.has('wallStudio') && units.length < 3) {
     units.push({
-      lead: `The 2D Wall Studio composes one elevation up to ${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm with up to ${MAX_WALL_ITEMS} modules.`,
+      lead: 'The 2D Wall Studio is retired: every wall is now planned in the 3D Room Planner.',
       bullets: [
-        'Selection: marquee and Shift + Click, then align and distribute',
-        `Guides: smart guides to the ${EYE_DATUM_CM} cm eye datum on a ${GRID_STEP_CM} cm grid`,
-        'Bus: live 24V routing in Specs mode',
+        'Elevation: the Elevation lens shows any of the four walls flat and to scale',
+        `Placement: parts snap to a ${GRID_STEP_CM} cm grid on the wall plane, with conflict checks`,
+        'Legacy: old wall links and saved wall projects open on the north wall of a room',
       ],
-      brief: [`2D Wall Studio: one elevation up to ${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm`],
+      brief: ['2D Wall Studio: retired; every wall is planned in the 3D Room Planner'],
     });
     actions.push(ACTIONS.wall);
   }
@@ -1417,7 +1408,7 @@ function composeSpatial(analysis) {
       bullets: [
         `Lenses: ${LENS_LIST}`,
         'Editing: direct wall-plane dragging with conflict checks against furniture',
-        'Exports: .OBJ and .PNG; the 2D Wall Studio adds the 1:20 .SVG / .DXF blueprint',
+        'Exports: .OBJ, .PNG and the 1:20 .SVG / .DXF blueprint of any wall',
       ],
       brief: [`3D Spatial Studio: all four walls up to ${MAX_ROOM_LABEL}`],
     });
@@ -1769,7 +1760,7 @@ function emptyWorkspace(target) {
     return { lead: 'Your 3D room has no modules mounted yet.', bullets: ['Next: open the 3D Spatial Studio, mount parts from the Asset Shelf, then ask again for a live audit'] };
   }
   if (target === 'wall') {
-    return { lead: 'Your 2D wall is empty.', bullets: ['Next: load a preset or mount parts in the Wall Studio, then ask again for a live audit'] };
+    return { lead: 'Your saved 2D wall is empty.', bullets: ['Next: mount parts on a wall in the 3D Room Planner, then ask again for a live audit'] };
   }
   if (target === 'cart') {
     return { lead: 'Your cart is empty.', bullets: ['Next: add parts from the Catalog or sync a planner layout, then ask for crates, waves and totals'] };
@@ -1844,7 +1835,7 @@ function mentions2d(analysis, ctx) {
   return /\b(2d|wall studio|elevation)\b/.test(analysis.norm) || ctx.route === '/studio-2d';
 }
 
-const OPEN_3D_KEY = 'Open the editor: click Launch 3D Spatial Studio in that section, or use the direct launch button right below this message';
+const OPEN_3D_KEY = 'Open the editor: click 3D Room in the top bar, or use the direct launch button right below this message';
 
 const GUIDE_SECTIONS = Object.freeze({
   open3d(analysis, ctx) {
@@ -1858,7 +1849,7 @@ const GUIDE_SECTIONS = Object.freeze({
       ],
       actions: [ACTIONS.launch, ACTIONS.walkthrough],
       citations: [CITE.navigation, CITE.spatial, ...(fault ? [CITE.troubleshooting] : [])],
-      brief: ['3D Spatial Studio: Launch 3D Spatial Studio on the Overview, or the launch button below'],
+      brief: ['3D Spatial Studio: 3D Room in the top bar, or the launch button below'],
     };
     if (inside) {
       return {
@@ -1871,7 +1862,7 @@ const GUIDE_SECTIONS = Object.freeze({
         ],
       };
     }
-    const nav = 'Clicking 3D Room in the top navigation bar scrolls to the interactive 3D Spatial Studio preview on the Overview.';
+    const nav = 'Clicking 3D Room in the top navigation bar opens the 3D Room Planner (/room-3d) directly.';
     return {
       ...base,
       lead: nav,
@@ -1883,18 +1874,18 @@ const GUIDE_SECTIONS = Object.freeze({
 
   wallOpen(analysis) {
     return {
-      lead: 'Wall Studio in the top navigation bar opens the 2D Wall Studio (/studio-2d) directly, with no preview step.',
+      lead: 'The 2D Wall Studio is retired: walls are planned in the 3D Room Planner, which 3D Room in the top bar opens directly.',
       bullets: [
-        `Canvas: one elevation up to ${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm with up to ${MAX_WALL_ITEMS} modules`,
-        `Start: a Wall Preset or a part under Components, then drag, align and distribute on the ${GRID_STEP_CM} cm grid`,
-        'Blueprint: the 1:20 sheet with its drilling schedule, as .SVG or AutoCAD .DXF',
-        analysis.guide.troubled ? 'Reload: the wall is kept on this device, and the 2D studio needs no WebGL' : null,
+        'Elevation: the Elevation lens in the planner header shows the active wall flat and to scale',
+        `Placement: up to ${MAX_WALL_ITEMS} modules per wall on a ${GRID_STEP_CM} cm grid, dragged on the wall plane`,
+        'Blueprint: the 1:20 sheet of the active wall with its drilling schedule, as .SVG or AutoCAD .DXF',
+        analysis.guide.troubled ? 'Reload: your room is kept on this device and reopens as you left it' : null,
       ],
-      brief: ['2D Wall Studio: Wall Studio in the top bar opens it directly'],
+      brief: ['2D Wall Studio: retired; 3D Room in the top bar opens the planner'],
       metrics: [
-        { label: 'Wall Max', value: `${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm` },
-        { label: 'Modules', value: String(MAX_WALL_ITEMS) },
+        { label: 'Modules', value: `${MAX_WALL_ITEMS} per wall` },
         { label: 'Grid', value: `${GRID_STEP_CM} cm` },
+        { label: 'Blueprint', value: '1:20 .SVG / .DXF' },
       ],
       actions: [ACTIONS.wall],
       citations: [CITE.navigation, CITE.wallStudio],
@@ -1928,7 +1919,7 @@ const GUIDE_SECTIONS = Object.freeze({
     const orbit = `Orbit: drag a full 360 degrees, tilt ${CAMERA_PITCH.min} to ${CAMERA_PITCH.max} deg, wheel to zoom`;
     const inside = `${LENS_SHORT.inside}: W A S D walk, Q and E turn, the wheel sets ${INSIDE_FOV.min} to ${INSIDE_FOV.max} deg`;
     const presets = `Room size: ${presetRange()}, up to ${MAX_ROOM_LABEL}`;
-    const wall = `2D wall: Wall Setup sets the elevation up to ${WALL_WIDTH.max} x ${WALL_HEIGHT.max} cm`;
+    const wall = 'Walls: each of the four walls takes its span from the envelope; the Elevation lens shows it flat';
     const base = {
       metrics: [
         { label: 'Orbit Pitch', value: `${CAMERA_PITCH.min}-${CAMERA_PITCH.max} deg` },
@@ -2039,18 +2030,18 @@ const GUIDE_SECTIONS = Object.freeze({
 
   modes() {
     return {
-      lead: 'Visual and Specs, the switch in the top bar, set how much engineering the whole site shows.',
+      lead: 'Visual and Specs, the switch in the 3D Room Planner header, set how much engineering the planner shows.',
       bullets: [
-        'Visual: the clean presentation view',
+        'Visual: the clean presentation view; the storefront always reads in Visual',
         'Specs reveals the technical layer: the 24V bus wiring, dimension guides, SKU tags, coordinates and the octave RT60 spectrum',
-        'Memory: your choice is kept on this device',
+        'Memory: your choice is kept on this device for the next planning session',
       ],
       brief: ['Modes: Visual for presentation, Specs for the engineering layer'],
       metrics: [
         { label: 'Visual', value: 'Presentation' },
         { label: 'Specs', value: 'Engineering layer' },
       ],
-      actions: [ACTIONS.wall, ACTIONS.launch],
+      actions: [ACTIONS.launch],
       citations: [CITE.controls],
     };
   },
@@ -2059,13 +2050,12 @@ const GUIDE_SECTIONS = Object.freeze({
     const zen = 'Zen, at the right of the 3D studio header, hides the docks; Docks brings them back';
     const history = `History: Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes, ${HISTORY_LIMIT} steps`;
     const room = '3D studio: G grabs, arrows nudge, Enter drops, Escape cancels';
-    const wall = '2D studio: Ctrl+A selects all, Delete removes the selection';
     const zenFirst = /\b(zen|full ?screen|maximi[sz]e|docks?|hide)\b/.test(analysis.norm) && !/\b(keyboard|shortcuts?|hot ?keys?|ctrl|cmd)\b/.test(analysis.norm);
     return {
       lead: zenFirst
         ? 'Zen gives the 3D Spatial Studio the full viewport.'
         : 'Ctrl+K (Cmd+K on a Mac) opens the command palette from any page.',
-      bullets: zenFirst ? [zen, history, room] : [history, room, wall, zen],
+      bullets: zenFirst ? [zen, history, room] : [history, room, zen],
       brief: ['Shortcuts: Ctrl+K palette, Ctrl+Z undo, G to grab in 3D'],
       metrics: [
         { label: 'Palette', value: 'Ctrl+K / Cmd+K' },
@@ -2081,12 +2071,12 @@ const GUIDE_SECTIONS = Object.freeze({
     return {
       lead: 'The top bar runs left to right from the Lumen mark, which returns to the Overview.',
       bullets: [
-        'Pages: Overview, 3D Room (it scrolls to the 3D Spatial Studio preview), Catalog and Wall Studio',
-        'Tools: Search (Ctrl+K), the Visual / Specs switch, Sign In or Account, and Cart with its count',
+        'Pages: Overview, 3D Room (it opens the 3D Room Planner) and Catalog',
+        'Tools: Search (Ctrl+K), Sign In or Account, and Cart with its count; Visual / Specs lives in the planner header',
         'Narrow screens: below 1200 px the page links move to a second row',
       ],
-      brief: ['Top bar: pages on the left, Search, Visual / Specs, Account and Cart on the right'],
-      metrics: [{ label: 'Pages', value: 'Overview / 3D Room / Catalog / Wall Studio' }],
+      brief: ['Top bar: pages on the left, Search, Account and Cart on the right'],
+      metrics: [{ label: 'Pages', value: 'Overview / 3D Room / Catalog' }],
       actions: [ACTIONS.launch, ACTIONS.catalog],
       citations: [CITE.navigation],
     };
@@ -2180,7 +2170,7 @@ function composeConcierge(analysis) {
         : 'Hello, I am Lumen AI: ask me about any part, 24V wiring, acoustics or your live 3D room.',
       bullets: [
         `System: ${PRODUCTS.length} canonical parts on one ${BUS_VOLTAGE}V DC SELV spine, dimmed per module over DALI-2`,
-        'Planners: the 3D Spatial Studio for whole rooms, the 2D Wall Studio for 1:20 elevations',
+        'Planner: the 3D Room Planner for whole rooms, every wall in elevation and its 1:20 blueprint',
         architecture
           ? 'Engineering: pure, deterministic engines shared by your browser and the Lumen Cloud API'
           : 'Live audit: say "audit my room" and I read your wall, room and cart',
@@ -2514,7 +2504,6 @@ function agentFields(input) {
 const QUICK_PROMPTS = Object.freeze({
   default: ['How do I open the 3D room designer?', 'Audit my live 3D room & RT60', 'Compare 60W vs 150W 24V drivers', 'Floating Shelf 110 specs & anchors'],
   '/room-3d': ['Audit my live 3D room & RT60', 'How do I move a module in 3D?', 'How do I walk inside at 165 cm?', 'Which PSU driver do I need?'],
-  '/studio-2d': ['How many watts is my wall using?', 'Check my wall voltage drop', 'Export a 1:20 DXF blueprint', 'Compare 60W vs 150W 24V drivers'],
   '/catalog': ['Floating Shelf 110 specs & anchors', 'Which finishes ship in Obsidian?', 'Lead times for made-to-order parts', 'Compare 60W vs 150W 24V drivers'],
   '/checkout': ['How many crates will my cart ship in?', 'Explain Split Rough-In shipping', 'How do TRADE15 and 27% VAT apply?', 'Which PSU driver do I need?'],
   '/account': ['How does Lumen Cloud sync my projects?', 'Audit my live 3D room & RT60', 'Explain Split Rough-In shipping', 'Compare 60W vs 150W 24V drivers'],

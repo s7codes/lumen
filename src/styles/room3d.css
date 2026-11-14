@@ -910,6 +910,18 @@
 /* Lens switcher and zen key: one square hairline group, a flat carbon
    inversion for the pressed state. */
 
+/* Visual | Specs lives only here, in the workstation header: the same square
+   hairline toggle as the lens keys beside it, the engaged segment in carbon. */
+.room3d-workstation__tools .mode-switch {
+  height: 34px;
+  border-color: var(--ws-rule-strong);
+  background: var(--ws-paper);
+}
+
+.room3d-workstation__tools .mode-switch__segment + .mode-switch__segment {
+  border-left-color: var(--ws-rule-strong);
+}
+
 .room3d-lens {
   display: inline-flex;
   gap: 0;

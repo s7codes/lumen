@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { PROJECTS_STORAGE_KEY, QUOTES_STORAGE_KEY } from '../src/api/client.js';
 import { SESSION_STORAGE_KEY } from '../src/lib/auth.js';
 import { formatUsd, padIndex } from '../src/lib/format.js';
+import { createRoomState, ROOM_STORAGE_KEY, serializeRoomState } from '../src/lib/room-3d.js';
 import { layoutFromPreset, serializeLayout, summarizeWall, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
 import {
   collectRuntimeErrors,
@@ -12,6 +13,7 @@ import {
 
 const SESSION_KEY = `lumen:${SESSION_STORAGE_KEY}`;
 const WALL_KEY = `lumen:${WALL_STORAGE_KEY}`;
+const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
 const PROJECTS_KEY = `lumen:${PROJECTS_STORAGE_KEY}`;
 const QUOTES_KEY = `lumen:${QUOTES_STORAGE_KEY}`;
 const STORED_QUOTE = {
@@ -155,7 +157,7 @@ test.describe('authentication shell', () => {
 });
 
 test.describe('account dashboard', () => {
-  test('lists the cloud-saved wall next to submitted quotes and opens its saved revision', async ({ page }) => {
+  test('lists a cloud-saved wall elevation next to submitted quotes and opens it in the 3D Room Planner', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     const layout = layoutFromPreset('nordic-reading-wall');
     const summary = summarizeWall(layout);
@@ -166,8 +168,8 @@ test.describe('account dashboard', () => {
       [SESSION_KEY, JSON.stringify(GUEST)],
       [PROJECTS_KEY, JSON.stringify([stored])],
       [QUOTES_KEY, JSON.stringify([STORED_QUOTE])],
-      // An empty local draft: opening the card must check the saved revision out over it.
-      [WALL_KEY, JSON.stringify({ ...serializeLayout(layout), items: [] })],
+      // An empty local room draft: opening the card must check the saved revision out over it.
+      [ROOM_KEY, JSON.stringify(serializeRoomState(createRoomState()))],
     ]);
     await page.goto('/account');
     await expect(page.getByRole('heading', { level: 2, name: 'Saved Spatial Projects' })).toBeVisible();
@@ -182,6 +184,8 @@ test.describe('account dashboard', () => {
     await expect(page.getByTestId('account-fact-projects')).toHaveText('01');
     const wall = page.locator('[data-testid="saved-project"][data-project="wall"]');
     await expect(wall.getByRole('heading', { level: 3 })).toHaveText('Wall A');
+    // Saved before the planners were unified: the card names it a wall elevation.
+    await expect(wall.locator('.project-card__kind')).toHaveText('Wall Elevation');
     await expect(wall.getByTestId('saved-project-modules')).toHaveText(padIndex(layout.items.length));
     await expect(wall.getByTestId('saved-project-price')).toHaveText(formatUsd(summary.priceUsd));
     await expect(wall.getByRole('img')).toHaveAttribute('aria-label', `Wall A elevation, ${layout.items.length} modules`);
@@ -200,9 +204,19 @@ test.describe('account dashboard', () => {
       expect(await horizontalOverflow(page), `${width}px`).toBeLessThanOrEqual(0);
     }
 
-    await wall.getByRole('link', { name: 'Open in Wall Studio' }).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
-    await expect(page.getByTestId('wall-module')).toHaveCount(layout.items.length);
+    // The wall opens on the north wall of the 3D Room Planner: same width, same modules.
+    await expect(page.getByTestId('account-page')).not.toContainText(/wall studio/i);
+    await wall.getByRole('link', { name: 'Open Room Planner' }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    await expect(page.getByTestId('room-module')).toHaveCount(layout.items.length);
+    await expect(page.getByTestId('room-viewport')).toHaveAttribute('data-room-width', String(layout.wall.widthCm));
+    await expect(page.getByTestId('project-name-input')).toHaveValue('Wall A');
+    for (const item of layout.items) {
+      const module = page.locator(`[data-testid="room-module"][data-uid="${item.uid}"]`);
+      await expect(module).toHaveAttribute('data-wall', 'north');
+      await expect(module).toHaveAttribute('data-x-cm', String(item.xCm));
+      await expect(module).toHaveAttribute('data-y-cm', String(item.yCm));
+    }
     expect(errors).toEqual([]);
   });
 
@@ -221,8 +235,10 @@ test.describe('account dashboard', () => {
     await expect(page.getByTestId('order-row')).toHaveCount(0);
     await expect(page.getByTestId('account-fact-projects')).toHaveText('00');
 
-    await empty.getByRole('link', { name: 'Start 2D Wall Studio' }).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
+    // One way in: the 3D Room Planner.
+    await expect(empty.getByRole('link')).toHaveText(['Open 3D Room Planner']);
+    await empty.getByRole('link', { name: 'Open 3D Room Planner' }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
   });
 
   test('the account is a serene split page: the profile left, a quiet sync caption, the register right of one vertical hairline', async ({
@@ -234,7 +250,12 @@ test.describe('account dashboard', () => {
     await page.goto('/account');
 
     const profile = page.getByTestId('account-profile');
-    const rows = [page.getByTestId('account-projects'), page.getByTestId('account-orders'), page.getByTestId('account-tickets-section')];
+    // The register holds Saved Spatial Projects and Order History, nothing else.
+    const rows = [page.getByTestId('account-projects'), page.getByTestId('account-orders')];
+    await expect(page.getByTestId('account-tickets-section')).toHaveCount(0);
+    await expect(page.locator('.account-register > section')).toHaveCount(2);
+    await expect(page.locator('.account-register').getByRole('heading', { level: 2 })).toHaveText(['Saved Spatial Projects', 'Order History']);
+    await expect(page.getByTestId('account-page')).not.toContainText(/engineering tickets/i);
     for (const tile of [profile, ...rows]) {
       // Each part rises in as it scrolls into view.
       await tile.scrollIntoViewIfNeeded();
@@ -313,10 +334,12 @@ test.describe('account dashboard', () => {
     const empty = projects.getByTestId('saved-projects-empty');
     await expect(empty).toHaveCSS('text-align', 'left');
     await expect(page.getByTestId('account-page').locator('svg.empty-art')).toHaveCount(0);
-    const start = empty.getByRole('link', { name: 'Start 2D Wall Studio' });
+    // A single primary key into the 3D Room Planner, and no 2D studio anywhere.
+    await expect(empty.getByRole('link', { name: 'Start 2D Wall Studio' })).toHaveCount(0);
+    const start = empty.getByRole('link', { name: 'Open 3D Room Planner' });
     await expect(start).toHaveCSS('background-color', 'rgb(20, 19, 17)');
     await expect(start).toHaveCSS('border-top-left-radius', '0px');
-    await expect(empty.getByRole('link', { name: 'Open Room Planner' })).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(start).toHaveAttribute('href', '/room-3d');
 
     // The page sits on the fixed paper ground: flat Flos paper, no washes.
     const backdrop = page.getByTestId('ambient-backdrop');
@@ -416,10 +439,11 @@ test.describe('toast notifications', () => {
     await toasts.first().getByRole('button', { name: 'Dismiss notification' }).click();
     await expect(toasts).toHaveCount(2);
 
-    // Planner save actions report through the same stack.
+    // Planner actions report through the same stack.
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.goto('/room-3d');
-    await page.getByTestId('import-from-wall-studio').click();
-    await page.getByTestId('export-to-wall-studio').click();
-    await expect(page.getByTestId('toast-message').last()).toHaveText('Room saved to Wall Studio: 9 modules.');
+    await page.getByRole('button', { name: 'Mount Floating Shelf 110', exact: true }).click();
+    await page.getByTestId('copy-share-link').click();
+    await expect(page.getByTestId('toast-message').last()).toHaveText('Shareable scene link copied.');
   });
 });

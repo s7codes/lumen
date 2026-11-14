@@ -9,7 +9,6 @@ import {
 } from './support/runtime-guards.js';
 
 const BAG_KEY = 'lumen:lumen_bag_v1';
-const WALL_KEY = 'lumen:lumen_wall_studio_v1';
 const ROOM_KEY = 'lumen:lumen_room_3d_v1';
 const CURRENCY_KEY = 'lumen:lumen_currency_v1';
 
@@ -175,35 +174,35 @@ test.describe('product specification view', () => {
 });
 
 test.describe('workspace launchers', () => {
-  test('Mount in 2D Wall Studio appends the part in the chosen finish at a clear spot', async ({ page }) => {
+  test('Place in 3D Room lands each launch at a clear spot, and the page offers no 2D studio', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/catalog/linear-lightbar-60?finish=chalk');
-    await page.getByTestId('launch-in-wall-studio').click();
+    await expect(page.getByTestId('launch-in-wall-studio')).toHaveCount(0);
+    await expect(page.locator('.detail__launchers')).not.toContainText(/wall studio/i);
+    await page.getByTestId('launch-in-room-3d').click();
 
-    await expect(page).toHaveURL(/\/studio-2d$/);
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
-    const module = page.locator('[data-testid="wall-module"][data-product="linear-lightbar-60"]');
-    await expect(module).toHaveCount(1);
-    await expect(module).toHaveAttribute('data-finish', 'chalk');
-    await expect(module).toHaveAttribute('data-conflict', 'false');
-    await expect(module).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('studio-notice')).toHaveText('Linear Lightbar 60, Chalk mounted from the product page.');
-
-    const stored = await readStored(page, WALL_KEY);
-    expect(stored.items.map(({ productId, finish }) => ({ productId, finish }))).toEqual([
-      { productId: 'linear-lightbar-60', finish: 'chalk' },
-    ]);
+    await expect(page).toHaveURL(/\/room-3d$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    const modules = page.locator('[data-testid="room-module"][data-product="linear-lightbar-60"]');
+    await expect(modules).toHaveCount(1);
+    await expect(modules.first()).toHaveAttribute('data-finish', 'chalk');
+    await expect(page.getByTestId('room-notice')).toHaveText('Linear Lightbar 60, Chalk mounted from the product page.');
 
     // A second launch lands beside the first without overlapping it.
     await page.goto('/catalog/linear-lightbar-60?finish=oak');
-    await page.getByTestId('launch-in-wall-studio').click();
-    await expect(page.locator('[data-testid="wall-module"][data-product="linear-lightbar-60"]')).toHaveCount(2);
-    await expect(page.locator('[data-testid="wall-module"][data-finish="oak"]')).toHaveAttribute('data-conflict', 'false');
-    await expect(page.getByTestId('conflict-count')).toHaveText('0 conflicts');
+    await page.getByTestId('launch-in-room-3d').click();
+    await expect(modules).toHaveCount(2);
+    await expect(page.locator('[data-testid="room-module"][data-finish="oak"]')).toHaveCount(1);
+    await expect(page.getByTestId('room-summary').locator('.studio-summary__note')).not.toHaveAttribute('data-conflicts', /.*/);
 
     // History state is consumed: a reload neither repeats the notice nor re-selects.
     await page.reload();
-    await expect(page.getByTestId('studio-notice')).toHaveText('');
+    await expect(page.getByTestId('room-notice')).toHaveText('');
+    const stored = await readStored(page, ROOM_KEY);
+    expect(stored.items.map(({ productId, finish }) => ({ productId, finish }))).toEqual([
+      { productId: 'linear-lightbar-60', finish: 'chalk' },
+      { productId: 'linear-lightbar-60', finish: 'oak' },
+    ]);
     expect(errors).toEqual([]);
   });
 

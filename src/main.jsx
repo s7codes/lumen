@@ -8,10 +8,12 @@ import './styles/animations.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router-dom';
-import { applyMode, readStoredMode } from './lib/display-mode.js';
+import { applyMode, getMode } from './lib/display-mode.js';
 import { router } from './router.jsx';
 
-applyMode(readStoredMode());
+// The storefront always opens in Visual; the 3D Room Planner applies the
+// stored Visual | Specs preference itself while it is mounted.
+applyMode(getMode());
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

@@ -10,6 +10,17 @@ import {
   dominantAct,
   loopTime,
 } from '../src/lib/icons-cinema.js';
+import {
+  conePath,
+  galleryWeight,
+  HERO_CROSSFADE_SECONDS,
+  HERO_CYCLE_SECONDS,
+  HERO_HOLD_SECONDS,
+  HERO_SCENE_IDS,
+  heroSceneAt,
+  herringbonePlanks,
+  roomCamera,
+} from '../src/lib/hero-scenes.js';
 import { createRoom, INTERIOR_SCENE_IDS } from '../src/lib/interior-painter.js';
 import { collectRuntimeErrors, horizontalOverflow, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
@@ -40,7 +51,7 @@ function edgeToEdge(page, locator) {
 
 test.describe('meet our icons clock', () => {
   test('three 4.5 s acts cross-dissolve on a 13.5 s loop and every camera hands over without a jump', () => {
-    expect(CINEMA_ACT_IDS).toEqual(['obsidian', 'aperture', 'sconce']);
+    expect(CINEMA_ACT_IDS).toEqual(['obsidian', 'aperture', 'track']);
     expect(CINEMA_ACT_SECONDS).toBe(4.5);
     expect(CINEMA_LOOP_SECONDS).toBe(13.5);
     expect(loopTime(-1)).toBeCloseTo(12.5, 9);
@@ -98,58 +109,140 @@ test.describe('meet our icons clock', () => {
     expect(fy0).toBeCloseTo(400, 6);
     expect(by0).toBeLessThan(fy0);
   });
+
+  test('the hero clock holds each scene 5 s and crossfades 1.1 s, and its rooms are true perspective', () => {
+    expect(HERO_SCENE_IDS).toEqual(['wall-wash', 'gallery']);
+    expect(HERO_HOLD_SECONDS).toBe(5);
+    expect(HERO_CROSSFADE_SECONDS).toBe(1.1);
+    expect(HERO_CYCLE_SECONDS).toBeCloseTo(12.2, 9);
+    expect(galleryWeight(0)).toBe(0);
+    expect(galleryWeight(4.99)).toBe(0);
+    expect(galleryWeight(5.55)).toBeCloseTo(0.5, 6);
+    expect(galleryWeight(6.1)).toBe(1);
+    expect(galleryWeight(11.09)).toBe(1);
+    expect(galleryWeight(11.65)).toBeCloseTo(0.5, 6);
+    expect(galleryWeight(12.2 + 2)).toBe(0);
+    expect(galleryWeight(Number.NaN)).toBe(0);
+    let last = -1;
+    for (let t = 5; t <= 6.1; t += 0.05) {
+      expect(galleryWeight(t)).toBeGreaterThanOrEqual(last);
+      last = galleryWeight(t);
+    }
+    expect(heroSceneAt(1)).toBe('wall-wash');
+    expect(heroSceneAt(8)).toBe('gallery');
+
+    // One-point perspective: the back wall spans its rows, and depth scales lateral offsets.
+    const camera = roomCamera({ floorY: 765, ceilingY: 40, height: 280, eyeY: 150, depth: 500, vx: 1000 });
+    expect(camera.project(0, 0, 500)[1]).toBeCloseTo(765, 6);
+    expect(camera.project(0, 280, 500)[1]).toBeCloseTo(40, 6);
+    expect(camera.project(100, 150, 250)[0] - 1000).toBeCloseTo(2 * (camera.project(100, 150, 500)[0] - 1000), 6);
+
+    // Herringbone: two plank families of near equal count, every plank L x W.
+    const planks = herringbonePlanks({ width: 9, length: 54, xMin: -100, xMax: 100, zMin: 300, zMax: 400 });
+    expect(planks.along.length).toBeGreaterThan(20);
+    expect(Math.abs(planks.along.length - planks.across.length)).toBeLessThanOrEqual(planks.along.length * 0.2);
+    for (const plank of [...planks.along.slice(0, 5), ...planks.across.slice(0, 5)]) {
+      const sides = plank.map((p, i) => Math.hypot(plank[(i + 1) % 4][0] - p[0], plank[(i + 1) % 4][1] - p[1]));
+      expect(Math.max(...sides)).toBeCloseTo(54, 6);
+      expect(Math.min(...sides)).toBeCloseTo(9, 6);
+    }
+
+    // A wall-wash cone is a hyperbola: symmetric about its axis, widening with reach.
+    const d = conePath({ x: 100, y0: 50, dir: 1, reach: 300, halfWidth: 10, knee: 40, steps: 12 });
+    const points = d.slice(1, -1).split('L').map((pair) => pair.split(' ').map(Number));
+    expect(points[0]).toEqual([90, 50]);
+    expect(points.at(-1)).toEqual([110, 50]);
+    const foot = points[12];
+    expect(foot[1]).toBe(350);
+    expect(100 - foot[0]).toBeCloseTo(10 * Math.sqrt(1 + (300 / 40) ** 2), 1);
+  });
 });
 
-test.describe('plaster hero', () => {
-  test('the hero is a full-bleed plaster wall breathing between two atmospheres on a 6.5 s clock, with an attribution and a bracketed key', async ({
+test.describe('light architectural hero', () => {
+  test('two smooth light interiors alternate on a 5 s hold and 1.1 s crossfade, with crisp 2700K cones and no text on the pictures', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     const hero = page.getByTestId('ambient-surface');
-    await expect(hero).toHaveAttribute('data-atmospheres', 'venetian limestone');
+    await expect(hero).toHaveAttribute('data-scenes', 'wall-wash gallery');
     expect(await edgeToEdge(page, hero)).toEqual({ left: 0, gap: 0 });
-    await expect(hero).toHaveCSS('background-color', 'rgb(44, 40, 36)');
+    // Smooth matte sand-stone, never a dark chamber.
+    await expect(hero).toHaveCSS('background-color', 'rgb(198, 185, 165)');
+    await expect(hero).not.toHaveClass(/(^|\s)optical(\s|$)/);
 
-    // One crossfade clock: the limestone wall and the 2400K wash rise while
-    // the 2700K wash and its caption fall, held at each end, eased between.
-    const motion = (selector) =>
-      hero.locator(selector).evaluate((el) => {
-        const style = getComputedStyle(el);
-        return {
-          name: style.animationName,
-          duration: style.animationDuration,
-          direction: style.animationDirection,
-          count: style.animationIterationCount,
-          timing: style.animationTimingFunction,
-          state: style.animationPlayState,
-        };
-      });
-    const clock = { duration: '6.5s', direction: 'alternate', count: 'infinite', timing: 'cubic-bezier(0.45, 0, 0.55, 1)', state: 'running' };
-    for (const [selector, name] of [
-      ['.hero__plaster--limestone', 'hero-atmosphere-in'],
-      ['.hero__wash:not(.hero__wash--evening)', 'hero-atmosphere-out'],
-      ['.hero__wash--evening', 'hero-atmosphere-in'],
-      ['.hero__atmosphere-name--venetian', 'hero-atmosphere-out'],
-      ['.hero__atmosphere-name--limestone', 'hero-atmosphere-in'],
-    ]) {
-      expect(await motion(selector), selector).toEqual({ name, ...clock });
+    // Both scenes are inline SVG interiors; the gallery crossfades over the wall wash.
+    const wallWash = hero.locator('svg.hero-scene--wall-wash');
+    const gallery = hero.locator('svg.hero-scene--gallery');
+    await expect(wallWash).toHaveCount(1);
+    await expect(gallery).toHaveCount(1);
+    const motion = await gallery.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        name: style.animationName,
+        duration: style.animationDuration,
+        count: style.animationIterationCount,
+        timing: style.animationTimingFunction,
+        state: style.animationPlayState,
+      };
+    });
+    expect(motion).toEqual({ name: 'hero-scene-cycle', duration: '12.2s', count: 'infinite', timing: 'cubic-bezier(0.45, 0, 0.55, 1)', state: 'running' });
+    // Seek the CSS clock: 5 s hold, 1.1 s crossfade, 5 s hold, 1.1 s back.
+    const opacityAt = (ms) =>
+      gallery.evaluate((el, at) => {
+        const [animation] = el.getAnimations();
+        animation.pause();
+        animation.currentTime = at;
+        return Number(getComputedStyle(el).opacity);
+      }, ms);
+    expect(await opacityAt(2500)).toBe(0);
+    expect(await opacityAt(4990)).toBe(0);
+    const rising = await opacityAt(5550);
+    expect(rising).toBeGreaterThan(0.1);
+    expect(rising).toBeLessThan(0.9);
+    expect(await opacityAt(6150)).toBe(1);
+    expect(await opacityAt(11000)).toBe(1);
+    const falling = await opacityAt(11650);
+    expect(falling).toBeGreaterThan(0.1);
+    expect(falling).toBeLessThan(0.9);
+    await gallery.evaluate((el) => el.getAnimations()[0].play());
+
+    // Zero cloudy noise: no SVG turbulence filters and no texture images anywhere in the hero.
+    const noise = await hero.evaluate((el) => {
+      const images = [el, ...el.querySelectorAll('*')].map((node) => getComputedStyle(node).backgroundImage).filter((image) => image !== 'none');
+      return {
+        filters: el.querySelectorAll('filter, feTurbulence').length,
+        textures: images.filter((image) => image.includes('url(')).length,
+      };
+    });
+    expect(noise).toEqual({ filters: 0, textures: 0 });
+
+    // Crisp light: the sconce throws a hyperbolic up and down cone, each a
+    // #fffdf7 core falling into a #f5e2c0 halo, drawn with a hard edge.
+    for (const id of ['hw-up-main', 'hw-down-main']) {
+      const stops = await hero.locator(`#${id} stop`).evaluateAll((els) => els.map((el) => el.getAttribute('stop-color')));
+      expect(stops[0], id).toBe('#fffdf7');
+      expect(stops.at(-1), id).toBe('#f5e2c0');
+      await expect(wallWash.locator(`path[fill="url(#${id})"]`), id).toHaveCount(1);
     }
-    await expect(hero.locator('.hero__atmosphere-name--venetian')).toHaveText('Warm Venetian Plaster / 2700K');
-    await expect(hero.locator('.hero__atmosphere-name--limestone')).toHaveText('Soft Limestone Evening Wash / 2400K');
-    const limestone = () => hero.locator('.hero__plaster--limestone').evaluate((el) => Number(getComputedStyle(el).opacity));
-    await expect.poll(limestone, { timeout: 10_000 }).toBeGreaterThan(0.05);
+    // The gallery: a recessed 24V track slot, a pendant that pools gold on the console, a lit walnut shelf.
+    await expect(gallery.locator('path[fill="url(#hg-wash)"]')).toHaveCount(1);
+    await expect(gallery.locator('[data-depth="pendant"] path[fill="url(#hg-beam)"]')).toHaveCount(1);
 
-    // An architectural attribution replaces the old section index.
+    // No text overlays on the pictures: the only words in the hero are the copy.
+    await expect(hero.locator('.hero__tag, .hero__readout, .hero__atmosphere')).toHaveCount(0);
+    expect(await hero.locator('.hero__stage').evaluate((el) => el.textContent.trim())).toBe('');
+
+    // The copy: carbon ink over the plaster, an attribution and a bracketed key.
     const copy = page.getByTestId('hero-copy');
     await expect(copy.locator('.index-label')).toHaveCount(0);
     await expect(copy).not.toContainText('Overview');
+    await expect(copy).not.toContainText('2D');
+    await expect(page.locator('.hero__title')).toHaveCSS('color', 'rgb(20, 19, 17)');
     const attribution = page.getByTestId('hero-attribution');
     await expect(attribution).toHaveText(/^Architectural Lighting & Modular\s+Systems\s*\/\s*24V\s+DC$/);
     await expect(attribution).toHaveCSS('text-transform', 'uppercase');
-
-    // The secondary key is bracketed: two vertical hairlines, no top or bottom edge.
     const bracket = page.getByTestId('hero-room-planner');
     await expect(bracket).toHaveAttribute('href', '/room-3d');
     await expect(bracket).toHaveText('Open Room Planner');
@@ -168,27 +261,36 @@ test.describe('plaster hero', () => {
     });
     expect(frame).toEqual({ left: '1px solid', right: '1px solid', top: '0px', bottom: '0px', radius: '0px', surface: 'rgba(0, 0, 0, 0)', transform: 'uppercase', shadow: 'none' });
 
-    // Out of view the wall holds its breath; back in view it breathes again.
+    // Cursor parallax: the pendant slides with the pointer along its track.
+    const box = await hero.boundingBox();
+    const pendant = hero.locator('[data-depth="pendant"]');
+    const travel = () => pendant.evaluate((el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).e);
+    await page.mouse.move(box.x + box.width * 0.74, box.y + box.height * 0.34);
+    await page.mouse.move(box.x + box.width * 0.42, box.y + box.height * 0.34, { steps: 8 });
+    await expect.poll(travel).toBeLessThan(-20);
+    await page.mouse.move(box.x + box.width * 0.5, 5);
+
+    // Out of view the clock holds its place; back in view it runs again.
     await page.evaluate(() => window.scrollTo(0, document.querySelector('[data-testid="ambient-surface"]').offsetHeight + 400));
     await expect(hero).toHaveAttribute('data-offscreen', '');
-    await expect(hero.locator('.hero__plaster--limestone')).toHaveCSS('animation-play-state', 'paused');
+    await expect(gallery).toHaveCSS('animation-play-state', 'paused');
     await page.evaluate(() => window.scrollTo(0, 0));
     await expect(hero).not.toHaveAttribute('data-offscreen');
-    await expect(hero.locator('.hero__plaster--limestone')).toHaveCSS('animation-play-state', 'running');
+    await expect(gallery).toHaveCSS('animation-play-state', 'running');
     expect(await readCspViolations(page)).toEqual([]);
     expect(errors).toEqual([]);
   });
 
-  test('under reduced motion the wall rests on Warm Venetian Plaster with no crossfade', async ({ page }) => {
+  test('under reduced motion the hero rests on the wall wash: no crossfade, no parallax', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     const hero = page.getByTestId('ambient-surface');
-    for (const selector of ['.hero__plaster--limestone', '.hero__wash--evening', '.hero__atmosphere-name--limestone']) {
-      await expect(hero.locator(selector), selector).toHaveCSS('animation-name', 'none');
-      await expect(hero.locator(selector), selector).toHaveCSS('opacity', '0');
+    const gallery = hero.locator('svg.hero-scene--gallery');
+    await expect(gallery).toHaveCSS('animation-name', 'none');
+    await expect(gallery).toHaveCSS('opacity', '0');
+    for (const depth of ['far', 'near', 'pendant']) {
+      await expect(hero.locator(`[data-depth="${depth}"]`).first(), depth).toHaveCSS('transform', 'none');
     }
-    await expect(hero.locator('.hero__atmosphere-name--venetian')).toHaveCSS('opacity', '1');
-    await expect(hero.locator('.hero__wash:not(.hero__wash--evening)')).toHaveCSS('opacity', '1');
   });
 });
 
@@ -243,11 +345,15 @@ test.describe('meet our icons cinema', () => {
       transform: 'uppercase',
     });
 
-    // The frames move, and the acts advance with their caption.
+    // Only the title and its key sit over the film: no act caption anywhere.
+    await expect(cinema.locator('[data-cinema-caption], .cinema__caption')).toHaveCount(0);
+    expect((await cinema.innerText()).replace(/\s+/g, ' ').trim().toLowerCase()).toBe('meet our icons discover more');
+
+    // The frames move, and the acts advance through Act III, the anodized track.
     const first = await canvasPrint(canvas);
     await expect.poll(() => canvasPrint(canvas)).not.toBe(first);
     await expect(cinema).toHaveAttribute('data-act', 'aperture', { timeout: 15_000 });
-    await expect(cinema.locator('[data-cinema-caption]')).toHaveText('Act II / Triple-Aperture Optical Diffuser');
+    await expect(cinema).toHaveAttribute('data-act', 'track', { timeout: 15_000 });
 
     // Scrolled away, the loop stops.
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -285,7 +391,7 @@ test.describe('explore the lumen home', () => {
     await section.scrollIntoViewIfNeeded();
     await expect(section.getByRole('heading', { level: 2 })).toHaveText('Explore the Lumen home');
     await expect(section.locator('.section-head')).toHaveCSS('text-align', 'center');
-    await expect(section.locator('.section-head__lede')).toContainText('Start from a room, a part or a wall.');
+    await expect(section.locator('.section-head__lede')).toContainText('Start from a room, a part or the light itself.');
 
     const portraits = section.locator('.entry-card__portrait');
     await expect(portraits).toHaveCount(3);
@@ -311,13 +417,15 @@ test.describe('explore the lumen home', () => {
     // The caption reads straight on the paper under each room.
     const cards = section.locator('.entry-card');
     await expect(cards).toHaveCount(3);
-    for (const [i, href] of ['/room-3d', '/catalog', '/studio-2d'].entries()) {
+    for (const [i, href] of ['/room-3d', '/catalog', '/room-3d?lens=inside'].entries()) {
       await expect(cards.nth(i)).toHaveAttribute('href', href);
       const caption = cards.nth(i).locator('.entry-card__caption');
       expect((await caption.boundingBox()).y).toBeGreaterThanOrEqual(boxes[i].y + boxes[i].height - 1);
       await expect(caption).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     }
     await expect(cards.nth(0)).toHaveAccessibleName(/02 \/ 3D Room\s+Room Planner/);
+    await expect(cards.nth(2)).toHaveAccessibleName(/04 \/ Lighting\s+Lighting Studio/);
+    await expect(section).not.toContainText('Wall Studio');
 
     // Hovering a room lets its luminaire breathe on the compositor.
     const glow = cards.first().locator('.entry-card__glow');
@@ -399,12 +507,10 @@ test.describe('overview bands and heads', () => {
       expect(await horizontalOverflow(page), `${width}px`).toBeLessThanOrEqual(0);
     }
 
-    // The 3D Room key glides to the theatre and lands its head clear of the navbar.
+    // An old showcase deep link still lands the theatre head clear of the navbar.
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/');
-    await page.getByTestId('nav-3d-showcase').click();
+    await page.goto('/#spatial-studio-3d');
     const showcase = page.getByTestId('home-3d-showcase');
-    await expect(showcase).toBeFocused();
     const clearance = () =>
       page.evaluate(() => {
         const nav = document.querySelector('.navbar').getBoundingClientRect();

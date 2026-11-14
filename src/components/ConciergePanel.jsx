@@ -269,7 +269,7 @@ function Welcome({ prompts, disabled, onAsk }) {
   );
 }
 
-function TicketConfirmation({ ticket, email, signedIn, onNavigate }) {
+function TicketConfirmation({ ticket, email }) {
   const ref = useRef(null);
   useEffect(() => {
     ref.current?.focus();
@@ -295,12 +295,6 @@ function TicketConfirmation({ ticket, email, signedIn, onNavigate }) {
           ? 'Lumen Cloud is unreachable, so the ticket is stored on this device and transmits when the API is back.'
           : `A Lumen studio engineer replies to ${email} with the transcript and your live workspace specs in hand.`}
       </p>
-      {signedIn && (
-        <Link to="/account" className="concierge-action" onClick={onNavigate}>
-          View in Account
-          <ArrowRight className="concierge-action__arrow" />
-        </Link>
-      )}
     </div>
   );
 }
@@ -628,7 +622,7 @@ export default function ConciergePanel({ open, onClose, panelId }) {
 
         {unlocked &&
           (ticket ? (
-            <TicketConfirmation ticket={ticket} email={sentTo} signedIn={Boolean(user)} onNavigate={onClose} />
+            <TicketConfirmation ticket={ticket} email={sentTo} />
           ) : (
             <EscalationForm concierge={concierge} user={user} onSent={onSent} />
           ))}

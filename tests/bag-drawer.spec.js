@@ -306,7 +306,7 @@ test.describe('bag drawer', () => {
     await expect(heading).toHaveCSS('color', 'rgb(20, 19, 17)');
     await expect(
       drawer.getByText(
-        'Select individual luminaires and shelves from the catalog, or push a complete wall or room specification from the planners.',
+        'Select individual luminaires and shelves from the catalog, or sync a complete room specification from the 3D Room Planner.',
       ),
     ).toHaveCSS('color', 'rgb(87, 83, 78)');
     const note = drawer.locator('.bag-empty');
@@ -380,7 +380,10 @@ test.describe('bag drawer', () => {
 
     await page.keyboard.press('Escape');
     await expect(drawer).toHaveCount(0);
-    await page.getByRole('button', { name: 'Specs (Technical)' }).click();
+    // Specs lives in the 3D Room Planner header; the drawer follows it there.
+    await expect(page.getByRole('button', { name: 'Specs (Technical)' })).toHaveCount(0);
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: '3D Room' }).click();
+    await page.getByTestId('studio-header').getByRole('button', { name: 'Specs (Technical)' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-mode', 'technical');
 
     // Specs mode: the same rows are on screen with the same exact text.

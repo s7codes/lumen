@@ -10,7 +10,7 @@ import { clamp01, easeInOutSine, lerp, smoothstep } from './paint-kit.js';
 export const CINEMA_ACTS = Object.freeze([
   Object.freeze({ id: 'obsidian', numeral: 'I', label: 'Obsidian Dome & Travertine Column' }),
   Object.freeze({ id: 'aperture', numeral: 'II', label: 'Triple-Aperture Optical Diffuser' }),
-  Object.freeze({ id: 'sconce', numeral: 'III', label: 'Dual Plaster Wall Sconce Wash' }),
+  Object.freeze({ id: 'track', numeral: 'III', label: 'Linear Anodized Track & Prismatic Brass Louver Glide' }),
 ]);
 
 export const CINEMA_ACT_IDS = Object.freeze(CINEMA_ACTS.map((act) => act.id));
@@ -81,9 +81,10 @@ export function cinemaCamera(id, p) {
     // Orbital glide round the ring housing, pressing closer.
     return { x: lerp(-14, 10, e), y: lerp(6, -4, e), scale: lerp(1.32, 1.58, e), rot: lerp(-0.2, 0.32, e), sweep: e };
   }
-  // Lateral glide past the panelled reveal (set x -110) onto the plaster and
-  // its pair of sconces (set x 0 and 84). The frame centre sits at -x.
-  return { x: lerp(110, -30, e), y: 0, scale: lerp(1.08, 1.16, e), rot: 0, sweep: e };
+  // Orbital glide along the 24V track: from the brass louver run (set x -132
+  // to -24) onto the glass cylinder spot (set x 0) as its beam sweeps the
+  // marble, rolling a few degrees and pressing in. The frame centre sits at -x.
+  return { x: lerp(46, -16, e), y: lerp(4, -2, e), scale: lerp(1.2, 1.42, e), rot: lerp(-0.07, 0.05, e), sweep: e };
 }
 
 /** Slow living modulation of a light source: a gentle swell, never a flicker. */

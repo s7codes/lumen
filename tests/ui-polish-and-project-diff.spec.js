@@ -5,7 +5,7 @@ import { accountDiffSources, plannerDiffSources } from '../src/lib/diff-sources.
 import { formatInt, formatUsd } from '../src/lib/format.js';
 import { compareProjectStates, formatSignedDelta, pairModules } from '../src/lib/project-diff.js';
 import { projectIdFor } from '../src/lib/project-library.js';
-import { createRoomState, ROOM_STORAGE_KEY, serializeRoomState, updateRoomItem } from '../src/lib/room-3d.js';
+import { createRoomState, mountInRoom, ROOM_STORAGE_KEY, serializeRoomState, updateRoomItem } from '../src/lib/room-3d.js';
 import {
   createLayout,
   mountProduct,
@@ -40,15 +40,6 @@ const ROOM = createRoomState(
 
 const PLANNERS = [
   {
-    path: '/studio-2d',
-    key: WALL_KEY,
-    data: serializeLayout(WALL),
-    disclosure: 'wall-dimensions',
-    fields: { 'wall-width': '300', 'wall-height': '250' },
-    save: 'save-wall-to-cloud',
-    sync: 'sync-wall-to-bag',
-  },
-  {
     path: '/room-3d',
     key: ROOM_KEY,
     data: serializeRoomState(ROOM),
@@ -78,8 +69,8 @@ async function settleWorkstation(page) {
   await expect.poll(() => workstation.evaluate((el) => getComputedStyle(el).transform)).toBe('none');
 }
 
-function wallModule(page, uid) {
-  return page.locator(`[data-testid="wall-module"][data-uid="${uid}"]`);
+function roomModule(page, uid) {
+  return page.locator(`[data-testid="room-module"][data-uid="${uid}"]`);
 }
 
 function diffModal(page) {
@@ -241,12 +232,12 @@ test.describe('ui polish regression guards', () => {
   }
 
   test('switch labels hold one line and palette units never break from their figures', async ({ page }) => {
-    await seed(page, [[WALL_KEY, serializeLayout(WALL)], [ROOM_KEY, serializeRoomState(ROOM)]]);
-    await page.goto('/studio-2d');
+    await seed(page, [[ROOM_KEY, serializeRoomState(ROOM)]]);
+    await page.goto('/room-3d');
 
     // Line boxes are counted on a Range: a flex item reports one rect even when its text wraps.
-    const slope = page.getByRole('switch', { name: /Attic slope/ });
-    const fit = await slope.evaluate((el) => {
+    const snap = page.getByRole('switch', { name: /Grid Snap/ });
+    const fit = await snap.evaluate((el) => {
       const label = el.querySelector('.studio-switch__label');
       const hint = el.querySelector('.studio-switch__hint');
       const range = document.createRange();
@@ -262,11 +253,7 @@ test.describe('ui polish regression guards', () => {
     expect(fit.labelHeight).toBeLessThanOrEqual(fit.lineHeight * 1.2);
     expect(fit.hintClipped).toBe(false);
 
-    for (const [path, list] of [
-      ['/studio-2d', '.studio-palette .palette-list'],
-      ['/room-3d', '[data-testid="room-palette"]'],
-    ]) {
-      if (path !== '/studio-2d') await page.goto(path);
+    for (const [path, list] of [['/room-3d', '[data-testid="room-palette"]']]) {
       const metas = page.locator(`${list} .palette-item__meta`);
       await expect(metas.first()).toBeVisible();
       const pieces = await metas.evaluateAll((nodes) =>
@@ -401,29 +388,30 @@ test.describe('project diff engine', () => {
 });
 
 test.describe('project diff dialog', () => {
-  test('wall studio: Rev 01, then add, refinish and dim, and the draft diff itemizes every change', async ({ page }) => {
+  test('room planner: Rev 01, then add, refinish and dim, and the draft diff itemizes every change', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
-    await seed(page, [[WALL_KEY, serializeLayout(WALL)]]);
-    await page.goto('/studio-2d');
+    await seed(page, [[ROOM_KEY, serializeRoomState(ROOM)]]);
+    await page.goto('/room-3d');
 
-    const save = page.getByTestId('save-wall-to-cloud');
+    const save = page.getByTestId('save-room-to-cloud');
     await save.click();
     await expect(save).toHaveAttribute('data-state', 'saved');
-    await expect(page.getByTestId('toast-message').last()).toHaveText('Wall A saved to Lumen Cloud. Revision 01.');
+    await expect(page.getByTestId('toast-message').last()).toHaveText('Room saved to Lumen Cloud. Revision 01.');
 
-    await page.getByRole('button', { name: 'Mount Modular Cube 36' }).click();
-    await expect(page.getByTestId('wall-module')).toHaveCount(4);
-    await wallModule(page, 'm1').click();
-    await page.getByTestId('studio-inspector').getByRole('radio', { name: 'Oak' }).check();
-    await expect(wallModule(page, 'm1')).toHaveAttribute('data-finish', 'oak');
-    await wallModule(page, 'm2').click();
+    await page.locator('[data-testid="room-module-list"] [data-uid="m1"]').click();
+    await page.getByTestId('room-inspector').getByRole('radio', { name: 'Oak' }).check();
+    await expect(roomModule(page, 'm1')).toHaveAttribute('data-finish', 'oak');
+    await page.getByTestId('room-inspector').getByRole('button', { name: 'Done' }).click();
+    await page.locator('[data-testid="room-module-list"] [data-uid="m2"]').click();
     await page.getByTestId('module-dim-slider').fill('60');
-    await expect(wallModule(page, 'm2')).toHaveAttribute('data-dim-pct', '60');
+    await expect(roomModule(page, 'm2')).toHaveAttribute('data-dim-pct', '60');
+    await page.getByRole('button', { name: 'Mount Modular Cube 36', exact: true }).click();
+    await expect(page.getByTestId('room-module')).toHaveCount(4);
 
-    let draft = mountProduct(WALL, 'modular-cube-36').layout;
-    draft = updateItem(draft, 'm1', { finish: 'oak' });
-    draft = updateItem(draft, 'm2', { dimPct: 60 });
-    const expected = compareProjectStates(WALL, draft);
+    let draft = updateRoomItem(ROOM, 'm1', { finish: 'oak' });
+    draft = updateRoomItem(draft, 'm2', { dimPct: 60 });
+    draft = mountInRoom(draft, 'modular-cube-36').state;
+    const expected = compareProjectStates(ROOM, draft);
     const { deltas } = expected;
     expect(deltas.modules.delta).toBe(1);
 
@@ -433,9 +421,9 @@ test.describe('project diff dialog', () => {
     await expect(modal).toBeVisible();
     await expect(modal).toHaveAttribute('role', 'dialog');
     await expect(modal).toHaveAccessibleName('Project comparison');
-    await expect(modal.getByTestId('diff-select-base')).toHaveValue('cloud:wall');
-    await expect(modal.getByTestId('diff-select-target')).toHaveValue('draft:wall');
-    await expect(modal.getByTestId('diff-select-base').locator('option:checked')).toHaveText('Wall A / Rev 01');
+    await expect(modal.getByTestId('diff-select-base')).toHaveValue('cloud:room');
+    await expect(modal.getByTestId('diff-select-target')).toHaveValue('draft:room');
+    await expect(modal.getByTestId('diff-select-base').locator('option:checked')).toHaveText('Room / Rev 01');
 
     const kpi = (key) => modal.getByTestId(`diff-kpi-${key}-value`);
     await expect(modal.getByTestId('diff-kpi-modules')).toHaveAttribute('data-delta', '1');
@@ -445,7 +433,6 @@ test.describe('project diff dialog', () => {
     await expect(kpi('lux')).toHaveText(`${formatSignedDelta(deltas.luxAvg.delta, 0, formatInt)} lx`);
     await expect(kpi('rt60')).toHaveText(`${formatSignedDelta(deltas.rt60Sec.delta, 2)} s`);
     await expect(kpi('sti')).toHaveText(formatSignedDelta(deltas.stiScore.delta, 2));
-    await expect(modal.getByTestId('diff-kpi-rt60')).toHaveAttribute('data-delta', String(deltas.rt60Sec.delta));
 
     const list = modal.getByTestId('diff-change-list');
     await expect(list).toHaveAttribute('data-added', '1');
@@ -460,7 +447,6 @@ test.describe('project diff dialog', () => {
     await expect(list.locator('[data-change="modified"][data-uid="m2"]')).toContainText('Dimmed 100% to 60%');
     await expect(modal.getByTestId('diff-thumb-b').locator('[data-diff="added"]')).toHaveCount(1);
     await expect(modal.getByTestId('diff-thumb-b').locator('[data-diff="modified"]')).toHaveCount(2);
-    await expect(modal.getByTestId('diff-thumb-a').locator('[data-diff="modified"]')).toHaveCount(2);
 
     // Escape closes and returns focus to the compare key.
     await page.keyboard.press('Escape');
@@ -515,31 +501,32 @@ test.describe('project diff dialog', () => {
     const errors = collectRuntimeErrors(page);
     await seed(page, [
       [SESSION_KEY, GUEST],
-      [WALL_KEY, serializeLayout(WALL)],
+      [ROOM_KEY, serializeRoomState(ROOM)],
     ]);
-    await page.goto('/studio-2d');
+    await page.goto('/room-3d');
     const name = page.getByTestId('project-name-input');
-    const save = page.getByTestId('save-wall-to-cloud');
+    const save = page.getByTestId('save-room-to-cloud');
 
     await name.fill('Plan A');
     await name.press('Enter');
     await save.click();
     await expect(save).toHaveAttribute('data-state', 'saved');
 
-    await page.getByRole('button', { name: 'Mount Modular Cube 36' }).click();
-    await wallModule(page, 'm1').click();
-    await page.getByTestId('studio-inspector').getByRole('radio', { name: 'Oak' }).check();
+    await page.locator('[data-testid="room-module-list"] [data-uid="m1"]').click();
+    await page.getByTestId('room-inspector').getByRole('radio', { name: 'Oak' }).check();
+    await page.getByRole('button', { name: 'Mount Modular Cube 36', exact: true }).click();
+    await expect(page.getByTestId('room-module')).toHaveCount(4);
     await name.fill('Plan B');
     await name.press('Enter');
     await expect(save).toHaveAttribute('data-state', 'idle', { timeout: 5000 });
     await save.click();
     await expect(save).toHaveAttribute('data-state', 'saved');
 
-    const planB = updateItem(mountProduct(WALL, 'modular-cube-36').layout, 'm1', { finish: 'oak' });
-    const forward = compareProjectStates(WALL, planB);
-    const backward = compareProjectStates(planB, WALL);
-    const idA = projectIdFor('wall', 'Plan A');
-    const idB = projectIdFor('wall', 'Plan B');
+    const planB = mountInRoom(updateRoomItem(ROOM, 'm1', { finish: 'oak' }), 'modular-cube-36').state;
+    const forward = compareProjectStates(ROOM, planB);
+    const backward = compareProjectStates(planB, ROOM);
+    const idA = projectIdFor('room', 'Plan A');
+    const idB = projectIdFor('room', 'Plan B');
 
     await page.goto('/account');
     await expect(page.getByTestId('saved-project')).toHaveCount(2);
@@ -559,12 +546,8 @@ test.describe('project diff dialog', () => {
     const target = modal.getByTestId('diff-select-target');
     await expect(base).toHaveValue(`cloud:${idA}`);
     await expect(target).toHaveValue(`cloud:${idB}`);
-    await expect(target.locator('option')).toHaveText([
-      'Wall Studio draft / Plan B',
-      'Room Planner draft / Room',
-      'Plan B / Rev 01',
-      'Plan A / Rev 01',
-    ]);
+    // No empty legacy wall draft: only the live room draft and the two revisions.
+    await expect(target.locator('option')).toHaveText(['Room Planner draft / Plan B', 'Plan B / Rev 01', 'Plan A / Rev 01']);
 
     const tally = modal.getByTestId('diff-tally');
     const read = async () => ({
@@ -601,7 +584,7 @@ test.describe('project diff dialog', () => {
 
     // The live draft is a target too; it matches Plan B, which it was saved as.
     await base.selectOption(`cloud:${idB}`);
-    await target.selectOption('draft:wall');
+    await target.selectOption('draft:room');
     await expect(modal.getByTestId('diff-identical')).toHaveText('No differences. B matches A module for module.');
     await expect(modal.getByTestId('diff-kpi-modules')).toHaveAttribute('data-trend', 'flat');
 

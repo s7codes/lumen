@@ -629,19 +629,20 @@ test.describe('Lumen AI agentic workspace execution', () => {
     expect(await readCspViolations(page)).toEqual([]);
   });
 
-  test('the 2D wall and the cart follow chat commands live, and offline the device runs the same tools', async ({ page }) => {
+  test('the room wall and the cart follow chat commands live, and offline the device runs the same tools', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
-    await page.goto('/studio-2d');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
-    const shelves = page.locator('[data-testid="wall-module"][data-product="floating-shelf-110"]');
+    await page.goto('/room-3d');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    const shelves = roomModules(page, 'floating-shelf-110');
     const before = await shelves.count();
 
+    // In the planner a bare "mount" lands on the room's active wall.
     await openConcierge(page);
     const mounted = await ask(page, 'Mount a Floating Shelf 110 in Oak');
-    await expect(mounted.getByTestId('concierge-tool-call')).toHaveAttribute('data-tool-name', 'mutate_2d_wall');
+    await expect(mounted.getByTestId('concierge-tool-call')).toHaveAttribute('data-tool-name', 'mutate_3d_room');
     await expect(shelves).toHaveCount(before + 1);
     await expect(shelves.last()).toHaveAttribute('data-finish', 'oak');
-    await expect(page.getByTestId('studio-notice')).toContainText('Lumen AI mounted Floating Shelf 110 in Oak');
+    await expect(page.getByTestId('room-notice')).toContainText('Lumen AI mounted Floating Shelf 110 in Oak');
 
     const cart = await ask(page, ADD_LIGHTBARS);
     await expect(cart.getByTestId('concierge-tool-call')).toHaveAttribute('data-tool-name', 'manage_cart_bag');
@@ -655,11 +656,15 @@ test.describe('Lumen AI agentic workspace execution', () => {
     // With the API unreachable the device runs the same orchestrator and tools.
     await page.route('**/api/concierge/ask', (route) => route.abort());
     await page.getByTestId('concierge-trigger').click();
-    const offline = await ask(page, 'Clear the wall');
+    const offline = await ask(page, 'Mount a Floating Shelf 110 in Walnut');
     await expect(offline).toHaveAttribute('data-transport', 'local');
-    await expect(offline.getByTestId('concierge-tool-call')).toHaveAttribute('data-tool-name', 'mutate_2d_wall');
-    await expect(page.getByTestId('wall-module')).toHaveCount(0);
-    expect((await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), WALL_KEY)).items).toEqual([]);
+    await expect(offline.getByTestId('concierge-tool-call')).toHaveAttribute('data-tool-name', 'mutate_3d_room');
+    await expect(shelves).toHaveCount(before + 1);
+    await expect(shelves.last()).toHaveAttribute('data-finish', 'walnut');
+    expect((await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), ROOM_KEY)).items.at(-1)).toMatchObject({
+      productId: 'floating-shelf-110',
+      finish: 'walnut',
+    });
 
     expect(errors.filter((line) => !/ERR_FAILED|net::/.test(line))).toEqual([]);
     expect(await readCspViolations(page)).toEqual([]);

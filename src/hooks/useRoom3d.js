@@ -3,7 +3,6 @@ import { getFinish, getProduct } from '../data/products.js';
 import {
   clearRoomWall,
   DEFAULT_ROOM_WALL,
-  importFromWallStudio,
   isRoomWall,
   loadRoomState,
   mountInRoom,
@@ -166,25 +165,6 @@ function roomReducer(store, action) {
       return withNotice({ ...withState(store, next), selectedUid }, `Cleared ${plural(count, 'module')} from the ${WALL_LABELS[wall]}.`);
     }
 
-    case 'import': {
-      const wall = store.activeWall;
-      const result = importFromWallStudio(state, wall);
-      const { widthCm, depthCm, heightCm } = result.state.room;
-      const span = wall === 'east' || wall === 'west' ? depthCm : widthCm;
-      let text;
-      if (wall === DEFAULT_ROOM_WALL) {
-        text = result.fromPreset
-          ? `Wall Studio is empty. Loaded the default composition: ${plural(result.count, 'module')}.`
-          : `Loaded ${plural(result.count, 'module')} from Wall Studio. Main wall ${widthCm} x ${heightCm} cm.`;
-      } else {
-        text = result.fromPreset
-          ? `Wall Studio is empty. Loaded the default composition onto the ${WALL_LABELS[wall]}: ${plural(result.count, 'module')}.`
-          : `Loaded ${plural(result.count, 'module')} from Wall Studio onto the ${WALL_LABELS[wall]}, ${span} x ${heightCm} cm.`;
-      }
-      if (result.slope) text += ' Attic slope is not modelled in 3D.';
-      return withNotice({ ...withState(store, result.state), selectedUid: null }, text);
-    }
-
     // A shared scene, or a Lumen AI edit: one history step, so Ctrl+Z reverses it whole.
     // An AI edit keeps the current camera and may turn to a wall and select its new module.
     case 'replace': {
@@ -241,7 +221,6 @@ export function useRoom3d() {
       focus: (uid) => dispatch({ type: 'focus', uid }),
       remove: (uid) => dispatch({ type: 'remove', uid }),
       clearWall: () => dispatch({ type: 'clear-wall' }),
-      importWall: () => dispatch({ type: 'import' }),
       replace: (state, text) => dispatch({ type: 'replace', state, text }),
       announce: (text, tone) => dispatch({ type: 'notice', text, tone }),
       applyScene: (sceneId) => dispatch({ type: 'scene', sceneId }),

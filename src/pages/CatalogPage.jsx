@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { ProductCard } from '../components/ProductCard.jsx';
 import { CATEGORIES, CATEGORY_IDS, FINISHES, PRODUCTS } from '../data/products.js';
-import { useDisplayMode } from '../hooks/useDisplayMode.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { padIndex } from '../lib/format.js';
 import { isOneOf, sanitizeText } from '../security/sanitize.js';
@@ -49,7 +48,6 @@ function readCategory(params) {
 
 export default function CatalogPage() {
   useDocumentTitle('Catalog');
-  const [mode] = useDisplayMode();
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('index');
@@ -153,7 +151,7 @@ export default function CatalogPage() {
             <span data-testid="catalog-count" aria-live="polite">
               {padIndex(results.length)} {results.length === 1 ? 'result' : 'results'}
             </span>
-            <span>{mode === 'technical' ? 'Technical / telemetry' : 'Architectural / finish'}</span>
+            <span>Daylight interiors / 2700K</span>
           </div>
 
           {results.length > 0 ? (

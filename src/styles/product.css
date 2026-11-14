@@ -11,7 +11,7 @@
   min-width: 0;
 }
 
-/* Product card: no frame, no fill, no radius. A square optical plinth on
+/* Product card: no frame, no fill, no radius. A lit daylight interior on
    top, the specification straight on the paper below it, one hairline under
    the whole. useCursorGlow writes --glow-* onto the card; the plinth paints
    the fixture's own light at that point. The card itself never moves. */
@@ -32,7 +32,8 @@
   background: none;
 }
 
-/* Index, family and stock ride inside the plinth as quiet telemetry. */
+/* Index, family and stock ride over the top of the interior as quiet
+   captions in carbon ink on the daylight wall. */
 .product-card__head {
   position: absolute;
   top: 0;
@@ -48,11 +49,11 @@
 }
 
 .product-card__head .index-label {
-  color: var(--chamber-ink-soft);
+  color: rgba(20, 19, 17, 0.72);
 }
 
 .product-card__head .index-label__num {
-  color: var(--chamber-ink-muted);
+  color: rgba(20, 19, 17, 0.5);
 }
 
 .product-card__stock {
@@ -63,92 +64,66 @@
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   white-space: nowrap;
-  color: var(--chamber-ink-muted);
+  color: rgba(20, 19, 17, 0.56);
 }
 
 .product-card__stock[data-stock='in-stock'] {
-  color: var(--chamber-ink-soft);
+  color: rgba(20, 19, 17, 0.74);
 }
 
-/* The plinth: a 4:3 wall of warm limestone-taupe plaster in which the
-   elevation drawing hangs. The fixture's 2700K light lays a soft wall-wash
-   scallop on the plaster above it, so the part reads lit on a real surface,
-   never floating in a void. On hover the drawing eases forward inside it;
-   overflow keeps the card's footprint fixed. */
+/* The plinth: a 4:3 window onto a daylight gallery corner (ProductVisual).
+   The part sits in true perspective on smooth stone walls over an oak floor,
+   lit by its own 2700K light; no texture, no noise. A soft veil at the top
+   seats the captions. On hover the camera eases in a touch; overflow keeps
+   the card's footprint fixed. */
 .product-card__figure {
-  --plinth-wash:
-    radial-gradient(ellipse 62% 82% at 50% 22%, rgba(200, 188, 169, 0.4) 0%, rgba(200, 188, 169, 0.16) 40%, rgba(200, 188, 169, 0) 72%),
-    radial-gradient(ellipse 30% 44% at 50% 30%, rgba(var(--light-rgb), 0.14) 0%, rgba(var(--light-rgb), 0) 72%);
-  --plinth-wall:
-    var(--plaster-trowel),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0) 78%, rgba(0, 0, 0, 0.12) 100%),
-    linear-gradient(180deg, #3d3731 0%, #36312b 62%, #2c2824 100%);
-
   position: relative;
-  display: grid;
-  place-items: center;
   aspect-ratio: 4 / 3;
-  padding: 52px 9% 9%;
   border-radius: 0;
-  background-color: var(--plaster-umber);
-  background-image: var(--plinth-wash), var(--plinth-wall);
-  background-size:
-    auto,
-    auto,
-    240px 240px,
-    auto,
-    auto;
+  background: #e4ddd1;
   overflow: hidden;
   isolation: isolate;
 }
 
-/* The cursor light: a warm pool in the fixture's own CCT. */
+.product-card__figure::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 1;
+  height: 52px;
+  background: linear-gradient(180deg, rgba(236, 231, 222, 0.62), rgba(236, 231, 222, 0));
+  pointer-events: none;
+}
+
+.product-card__figure .pv {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 60%;
+  transition: transform var(--duration-hover) var(--ease-cinematic);
+}
+
+.product-card:hover .product-card__figure .pv {
+  transform: scale(var(--hover-zoom));
+}
+
+/* The cursor light: a warm pool in the fixture's own CCT on the wall. */
 .product-card__figure::after {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: 1;
   background: radial-gradient(
     var(--tilt-glow-radius) circle at var(--glow-x) var(--glow-y),
-    rgba(var(--light-rgb), 0.16) 0%,
-    rgba(var(--light-rgb), 0.05) 38%,
+    rgba(var(--light-rgb), 0.2) 0%,
+    rgba(var(--light-rgb), 0.06) 38%,
     transparent 70%
   );
+  mix-blend-mode: soft-light;
   opacity: var(--glow-a);
   pointer-events: none;
-}
-
-.product-card__figure .elev {
-  transition: transform var(--duration-hover) var(--ease-cinematic);
-}
-
-.product-card:hover .product-card__figure .elev {
-  transform: scale(var(--hover-zoom));
-}
-
-/* Specs mode lays the drafting grid in amber over the same plaster wall. */
-.product-card[data-mode='technical'] .product-card__figure {
-  background-image:
-    var(--plinth-wash),
-    linear-gradient(rgba(232, 146, 58, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(232, 146, 58, 0.08) 1px, transparent 1px),
-    var(--plinth-wall);
-  background-size:
-    auto,
-    auto,
-    12px 12px,
-    12px 12px,
-    240px 240px,
-    auto,
-    auto;
-  background-position:
-    0 0,
-    0 0,
-    -1px -1px,
-    -1px -1px,
-    0 0,
-    0 0,
-    0 0;
 }
 
 .product-card__body {
@@ -211,42 +186,6 @@
   flex-shrink: 0;
   height: 40px;
   padding-inline: var(--space-4);
-}
-
-/* Engineering telemetry, technical mode only: a hairline table on paper */
-
-.telemetry {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: var(--space-2);
-  border-top: 1px solid var(--border-hairline);
-  border-left: 1px solid var(--border-hairline);
-}
-
-.telemetry__cell {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  padding: var(--space-2);
-  border-right: 1px solid var(--border-hairline);
-  border-bottom: 1px solid var(--border-hairline);
-}
-
-.telemetry dt {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.telemetry dd {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-  color: var(--text-primary);
 }
 
 /* Finish swatches: square material chips, a carbon ring on the chosen one */
@@ -335,152 +274,6 @@
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-secondary);
-}
-
-/* Procedural elevation drawing. Finish and light colours arrive as custom
-   properties on the card, so a swatch change only rewrites four variables. */
-
-.elev {
-  width: 100%;
-  max-width: 440px;
-  height: auto;
-  margin-inline: auto;
-  aspect-ratio: 240 / 150;
-}
-
-.elev__stop-hi {
-  stop-color: var(--finish-hi);
-}
-
-.elev__stop-base {
-  stop-color: var(--finish-base);
-}
-
-.elev__stop-shade {
-  stop-color: var(--finish-shade);
-}
-
-.elev__stop-light {
-  stop-color: rgb(var(--light-rgb));
-}
-
-.elev__edge,
-.elev__joint {
-  fill: none;
-  stroke: rgba(0, 0, 0, 0.6);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.elev__grain {
-  fill: none;
-  stroke: var(--finish-shade);
-  stroke-opacity: 0.5;
-  stroke-width: 0.35;
-}
-
-.elev__grain--fine {
-  stroke-opacity: 0.28;
-  stroke-width: 0.25;
-}
-
-.elev__brush {
-  stroke: var(--finish-hi);
-  stroke-opacity: 0.22;
-  stroke-width: 0.2;
-}
-
-.elev__void {
-  fill: #0d0c0b;
-}
-
-.elev__led {
-  fill: rgb(var(--light-rgb));
-}
-
-.elev__diffuser {
-  fill: rgb(var(--light-rgb));
-  fill-opacity: 0.9;
-}
-
-.elev__metal {
-  fill: var(--alu-500);
-}
-
-.elev__felt {
-  fill: #2a2825;
-}
-
-.elev__cable {
-  stroke: var(--alu-500);
-  stroke-width: 0.5;
-  vector-effect: non-scaling-stroke;
-}
-
-.elev__groove {
-  stroke: rgba(0, 0, 0, 0.5);
-  stroke-width: 0.6;
-}
-
-.elev__flange {
-  fill: none;
-  stroke: var(--border-strong);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.elev__bus {
-  stroke: var(--lumen-amber);
-  stroke-opacity: 0.8;
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.elev__ground line {
-  stroke: var(--text-muted);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.elev__ground line + line {
-  stroke-opacity: 0.5;
-}
-
-.elev__axis {
-  stroke: var(--text-muted);
-  stroke-width: 1;
-  stroke-dasharray: 6 2 1 2;
-  vector-effect: non-scaling-stroke;
-}
-
-.elev__dim line {
-  stroke: var(--lumen-amber);
-  stroke-opacity: 0.75;
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.elev__dim-text {
-  fill: var(--lumen-amber-soft);
-  font-family: var(--font-mono);
-  font-size: 6.5px;
-  font-variant-numeric: tabular-nums;
-}
-
-.elev__anchor circle,
-.elev__anchor line {
-  fill: none;
-  stroke: var(--text-primary);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.elev__label {
-  fill: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 5.5px;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
 }
 
 .product-card__link {

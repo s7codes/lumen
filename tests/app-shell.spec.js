@@ -5,18 +5,15 @@ const VIEWS = [
   { path: '/', heading: /light and storage on one modular spine/i },
   { path: '/catalog', heading: 'Catalog' },
   { path: '/room-3d', heading: 'Room Planner' },
-  { path: '/studio-2d', heading: 'Wall Studio' },
+  { path: '/checkout', heading: 'Project Quote' },
 ];
 
 const HOME_TITLE = 'Lumen - Architectural Lighting & Modular Systems';
 
-// 3D Room lands on the overview showcase; its launch key then enters the planner.
+// Three pages: the overview, the 3D Room Planner and the catalog.
 const NAV_SEQUENCE = [
   { link: /catalog/i, path: '/catalog', heading: 'Catalog', title: 'Catalog - Lumen' },
-  { link: /wall studio/i, path: '/studio-2d', heading: 'Wall Studio', title: 'Wall Studio - Lumen' },
-  // On the overview, 3D Room glides to its section and reads as the current location there.
-  { link: /3d room/i, path: '/', heading: /light and storage/i, title: HOME_TITLE, currentAs: 'location' },
-  { launch: true, link: /3d room/i, path: '/room-3d', heading: 'Room Planner', title: 'Room Planner - Lumen' },
+  { link: /3d room/i, path: '/room-3d', heading: 'Room Planner', title: 'Room Planner - Lumen' },
   { link: /overview/i, path: '/', heading: /light and storage/i, title: HOME_TITLE },
 ];
 
@@ -84,11 +81,15 @@ test.describe('app shell', () => {
     });
 
     const nav = page.getByRole('navigation', { name: 'Primary' });
+    // Overview, 3D Room and Catalog: the 2D Wall Studio is retired, and
+    // Visual | Specs lives only inside the 3D Room Planner.
+    await expect(nav.getByRole('link')).toHaveText(['Overview', '3D Room', 'Catalog']);
+    await expect(nav.getByRole('link', { name: '3D Room' })).toHaveAttribute('href', '/room-3d');
+    await expect(page.locator('header.navbar').getByTestId('mode-switch')).toHaveCount(0);
+    await expect(page.locator('header.navbar')).not.toContainText(/wall studio|specs/i);
 
     for (const step of NAV_SEQUENCE) {
-      const link = nav.getByRole('link', { name: step.link });
-      if (step.launch) await page.getByTestId('launch-3d-studio-cta').click();
-      else await link.click();
+      await nav.getByRole('link', { name: step.link }).click();
 
       await expect(page).toHaveURL((url) => url.pathname === step.path);
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(step.heading);
@@ -184,12 +185,12 @@ test.describe('app shell', () => {
       expect(heroBox.y + heroBox.height - (copyBox.y + copyBox.height), label).toBeLessThan(heroBox.height * 0.1);
     }
 
-    // The hero is a full-bleed Venetian plaster wall in evening light: alabaster
-    // type over umber plaster (#2c2824), above the warm Flos paper (#faf9f6).
-    await expect(page.locator('.hero__title')).toHaveCSS('color', 'rgb(245, 242, 235)');
+    // The hero is a light architectural interior: carbon type over smooth
+    // sand-stone plaster (#c6b9a5), above the warm Flos paper (#faf9f6).
+    await expect(page.locator('.hero__title')).toHaveCSS('color', 'rgb(20, 19, 17)');
     await expect(page.locator('.hero__title')).toHaveCSS('font-weight', '360');
-    await expect(page.locator('.hero__lede')).toHaveCSS('color', 'rgba(245, 242, 235, 0.74)');
-    await expect(page.getByTestId('ambient-surface')).toHaveCSS('background-color', 'rgb(44, 40, 36)');
+    await expect(page.locator('.hero__lede')).toHaveCSS('color', 'rgba(20, 19, 17, 0.8)');
+    await expect(page.getByTestId('ambient-surface')).toHaveCSS('background-color', 'rgb(198, 185, 165)');
     await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(250, 249, 246)');
     await expect(page.locator('body')).toHaveCSS('color', 'rgb(20, 19, 17)');
   });
@@ -262,20 +263,31 @@ test.describe('app shell', () => {
   test('a fresh document load starts at the top instead of inheriting another page scroll', async ({
     page,
   }) => {
-    await page.goto('/studio-2d');
+    await page.goto('/catalog');
     await page.evaluate(() => window.scrollTo(0, 400));
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(400);
 
-    await page.goto('/catalog');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Catalog');
+    await page.goto('/checkout');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Project Quote');
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
 
     await page.goBack();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Catalog');
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(400);
   });
 
-  test('navbar utility keys are borderless small capitals on one row, the mode toggle a square hairline, flush right', async ({
+  test('the retired 2D Wall Studio addresses land in the 3D Room Planner', async ({ page }) => {
+    const errors = collectRuntimeErrors(page);
+    for (const path of ['/studio-2d', '/studio']) {
+      await page.goto(path);
+      await expect(page).toHaveURL((url) => url.pathname === '/room-3d');
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+      await expect(page).toHaveTitle('Room Planner - Lumen');
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test('navbar utility keys are borderless small capitals on one row, flush right, with no display mode toggle', async ({
     page,
   }) => {
     for (const width of [1280, 1600, 768]) {
@@ -288,11 +300,9 @@ test.describe('app shell', () => {
         return { surface: style.backgroundColor, rule: `${style.borderBottomWidth} ${style.borderBottomStyle} ${style.borderBottomColor}`, blur: style.backdropFilter };
       });
       expect(bar).toEqual({ surface: 'rgba(250, 249, 246, 0.92)', rule: '1px solid rgba(20, 19, 17, 0.12)', blur: 'blur(12px)' });
-      const pills = [
-        navbar.getByTestId('mode-switch'),
-        navbar.getByTestId('sign-in'),
-        navbar.getByRole('button', { name: 'Cart (0)' }),
-      ];
+      // Search, Sign In and Cart only: Visual | Specs lives in the 3D Room Planner.
+      await expect(navbar.getByTestId('mode-switch')).toHaveCount(0);
+      const pills = [navbar.getByTestId('command-palette-trigger'), navbar.getByTestId('sign-in'), navbar.getByRole('button', { name: 'Cart (0)' })];
       const looks = [];
       for (const pill of pills) {
         looks.push(
@@ -313,8 +323,6 @@ test.describe('app shell', () => {
           }),
         );
       }
-      // Visual | Specs: a square carbon hairline toggle.
-      expect(looks[0], `${width}px`).toMatchObject({ radius: '0px', edge: '1px', edgeColor: 'rgb(20, 19, 17)', surface: 'rgba(0, 0, 0, 0)', shadow: 'none', height: 32 });
       // Sign In and Cart: no pill, no border, no fill, carbon ink.
       for (const look of looks.slice(1)) {
         expect(look, `${width}px`).toMatchObject({ radius: '0px', edge: '0px', surface: 'rgba(0, 0, 0, 0)', shadow: 'none', height: 32 });
@@ -332,6 +340,7 @@ test.describe('app shell', () => {
       expect(Math.abs(looks[2].right - frameRight), `${width}px`).toBeLessThanOrEqual(1);
       // Small tracked capitals in the sans face (0.75rem, 0.08em), never mono.
       for (const pill of pills.slice(1)) {
+        await expect(pill).toHaveCSS('border-top-width', '0px');
         await expect(pill).toHaveCSS('text-transform', 'uppercase');
         await expect(pill).toHaveCSS('font-size', '12px');
         await expect(pill).toHaveCSS('letter-spacing', '0.96px');
@@ -340,11 +349,6 @@ test.describe('app shell', () => {
       }
     }
 
-    const engaged = page.locator('.mode-switch__segment[aria-pressed="true"]');
-    await expect(engaged).toHaveCSS('background-color', 'rgb(20, 19, 17)');
-    await expect(engaged).toHaveCSS('color', 'rgb(250, 249, 246)');
-    await expect(engaged).toHaveCSS('box-shadow', 'none');
-    await expect(engaged).toHaveCSS('border-top-left-radius', '0px');
   });
 
   test('cart trigger opens a modal drawer that closes on Escape and returns focus', async ({ page }) => {
@@ -376,7 +380,7 @@ test.describe('app shell', () => {
     }
   });
 
-  test('structural grid stays a 2% drafting-film texture in architectural mode, sections get 160px of air', async ({
+  test('structural grid stays a 2% drafting-film texture on the storefront, sections get 160px of air', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -387,23 +391,37 @@ test.describe('app shell', () => {
     await expect(page.getByTestId('core-modules')).toHaveCSS('padding-top', '160px');
     await expect(page.getByTestId('surface-lab')).toHaveCSS('padding-top', '160px');
 
-    // Specs mode brings the drafting grid forward in carbon on the paper.
-    await page.getByRole('group', { name: 'Display mode' }).getByRole('button', { name: 'Technical' }).click();
+    // Specs is a planner preference: the drafting grid comes forward inside
+    // the 3D Room Planner, and the storefront stays in Visual whatever is stored.
+    await page.goto('/room-3d');
+    await page.getByTestId('studio-header').getByRole('button', { name: /technical/i }).click();
     await expect(column).toHaveCSS('border-left-color', 'rgba(20, 19, 17, 0.06)');
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Catalog' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-mode', 'architectural');
+    await expect(column).toHaveCSS('border-left-color', 'rgba(20, 19, 17, 0.02)');
   });
 
   test('display mode switch persists through validated storage and rejects tampered values', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/room-3d');
     const html = page.locator('html');
+    const header = page.getByTestId('studio-header');
     await expect(html).toHaveAttribute('data-mode', 'architectural');
 
-    await page.getByRole('button', { name: /technical/i }).click();
+    await header.getByRole('button', { name: /technical/i }).click();
     await expect(html).toHaveAttribute('data-mode', 'technical');
-    await expect(page.getByRole('button', { name: /technical/i })).toHaveAttribute('aria-pressed', 'true');
+    await expect(header.getByRole('button', { name: /technical/i })).toHaveAttribute('aria-pressed', 'true');
 
     await page.reload();
+    await expect(html).toHaveAttribute('data-mode', 'technical');
+
+    // The storefront always reads in Visual, even with Specs stored.
+    for (const path of ['/', '/catalog', '/checkout']) {
+      await page.goto(path);
+      await expect(html, path).toHaveAttribute('data-mode', 'architectural');
+    }
+    await page.goto('/room-3d');
     await expect(html).toHaveAttribute('data-mode', 'technical');
 
     await page.evaluate(() => {

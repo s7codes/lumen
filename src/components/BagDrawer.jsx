@@ -106,8 +106,8 @@ function EmptyCart({ onNavigate, onQuickAdd }) {
           Your cart is empty
         </h3>
         <p className="bag-empty__copy">
-          Select individual luminaires and shelves from the catalog, or push a complete wall or room specification
-          from the planners.
+          Select individual luminaires and shelves from the catalog, or sync a complete room specification from
+          the 3D Room Planner.
         </p>
         <div className="bag-empty__actions">
           <Link to="/catalog" className="bag-key bag-key--primary" onClick={onNavigate}>

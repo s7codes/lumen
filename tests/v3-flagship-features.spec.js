@@ -8,9 +8,9 @@ import { getProduct } from '../src/data/products.js';
 import { SESSION_TOKEN_STORAGE_KEY } from '../src/lib/auth.js';
 import { formatInt } from '../src/lib/format.js';
 import { projectIdFor } from '../src/lib/project-library.js';
-import { createRoomState } from '../src/lib/room-3d.js';
+import { createRoomState, importFromWallStudio, ROOM_STORAGE_KEY, serializeRoomState } from '../src/lib/room-3d.js';
 import { computeEnvironmentalPhysics, formatEnvironmentalPhysics } from '../src/lib/room-physics.js';
-import { createLayout, DEFAULT_WALL, layoutFromPreset, serializeLayout, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
+import { layoutFromPreset, serializeLayout } from '../src/lib/wall-studio.js';
 import {
   collectRuntimeErrors,
   horizontalOverflow,
@@ -22,9 +22,12 @@ const SERVER = resolveServerOptions(new URL('../', import.meta.url), { ...proces
 const PROJECTS_KEY = `lumen:${PROJECTS_STORAGE_KEY}`;
 const CLIENT_KEY = `lumen:${CLIENT_STORAGE_KEY}`;
 const TOKEN_KEY = `lumen:${SESSION_TOKEN_STORAGE_KEY}`;
-const WALL_KEY = `lumen:${WALL_STORAGE_KEY}`;
+const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
 // Test value for the local API under test; the server only length-checks it.
 const TEST_PASSWORD = 'nordic-test-0042';
+// A furnished draft so the save key is live: the default composition on the north wall.
+const ROOM = serializeRoomState(importFromWallStudio(createRoomState()).state);
+// A legacy wall record: the API still stores and serves the wall kind.
 const WALL = serializeLayout(layoutFromPreset('nordic-reading-wall'));
 const FRAME = 'acoustic-art-frame-50x70';
 const LIGHTBAR = 'linear-lightbar-60';
@@ -71,10 +74,10 @@ async function signIn(page, email) {
   return call;
 }
 
-async function saveWall(page, name) {
-  await page.goto('/studio-2d');
+async function saveRoom(page, name) {
+  await page.goto('/room-3d');
   await page.getByTestId('project-name-input').fill(name);
-  const save = page.getByTestId('save-wall-to-cloud');
+  const save = page.getByTestId('save-room-to-cloud');
   const [call] = await Promise.all([page.waitForRequest(isApiCall('POST', '/api/projects')), save.click()]);
   expect((await call.response()).status()).toBe(201);
   await expect(save).toHaveAttribute('data-state', 'saved');
@@ -146,15 +149,15 @@ test.describe('session-bound cloud libraries', () => {
 
     // Profile A signs in first, then saves: the save carries the session and lands in the account library.
     await a.page.goto('/');
-    await seed(a.page, [[WALL_KEY, JSON.stringify(WALL)]]);
+    await seed(a.page, [[ROOM_KEY, JSON.stringify(ROOM)]]);
     await signIn(a.page, email);
     const tokenA = await readJson(a.page, TOKEN_KEY);
     expect(tokenA).toMatch(/^lmn1\.[\w-]+\.[\w-]{43}$/);
-    const saveA = await saveWall(a.page, 'Halvorsen North Elevation');
+    const saveA = await saveRoom(a.page, 'Halvorsen North Elevation');
     const clientA = saveA.headers()['x-lumen-client'];
     expect(clientA).toMatch(/^[a-f0-9]{32}$/);
     expect(saveA.headers().authorization).toBe(`Bearer ${tokenA}`);
-    const north = projectIdFor('wall', 'Halvorsen North Elevation');
+    const north = projectIdFor('room', 'Halvorsen North Elevation');
     // A's own browser-profile namespace stays empty: nothing was written there.
     const guestA = await request.get('/api/projects', { headers: { 'X-Lumen-Client': clientA } });
     expect((await guestA.json()).projects).toEqual([]);
@@ -163,8 +166,8 @@ test.describe('session-bound cloud libraries', () => {
     await b.page.goto('/');
     expect(await readJson(b.page, PROJECTS_KEY)).toBeNull();
     expect(await readJson(b.page, TOKEN_KEY)).toBeNull();
-    await seed(b.page, [[WALL_KEY, JSON.stringify(WALL)]]);
-    const guestSave = await saveWall(b.page, 'Guest Sketch');
+    await seed(b.page, [[ROOM_KEY, JSON.stringify(ROOM)]]);
+    const guestSave = await saveRoom(b.page, 'Guest Sketch');
     expect(guestSave.headers().authorization).toBeUndefined();
     const clientB = guestSave.headers()['x-lumen-client'];
     expect(clientB).not.toBe(clientA);
@@ -198,7 +201,7 @@ test.describe('session-bound cloud libraries', () => {
     await expect(b.page.getByTestId('account-fact-library')).toHaveAttribute('data-scope', 'account');
     await expect(b.page.getByTestId('account-fact-sync')).toHaveText('Up to date');
     expect((await readJson(b.page, PROJECTS_KEY)).map((project) => project.id).sort()).toEqual(
-      [north, projectIdFor('wall', 'Guest Sketch')].sort(),
+      [north, projectIdFor('room', 'Guest Sketch')].sort(),
     );
 
     // The account record is on disk; B's guest namespace was emptied by the claim.
@@ -209,7 +212,7 @@ test.describe('session-bound cloud libraries', () => {
     // And the sketch made on B reaches A on its next read.
     await a.page.goto('/account');
     await expect(a.page.getByTestId('saved-project')).toHaveCount(2);
-    await expect(a.page.locator(`[data-project-id="${projectIdFor('wall', 'Guest Sketch')}"]`)).toBeVisible();
+    await expect(a.page.locator(`[data-project-id="${projectIdFor('room', 'Guest Sketch')}"]`)).toBeVisible();
 
     // Signing out of B drops the session; the account library stays on the server.
     await b.page.getByTestId('sign-out').click();
@@ -273,14 +276,14 @@ test.describe('session-bound cloud libraries', () => {
   test('a session the server no longer honours drops back to the browser-profile library', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/');
-    await seed(page, [[WALL_KEY, JSON.stringify(WALL)]]);
+    await seed(page, [[ROOM_KEY, JSON.stringify(ROOM)]]);
     await signIn(page, uniqueEmail('expired'));
     const token = await readJson(page, TOKEN_KEY);
     await page.request.delete('/api/auth/session', { headers: { Authorization: `Bearer ${token}` } });
 
     // The first save is refused for the revoked token, drops it, and lands in the profile library.
-    await page.goto('/studio-2d');
-    const save = page.getByTestId('save-wall-to-cloud');
+    await page.goto('/room-3d');
+    const save = page.getByTestId('save-room-to-cloud');
     await save.click();
     await expect(save).toHaveAttribute('data-state', 'saved');
     expect(await readJson(page, TOKEN_KEY)).toBeNull();
@@ -293,61 +296,6 @@ test.describe('session-bound cloud libraries', () => {
 });
 
 test.describe('environmental physics', () => {
-  test('wall studio: RT60 falls and illuminance rises deterministically as frames and luminous modules mount', async ({
-    page,
-  }) => {
-    const errors = collectRuntimeErrors(page);
-    await page.goto('/studio-2d');
-    const cell = page.getByTestId('environmental-physics');
-    await expect(cell.locator('dt')).toHaveText('Acoustics & Illuminance');
-
-    // An empty 300 x 250 cm wall over a 260 cm reference zone: bare-surface Sabine only.
-    const bare = await expectPhysics(page, createLayout(DEFAULT_WALL, []));
-    await expect(cell.getByTestId('physics-illuminance')).toHaveText('Illuminance: 0 lx (Ambient Lounge)');
-    await expect(cell.getByTestId('physics-rt60')).toHaveText('RT60: 1.56 s');
-    await expect(cell.getByTestId('physics-damping')).toHaveText('No added absorption');
-
-    await mount(page, FRAME);
-    const framed = await expectPhysics(page, createLayout(DEFAULT_WALL, mounted([FRAME])));
-    await expect(cell.getByTestId('physics-rt60')).toHaveText('RT60: 1.44 s');
-    await expect(cell.getByTestId('physics-damping')).toHaveText('-0.12 s damping');
-    expect(framed.rt60Sec).toBeLessThan(bare.rt60Sec);
-    expect(framed.avgFloorLux).toBeGreaterThan(bare.avgFloorLux);
-
-    await mount(page, LIGHTBAR);
-    const lit = await expectPhysics(page, createLayout(DEFAULT_WALL, mounted([FRAME, LIGHTBAR])));
-    await expect(cell.getByTestId('physics-illuminance')).toHaveText('Illuminance: 89 lx (Ambient Lounge)');
-    expect(lit.avgFloorLux).toBeGreaterThan(framed.avgFloorLux);
-    // Aluminium absorbs almost exactly like the painted wall it covers.
-    expect(lit.rt60Sec).toBe(framed.rt60Sec);
-
-    await mount(page, FRAME);
-    const damped = await expectPhysics(page, createLayout(DEFAULT_WALL, mounted([FRAME, LIGHTBAR, FRAME])));
-    await expect(cell.getByTestId('physics-rt60')).toHaveText('RT60: 1.34 s');
-    expect(damped.rt60Sec).toBeLessThan(lit.rt60Sec);
-    expect(damped.avgFloorLux).toBeGreaterThan(lit.avgFloorLux);
-
-    await mount(page, SHELF);
-    await mount(page, SHELF);
-    const task = await expectPhysics(page, createLayout(DEFAULT_WALL, mounted([FRAME, LIGHTBAR, FRAME, SHELF, SHELF])));
-    expect(task.avgFloorLux).toBeGreaterThan(250);
-    await expect(cell.getByTestId('physics-illuminance')).toContainText('(Studio Task)');
-    await expect(cell).toHaveAttribute('data-grade', 'task');
-
-    // The derivation is technical detail: hidden in Architectural mode, shown in Technical.
-    await expect(cell.getByTestId('physics-detail')).toBeHidden();
-    await page.getByRole('group', { name: 'Display mode' }).getByRole('button', { name: 'Technical' }).click();
-    await expect(cell.getByTestId('physics-detail')).toBeVisible();
-    await expect(cell.getByTestId('physics-detail')).toContainText(`m2 sabins`);
-
-    for (const width of [360, 1280]) {
-      await page.setViewportSize({ width, height: 900 });
-      expect(await horizontalOverflow(page), `${width}px`).toBeLessThanOrEqual(0);
-    }
-    expect(errors).toEqual([]);
-    expect(await readCspViolations(page)).toEqual([]);
-  });
-
   test('room planner: the same engine reads room volume, daylight reflectance and the reference sofa', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/room-3d');
@@ -384,6 +332,17 @@ test.describe('environmental physics', () => {
     );
     expect(furnished.rt60Sec).toBeLessThan(daylight.rt60Sec);
     expect(furnished.baselineRt60Sec).toBeLessThan(daylight.baselineRt60Sec);
+
+    // The derivation is technical detail: hidden in Visual, shown in Specs from the planner header.
+    await expect(cell.getByTestId('physics-detail')).toBeHidden();
+    await page.getByTestId('studio-header').getByRole('button', { name: 'Technical' }).click();
+    await expect(cell.getByTestId('physics-detail')).toBeVisible();
+    await expect(cell.getByTestId('physics-detail')).toContainText('m2 sabins');
+
+    for (const width of [360, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await horizontalOverflow(page), `${width}px`).toBeLessThanOrEqual(0);
+    }
 
     expect(errors).toEqual([]);
     expect(await readCspViolations(page)).toEqual([]);

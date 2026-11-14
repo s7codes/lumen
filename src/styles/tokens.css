@@ -5,8 +5,9 @@
    workstations live here.
 
    The optical chamber (.optical): a lit architectural volume reserved for
-   live light - the plaster hero, the dimming bench, the twilight theatre, the
-   plaster plinths and the planner viewports. It re-declares the dark token
+   live light - the dimming bench, the twilight theatre and the planner
+   viewports. The hero and the catalog plinths are light architectural
+   interiors drawn on the gallery side. It re-declares the dark token
    set, so everything drawn inside a chamber keeps its night palette. Warm
    2700K amber appears only as light emitted inside a chamber, never as a
    button fill on paper. */
@@ -37,8 +38,9 @@
   --emission: #d4883a;
   --emission-soft: #e5a158;
 
-  /* Architectural surfaces for the full-bleed bands and plinths: lit Venetian
-     plaster, umber plaster in shadow, travertine stone and twilight slate.
+  /* Architectural surfaces for the full-bleed bands: smooth matte plaster in
+     light and in shadow, travertine stone and twilight slate. No noise
+     textures anywhere: surfaces read through light, never through mottling.
      The stone pair dresses the light planner workstations. */
   --plaster-lit: #c8bca9;
   --plaster-warm: #b8aa96;
@@ -49,14 +51,6 @@
   --slate-soft: #26282b;
   --stone-panel: #f3f0e8;
   --stone-well: #ece8df;
-  /* Trowelled plaster: soft fractal mottles (SVG noise, rasterised once and
-     tiled) laid over a plaster gradient, light clouds and darker trowel marks. */
-  --plaster-mottle-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='360'%3E%3Cfilter id='m' x='0' y='0' width='1' height='1'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.008 0.013' numOctaves='5' seed='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.95 0 0 0 0 0.88 0.42 0 0 0 -0.165'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23m)'/%3E%3C/svg%3E");
-  --plaster-mottle-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='440' height='440'%3E%3Cfilter id='m' x='0' y='0' width='1' height='1'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.007 0.011' numOctaves='5' seed='9' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.12 0 0 0 0 0.09 0 0 0 0 0.06 -0.44 0 0 0 0.245'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23m)'/%3E%3C/svg%3E");
-  /* Fine trowel grain for small plaster surfaces (catalog plinths): light and
-     dark noise in one tile, faint enough that the wall-wash reads first. */
-  --plaster-trowel: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='l' x='0' y='0' width='1' height='1'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.045 0.06' numOctaves='3' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.95 0 0 0 0 0.88 0.2 0 0 0 -0.08'/%3E%3C/filter%3E%3Cfilter id='d' x='0' y='0' width='1' height='1'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.04 0.055' numOctaves='3' seed='8' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.08 0 0 0 0 0.05 -0.22 0 0 0 0.12'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23l)'/%3E%3Crect width='100%25' height='100%25' filter='url(%23d)'/%3E%3C/svg%3E");
-
   /* Surfaces */
   --bg-inset: #faf8f4;
   --bg-canvas: #faf9f6;

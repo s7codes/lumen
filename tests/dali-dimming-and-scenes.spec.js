@@ -13,6 +13,7 @@ import {
 import { applyLightingSceneToLayout, applyLightingSceneToRoom, matchLightingScene } from '../src/lib/lighting-scenes.js';
 import {
   createRoomState,
+  roomFromWallLayout,
   ROOM_STORAGE_KEY,
   sanitizeRoomState,
   serializeRoomState,
@@ -63,20 +64,10 @@ async function seed(page, key, value) {
   await page.evaluate(([k, v]) => localStorage.setItem(k, v), [key, JSON.stringify(value)]);
 }
 
-async function openStudio(page, layout = WALL) {
-  await seed(page, WALL_KEY, serializeLayout(layout));
-  await page.goto('/studio-2d');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
-}
-
 async function openRoom(page, state = ROOM) {
   await seed(page, ROOM_KEY, serializeRoomState(state));
   await page.goto('/room-3d');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
-}
-
-function wallModule(page, uid) {
-  return page.locator(`[data-testid="wall-module"][data-uid="${uid}"]`);
 }
 
 function roomModule(page, uid) {
@@ -194,79 +185,6 @@ test.describe('dali-2 dimming model', () => {
 });
 
 test.describe('dimming in the planners', () => {
-  test('wall studio: the inspector slider dims flux, lux, heatmap and bus current while the driver holds', async ({ page }) => {
-    const errors = collectRuntimeErrors(page);
-    await openStudio(page);
-    await page.getByTestId('toggle-lux-heatmap').click();
-    await page.getByTestId('toggle-bus-topology').click();
-    const base = summarizeWall(WALL);
-    await expect(page.getByTestId('wall-flux')).toHaveAttribute('data-lm', String(base.lumens));
-
-    await wallModule(page, 'm1').click();
-    const slider = page.getByTestId('module-dim-slider');
-    await expect(slider).toHaveAttribute('min', String(DIM_RANGE.min));
-    await expect(slider).toHaveAttribute('max', String(DIM_RANGE.max));
-    await expect(slider).toHaveAttribute('step', '5');
-    await expect(slider).toHaveValue('100');
-    await expect(page.getByTestId('module-dim-value')).toHaveText('100%');
-
-    await slider.fill('50');
-    const dimmed = updateItem(WALL, 'm1', { dimPct: 50 });
-    const summary = summarizeWall(dimmed);
-    await expect(wallModule(page, 'm1')).toHaveAttribute('data-dim-pct', '50');
-    await expect(page.getByTestId('module-dim-value')).toHaveText('50%');
-    await expect(page.getByTestId('module-output')).toContainText('8 W / 575 lm at 50%');
-
-    await expect(page.getByTestId('wall-flux')).toHaveAttribute('data-lm', String(summary.lumens));
-    await expect(page.getByTestId('wall-flux')).toHaveText(`${formatInt(summary.lumens)} lm`);
-    expect(summary.lumens).toBeLessThan(base.lumens);
-    await expect(page.getByTestId('wall-active-load')).toHaveText(`${formatWatts(summary.activeW)} W live`);
-    await expect(page.getByTestId('wall-load')).toHaveText(`${base.loadW} W`);
-    await expect(page.getByTestId('wall-psu')).toHaveText(base.psu.label);
-    await expect(page.getByTestId('wall-dimmed')).toHaveText('1 channel dimmed / DALI-2');
-
-    const fieldBase = computeWallLuxField(WALL);
-    const field = computeWallLuxField(dimmed);
-    const heatmap = page.getByTestId('lux-heatmap-overlay');
-    await expect(heatmap).toHaveAttribute('data-peak-lux', String(field.peakLux));
-    await expect(heatmap).toHaveAttribute('data-avg-lux', String(field.avgLux));
-    expect(field.peakLux).toBeLessThanOrEqual(fieldBase.peakLux);
-    expect(field.avgLux).toBeLessThan(fieldBase.avgLux);
-
-    const physics = formatEnvironmentalPhysics(computeEnvironmentalPhysics(dimmed), formatInt);
-    await expect(page.getByTestId('physics-illuminance')).toHaveText(physics.illuminance);
-    expect(computeEnvironmentalPhysics(dimmed).avgFloorLux).toBeLessThan(computeEnvironmentalPhysics(WALL).avgFloorLux);
-
-    const busBase = computeBusTopology(WALL);
-    const bus = computeBusTopology(dimmed);
-    const overlay = page.getByTestId('bus-topology-overlay');
-    await expect(overlay).toHaveAttribute('data-current-a', String(bus.currentA));
-    await expect(overlay).toHaveAttribute('data-drop-v', String(bus.voltageDropV));
-    await expect(page.getByTestId('bus-run-telemetry')).toHaveAttribute('data-rated-w', String(busBase.ratedWatts));
-    expect(bus.currentA).toBeLessThan(busBase.currentA);
-
-    // One commit, one undo step.
-    await page.keyboard.press('Control+z');
-    await expect(wallModule(page, 'm1')).toHaveAttribute('data-dim-pct', '100');
-    await expect(page.getByTestId('wall-flux')).toHaveAttribute('data-lm', String(base.lumens));
-    await expect(overlay).toHaveAttribute('data-current-a', String(busBase.currentA));
-    await expect(slider).toHaveValue('100');
-
-    // Multi-selection dims every powered module in one step and skips the passive hub.
-    await page.getByTestId('studio-inspector').getByRole('button', { name: 'Done' }).click();
-    await wallModule(page, 'm2').click();
-    await wallModule(page, 'm5').click({ modifiers: ['Shift'] });
-    await wallModule(page, 'm6').click({ modifiers: ['Shift'] });
-    await expect(page.getByTestId('multi-select-inspector')).toHaveAttribute('data-count', '3');
-    await page.getByTestId('module-dim-slider').fill('35');
-    await expect.poll(() => readLevels(page, 'wall-module')).toEqual([100, 35, 100, 100, 100, 35]);
-    await page.keyboard.press('Control+z');
-    await expect.poll(() => readLevels(page, 'wall-module')).toEqual([100, 100, 100, 100, 100, 100]);
-
-    expect(errors).toEqual([]);
-    expect(await readCspViolations(page)).toEqual([]);
-  });
-
   test('room planner: the inspector slider dims flux, floor lux, bus current and the WebGL lights', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await openRoom(page);
@@ -314,51 +232,6 @@ test.describe('dimming in the planners', () => {
 });
 
 test.describe('dali-2 scene presets', () => {
-  test('wall studio: each scene sets levels and surface in one undoable step', async ({ page }) => {
-    const errors = collectRuntimeErrors(page);
-    await openStudio(page);
-    const bar = page.getByTestId('lighting-scene-bar');
-    const stage = page.locator('.studio-stage__viewport');
-    await expect(bar).toHaveAttribute('data-active-scene', 'full');
-    await expect(page.getByTestId('scene-preset-full')).toHaveAttribute('aria-pressed', 'true');
-
-    await page.getByTestId('scene-preset-morning').click();
-    await expect.poll(() => readLevels(page, 'wall-module')).toEqual(SCENES.morning.levels);
-    await expect(stage).toHaveAttribute('data-surface', 'daylight');
-    await expect(bar).toHaveAttribute('data-active-scene', 'morning');
-    await expect(page.getByTestId('studio-notice')).toHaveText('Recalled Morning Focus: task 100% / accent 65%.');
-    await expect(page.getByTestId('wall-flux')).toHaveAttribute(
-      'data-lm',
-      String(summarizeWall(applyLightingSceneToLayout(WALL, 'morning')).lumens),
-    );
-
-    await page.keyboard.press('Control+z');
-    await expect.poll(() => readLevels(page, 'wall-module')).toEqual(SCENES.full.levels);
-    await expect(stage).toHaveAttribute('data-surface', 'ambient');
-    await expect(bar).toHaveAttribute('data-active-scene', 'full');
-
-    for (const id of ['evening', 'night']) {
-      await page.getByTestId(`scene-preset-${id}`).click();
-      await expect.poll(() => readLevels(page, 'wall-module'), { message: id }).toEqual(SCENES[id].levels);
-      await expect(stage).toHaveAttribute('data-surface', SCENES[id].surface);
-      await expect(page.getByTestId(`scene-preset-${id}`)).toHaveAttribute('aria-pressed', 'true');
-    }
-    await expect(page.getByTestId('wall-dimmed')).toHaveText('5 channels dimmed / DALI-2');
-    const stored = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), WALL_KEY);
-    expect(stored.items.map((item) => item.dimPct ?? 100)).toEqual(SCENES.night.levels);
-
-    await page.getByTestId('scene-preset-full').click();
-    await expect.poll(() => readLevels(page, 'wall-module')).toEqual(SCENES.full.levels);
-    await expect(stage).toHaveAttribute('data-surface', 'ambient');
-    await page.keyboard.press('Control+z');
-    await expect.poll(() => readLevels(page, 'wall-module')).toEqual(SCENES.night.levels);
-    await page.keyboard.press('Control+z');
-    await expect.poll(() => readLevels(page, 'wall-module')).toEqual(SCENES.evening.levels);
-
-    expect(errors).toEqual([]);
-    expect(await readCspViolations(page)).toEqual([]);
-  });
-
   test('room planner: each scene sets levels and the lighting rig in one undoable step', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await openRoom(page);
@@ -413,15 +286,18 @@ test.describe('dimmed share links', () => {
     expect(decoded.state.items.map((item) => item.dimPct ?? 100)).toEqual([35, 70, 100, 100, 100, 70]);
     expect(decoded.name).toBe('Dimmed Wall');
 
+    // A legacy wall link lands in the 3D Room Planner on the north wall, levels intact.
     await page.goto(`/studio-2d?scene=${wallParam}`);
+    await expect(page).toHaveURL((url) => url.pathname === '/room-3d');
     await expect(page.getByTestId('toast-message').last()).toHaveText('Loaded shared scene: Dimmed Wall.');
-    await expect.poll(() => readLevels(page, 'wall-module')).toEqual([35, 70, 100, 100, 100, 70]);
-    await expect(page.getByTestId('wall-flux')).toHaveAttribute('data-lm', String(summarizeWall(wall).lumens));
+    await expect.poll(() => readLevels(page, 'room-module')).toEqual([35, 70, 100, 100, 100, 70]);
+    const adapted = roomFromWallLayout(createRoomState(), wall);
+    await expect(page.getByTestId('room-flux')).toHaveAttribute('data-lm', String(summarizeWall(adapted).lumens));
 
     await page.getByTestId('copy-share-link').click();
-    await expect(page.getByTestId('copy-share-link')).toHaveAttribute('data-share-url', /\/studio-2d\?scene=[A-Za-z0-9_-]+$/);
+    await expect(page.getByTestId('copy-share-link')).toHaveAttribute('data-share-url', /\/room-3d\?scene=[A-Za-z0-9_-]+$/);
     const url = await page.getByTestId('copy-share-link').getAttribute('data-share-url');
-    const again = decodeSceneParam('wall', new URL(url).searchParams.get('scene'));
+    const again = decodeSceneParam('room', new URL(url).searchParams.get('scene'));
     expect(again.state.items.map((item) => item.dimPct ?? 100)).toEqual([35, 70, 100, 100, 100, 70]);
 
     const room = updateRoomItem(updateRoomItem(ROOM, 'm3', { dimPct: 25 }), 'm4', { dimPct: 60 });

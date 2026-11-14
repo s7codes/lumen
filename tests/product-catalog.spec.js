@@ -8,20 +8,9 @@ import {
   VIEWPORT_WIDTHS,
 } from './support/runtime-guards.js';
 
-const modeButton = (page, name) =>
-  page.getByRole('group', { name: 'Display mode' }).getByRole('button', { name });
-
-function readTelemetry(card) {
-  return card
-    .getByTestId('product-telemetry')
-    .evaluate((dl) =>
-      Object.fromEntries(
-        [...dl.querySelectorAll('.telemetry__cell')].map((cell) => [
-          cell.querySelector('dt').textContent,
-          cell.querySelector('dd').textContent,
-        ]),
-      ),
-    );
+/** Faces of the visual painted in exactly this colour. */
+function facesIn(visual, hex) {
+  return visual.locator(`polygon[fill="${hex}"]`);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -93,25 +82,25 @@ test.describe('product catalog', () => {
     ]);
   });
 
-  test('finish swatches recolour the scale elevation drawing', async ({ page }) => {
+  test('finish swatches refinish the part inside its lit interior', async ({ page }) => {
     await page.goto('/catalog');
     const card = page.getByRole('article', { name: 'Floating Shelf 110' });
-    const drawing = card.getByRole('img', { name: /front elevation of floating shelf 110/i });
-    const baseStop = drawing.locator('.elev__stop-base').first();
+    const visual = card.getByTestId('product-visual');
+    await expect(visual).toHaveAttribute('aria-label', /^Floating Shelf 110 in FSC American Walnut, 110 x 8 cm, shown in a daylight gallery interior with its 2700K light on$/);
 
     await expect(card).toHaveAttribute('data-finish', 'walnut');
     await expect(card.getByRole('radio', { name: 'Walnut' })).toBeChecked();
-    await expect(baseStop).toHaveCSS('stop-color', 'rgb(91, 58, 38)');
-    await expect(drawing).toHaveAttribute('aria-label', /FSC American Walnut/);
+    expect(await facesIn(visual, '#5b3a26').count()).toBeGreaterThan(0);
 
     await card.getByRole('radio', { name: 'Oak' }).check();
     await expect(card).toHaveAttribute('data-finish', 'oak');
-    await expect(baseStop).toHaveCSS('stop-color', 'rgb(196, 165, 124)');
-    await expect(drawing).toHaveAttribute('aria-label', /Nordic White Oak/);
+    await expect(visual).toHaveAttribute('aria-label', /Nordic White Oak/);
+    await expect.poll(() => facesIn(visual, '#c4a57c').count()).toBeGreaterThan(0);
+    await expect(facesIn(visual, '#5b3a26')).toHaveCount(0);
     await expect(card.getByText('Nordic White Oak')).toBeVisible();
 
     await card.getByRole('radio', { name: 'Obsidian' }).check();
-    await expect(baseStop).toHaveCSS('stop-color', 'rgb(44, 46, 48)');
+    await expect.poll(() => facesIn(visual, '#2c2e30').count()).toBeGreaterThan(0);
 
     const filters = page.getByRole('group', { name: 'Category' });
     await filters.getByRole('button', { name: /^lighting/i }).click();
@@ -124,48 +113,18 @@ test.describe('product catalog', () => {
     await expect(spot.getByRole('radio', { name: 'Walnut' })).toHaveCount(0);
   });
 
-  test('architectural and technical modes swap editorial copy for engineering telemetry', async ({ page }) => {
+  test('the storefront always reads in Visual: editorial copy on every card, even with Specs stored', async ({ page }) => {
     await page.goto('/catalog');
+    await storeDisplayMode(page, 'technical');
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-mode', 'architectural');
+    await expect(page.getByTestId('mode-switch')).toHaveCount(0);
     const shelf = page.getByRole('article', { name: 'Floating Shelf 110' });
-    const track = page.getByRole('article', { name: 'Recessed 24V Track Bus 200' });
-    const telemetry = page.getByTestId('product-telemetry');
-
-    await expect(telemetry).toHaveCount(0);
-    await expect(shelf.getByText('LMN-SH-110')).toHaveCount(0);
-    await expect(shelf.getByText('16 W')).toHaveCount(0);
-    await expect(shelf.getByText(/concealed steel cleat/)).toBeVisible();
-    await expect(shelf.locator('.elev__tech')).toHaveCount(0);
-
-    await modeButton(page, /technical/i).click();
-    await expect(page.locator('html')).toHaveAttribute('data-mode', 'technical');
-    await expect(telemetry).toHaveCount(12);
-    await expect(shelf.getByText('LMN-SH-110')).toBeVisible();
-    await expect(shelf.getByText('16 W')).toBeVisible();
-    expect(await readTelemetry(shelf)).toEqual({
-      SKU: 'LMN-SH-110',
-      '24V DC load': '16 W',
-      Output: '1150 lm',
-      Efficacy: '71.9 lm/W',
-      CRI: '97+',
-      CCT: '2700 K',
-      Mounting: '3 pts',
-      'Lead time': '1-2 wk',
-    });
-    expect(await readTelemetry(track)).toMatchObject({
-      SKU: 'LMN-TR-200',
-      '24V DC load': '0 W',
-      Efficacy: '--',
-      CRI: '--',
-      Mounting: '5 pts',
-    });
-    await expect(shelf.getByText(/concealed steel cleat/)).toHaveCount(0);
-    await expect(shelf.locator('.elev__dim-text').first()).toHaveText('110');
-    await expect(shelf.locator('.elev__anchor')).toHaveCount(3);
-
-    await modeButton(page, /architectural/i).click();
-    await expect(telemetry).toHaveCount(0);
+    await expect(page.getByTestId('product-telemetry')).toHaveCount(0);
     await expect(shelf.getByText('LMN-SH-110')).toHaveCount(0);
     await expect(shelf.getByText(/concealed steel cleat/)).toBeVisible();
+    await expect(shelf.locator('.swatches__surface')).toHaveText('Oiled solid timber, FSC 100%');
+    await expect(page.locator('.catalog__toolbar')).toContainText('Daylight interiors / 2700K');
   });
 
   test('boots clean and never overflows from 360px to 1600px in either mode', async ({ page }) => {
@@ -177,7 +136,8 @@ test.describe('product catalog', () => {
       for (const width of VIEWPORT_WIDTHS) {
         await page.setViewportSize({ width, height: 900 });
         await page.goto('/catalog');
-        await expect(page.locator('html')).toHaveAttribute('data-mode', mode);
+        // The stored planner preference never reaches the storefront.
+        await expect(page.locator('html')).toHaveAttribute('data-mode', 'architectural');
         await expect(page.getByRole('article')).toHaveCount(12);
         expect(await horizontalOverflow(page), `${mode} at ${width}px`).toBeLessThanOrEqual(0);
       }

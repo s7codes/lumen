@@ -88,7 +88,7 @@ test.describe('twelve-part canonical catalog', () => {
     await expect(cards.getByRole('heading', { level: 3 })).toHaveText(PRODUCTS.map((p) => p.name));
     for (const id of NEW_PARTS) {
       const card = page.getByRole('article', { name: getProduct(id).name });
-      await expect(card.getByRole('img', { name: /front elevation of/i })).toBeVisible();
+      await expect(card.getByRole('img', { name: /daylight gallery interior/i })).toBeVisible();
     }
 
     const filters = page.getByRole('group', { name: 'Category' });
@@ -99,14 +99,17 @@ test.describe('twelve-part canonical catalog', () => {
       await expect(cards.getByRole('heading', { level: 3 }), category.id).toHaveText(expected);
     }
 
-    // Technical mode draws dimensions and anchors on every card, the new ones included.
+    // Every card is a lifelike interior of its own part, lit where the part gives
+    // light. The storefront has no Specs layer: no telemetry, no mode switch.
     await filters.getByRole('button', { name: /^all/i }).click();
-    await modeButton(page, /technical/i).click();
-    await expect(page.getByTestId('product-telemetry')).toHaveCount(12);
-    const pendant = page.getByRole('article', { name: getProduct(PENDANT).name });
-    await expect(pendant.locator('.elev__anchor')).toHaveCount(2);
-    await expect(pendant.locator('.elev__cable')).toHaveCount(2);
-    await expect(page.getByRole('article', { name: getProduct(BAFFLE).name }).locator('.elev__felt')).toHaveCount(1);
+    for (const product of PRODUCTS) {
+      const visual = page.getByRole('article', { name: product.name }).getByTestId('product-visual');
+      await expect(visual, product.id).toHaveAttribute('data-shape', product.shape);
+      await expect(visual, product.id).toHaveAttribute('data-lit', String(product.watts > 0));
+    }
+    await expect(page.getByTestId('product-telemetry')).toHaveCount(0);
+    await expect(page.getByTestId('mode-switch')).toHaveCount(0);
+    await expect(page.locator('html')).toHaveAttribute('data-mode', 'architectural');
 
     for (const width of [360, 1280]) {
       await page.setViewportSize({ width, height: 900 });
@@ -184,19 +187,12 @@ test.describe('twelve-part canonical catalog', () => {
     ]);
   });
 
-  test('the 2D and 3D launchers mount each new part at a clear spot', async ({ page }) => {
+  test('the 3D launcher mounts each new part at a clear spot', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     for (const id of NEW_PARTS) {
       const product = getProduct(id);
       await page.goto(`/catalog/${id}?finish=${product.defaultFinish}`);
-      await page.getByTestId('launch-in-wall-studio').click();
-      await expect(page).toHaveURL(/\/studio-2d$/);
-      const module = page.locator(`[data-testid="wall-module"][data-product="${id}"]`);
-      await expect(module).toHaveCount(1);
-      await expect(module).toHaveAttribute('data-shape', product.shape);
-      await expect(module).toHaveAttribute('data-conflict', 'false');
-
-      await page.goto(`/catalog/${id}?finish=${product.defaultFinish}`);
+      await expect(page.getByTestId('launch-in-wall-studio')).toHaveCount(0);
       await page.getByTestId('launch-in-room-3d').click();
       await expect(page).toHaveURL(/\/room-3d$/);
       await expect(page.getByTestId('room-inspector-name')).toHaveText(product.name);
@@ -285,47 +281,7 @@ test.describe('six-octave acoustics and STI', () => {
     expect(bare.stiScore).toBeLessThanOrEqual(1);
   });
 
-  test('wall studio: a baffle and a frame pull down 500 Hz-4 kHz and lift the STI', async ({ page }) => {
-    const errors = collectRuntimeErrors(page);
-    await page.goto('/studio-2d');
-    const cell = page.getByTestId('environmental-physics');
-    const spectrum = cell.getByTestId('acoustic-octave-spectrum');
-
-    const bare = await expectAcoustics(cell, createLayout(DEFAULT_WALL, []));
-    await expect(cell.getByTestId('acoustic-sti')).toHaveText('STI 0.54 (Fair)');
-    await expect(spectrum).toBeHidden();
-
-    await mount(page, BAFFLE);
-    const baffled = await expectAcoustics(cell, createLayout(DEFAULT_WALL, mounted([BAFFLE])));
-    expectDamped(baffled, bare);
-    // 50 mm felt at NRC 0.85 out-damps the 30 mm frame core.
-    const frameOnly = computeEnvironmentalPhysics(createLayout(DEFAULT_WALL, mounted([FRAME])));
-    expect(baffled.rt60Sec).toBeLessThan(frameOnly.rt60Sec);
-
-    await mount(page, FRAME);
-    const both = await expectAcoustics(cell, createLayout(DEFAULT_WALL, mounted([BAFFLE, FRAME])));
-    expectDamped(both, baffled);
-    await expect(cell.getByTestId('physics-rt60')).toHaveText('RT60: 1.26 s');
-    await expect(cell.getByTestId('acoustic-sti')).toHaveText('STI 0.58 (Fair)');
-    await expect(cell.getByTestId('acoustic-sti')).toHaveAttribute('data-grade', 'fair');
-
-    // The spectrum is technical detail: six labelled bars appear with Technical mode only.
-    await modeButton(page, 'Technical').click();
-    await expect(spectrum).toBeVisible();
-    await expect(spectrum.locator('.octave__label')).toHaveText(['125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz']);
-    await expect(spectrum.getByRole('listitem')).toHaveCount(6);
-    await modeButton(page, 'Architectural').click();
-    await expect(spectrum).toBeHidden();
-
-    for (const width of [360, 1280]) {
-      await page.setViewportSize({ width, height: 900 });
-      expect(await horizontalOverflow(page), `${width}px`).toBeLessThanOrEqual(0);
-    }
-    expect(errors).toEqual([]);
-    expect(await readCspViolations(page)).toEqual([]);
-  });
-
-  test('room planner: the same octave curve and STI respond to the felt panels', async ({ page }) => {
+  test('room planner: a baffle and a frame pull down 500 Hz-4 kHz and lift the STI', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/room-3d');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
@@ -339,8 +295,20 @@ test.describe('six-octave acoustics and STI', () => {
     const both = await expectAcoustics(cell, createRoomState(undefined, mounted([BAFFLE, FRAME])));
     expectDamped(both, baffled);
 
+    // The spectrum is technical detail: six labelled bars appear with Specs only.
+    const spectrum = cell.getByTestId('acoustic-octave-spectrum');
+    await expect(spectrum).toBeHidden();
     await modeButton(page, 'Technical').click();
-    await expect(cell.getByTestId('acoustic-octave-spectrum')).toBeVisible();
+    await expect(spectrum).toBeVisible();
+    await expect(spectrum.locator('.octave__label')).toHaveText(['125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz']);
+    await expect(spectrum.getByRole('listitem')).toHaveCount(6);
+    await modeButton(page, 'Architectural').click();
+    await expect(spectrum).toBeHidden();
+
+    for (const width of [360, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await horizontalOverflow(page), `${width}px`).toBeLessThanOrEqual(0);
+    }
     expect(errors).toEqual([]);
     expect(await readCspViolations(page)).toEqual([]);
   });

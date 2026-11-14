@@ -204,13 +204,13 @@ test.describe('RT60 acoustic audition', () => {
     expect(readout.text).toMatch(/^[\x20-\x7e]+$/);
   });
 
-  test('wall studio: the key plays the six-band decay and the curve follows the felt as it is mounted', async ({ page }) => {
+  test('room planner: the key plays the six-band decay and the curve follows the felt as it is mounted', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await instrumentWebAudio(page);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/studio-2d');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
-    const cell = page.getByTestId('wall-summary').getByTestId('environmental-physics');
+    await page.goto('/room-3d');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    const cell = page.getByTestId('room-summary').getByTestId('environmental-physics');
     const key = cell.getByTestId('audition-room-acoustics');
     await expect(key).toHaveText('Test Room Echo');
     await expect(key).toHaveAccessibleName('Test Room Echo (Audition RT60)');
@@ -222,7 +222,7 @@ test.describe('RT60 acoustic audition', () => {
     await expect(cell.getByTestId('acoustic-baseline-mark')).toHaveCount(0);
     await expect(cell.getByTestId('acoustic-decay-wave').locator('.audition__bar')).toHaveCount(ENVELOPE_POINTS);
 
-    const bare = computeEnvironmentalPhysics(createLayout(DEFAULT_WALL, []));
+    const bare = computeEnvironmentalPhysics(createRoomState());
     const wave = await auditionAndCheck(page, cell, bare, 1);
     await expect(wave).toHaveAttribute('data-damping-pct', String(synthesizeAcousticProfile(bare).dampingPct));
     await expect(wave.locator('.audition__bar').first()).toHaveCSS('animation-name', 'audition-sample');
@@ -232,17 +232,17 @@ test.describe('RT60 acoustic audition', () => {
 
     await mount(page, BAFFLE);
     await mount(page, FRAME);
-    const damped = computeEnvironmentalPhysics(createLayout(DEFAULT_WALL, mounted([BAFFLE, FRAME])));
+    const damped = computeEnvironmentalPhysics(createRoomState(undefined, mounted([BAFFLE, FRAME])));
     expect(damped.rt60Sec).toBeLessThan(bare.rt60Sec);
     const after = await auditionAndCheck(page, cell, damped, 2);
-    await expect(after).toHaveAttribute('data-rt60', '1.26');
+    await expect(after).toHaveAttribute('data-rt60', damped.rt60Sec.toFixed(2));
     expect(Number(await after.getAttribute('data-damping-pct'))).toBeGreaterThan(0);
     expect(Number(await after.getAttribute('data-duration'))).toBeLessThan(synthesizeAcousticProfile(bare).durationSec);
     // The readout compares the panels against the bare room, and the curve marks where the bare echo ends.
     const dampedProfile = synthesizeAcousticProfile(damped);
     await expect(readout).toHaveAttribute('data-damped', 'true');
     await expect(readout).toHaveText(echoReadout(dampedProfile).text);
-    await expect(readout).toContainText('Echo: 1.26 s vs.');
+    await expect(readout).toContainText(`Echo: ${damped.rt60Sec.toFixed(2)} s vs.`);
     await expect(after).toHaveAttribute('data-baseline-rt60', dampedProfile.baselineRt60Sec.toFixed(2));
     const mark = cell.getByTestId('acoustic-baseline-mark');
     await expect(mark).toHaveCount(1);
@@ -258,7 +258,7 @@ test.describe('RT60 acoustic audition', () => {
     expect(errors).toEqual([]);
   });
 
-  test('room planner: the same audition tracks the felt panels in the room', async ({ page }) => {
+  test('room planner: the audition tracks a single baffle in the room', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await instrumentWebAudio(page);
     await page.goto('/room-3d');
@@ -282,73 +282,12 @@ test.describe('RT60 acoustic audition', () => {
       delete window.AudioContext;
       delete window.webkitAudioContext;
     });
-    await page.goto('/studio-2d');
-    const cell = page.getByTestId('wall-summary').getByTestId('environmental-physics');
+    await page.goto('/room-3d');
+    const cell = page.getByTestId('room-summary').getByTestId('environmental-physics');
     await cell.getByTestId('audition-room-acoustics').click();
     const wave = cell.getByTestId('acoustic-decay-wave');
     await expect(wave).toHaveAttribute('data-state', 'playing');
     await expect(wave).toHaveAttribute('data-audio', 'silent');
-    expect(errors).toEqual([]);
-  });
-});
-
-test.describe('wall studio drafting backdrop', () => {
-  test('a warm key light, a ground line, a perspective plinth and a registered sheet frame surround the elevation', async ({
-    page,
-  }) => {
-    const errors = collectRuntimeErrors(page);
-    await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto('/studio-2d');
-    await page.getByRole('button', { name: 'Load preset Nordic Reading Wall' }).click();
-    const viewport = page.locator('.studio-stage__viewport');
-    await expect(page.locator('.studio-stage')).toHaveClass(/(^|\s)wall-stage(\s|$)/);
-
-    const surround = await viewport.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return { color: style.backgroundColor, image: style.backgroundImage };
-    });
-    expect(surround.color).toBe('rgb(17, 16, 15)');
-    expect(surround.image).toContain('radial-gradient(85% 70% at 50% 38%');
-    expect(surround.image).toContain('rgba(232, 168, 92, 0.11) 0%');
-    expect(surround.image).toContain('rgba(46, 39, 32, 0.28) 48%');
-    expect(surround.image).toContain('rgba(15, 14, 13, 0.96) 100%');
-    // The stage is the one optical volume; the workstation around it is flat Flos paper.
-    await expect(viewport).toHaveClass(/(^|\s)optical(\s|$)/);
-    const layout = await page.locator('.studio-layout').evaluate((el) => {
-      const style = getComputedStyle(el);
-      return { color: style.backgroundColor, image: style.backgroundImage };
-    });
-    expect(layout).toEqual({ color: 'rgb(250, 249, 246)', image: 'none' });
-
-    const backdrop = page.getByTestId('studio-backdrop');
-    await expect(backdrop).toBeVisible();
-    await expect(backdrop).toHaveCSS('pointer-events', 'none');
-    await expect(backdrop.locator('.wall-stage__reg')).toHaveCount(4);
-    await expect(backdrop.locator('.wall-stage__tick')).toHaveCount(4);
-    await expect(backdrop).toHaveCSS('border-top-width', '1px');
-
-    // The plinth recedes in perspective from the floor datum, under the wall and clear of the pointer.
-    const wall = page.getByTestId('wall-canvas');
-    const plinth = page.getByTestId('wall-plinth');
-    const [wallBox, plinthBox, viewportBox] = await Promise.all([wall.boundingBox(), plinth.boundingBox(), viewport.boundingBox()]);
-    expect(plinthBox.y).toBeGreaterThanOrEqual(wallBox.y + wallBox.height);
-    expect(plinthBox.y).toBeLessThan(viewportBox.y + viewportBox.height - 40);
-    expect(await plinth.evaluate((el) => getComputedStyle(el).transform)).toMatch(/^matrix3d\(/);
-    await expect(plinth).toHaveCSS('pointer-events', 'none');
-    await expect(page.locator('.wall__horizon')).toHaveCSS('height', '1px');
-    // The datum itself is unchanged: a 3 px floor line.
-    await expect(page.locator('.wall__floor')).toHaveCSS('height', '3px');
-
-    // A click on the plinth lands on the stage, not on the wall's marquee.
-    await page.mouse.click(wallBox.x + wallBox.width / 2, wallBox.y + wallBox.height + 30);
-    await expect(page.getByTestId('marquee-selection-box')).toBeHidden();
-
-    await page.getByRole('radio', { name: 'Daylight Elevation' }).check();
-    await expect(viewport).toHaveCSS('background-color', 'rgb(25, 24, 22)');
-    for (const width of [360, 1024, 1600]) {
-      await page.setViewportSize({ width, height: 900 });
-      expect(await horizontalOverflow(page), `${width}px`).toBeLessThanOrEqual(0);
-    }
     expect(errors).toEqual([]);
   });
 });
@@ -389,7 +328,7 @@ test.describe('studio render .PNG snapshot', () => {
     await mount(page, 'wall-sconce-80');
     await page.getByTestId('project-name-input').fill('Atelier <Loft> / 02');
 
-    const bridge = page.getByRole('group', { name: '2D and CAD bridge' });
+    const bridge = page.getByRole('group', { name: 'CAD bridge' });
     const capture = page.getByTestId('capture-room-png');
     await expect(capture).toHaveText('Capture .PNG');
     const keys = await bridge.getByRole('button').evaluateAll((els) => els.map((el) => el.dataset.testid));

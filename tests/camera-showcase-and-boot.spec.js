@@ -54,7 +54,7 @@ import { holdEngineChunk } from './support/engine-gates.js';
 import { collectRuntimeErrors, horizontalOverflow, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
 const ROOM_KEY = `lumen:${ROOM_STORAGE_KEY}`;
-const PLANNER_CHUNK = /\/assets\/(RoomPlannerPage|WallStudioPage|RoomCanvas)-[\w-]+\.js$/;
+const PLANNER_CHUNK = /\/assets\/(RoomPlannerPage|RoomCanvas)-[\w-]+\.js$/;
 // The boot panel names the engine by the release's major.minor, as read from package.json.
 const RELEASE = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
 const ENGINE_LABEL = `LUMEN SPATIAL ENGINE v${RELEASE.split('.').slice(0, 2).join('.')}`;
@@ -397,7 +397,7 @@ test.describe('spacious envelopes and the wide inside-room lens', () => {
 });
 
 test.describe('navbar order and the overview 3D showcase', () => {
-  test('3D Room sits beside Overview in page order; it glides to the showcase from any page and the launch key boots the studio full screen', async ({
+  test('3D Room sits beside Overview in page order and opens the planner directly; the showcase launch key boots the studio full screen', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
@@ -409,14 +409,13 @@ test.describe('navbar order and the overview 3D showcase', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-    expect(NAV_ROUTES.map((route) => route.label)).toEqual(['Overview', '3D Room', 'Catalog', 'Wall Studio']);
-    expect(NAV_ROUTES.map((route) => route.index)).toEqual(['01', '02', '03', '04']);
+    expect(NAV_ROUTES.map((route) => route.label)).toEqual(['Overview', '3D Room', 'Catalog']);
+    expect(NAV_ROUTES.map((route) => route.index)).toEqual(['01', '02', '03']);
     const nav = page.getByRole('navigation', { name: 'Primary' });
-    await expect(nav.getByRole('link')).toHaveText(['Overview', '3D Room', 'Catalog', 'Wall Studio']);
-    const navLink = page.getByTestId('nav-3d-showcase');
+    await expect(nav.getByRole('link')).toHaveText(['Overview', '3D Room', 'Catalog']);
+    const navLink = page.getByTestId('nav-room-3d');
     await expect(navLink).toHaveText('3D Room');
-    await expect(navLink).toHaveAttribute('href', `/#${SHOWCASE_3D_ID}`);
-    await expect(nav.getByRole('link', { name: 'Wall Studio' })).toHaveAttribute('href', '/studio-2d');
+    await expect(navLink).toHaveAttribute('href', '/room-3d');
 
     // The showcase is a canvas 2D projection: the overview still loads no planner or WebGL chunk.
     const showcase = page.getByTestId('home-3d-showcase');
@@ -440,22 +439,11 @@ test.describe('navbar order and the overview 3D showcase', () => {
       await showcase.evaluate((el) => [...el.querySelectorAll('canvas')].map((c) => [Boolean(c.getContext('2d')), c.getContext('webgl'), c.getContext('webgl2')])),
     ).toEqual([[true, null, null]]);
 
-    // On the overview, 3D Room glides in place and lands on the section.
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await navLink.click();
-    await expect(page).toHaveURL(new RegExp(`/#${SHOWCASE_3D_ID}$`));
+    // The showcase keeps its deep link, and the tab reads as the location there.
+    await page.goto(`/#${SHOWCASE_3D_ID}`);
     await expect(showcase.getByRole('heading', { level: 2 })).toBeInViewport();
-    await expect(showcase).toBeFocused();
     await expect(navLink).toHaveAttribute('aria-current', 'location');
     await expect(nav.getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current');
-
-    // From another page it routes to the overview and glides there on arrival.
-    await nav.getByRole('link', { name: 'Catalog' }).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Catalog');
-    await navLink.click();
-    await expect(page).toHaveURL(new RegExp(`/#${SHOWCASE_3D_ID}$`));
-    await expect(showcase.getByRole('heading', { level: 2 })).toBeInViewport();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/light and storage/i);
 
     // The launch key enters the planner under a full-viewport engine boot.
     await cta.click();
@@ -568,55 +556,6 @@ test.describe('navbar order and the overview 3D showcase', () => {
   }
 });
 
-test.describe('calm 2D wall studio', () => {
-  test('Visual mode recedes the grid and ruler numbers, Specs brings them back, the toolbar bridges to 3D', async ({ page }) => {
-    const errors = collectRuntimeErrors(page);
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/studio-2d');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wall Studio');
-    await page.getByRole('button', { name: 'Load preset Nordic Reading Wall' }).click();
-
-    const wall = page.getByTestId('wall-canvas');
-    const label = page.locator('.wall-ruler__label').first();
-    await expect(page.locator('.studio-layout')).toHaveAttribute('data-mode', 'architectural');
-    await expect.poll(() => wall.evaluate((el) => getComputedStyle(el).getPropertyValue('--grid-minor').trim())).toBe(
-      'rgba(242, 238, 231, 0)',
-    );
-    await expect(label).toHaveCSS('opacity', '0');
-
-    // The engineering keys sit in a quiet, compact strip; the 3D bridge is the prominent key.
-    const strip = page.locator('.studio-toolbar__cluster--quiet');
-    await expect(strip).toHaveAttribute('aria-label', 'Engineering overlays and export');
-    for (const name of ['24V Bus', 'Iso-Lux Map', 'Blueprint', 'Export JSON', 'Import JSON']) {
-      const key = strip.getByRole('button', { name, exact: true });
-      await expect(key).toBeVisible();
-      await expect(key).toHaveCSS('height', '24px');
-    }
-    await expect(page.locator('.studio-toolbar__cluster')).toHaveCount(3);
-    const summary = page.getByTestId('wall-summary');
-    await expect(summary.getByTestId('bus-run-telemetry')).toBeVisible();
-    await expect(summary.getByTestId('environmental-physics')).toBeVisible();
-    await expect(summary.locator('.studio-summary__engineering-title')).toHaveCSS('text-transform', 'uppercase');
-
-    await page.getByRole('group', { name: 'Display mode' }).getByRole('button', { name: 'Technical' }).click();
-    await expect(page.locator('.studio-layout')).toHaveAttribute('data-mode', 'technical');
-    await expect(label).toHaveCSS('opacity', '1');
-    // Registered colours serialise with 8-bit alpha: 0.028 reads back as 0.027.
-    const minorAlpha = () =>
-      wall.evaluate((el) => Number(getComputedStyle(el).getPropertyValue('--grid-minor').trim().split(',')[3]?.replace(')', '')));
-    await expect.poll(minorAlpha).toBeCloseTo(0.028, 2);
-    await page.getByRole('group', { name: 'Display mode' }).getByRole('button', { name: 'Visual' }).click();
-    await expect(label).toHaveCSS('opacity', '0');
-
-    const bridge = page.getByTestId('studio-open-3d');
-    await expect(bridge).toHaveText('Open in 3D Studio');
-    await expect(bridge).toHaveAttribute('href', '/room-3d');
-    await bridge.click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
-    expect(errors).toEqual([]);
-  });
-});
-
 const RESTING = 'matrix(1, 0, 0, 1, 0, 0)';
 const RETRACTED = 'matrix(0, 0, 0, 1, 0, 0)';
 
@@ -727,7 +666,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     expect(stripLaunchParams('?lens=inside&scene=abc')).toBe('?scene=abc');
   });
 
-  test('the navbar underline follows the overview: Overview above the showcase, 3D Room inside it, Catalog on the modules, held through a glide and handed back on the way up', async ({
+  test('the navbar underline follows the overview: Overview above the showcase, 3D Room inside it, Catalog on the modules, handed back on the way up', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
@@ -736,7 +675,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(/light and storage/i);
     const nav = page.getByRole('navigation', { name: 'Primary' });
     const overview = nav.getByRole('link', { name: 'Overview' });
-    const room = page.getByTestId('nav-3d-showcase');
+    const room = page.getByTestId('nav-room-3d');
     const showcase = page.getByTestId('home-3d-showcase');
 
     await expectCurrent(overview, 'page');
@@ -761,35 +700,6 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await showcase.evaluate((el) => el.scrollIntoView());
     await expectCurrent(room, 'location');
     await page.evaluate(() => window.scrollTo(0, 0));
-    await expectCurrent(overview, 'page');
-    await expectIdle(room);
-
-    // A click hands the underline over at once and holds it for the whole glide. Sampling
-    // runs for 900 ms and at least six frames, so a loaded runner drawing few frames a
-    // second still proves the hold frame by frame.
-    const samples = await page.evaluate(async () => {
-      const link = document.querySelector('[data-testid="nav-3d-showcase"]');
-      const seen = [];
-      link.click();
-      const until = performance.now() + 900;
-      while (performance.now() < until || seen.length < 6) {
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-        seen.push(`${link.getAttribute('aria-current')} ${window.scrollY > 0}`);
-      }
-      return seen;
-    });
-    expect(samples.length).toBeGreaterThan(5);
-    expect(new Set(samples.map((sample) => sample.split(' ')[0]))).toEqual(new Set(['location']));
-    expect(samples.at(-1)).toBe('location true');
-    await expect(showcase.getByRole('heading', { level: 2 })).toBeInViewport();
-    await expectCurrent(room, 'location');
-    await expectIdle(overview);
-
-    // The reader's own scroll takes over from the glide's hold.
-    const box = await showcase.getByRole('heading', { level: 2 }).boundingBox();
-    await page.mouse.move(box.x + 10, box.y + 10);
-    for (let i = 0; i < 12; i += 1) await page.mouse.wheel(0, -900);
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(400);
     await expectCurrent(overview, 'page');
     await expectIdle(room);
 
@@ -1151,7 +1061,7 @@ test.describe('page-order scroll-spy, calm turntable and champagne launch key', 
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(/light and storage/i);
     const nav = page.getByRole('navigation', { name: 'Primary' });
     const links = nav.getByRole('link');
-    await expect(links).toHaveText(['Overview', '3D Room', 'Catalog', 'Wall Studio']);
+    await expect(links).toHaveText(['Overview', '3D Room', 'Catalog']);
 
     // The tabs sit left to right in page order, and so do the sections they stand for.
     const lefts = await links.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().left));
@@ -1168,7 +1078,7 @@ test.describe('page-order scroll-spy, calm turntable and champagne launch key', 
     await expect(page.getByTestId('workspaces').locator('.entry-card .index-label')).toHaveText([
       '02 / 3D Room',
       '03 / Catalog',
-      '04 / Wall Studio',
+      '04 / Lighting',
     ]);
 
     // Step the page in 90 px increments and log every change of the current tab.
@@ -1189,9 +1099,10 @@ test.describe('page-order scroll-spy, calm turntable and champagne launch key', 
         return seen;
       }, direction);
 
-    expect(await walk('down')).toEqual([0, 1, 2, 3]);
-    await expect(nav.getByRole('link', { name: 'Wall Studio' })).toHaveAttribute('aria-current', 'location');
-    expect(await walk('up')).toEqual([3, 2, 1, 0]);
+    // Catalog holds through the closing Workspaces section.
+    expect(await walk('down')).toEqual([0, 1, 2]);
+    await expect(nav.getByRole('link', { name: 'Catalog' })).toHaveAttribute('aria-current', 'location');
+    expect(await walk('up')).toEqual([2, 1, 0]);
     await expect(nav.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
     expect(await page.evaluate(currentTabIndex)).toBe(0);
 
@@ -1206,12 +1117,12 @@ test.describe('page-order scroll-spy, calm turntable and champagne launch key', 
     await expect(catalog).toHaveAttribute('aria-current', 'page');
     await page.goBack();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(/light and storage/i);
-    const studio = nav.getByRole('link', { name: 'Wall Studio' });
-    await page.getByTestId('workspaces').evaluate((el) => el.scrollIntoView());
-    await expect(studio).toHaveAttribute('aria-current', 'location');
-    await studio.click();
-    await expect(page).toHaveURL(/\/studio-2d$/);
-    await expect(studio).toHaveAttribute('aria-current', 'page');
+    const room = nav.getByRole('link', { name: '3D Room' });
+    await page.getByTestId('home-3d-showcase').evaluate((el) => el.scrollIntoView());
+    await expect(room).toHaveAttribute('aria-current', 'location');
+    await room.click();
+    await expect(page).toHaveURL(/\/room-3d$/);
+    await expect(room).toHaveAttribute('aria-current', 'page');
     expect(errors).toEqual([]);
   });
 

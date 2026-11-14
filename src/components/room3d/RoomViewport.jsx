@@ -678,7 +678,7 @@ export function RoomViewport({
           {(counts[activeWall] ?? 0) === 0 && cameraMode !== 'inside' && (
             <p className="room3d-stage__empty">
               {items.length === 0
-                ? `Empty room. Mount a component on the ${WALL_LABELS[activeWall]}, or load the 2D Wall Studio composition.`
+                ? `Empty room. Mount a component on the ${WALL_LABELS[activeWall]} from the parts index.`
                 : `The ${WALL_LABELS[activeWall]} is empty. Mount a component to hang it here.`}
             </p>
           )}

@@ -19,11 +19,13 @@ import {
   updateRoomItem,
   WALL_HEADING,
   wallCounts,
+  wallLayoutFromRoom,
 } from '../src/lib/room-3d.js';
 import { buildScene, cameraFrame, cameraFromPosition, cameraPosition, LIGHTING_RIGS } from '../src/lib/room-scene.js';
 import { boxToRoom, wallToRoom } from '../src/lib/room-walls.js';
 import { decodeSceneParam, encodeSceneParam } from '../src/lib/scene-codec.js';
-import { layoutFromPreset } from '../src/lib/wall-studio.js';
+import { compileBlueprintSheet } from '../src/lib/blueprint-sheet.js';
+import { createLayout } from '../src/lib/wall-studio.js';
 import {
   collectRuntimeErrors,
   horizontalOverflow,
@@ -286,36 +288,41 @@ test.describe('multi-wall 3D room architecture', () => {
     expect(await readCspViolations(page)).toEqual([]);
   });
 
-  test('the 2D bridge loads and pushes the active wall only', async ({ page }) => {
+  test('the blueprint draws the active wall only', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     const state = fourWallRoom();
     await page.goto('/');
     await seed(page, [[ROOM_KEY, JSON.stringify(serializeRoomState(state))]]);
     await openRoom(page);
     await expectCounts(page, { north: 2, east: 1, south: 1, west: 1 });
+    await expect(page.getByTestId('import-from-wall-studio')).toHaveCount(0);
+    await expect(page.getByTestId('export-to-wall-studio')).toHaveCount(0);
 
-    // Push the west wall: its one module becomes a 300 cm (room depth) 2D wall.
+    // The west wall: one frame on a 300 cm (room depth) elevation, named after its wall.
     await page.getByTestId('wall-tab-west').click();
-    await page.getByTestId('export-to-wall-studio').click();
-    await expect(page.getByTestId('room-bridge-status')).toHaveText(
-      'Pushed 1 West Wall module to Wall Studio, wall 300 x 250 cm.',
+    await page.getByTestId('open-blueprint-sheet').click();
+    const modal = page.getByRole('dialog', { name: 'Architectural blueprint sheet' });
+    await expect(modal).toBeVisible();
+    const west = wallLayoutFromRoom(state, createLayout(), 'west').layout;
+    expect(west.wall.widthCm).toBe(300);
+    expect(west.items.map((item) => item.productId)).toEqual(['acoustic-art-frame-50x70']);
+    const expected = compileBlueprintSheet(west, { projectName: 'Room / West Wall', dateIso: '2026-11-11' });
+    await expect(modal.getByTestId('blueprint-project-name')).toHaveText('Room / West Wall');
+    await expect(modal.getByTestId('drilling-schedule-row')).toHaveCount(expected.anchors.length);
+    await expect(modal.getByTestId('drilling-schedule-row').locator('td:nth-child(3)')).toHaveText(
+      expected.anchors.map((anchor) => anchor.sku),
     );
-    const wall = await readJson(page, 'lumen:lumen_wall_studio_v1');
-    expect(wall.wall.widthCm).toBe(300);
-    expect(wall.items.map((item) => item.productId)).toEqual(['acoustic-art-frame-50x70']);
-    expect(wall.items[0]).not.toHaveProperty('wall');
+    await page.keyboard.press('Escape');
+    await expect(modal).toHaveCount(0);
 
-    // Load it back onto the east wall: east is replaced, the other walls stay.
-    await page.getByTestId('wall-tab-east').click();
-    await page.getByTestId('import-from-wall-studio').click();
-    await expect(page.getByTestId('room-notice')).toHaveText(
-      'Loaded 1 module from Wall Studio onto the East Wall, 300 x 250 cm.',
-    );
+    // The north wall: its two modules, and the room itself is untouched.
+    await page.getByTestId('wall-tab-north').click();
+    await page.getByTestId('open-blueprint-sheet').click();
+    const north = compileBlueprintSheet(wallLayoutFromRoom(state, createLayout(), 'north').layout, { projectName: 'Room', dateIso: '2026-11-11' });
+    await expect(modal.getByTestId('blueprint-project-name')).toHaveText('Room');
+    await expect(modal.getByTestId('drilling-schedule-row')).toHaveCount(north.anchors.length);
+    await page.keyboard.press('Escape');
     await expectCounts(page, { north: 2, east: 1, south: 1, west: 1 });
-    const stored = await readJson(page, ROOM_KEY);
-    const east = stored.items.filter((item) => item.wall === 'east');
-    expect(east.map((item) => item.productId)).toEqual(['acoustic-art-frame-50x70']);
-    expect(new Set(stored.items.map((item) => item.uid)).size).toBe(stored.items.length);
     expect(errors).toEqual([]);
   });
 });
@@ -420,7 +427,7 @@ test.describe('human-friendly UX and header polish', () => {
     expect(readme).not.toContain('Copyright (c) 2026 Lumen Spatial Studio');
   });
 
-  test('navbar links read in sans Title Case, utility keys in small capitals, no shortcut badge, Visual / Specs switches mode', async ({
+  test('navbar links read in sans Title Case, utility keys in small capitals, no shortcut badge, and Visual / Specs switches mode in the planner', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
@@ -428,7 +435,7 @@ test.describe('human-friendly UX and header polish', () => {
     await page.goto('/');
     const nav = page.getByRole('navigation', { name: 'Primary' });
     const links = nav.getByRole('link');
-    await expect(links).toHaveText(['Overview', '3D Room', 'Catalog', 'Wall Studio']);
+    await expect(links).toHaveText(['Overview', '3D Room', 'Catalog']);
     const type = await links.first().evaluate((el) => {
       const style = getComputedStyle(el);
       return {
@@ -457,7 +464,18 @@ test.describe('human-friendly UX and header polish', () => {
     await expect(page.getByTestId('command-palette')).toBeVisible();
     await page.keyboard.press('Escape');
 
-    const group = page.getByRole('group', { name: 'Display mode' });
+    for (const key of [page.getByTestId('sign-in'), page.getByRole('button', { name: 'Cart (0)' })]) {
+      await expect(key).toHaveCSS('font-size', '12px');
+      await expect(key).toHaveCSS('text-transform', 'uppercase');
+      await expect(key).toHaveCSS('letter-spacing', '0.96px');
+      await expect(key).toHaveCSS('border-top-width', '0px');
+    }
+
+    // The display mode switch is not in the navbar; the planner header carries it.
+    await expect(page.getByRole('banner').getByRole('group', { name: 'Display mode' })).toHaveCount(0);
+    await nav.getByRole('link', { name: '3D Room' }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
+    const group = page.getByTestId('studio-header').getByRole('group', { name: 'Display mode' });
     await expect(group.getByRole('button')).toHaveText(['Visual', 'Specs']);
     const visual = group.getByRole('button', { name: /^Visual/ });
     const specs = group.getByRole('button', { name: /^Specs/ });
@@ -470,59 +488,12 @@ test.describe('human-friendly UX and header polish', () => {
     await expect(specs).toHaveAttribute('aria-pressed', 'true');
     await visual.click();
     await expect(page.locator('html')).toHaveAttribute('data-mode', 'architectural');
-    for (const key of [page.getByTestId('sign-in'), page.getByRole('button', { name: 'Cart (0)' })]) {
-      await expect(key).toHaveCSS('font-size', '12px');
-      await expect(key).toHaveCSS('text-transform', 'uppercase');
-      await expect(key).toHaveCSS('letter-spacing', '0.96px');
-      await expect(key).toHaveCSS('border-top-width', '0px');
-    }
     expect(errors).toEqual([]);
   });
 
-  test('2D and 3D planners lift the wall off a warm surround and keep the night room legible', async ({ page }) => {
+  test('the planner lifts the room off a warm surround and keeps the night room legible', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto('/studio-2d');
-    await page.getByRole('button', { name: 'Load preset Nordic Reading Wall' }).click();
-    const surround = page.locator('.studio-stage__viewport');
-    const wall = page.getByTestId('wall-canvas');
-    await expect(surround).toHaveCSS('background-color', 'rgb(17, 16, 15)');
-    await expect(wall).toHaveCSS('background-color', 'rgb(30, 28, 25)');
-    // A crisp 1.5px edge ring in #38342e around the elevation.
-    expect(await wall.evaluate((el) => getComputedStyle(el).boxShadow)).toContain('rgb(56, 52, 46) 0px 0px 0px 1.5px');
-    await expect(page.locator('.wall__floor')).toHaveCSS('height', '3px');
-    await page.getByRole('radio', { name: 'Daylight Elevation' }).check();
-    await expect(wall).toHaveCSS('background-color', 'rgb(232, 226, 216)');
-
-    // A clean name tag on hover; modules carry an inner bezel.
-    const shelf = page.locator('[data-testid="wall-module"][data-uid="m2"]');
-    await shelf.hover();
-    await expect(shelf.locator('.wall-module__tag')).toHaveCSS('opacity', '1');
-    await expect(shelf.locator('.wall-module__tag')).toContainText('Floating Shelf 110');
-    expect(await shelf.evaluate((el) => getComputedStyle(el).boxShadow)).toContain('inset');
-
-    // Sidebars: Title Case sans headings on flush paper panels; palette rows read size and power plainly.
-    const heading = page.locator('.studio-palette .studio-panel__heading').first();
-    await expect(heading).toHaveText('Wall Setup');
-    await expect(heading).toHaveCSS('font-weight', '600');
-    await expect(heading).toHaveCSS('text-transform', 'none');
-    const card = page.locator('.studio-palette .studio-panel__section').first();
-    await expect(card).toHaveCSS('border-top-left-radius', '0px');
-    await expect(card).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    const metas = await page.locator('.studio-palette .palette-item__meta').allTextContents();
-    expect(metas.length).toBeGreaterThan(0);
-    for (const meta of metas) expect(meta).toMatch(/^\d+ x \d+ cm, (\d+ W|passive)$/);
-    await expect(page.locator('.studio-palette .palette-item__name').first()).toHaveCSS('font-size', '13px');
-
-    // Toolbar: three clusters; the summary keeps four KPIs above the engineering sub-grid.
-    await expect(page.locator('.studio-toolbar__cluster')).toHaveCount(3);
-    const summary = page.getByTestId('wall-summary');
-    await expect(summary.locator('.studio-summary__kpi dt')).toHaveText(['Modules', '24V Load', 'Luminous Flux', 'Total Price']);
-    const engineering = summary.getByRole('group', { name: 'Engineering telemetry' });
-    await expect(engineering.getByTestId('wall-psu')).toBeVisible();
-    await expect(engineering.getByTestId('bus-run-telemetry')).toBeVisible();
-    await expect(engineering.getByTestId('environmental-physics')).toBeVisible();
-
     await page.goto('/room-3d');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Room Planner');
     const backdrop = await viewport(page).evaluate((el) => getComputedStyle(el).backgroundImage);
@@ -534,7 +505,8 @@ test.describe('human-friendly UX and header polish', () => {
     await expect(bridge.getByTestId('bus-run-telemetry')).toBeVisible();
     await expect(bridge.getByTestId('environmental-physics')).toBeVisible();
     await expect(bridge.getByTestId('export-room-obj')).toBeEnabled();
-    await expect(bridge.getByTestId('import-from-wall-studio')).toBeEnabled();
+    await expect(bridge.getByTestId('open-blueprint-sheet')).toBeVisible();
+    await expect(bridge.getByTestId('import-from-wall-studio')).toHaveCount(0);
 
     // The night rig keeps an emissive floor tone on walls and floor and lifts its fill with nothing lit.
     const night = buildScene({ state: createRoomState() });
@@ -549,7 +521,7 @@ test.describe('human-friendly UX and header polish', () => {
     expect(errors).toEqual([]);
   });
 
-  test('both planners fit 360px to 1600px with zero horizontal overflow in Visual and Specs', async ({ page }) => {
+  test('the planner fits 360px to 1600px with zero horizontal overflow in Visual and Specs', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     const state = fourWallRoom();
     await page.goto('/');
@@ -558,7 +530,7 @@ test.describe('human-friendly UX and header polish', () => {
       await storeDisplayMode(page, mode);
       for (const width of VIEWPORT_WIDTHS) {
         await page.setViewportSize({ width, height: 900 });
-        for (const path of ['/studio-2d', '/room-3d']) {
+        for (const path of ['/room-3d']) {
           await page.goto(path);
           await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
           expect(await horizontalOverflow(page), `${path} ${mode} ${width}px`).toBeLessThanOrEqual(0);
@@ -603,19 +575,16 @@ function computedLayers(locator, pseudo = null) {
 const radials = (image) => (image.match(/radial-gradient/g) ?? []).length;
 
 test.describe('product mini-icons', () => {
-  test('both planners and Ctrl+K draw every part as its own architectural glyph, in its finish and light', async ({ page }) => {
+  test('the planner and Ctrl+K draw every part as its own architectural glyph, in its finish and light', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.setViewportSize({ width: 1440, height: 1000 });
     const state = updateRoomItem(fourWallRoom(), 'm1', { led: false });
     await page.goto('/');
     await seed(page, [[ROOM_KEY, JSON.stringify(serializeRoomState(state))]]);
 
-    // Components (2D) and Asset Shelf (3D): twelve 36 px drawings, one per shape, in the
-    // default finish, with a backlight only on the parts that give light.
-    for (const [path, list] of [
-      ['/studio-2d', '.studio-palette .palette-list'],
-      ['/room-3d', '[data-testid="room-palette"]'],
-    ]) {
+    // The Asset Shelf: twelve 36 px drawings, one per shape, in the default finish,
+    // with a backlight only on the parts that give light.
+    for (const [path, list] of [['/room-3d', '[data-testid="room-palette"]']]) {
       await page.goto(path);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const glyphs = page.locator(list).getByTestId('product-thumb-glyph');
@@ -657,16 +626,6 @@ test.describe('product mini-icons', () => {
     await inspector.getByRole('button', { name: 'Done' }).click();
     await expect(outliner.locator('.module-list__item[data-uid="m3"]').getByTestId('product-thumb-glyph')).toHaveAttribute('data-finish', 'walnut');
 
-    // The 2D module list mirrors the preset, part for part and finish for finish.
-    await page.goto('/studio-2d');
-    await page.getByRole('button', { name: 'Load preset Nordic Reading Wall' }).click();
-    const preset = layoutFromPreset('nordic-reading-wall');
-    const listed = page.getByTestId('studio-inspector').getByTestId('product-thumb-glyph');
-    await expect(listed).toHaveCount(preset.items.length);
-    expect((await glyphFacts(listed)).map((glyph) => [glyph.shape, glyph.finish, glyph.size])).toEqual(
-      preset.items.map((item) => [getProduct(item.productId).shape, item.finish, ['28px', '28px']]),
-    );
-
     // Ctrl+K lists each part with its drawing.
     await page.goto('/catalog');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
@@ -685,7 +644,7 @@ test.describe('product mini-icons', () => {
 });
 
 test.describe('page atmosphere', () => {
-  test('the overview, the 2D Wall Studio and the account sit on flat Flos paper with full-bleed bands and zero overflow at 360 and 1440 px', async ({ page }) => {
+  test('the overview, the catalog and the account sit on flat Flos paper with full-bleed bands and zero overflow at 360 and 1440 px', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.goto('/');
     await seed(page, [[SESSION_KEY, JSON.stringify(GUEST)]]);
@@ -730,9 +689,9 @@ test.describe('page atmosphere', () => {
       await expect(page.getByTestId('ambient-backdrop')).toHaveAttribute('data-atmosphere', 'home');
       expect(await horizontalOverflow(page), `/ ${width}px`).toBeLessThanOrEqual(0);
 
-      // 2D Wall Studio and Account: one fixed backdrop behind the whole page, not only the stage.
+      // Catalog and Account: one fixed backdrop behind the whole page.
       for (const [path, zone] of [
-        ['/studio-2d', 'studio-2d'],
+        ['/catalog', 'catalog'],
         ['/account', 'account'],
       ]) {
         await page.goto(path);
@@ -752,13 +711,6 @@ test.describe('page atmosphere', () => {
         expect(await horizontalOverflow(page), `${path} ${width}px`).toBeLessThanOrEqual(0);
       }
     }
-    // The 2D Wall Studio is a light gallery workstation on the paper; only its stage stays optical.
-    await page.goto('/studio-2d');
-    const workstation = page.locator('.studio-layout');
-    await expect(workstation).not.toHaveClass(/(^|\s)optical(\s|$)/);
-    await expect(workstation).toHaveCSS('background-color', 'rgb(250, 249, 246)');
-    await expect(workstation).toHaveCSS('border-top-left-radius', '0px');
-    await expect(page.locator('.studio-stage__viewport')).toHaveClass(/(^|\s)optical(\s|$)/);
     // Account: the profile sits on the paper, no backlight and no lit inner edge.
     await page.goto('/account');
     const profile = page.getByTestId('account-profile');
