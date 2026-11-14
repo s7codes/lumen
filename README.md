@@ -1,7 +1,7 @@
-# LUMEN - Architectural Lighting, Modular Shelving & 3D Spatial CAD Platform (v8.3.0)
+# LUMEN - Architectural Lighting, Modular Shelving & 3D Spatial CAD Platform (v8.4.0)
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v8.3.0-e8923a)
+![Release](https://img.shields.io/badge/release-v8.4.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 **Live production: [https://lumen.s7codes.dev](https://lumen.s7codes.dev)**, served from a Hetzner Cloud VPS
@@ -9,18 +9,20 @@ by the Docker Compose and Caddy kit in this repository.
 
 | Playwright E2E | Rendering | AI integration | Backend |
 | --- | --- | --- | --- |
-| 340 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
+| 318 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
 
-Current release: **v8.3.0**, the gallery masterpiece release. The site sits on a warm paper canvas
-(`#FAF9F6`) with matte carbon ink (`#141311`), square corners and hairline rules. Dark cutout boxes
-are gone: the overview alternates calm paper with full-bleed architectural bands. A Venetian plaster
-hero keeps its pointer-tracked pendant while the wall crossfades between two evening washes. A 60 fps
-Canvas 2D film, Meet our Icons, plays three macro acts. The dimming lab sits on a travertine band,
-the 3D theatre on a twilight slate band, and catalog parts hang on plaster walls lit by their own
-2700K wash. Explore the Lumen home shows three painted 3:4 rooms. The account is a split page
-divided by one vertical hairline. Both planners and the engine boot are now light gallery
-workstations around a framed, dark 3D stage. The production stack is unchanged: Caddy, HSTS and a
-same-origin guard on writes.
+Current release: **v8.4.0**, the dual-light hero and unified planner release. The hero is two
+light architectural interiors drawn as inline SVG in true perspective: a sculptural sconce throwing a
+crisp hyperbolic 2700K wash up and down smooth sand-stone plaster beside a molded doorway over
+herringbone oak, then a limestone gallery with a recessed 24V track, a pointer-following linear
+pendant and a lit walnut shelf. They alternate every 5 s on a 1.1 s crossfade, with no noise textures
+and no text on the pictures. Meet our Icons gains a new Act III, a matte black anodized track with
+brass louvers and a glass cylinder spot sweeping a 2700K beam across dark veined marble. Every
+catalog card is now a lifelike daylight interior of its part. The storefront always reads in Visual;
+Visual | Specs lives only in the 3D Room Planner header. The 2D Wall Studio is retired: old
+`/studio-2d` links, shared wall scenes and saved wall projects open on the north wall of the 3D
+Room Planner, which now issues the 1:20 `.SVG` / `.DXF` blueprint of any wall. The account shows
+Saved Spatial Projects and Order History only.
 
 ## 1. Executive Overview
 
@@ -29,11 +31,10 @@ acoustic panels and modular shelving, built as one coherent product rather than 
 
 - **Editorial commerce**: a 12-part catalog with finishes, photometric curves and quotes in USD,
   EUR and HUF that the server recomputes before it accepts them.
-- **2D Wall Elevation Studio**: a precision CAD planner with multi-select, smart guides, align and
-  distribute, attic slope clipping, and `1:20` ISO 5457 `.SVG` and AutoCAD R12 `.DXF` export.
-- **3D Spatial Studio**: a four-wall WebGL2 room with an orbit lens and a 165 cm walkthrough driven
-  by `WASD`, procedural PBR materials, soft-penumbra window gobos in custom GLSL, a solar path and
-  Wavefront `.OBJ` export.
+- **3D Room Planner**: one workspace for the whole room. A four-wall WebGL2 room with an orbit
+  lens, an elevation lens and a 165 cm walkthrough driven by `WASD`, procedural PBR materials,
+  soft-penumbra window gobos in custom GLSL, a solar path, Wavefront `.OBJ` export, and the `1:20`
+  ISO 5457 `.SVG` and AutoCAD R12 `.DXF` blueprint of any wall. Visual | Specs lives in its header.
 - **Live physics**: 24V SELV driver sizing, daisy-chain routing with hop-by-hop voltage drop,
   DALI-2 dimming, point-by-point illuminance and six-octave Sabine `RT60` with `STI`, recomputed on
   every edit.
@@ -52,8 +53,8 @@ comes from the same code everywhere.
   Browser: React 19 SPA under a strict CSP (script-src 'self', connect-src 'self')
   +--------------------------------------------------------------------------+
   | Client studios                                                           |
-  |   WallStudioPage    2D elevation CAD, attic slope, SVG and DXF export    |
-  |   RoomPlannerPage   room3d/: WebGL2 studio, GLSL, IBL, OBJ and PNG       |
+  |   RoomPlannerPage   room3d/: WebGL2 studio, GLSL, IBL, OBJ, PNG, DXF     |
+  |   HomePage          SVG hero interiors, Canvas 2D film and theatre       |
   |   ConciergePanel    Lumen AI chat, applies MCP clientActions as one undo |
   |   Catalog, Bag, Checkout, CommandPalette, AccountPage                    |
   +------------------------------------+-------------------------------------+
