@@ -1,7 +1,7 @@
 # LUMEN - Architectural Lighting, Modular Shelving & 3D Spatial CAD Platform (v9.0.0)
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v9.1.0-e8923a)
+![Release](https://img.shields.io/badge/release-v9.2.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 **Live production: [https://lumen.s7codes.dev](https://lumen.s7codes.dev)**, served from a Hetzner Cloud VPS
@@ -9,23 +9,23 @@ by the Docker Compose and Caddy kit in this repository.
 
 | Playwright E2E | Rendering | AI integration | Backend |
 | --- | --- | --- | --- |
-| 330 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
+| 323 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
 
-Current release: **v9.1.0**, the icons reel and CAD cinema release. Meet our Icons is now a
-full-bleed reel of three 2.4:1 films that hold the banner for 3 s each and crossfade on a 9 s loop
-while it is on screen: a glossy obsidian dome lamp on travertine whose 2700K brass reflector dims
-up and sweeps the stone, the Linear Pendant 150 on its Track Bus 200 spine laying a razor-sharp
-pool along a dark oak table, and the Floor Column 140 among overlapping plaster scallops. A
-hairline rail of three keys carries the 3 s clock and jumps to any icon. The four 3D Spatial
-Studio films are new as well: an obsidian CAD calibration chamber with a 50 cm hairline lattice,
-the planner's own fixtures and 2700K beams on all four walls, filmed as a 360-degree envelope that
-rises toward plan view, a 165 cm eye-level walkthrough with its horizon datum, heading tape and
-live lux targets, the raycast and X / Y / Z gizmo with laser dimensions and 5 cm snap ticks, and
-a false-colour iso-lux field with 100, 250, 350 and 500 lx rings, a live PEAK reading, measurement
-nodes and a scan wave. Every figure in those films comes from the same functions the theatre HUD
-reads. All seven films come from a deterministic accumulation renderer (anti-aliasing, depth of
-field, motion blur, soft and line-source shadows, equiangular haze), so they are free of grain
-by construction. The v9.0.0 photographs are unchanged.
+Current release: **v9.2.0**, the camera footage and editorial studio release. Meet our Icons now
+plays real camera footage of architectural interiors instead of rendered films: a wave-shaped
+timber pendant drawing a warm line of light under a plaster ceiling, low sun raking across
+sculpted plaster niches and their stoneware vases, and a recessed step light grazing an oiled
+timber stair. Each 1920 x 1080 clip holds the banner for 3 s and crossfades into the next on a
+continuous 9 s loop, under nothing but the centred Meet our Icons title and its Discover More key:
+the rail of named keys and progress bars is gone. The clips are Pexels originals (Pexels License),
+credited in `src/lib/media-manifest.js` and cut, graded and encoded by
+`scripts/media/make-footage.mjs`. The dark 03 / 3D Spatial Studio theatre and its four rendered
+films are gone too: the section now sits on the gallery paper like Core Modules beneath it, as
+four capability cards (four-wall envelope, 165 cm eye-level walkthrough, 24V SELV bus and acoustic
+RT60, architectural CAD exports), each a 4:3 studio photograph or a 1:20 elevation over a hairline
+specification whose figures are the planner engines' own, closed by one carbon rule with three
+launch presets and a matte carbon Open 3D Room Planner key. The cinema stage that rendered the old
+films has left the repository. The v9.0.0 photographs are unchanged.
 
 ## 1. Executive Overview
 
@@ -57,7 +57,7 @@ comes from the same code everywhere.
   +--------------------------------------------------------------------------+
   | Client studios                                                           |
   |   RoomPlannerPage   room3d/: WebGL2 studio, GLSL, IBL, OBJ, PNG, DXF     |
-  |   HomePage          2K stills and films, engine-film theatre, Canvas 2D  |
+  |   HomePage          2K stills, camera films, editorial studio grid       |
   |   ConciergePanel    Lumen AI chat, applies MCP clientActions as one undo |
   |   Catalog, Bag, Checkout, CommandPalette, AccountPage                    |
   +------------------------------------+-------------------------------------+
@@ -95,7 +95,7 @@ comes from the same code everywhere.
 `src/components/room3d/`, `src/lib/pbr-materials.js`, `src/lib/room-scene.js`, `src/lib/room-walkthrough.js`
 
 - three r187 on WebGL2 through React Three Fiber, shipped in a lazy `RoomCanvas` chunk: a cold
-  load of `/` requests no Three.js code; the homepage theatre plays films of this engine.
+  load of `/` requests no Three.js code; the homepage shows the studio as photographs and figures.
 - Custom GLSL: a soft-penumbra window gobo shader (an 8% feather at the glass widening to 28% deep
   in the room), additive volumetric beams, and an `onBeforeCompile` analytic specular patch.
 - Procedural PBR: 8 materials (walnut, oak, obsidian, steel, felt, chalk, parquet, plaster)
@@ -108,28 +108,29 @@ comes from the same code everywhere.
   frame, so 60, 120 and 240 Hz displays trace the same path; 32 cm wall and 20 cm furniture
   buffers; the camera is written from the frame loop and committed to React once, at rest.
 
-### 2K photography and cinema media
+### 2K photography and camera footage
 
-`public/media/`, `src/lib/media-manifest.js`, `src/lib/viewport-video.js`, `src/lib/showcase-film.js`, `src/lib/icons-reel.js`, `scripts/media/`
+`public/media/`, `src/lib/media-manifest.js`, `src/lib/viewport-video.js`, `src/lib/icons-reel.js`, `src/lib/studio-capabilities.js`, `scripts/media/`
 
-- 80 files: two hero scenes (1280 and 2560 w WebP, VP9 WebM and H.264 MP4 films), three 4:5 rooms,
-  four showcase acts and three Meet our Icons films with posters, and 42 catalog finishes, every
-  URL versioned with `?v=`.
+- 68 files: two hero scenes (1280 and 2560 w WebP, VP9 WebM and H.264 MP4 films), three 4:5 rooms,
+  three Meet our Icons camera films with posters, and 42 catalog finishes, every URL versioned
+  with `?v=`.
 - Meet our Icons (`src/lib/icons-reel.js`, `useIconsReel`): one rAF clock, running only while the
-  banner is on screen under the viewport rule, hands the banner to the next 1920 x 800 film every
-  3 s; each film starts from its first frame as it fades in and pauses after its fade out, and
-  reduced-motion or save-data visitors stay on the posters with the keys still switching them.
-- The cinema stage (`scripts/media/cinema/`) shoots the icons and the showcase acts: each frame is
-  the mean of 40 to 112 sub-frames on fixed stratified patterns, with haze integrated by
-  equiangular sampling, graded through AgX with a sub-LSB ordered dither.
+  banner is on screen under the viewport rule, hands the banner to the next 1920 x 1080 film every
+  3 s, round and round; each film starts from its first frame as it fades in and pauses after its
+  fade out. The hook writes the DOM directly, so React renders the banner once. Reduced-motion and
+  save-data visitors stay on the first poster.
+- The films are real footage under the Pexels License (`scripts/media/make-footage.mjs`): each
+  source clip is fetched from the Pexels CDN and checked against a pinned SHA-256, cut to 4.5 s,
+  scaled to 1920 x 1080 at 29.97 fps with Lanczos, lightly graded in BT.709 and encoded at its own
+  rate. Titles, authors and pages are credited in `ICONS_MEDIA`.
 - Stills are path-traced (three-gpu-pathtracer) from the planner's parametric CAD parts and
   furniture, rendered as separate light passes (sky, sun, each LED channel), cleaned by a guided
   a-trous filter on albedo-demodulated light and graded through AgX. Light transport is linear, so
   every hero and room film frame is a weighted sum of those passes: seamless 60 fps loops.
-- The showcase films are posed frame by frame from `src/lib/showcase-film.js` and annotated from
-  `src/lib/showcase-scene.js`: the iso-lux field is evaluated per pixel from `lightSources`, the
-  PEAK is `floorPeak` at the film's DALI-2 level, and the overview HUD reads the same functions
-  against the film clock.
+- The 3D Spatial Studio grid (`src/lib/studio-capabilities.js`) pairs those stills with the
+  planner's figures: envelope ranges, the 165 cm lens, the 24V bus, the Sabine octaves and the
+  1:20 exports. A Node test reads every figure back against the engine constants.
 - `createViewportVideo`: an `IntersectionObserver` plays a film only on screen in a visible tab,
   pauses it at once off screen, waits for the pointer on hover films and leaves reduced-motion
   visitors on the poster; a film fades in only once it is actually playing.
@@ -197,7 +198,7 @@ npm install
 npm run dev                  # app and API on http://127.0.0.1:5173
 npm run build && npm start   # the build and /api from one process on http://127.0.0.1:8787
 npx playwright install chromium
-npx playwright test          # builds, serves dist/ with vite preview, runs all 330 tests
+npx playwright test          # builds, serves dist/ with vite preview, runs all 323 tests
 ```
 
 ### Hetzner VPS with Docker Compose and Caddy
