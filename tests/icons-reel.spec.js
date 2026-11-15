@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
@@ -12,13 +12,15 @@ import {
   REEL_LOOP_SECONDS,
   REEL_SLOT_SECONDS,
   reelIndexAt,
-  reelProgress,
   reelTime,
 } from '../src/lib/icons-reel.js';
 import { ICONS_MEDIA, ICONS_SIZE } from '../src/lib/media-manifest.js';
 import { collectFailedResponses, collectRuntimeErrors, horizontalOverflow, installCspRecorder, mediaPath, readCspViolations } from './support/runtime-guards.js';
 
 const MEDIA_DIR = fileURLToPath(new URL('../public/media/', import.meta.url));
+const BASES = { pendant: 'icon-01-pendant', plaster: 'icon-02-plaster', stair: 'icon-03-stair' };
+// The v9.1 rail of named keys under the films is gone for good.
+const RETIRED = /monolith|suspension|column|linear pendant 150|floor column 140/i;
 
 test.beforeEach(async ({ page }) => {
   await installCspRecorder(page);
@@ -33,7 +35,7 @@ function mp4Duration(buf) {
   return buf.readUInt32BE(at + 4 + 4 + 8 + 4) / buf.readUInt32BE(at + 4 + 4 + 8);
 }
 
-/** Records every icon change on the banner with its time, from inside the page. */
+/** Records every film change on the banner with its time, from inside the page. */
 function watchIcons(page) {
   return page.evaluate(() => {
     const el = document.querySelector('[data-testid="icons-cinema"]');
@@ -42,84 +44,67 @@ function watchIcons(page) {
   });
 }
 
-/**
- * Grain estimate of the frame on screen in a film, in 8-bit code values: the
- * median absolute 3 x 3 Laplacian, scaled to a Gaussian sigma. Edges are
- * sparse, so the median reads the texture between them: a smooth render sits
- * near 0, film grain or speckle sits well above 1.
- */
-function frameGrain(film) {
+/** Luma mean and spread of the frame on screen in a film, in 8-bit code values. */
+function frameTone(film) {
   return film.evaluate((video) => {
-    const w = video.videoWidth;
-    const h = video.videoHeight;
+    const w = 480;
+    const h = 270;
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(video, 0, 0, w, h);
     const { data } = ctx.getImageData(0, 0, w, h);
-    const luma = (x, y) => {
-      const i = (y * w + x) * 4;
-      return 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
-    };
-    const values = [];
-    for (let y = 2; y < h - 2; y += 3) {
-      for (let x = 2; x < w - 2; x += 3) {
-        values.push(Math.abs(luma(x - 1, y) + luma(x + 1, y) + luma(x, y - 1) + luma(x, y + 1) - 4 * luma(x, y)));
-      }
+    let sum = 0;
+    let sq = 0;
+    const n = data.length / 4;
+    for (let i = 0; i < data.length; i += 4) {
+      const l = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+      sum += l;
+      sq += l * l;
     }
-    values.sort((a, b) => a - b);
-    const median = values[Math.floor(values.length / 2)];
-    let mean = 0;
-    for (let i = 0; i < data.length; i += 4) mean += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
-    return { sigma: (1.4826 * median) / Math.sqrt(20), mean: mean / (data.length / 4) / 255, w, h };
+    const mean = sum / n;
+    return { mean, spread: Math.sqrt(Math.max(0, sq / n - mean * mean)) };
   });
 }
 
 test.describe('meet our icons reel clock', () => {
-  test('three icons hold the banner 3 s each on a 9 s loop, and every film covers its slot and its fade', () => {
-    expect(REEL_IDS).toEqual(['monolith', 'suspension', 'column']);
+  test('three camera films hold the banner 3 s each on a 9 s loop, each covering its slot and fade, credited to their authors', () => {
+    expect(REEL_IDS).toEqual(['pendant', 'plaster', 'stair']);
     expect(ICON_REEL.map((icon) => icon.index)).toEqual(['01', '02', '03']);
     expect(REEL_SLOT_SECONDS).toBe(3);
     expect(REEL_LOOP_SECONDS).toBe(9);
-    expect(reelIndexAt(0)).toBe(0);
-    expect(reelIndexAt(2.999)).toBe(0);
-    expect(reelIndexAt(3)).toBe(1);
-    expect(reelIndexAt(6)).toBe(2);
-    expect(reelIndexAt(9)).toBe(0);
-    expect(reelIndexAt(-1)).toBe(2);
+    expect([0, 2.999, 3, 6, 9, -1].map(reelIndexAt)).toEqual([0, 0, 1, 2, 0, 2]);
     expect(reelTime(Number.NaN)).toBe(0);
-    expect(reelProgress(1.5)).toBeCloseTo(0.5, 9);
-    expect(reelProgress(4.5)).toBeCloseTo(0.5, 9);
-    expect(nextReelIndex(0)).toBe(1);
-    expect(nextReelIndex(2)).toBe(0);
-    expect(nextReelIndex(7)).toBe(0);
-    expect(isReelIndex(1)).toBe(true);
-    expect(isReelIndex(3)).toBe(false);
-    expect(isReelIndex('1')).toBe(false);
-    // A film runs from its first frame through its 3 s and its fade out.
-    expect(ICON_FILM_SECONDS).toBeGreaterThanOrEqual(REEL_SLOT_SECONDS + REEL_FADE_MS / 1000);
+    expect([0, 1, 2, 7].map(nextReelIndex)).toEqual([1, 2, 0, 0]);
+    expect([1, 3, '1'].map(isReelIndex)).toEqual([true, false, false]);
+    // A film runs from its first frame through its 3 s and its fade out, with room to spare.
+    expect(ICON_FILM_SECONDS).toBeGreaterThanOrEqual(REEL_SLOT_SECONDS + REEL_FADE_MS / 1000 + 0.5);
+    for (const icon of ICON_REEL) expect(/^[\x20-\x7e]+$/.test(icon.caption), icon.id).toBe(true);
 
-    // Copy is plain ASCII, like every other line of the storefront.
-    for (const icon of ICON_REEL) expect(/^[\x20-\x7e]+$/.test(`${icon.label} ${icon.caption}`), icon.id).toBe(true);
-
-    expect(ICONS_SIZE).toEqual({ width: 1920, height: 800 });
-    const bases = { monolith: 'icon-01-monolith', suspension: 'icon-02-suspension', column: 'icon-03-column-spot' };
+    expect(ICONS_SIZE).toEqual({ width: 1920, height: 1080 });
     for (const id of REEL_IDS) {
       const media = ICONS_MEDIA[id];
-      expect(media.base).toBe(bases[id]);
-      expect(media.poster).toMatch(new RegExp(`^/media/icons/${bases[id]}\\.webp\\?v=`));
-      expect(media.film.webm).toMatch(new RegExp(`^/media/icons/${bases[id]}\\.webm\\?v=`));
-      expect(media.film.mp4).toMatch(new RegExp(`^/media/icons/${bases[id]}\\.mp4\\?v=`));
-      // The shipped MP4 runs the full film length at 60 fps.
-      const mp4 = readFileSync(join(MEDIA_DIR, 'icons', `${bases[id]}.mp4`));
-      expect(mp4Duration(mp4), id).toBeCloseTo(ICON_FILM_SECONDS, 1);
+      expect(media.base).toBe(BASES[id]);
+      expect(media.poster).toMatch(new RegExp(`^/media/icons/${BASES[id]}\\.webp\\?v=`));
+      expect(media.film.webm).toMatch(new RegExp(`^/media/icons/${BASES[id]}\\.webm\\?v=`));
+      expect(media.film.mp4).toMatch(new RegExp(`^/media/icons/${BASES[id]}\\.mp4\\?v=`));
+      // Real footage under the Pexels License, each clip named with its author and page.
+      expect(media.credit).toMatchObject({ source: 'Pexels', license: 'Pexels License' });
+      expect(media.credit.url).toMatch(/^https:\/\/www\.pexels\.com\/video\/[a-z0-9-]+-\d+\/$/);
+      for (const text of [media.credit.title, media.credit.author]) expect(/^[\x20-\x7e]{3,}$/.test(text), text).toBe(true);
+      const mp4 = readFileSync(join(MEDIA_DIR, 'icons', `${BASES[id]}.mp4`));
+      expect(Math.abs(mp4Duration(mp4) - ICON_FILM_SECONDS), id).toBeLessThan(0.05);
     }
+    // The three films and their posters are the whole folder: nothing of the CGI reel is left.
+    const shipped = readdirSync(join(MEDIA_DIR, 'icons')).sort();
+    expect(shipped).toEqual(Object.values(BASES).flatMap((base) => [`${base}.mp4`, `${base}.webm`, `${base}.webp`]).sort());
+    expect(existsSync(join(MEDIA_DIR, 'showcase'))).toBe(false);
   });
 });
 
 test.describe('meet our icons reel', () => {
-  test('a full-bleed 3-film reel cycles every 3 s on screen, jumps on a key, serves its films from /media/icons and stops off screen', async ({ page }) => {
+  test('the camera films cycle every 3 s in a continuous loop under nothing but the title and Discover More, and stop off screen', async ({ page }) => {
     test.setTimeout(60_000);
     const errors = collectRuntimeErrors(page);
     const failed = collectFailedResponses(page);
@@ -127,7 +112,7 @@ test.describe('meet our icons reel', () => {
     await page.goto('/');
     const cinema = page.getByTestId('icons-cinema');
     await expect(cinema).toHaveAttribute('data-playing', 'false');
-    await expect(cinema).toHaveAttribute('data-icon', 'monolith');
+    await expect(cinema).toHaveAttribute('data-icon', 'pendant');
 
     // Three stacked films, WebM first and MP4 second, muted, inline and looping.
     const films = page.getByTestId('icons-reel').locator('video[data-reel]');
@@ -136,81 +121,76 @@ test.describe('meet our icons reel', () => {
       const film = page.getByTestId(`icons-film-${id}`);
       const sources = await film.locator('source').evaluateAll((els) => els.map((el) => [el.type, new URL(el.src).pathname]));
       expect(sources).toEqual([
-        ['video/webm', `/media/icons/${ICONS_MEDIA[id].base}.webm`],
-        ['video/mp4', `/media/icons/${ICONS_MEDIA[id].base}.mp4`],
+        ['video/webm', `/media/icons/${BASES[id]}.webm`],
+        ['video/mp4', `/media/icons/${BASES[id]}.mp4`],
       ]);
       expect(await film.evaluate((el) => ({ muted: el.muted, loop: el.loop, inline: el.playsInline }))).toEqual({ muted: true, loop: true, inline: true });
     }
+
+    // The only overlay: the centred title and its bracketed Discover More key. No rail, no
+    // labels, no progress bars, no buttons.
+    expect((await cinema.innerText()).replace(/\s+/g, ' ').trim().toLowerCase()).toBe('meet our icons discover more');
+    expect(await cinema.textContent()).not.toMatch(RETIRED);
+    await expect(cinema.locator('button, [role="group"], [data-testid^="icons-key"], [data-key-fill], .cinema__keys')).toHaveCount(0);
+    await expect(cinema.getByRole('link')).toHaveCount(1);
+    const cta = cinema.getByRole('link', { name: 'Discover More' });
+    await expect(cta).toHaveAttribute('href', '/catalog');
+    await expect(cta).toHaveCSS('text-transform', 'uppercase');
+    await expect(cta).toHaveCSS('border-left', '1px solid rgba(255, 255, 255, 0.75)');
+    await expect(cta).toHaveCSS('border-top-width', '0px');
+    const title = cinema.getByRole('heading', { level: 2, name: 'Meet our Icons' });
+    await expect(title).toHaveCSS('font-weight', '380');
+    await expect(title).toHaveCSS('color', 'rgb(255, 255, 255)');
 
     await cinema.scrollIntoViewIfNeeded();
     await watchIcons(page);
     await expect(cinema).toHaveAttribute('data-playing', 'true');
     for (const id of REEL_IDS) await expect(page.getByTestId(`icons-film-${id}`)).toHaveAttribute('poster', mediaPath(ICONS_MEDIA[id].poster));
 
-    // The banner, its title and key keep their editorial look over the films.
+    // Full bleed and centred, at clamp(460px, 76vh, 760px): 76vh of a 900 px viewport.
     const box = await cinema.boundingBox();
     expect(Math.round(box.x)).toBe(0);
     expect(Math.round(box.width)).toBe(await page.evaluate(() => document.documentElement.clientWidth));
-    // clamp(460px, 76vh, 760px): 76vh of a 900 px viewport.
     expect(Math.round(box.height)).toBe(684);
-    const title = cinema.getByRole('heading', { level: 2, name: 'Meet our Icons' });
-    await expect(title).toHaveCSS('font-weight', '380');
-    await expect(title).toHaveCSS('color', 'rgb(255, 255, 255)');
     const titleBox = await title.boundingBox();
+    const ctaBox = await cta.boundingBox();
     expect(Math.abs(titleBox.x + titleBox.width / 2 - (box.x + box.width / 2))).toBeLessThanOrEqual(1);
-    const cta = cinema.getByRole('link', { name: 'Discover More' });
-    await expect(cta).toHaveAttribute('href', '/catalog');
-    await expect(cta).toHaveCSS('border-left', '1px solid rgba(255, 255, 255, 0.75)');
-    await expect(cta).toHaveCSS('border-top-width', '0px');
-    expect((await cinema.innerText()).replace(/\s+/g, ' ').trim().toLowerCase()).toBe('meet our icons discover more 01 monolith dome 02 linear pendant 150 03 floor column 140');
+    expect(Math.abs(ctaBox.x + ctaBox.width / 2 - (box.x + box.width / 2))).toBeLessThanOrEqual(1);
+    expect(ctaBox.y).toBeGreaterThan(titleBox.y + titleBox.height);
 
-    // The first film plays on screen; the other two wait.
-    const monolith = page.getByTestId('icons-film-monolith');
-    await expect.poll(() => monolith.evaluate((el) => !el.paused && el.currentTime > 0.2), { timeout: 15_000 }).toBe(true);
-    expect(await monolith.evaluate((el) => [el.videoWidth, el.videoHeight])).toEqual([ICONS_SIZE.width, ICONS_SIZE.height]);
-    for (const id of ['suspension', 'column']) expect(await page.getByTestId(`icons-film-${id}`).evaluate((el) => el.paused)).toBe(true);
-    await expect(page.getByTestId('icons-key-monolith')).toHaveAttribute('aria-pressed', 'true');
-    // The hairline fill carries the 3 s clock.
-    const fill = page.locator('[data-key-fill="monolith"]');
-    const scale = () => fill.evaluate((el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).a);
-    const before = await scale();
-    await expect.poll(scale).toBeGreaterThan(before);
+    // The first film plays on screen at 1920 x 1080; the other two wait.
+    const pendant = page.getByTestId('icons-film-pendant');
+    await expect.poll(() => pendant.evaluate((el) => !el.paused && el.currentTime > 0.2), { timeout: 15_000 }).toBe(true);
+    expect(await pendant.evaluate((el) => [el.videoWidth, el.videoHeight])).toEqual([ICONS_SIZE.width, ICONS_SIZE.height]);
+    for (const id of ['plaster', 'stair']) expect(await page.getByTestId(`icons-film-${id}`).evaluate((el) => el.paused)).toBe(true);
+    // A photographed room, not a blank or a flat field: real tone and real contrast in the frame.
+    const tone = await frameTone(pendant);
+    expect(tone.mean, JSON.stringify(tone)).toBeGreaterThan(25);
+    expect(tone.mean, JSON.stringify(tone)).toBeLessThan(215);
+    expect(tone.spread, JSON.stringify(tone)).toBeGreaterThan(12);
 
-    // Zero grain: the decoded frame is smooth between its edges.
-    const grain = await frameGrain(monolith);
-    expect(grain.sigma, `grain ${grain.sigma.toFixed(3)}`).toBeLessThan(0.8);
-
-    // Every 3 s the next icon takes the banner, its film from the top, and the
-    // one before pauses once its fade is over.
-    await expect.poll(() => page.evaluate(() => window.__iconChanges.length), { timeout: 20_000 }).toBeGreaterThanOrEqual(3);
-    const changes = await page.evaluate(() => window.__iconChanges.slice(0, 3));
-    expect(changes.map((change) => change.icon)).toEqual(['suspension', 'column', 'monolith']);
+    // Every 3 s the next film takes the banner from its first frame and crossfades in; after
+    // the stair it is the pendant again, round and round.
+    await expect.poll(() => page.evaluate(() => window.__iconChanges.length), { timeout: 20_000 }).toBeGreaterThanOrEqual(4);
+    const changes = await page.evaluate(() => window.__iconChanges.slice(0, 4));
+    expect(changes.map((change) => change.icon)).toEqual(['plaster', 'stair', 'pendant', 'plaster']);
     for (let i = 1; i < changes.length; i += 1) {
       const gap = changes[i].at - changes[i - 1].at;
       expect(gap, `slot ${i}`).toBeGreaterThan(2600);
       expect(gap, `slot ${i}`).toBeLessThan(4200);
     }
-    expect(Number(await cinema.getAttribute('data-cycles'))).toBeGreaterThanOrEqual(3);
-    await expect.poll(() => page.getByTestId('icons-film-column').evaluate((el) => el.paused), { timeout: 5_000 }).toBe(true);
-
-    // A key jumps straight to its icon and restarts its 3 s.
-    await page.evaluate(() => {
-      window.__iconChanges = [];
-    });
-    const columnKey = page.getByTestId('icons-key-column');
-    const pickedAt = await page.evaluate(() => performance.now());
-    await columnKey.click();
-    await expect(cinema).toHaveAttribute('data-icon', 'column');
-    await expect(columnKey).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('icons-film-column')).toHaveAttribute('data-active', 'true');
-    await expect.poll(() => page.getByTestId('icons-film-column').evaluate((el) => !el.paused && el.currentTime < 2.5)).toBe(true);
-    await expect.poll(() => page.evaluate(() => window.__iconChanges.find((change) => change.icon === 'monolith')?.at ?? null), { timeout: 10_000 }).not.toBeNull();
-    const handedOn = await page.evaluate(() => window.__iconChanges.find((change) => change.icon === 'monolith').at);
-    expect(handedOn - pickedAt).toBeGreaterThan(2600);
+    expect(Number(await cinema.getAttribute('data-cycles'))).toBeGreaterThanOrEqual(4);
+    // One film on screen at a time, fully faded in; the one before pauses once its fade is over.
+    const current = await cinema.getAttribute('data-icon');
+    await expect(cinema.locator('video[data-active]')).toHaveCount(1);
+    await expect(page.getByTestId(`icons-film-${current}`)).toHaveAttribute('data-active', 'true');
+    await expect.poll(() => page.getByTestId(`icons-film-${current}`).evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(1);
+    const before = REEL_IDS[(REEL_IDS.indexOf(current) + REEL_IDS.length - 1) % REEL_IDS.length];
+    await expect.poll(() => page.getByTestId(`icons-film-${before}`).evaluate((el) => el.paused), { timeout: 5_000 }).toBe(true);
 
     // The films are real files on this origin with their exact types.
     for (const id of REEL_IDS) {
-      const base = `/media/icons/${ICONS_MEDIA[id].base}`;
+      const base = `/media/icons/${BASES[id]}`;
       const webm = await page.request.get(`${base}.webm`);
       expect(webm.status()).toBe(200);
       expect(webm.headers()['content-type']).toBe('video/webm');
@@ -232,26 +212,23 @@ test.describe('meet our icons reel', () => {
     expect(errors).toEqual([]);
   });
 
-  test('under reduced motion the reel rests on its posters, and a key shows that icon without playing it', async ({ page }) => {
+  test('under reduced motion a phone rests on the first poster under the same two lines, and nothing plays', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.setViewportSize({ width: 360, height: 800 });
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');
     const cinema = page.getByTestId('icons-cinema');
     await cinema.scrollIntoViewIfNeeded();
-    await expect(page.getByTestId('icons-film-monolith')).toHaveAttribute('poster', mediaPath(ICONS_MEDIA.monolith.poster));
+    await expect(page.getByTestId('icons-film-pendant')).toHaveAttribute('poster', mediaPath(ICONS_MEDIA.pendant.poster));
+    await expect(page.getByTestId('icons-film-pendant')).toHaveAttribute('data-active', 'true');
     await expect(cinema).toHaveAttribute('data-playing', 'false');
-    await expect(cinema).toHaveAttribute('data-icon', 'monolith');
-    await page.getByTestId('icons-key-suspension').click();
-    await expect(cinema).toHaveAttribute('data-icon', 'suspension');
-    await expect(page.getByTestId('icons-film-suspension')).toHaveAttribute('data-active', 'true');
-    await expect(page.getByTestId('icons-film-monolith')).not.toHaveAttribute('data-active');
-    await page.waitForTimeout(400);
+    await expect(cinema).toHaveAttribute('data-icon', 'pendant');
+    await expect(cinema).toHaveAttribute('data-cycles', '0');
     for (const id of REEL_IDS) expect(await page.getByTestId(`icons-film-${id}`).evaluate((el) => el.paused && el.currentTime === 0)).toBe(true);
-    await expect(cinema).toHaveAttribute('data-icon', 'suspension');
-    // clamp(460px, 76vh, 760px) on a phone: 76vh of 800 px; the keys keep to their numbers.
-    expect(Math.round((await cinema.boundingBox()).height)).toBe(608);
-    await expect(page.getByTestId('icons-key-monolith').locator('.cinema__key-label')).toBeHidden();
+    expect((await cinema.innerText()).replace(/\s+/g, ' ').trim().toLowerCase()).toBe('meet our icons discover more');
+    await expect(cinema.locator('button')).toHaveCount(0);
+    // clamp(460px, 76vh, 760px) on a phone: 76vh of 844 px.
+    expect(Math.round((await cinema.boundingBox()).height)).toBe(641);
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     expect(errors).toEqual([]);
   });

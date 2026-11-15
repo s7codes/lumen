@@ -9,7 +9,7 @@ import { createConciergeAgent } from '../server/llm-agent.js';
 import { IMMUTABLE_CACHE_CONTROL, parseRange, SHELL_CSP, SHELL_CSP_META } from '../server/static.js';
 import { createStore } from '../server/store.js';
 import { PRODUCTS } from '../src/data/products.js';
-import { CATALOG_SIZE, HERO_SIZES, ICONS_SIZE, mediaFiles, ROOM_SIZE, SHOWCASE_SIZE } from '../src/lib/media-manifest.js';
+import { CATALOG_SIZE, HERO_SIZES, ICONS_SIZE, mediaFiles, ROOM_SIZE } from '../src/lib/media-manifest.js';
 import { shouldPlay } from '../src/lib/viewport-video.js';
 import { collectFailedResponses, collectRuntimeErrors, decodedWidth, installCspRecorder, readCspViolations } from './support/runtime-guards.js';
 
@@ -70,12 +70,14 @@ function listen(server) {
 test.describe('media library', () => {
   test('every promised photograph and film ships under public/media, sized and encoded for the web', () => {
     const promised = mediaFiles(PRODUCTS);
-    // Two hero scenes (2 stills, 2 films), three rooms (still, 2 films), four
-    // showcase acts (poster, 2 films), three icon films (poster, 2 films) and
-    // every catalog finish.
+    // Two hero scenes (2 stills, 2 films), three rooms (still, 2 films), three
+    // camera films for Meet our Icons (poster, 2 films) and every catalog
+    // finish. The synthetic showcase films are gone with their folder.
     const finishes = PRODUCTS.reduce((sum, product) => sum + product.finishes.length, 0);
     expect(finishes).toBe(42);
-    expect(promised).toHaveLength(8 + 9 + 12 + 9 + finishes);
+    expect(promised).toHaveLength(8 + 9 + 9 + finishes);
+    expect(promised.filter((path) => path.startsWith('showcase/'))).toEqual([]);
+    expect(existsSync(join(MEDIA_DIR, 'showcase'))).toBe(false);
     const shipped = walk(MEDIA_DIR).map((file) => relative(MEDIA_DIR, file).split('\\').join('/'));
     // Nothing missing, nothing stray: the manifest is the whole library.
     expect([...shipped].sort()).toEqual([...promised].sort());
@@ -93,11 +95,9 @@ test.describe('media library', () => {
             : HERO_SIZES.half
           : path.startsWith('rooms/')
             ? ROOM_SIZE
-            : path.startsWith('showcase/')
-              ? SHOWCASE_SIZE
-              : path.startsWith('icons/')
-                ? ICONS_SIZE
-                : CATALOG_SIZE;
+            : path.startsWith('icons/')
+              ? ICONS_SIZE
+              : CATALOG_SIZE;
         expect([w, h], path).toEqual([expected.width, expected.height]);
         // Tack-sharp 2K, yet light: no still over 420 KB, and never a blank frame
         // (a smooth studio wall compresses hard, an empty 1600 px WebP to under 2 KB).
@@ -122,15 +122,16 @@ test.describe('media library', () => {
   });
 
   test('the production server streams media: exact types, byte ranges and a one-year immutable policy', async () => {
-    expect(existsSync(join(DIST_DIR, 'media', 'showcase', '01-envelope.webm')), 'npm run build must copy public/media into dist').toBe(true);
+    expect(existsSync(join(DIST_DIR, 'media', 'hero', 'daylight.webm')), 'npm run build must copy public/media into dist').toBe(true);
+    expect(existsSync(join(DIST_DIR, 'media', 'showcase')), 'a fresh build ships no showcase films').toBe(false);
     const store = createStore({ file: null });
     const handler = createApp({ store, version: 'media', agent: AGENT, env: {}, logger: SILENT });
     const { server, shutdown } = createLumenServer({ cloud: { handler, store }, staticDir: DIST_DIR, logger: SILENT });
     const origin = await listen(server);
     try {
-      const filmPath = '/media/showcase/01-envelope.webm';
+      const filmPath = '/media/hero/daylight.webm';
       const film = readFileSync(join(DIST_DIR, filmPath));
-      const full = await rawRequest(origin, `${filmPath}?v=9.1.0`);
+      const full = await rawRequest(origin, `${filmPath}?v=9.2.0`);
       expect(full.status).toBe(200);
       expect(full.headers['content-type']).toBe('video/webm');
       expect(full.headers['accept-ranges']).toBe('bytes');
@@ -178,7 +179,7 @@ test.describe('media library', () => {
       expect(photo.headers['content-type']).toBe('image/webp');
       expect(photo.headers['cache-control']).toBe(IMMUTABLE_CACHE_CONTROL);
       expect(photo.headers['content-encoding']).toBeUndefined();
-      const missing = await rawRequest(origin, '/media/showcase/missing.webm');
+      const missing = await rawRequest(origin, '/media/icons/missing.webm');
       expect(missing.status).toBe(404);
       expect(missing.headers['content-type']).toBe('text/plain; charset=utf-8');
       expect((await rawRequest(origin, '/media/hero')).status).toBe(404);

@@ -417,22 +417,25 @@ test.describe('explore the lumen home', () => {
 });
 
 test.describe('overview bands and heads', () => {
-  test('the dimming lab and the Nocturne theatre run edge to edge, and every overview head is centred, calm and unclipped', async ({
+  test('the dimming lab runs edge to edge, the 3D Spatial Studio sits on the paper with Core Modules, and every overview head is centred, calm and unclipped', async ({
     page,
   }) => {
     const errors = collectRuntimeErrors(page);
     for (const width of [1440, 360]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/');
+      // The travertine band spans the page; the studio grid and the modules share the plain paper of the flow.
       for (const [id, surface] of [
         ['surface-lab', 'rgb(239, 236, 229)'],
-        ['home-3d-showcase', 'rgb(35, 37, 40)'],
+        ['home-3d-showcase', 'rgba(0, 0, 0, 0)'],
+        ['core-modules', 'rgba(0, 0, 0, 0)'],
       ]) {
         const band = page.getByTestId(id);
         await band.scrollIntoViewIfNeeded();
-        expect(await edgeToEdge(page, band), `${id} ${width}px`).toEqual({ left: 0, gap: 0 });
+        if (id !== 'core-modules') expect(await edgeToEdge(page, band), `${id} ${width}px`).toEqual({ left: 0, gap: 0 });
         await expect(band).toHaveCSS('background-color', surface);
       }
+      await expect(page.getByTestId('home-atmosphere')).toHaveCSS('background-color', 'rgb(250, 249, 246)');
 
       const heads = await page.locator('.home-atmosphere .section-head').all();
       expect(heads).toHaveLength(4);
@@ -473,7 +476,7 @@ test.describe('overview bands and heads', () => {
       expect(await horizontalOverflow(page), `${width}px`).toBeLessThanOrEqual(0);
     }
 
-    // An old showcase deep link still lands the theatre head clear of the navbar.
+    // The showcase deep link still lands the section head clear of the navbar.
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/#spatial-studio-3d');
     const showcase = page.getByTestId('home-3d-showcase');

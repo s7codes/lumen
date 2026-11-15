@@ -195,19 +195,6 @@ export function PlanWallGlyph({ wall }) {
   );
 }
 
-/** Wireframe cube for the studio launch key: near edges solid, hidden edges dashed. */
-export function CubeGlyph({ className }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
-      <g stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
-        <path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z" />
-        <path d="M4 7.5 12 12l8-4.5M12 12v9" />
-        <path d="M12 3v9" strokeDasharray="1.5 1.8" strokeOpacity="0.55" />
-      </g>
-    </svg>
-  );
-}
-
 export function PresetOrbitGlyph() {
   return (
     <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
@@ -243,20 +230,6 @@ export function PresetLoftGlyph() {
         <path d="M3 11l12 5 14-6M15 16v12" strokeOpacity="0.5" />
       </g>
       <path d="M3 30.5h12M15 30.5l14-6" stroke="var(--lumen-amber)" strokeWidth="1.1" strokeDasharray="1.6 1.6" />
-    </svg>
-  );
-}
-
-/** Transform gizmo: a module plate with its X and Y handles and the cursor ray landing on it. */
-export function PresetGizmoGlyph() {
-  return (
-    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
-      <g stroke="currentColor" strokeWidth="1.1">
-        <path d="M3 27h26" strokeOpacity="0.5" />
-        <rect x="9" y="13" width="12" height="6" rx="0.5" />
-        <path d="M15 16h11m-2.5-2.2L26 16l-2.5 2.2M15 16V5m-2.2 2.5L15 5l2.2 2.5" strokeOpacity="0.85" />
-      </g>
-      <path d="M5 4.5 15 16" stroke="var(--lumen-amber)" strokeWidth="1.1" strokeDasharray="1.6 1.6" />
     </svg>
   );
 }

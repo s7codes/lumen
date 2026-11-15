@@ -139,7 +139,7 @@ jobs:
           done
 
           # Films stream through Caddy as byte ranges, with their exact type and a one-year policy.
-          curl -fsSk -D film.head -o film.part -H 'Range: bytes=0-1023' https://localhost/media/showcase/01-envelope.webm
+          curl -fsSk -D film.head -o film.part -H 'Range: bytes=0-1023' https://localhost/media/hero/daylight.webm
           grep -qiE '^HTTP/[0-9.]+ 206' film.head
           grep -qi '^content-type: video/webm' film.head
           grep -qi '^accept-ranges: bytes' film.head

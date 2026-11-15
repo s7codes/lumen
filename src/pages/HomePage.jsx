@@ -227,8 +227,9 @@ export default function HomePage() {
       <AmbientHero />
 
       {/* Below the hero the overview alternates calm paper with full-bleed
-          architectural bands: a ledger strip, the icons film, the travertine
-          dimming bench, the twilight theatre, plaster plinths and the rooms. */}
+          architectural bands: a ledger strip, the icons films, the travertine
+          dimming bench, then on the paper the 3D Spatial Studio grid, the
+          plaster plinths and the rooms. */}
       <div className="home-atmosphere" data-testid="home-atmosphere">
         <section className="spec-strip" aria-label="System specification">
           <dl className="spec-strip__grid container reveal-stagger">

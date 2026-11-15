@@ -3,14 +3,14 @@ import { FINISH_IDS, getProduct } from '../data/products.js';
 /*
  * Every photograph and film the storefront ships, served from public/media/
  * on the same origin (no hotlinks, so img-src and media-src stay 'self').
- * The stills are path-traced renders of the planner's own parametric parts
- * and rooms; the Meet our Icons reel and the showcase films are shot on the
- * accumulation cinema stage (scripts/media/cinema), the showcase acts in a
- * CAD chamber posed and labelled by the same functions the overview HUD
- * reads. Pure data: the components, the server tests and the E2E suite all
- * read the same paths and sizes.
+ * The stills and the hero and room films are path-traced renders of the
+ * planner's own parametric parts and rooms. The Meet our Icons reel is real
+ * camera footage of architectural interiors under the Pexels License, cut
+ * and graded by scripts/media/make-footage.mjs and credited below. Pure
+ * data: the components, the server tests and the E2E suite all read the
+ * same paths and sizes.
  *
- * Each URL carries the release as a query (?v=9.1.0), so /media/* can be
+ * Each URL carries the release as a query (?v=9.2.0), so /media/* can be
  * cached for a year as immutable and a new release is still a new URL.
  */
 
@@ -56,34 +56,42 @@ export const ROOM_MEDIA = Object.freeze({
   studio: room('studio-wall'),
 });
 
-/* ---------- showcase ---------- */
-
-export const SHOWCASE_SIZE = Object.freeze({ width: 1440, height: 960 });
-
-function act(base) {
-  return Object.freeze({ base, poster: mediaUrl(`showcase/${base}.webp`), film: film(`showcase/${base}`) });
-}
-
-export const SHOWCASE_MEDIA = Object.freeze({
-  orbit: act('01-envelope'),
-  inside: act('02-walkthrough'),
-  gizmo: act('03-raycast-gizmo'),
-  isolux: act('04-iso-lux'),
-});
-
 /* ---------- meet our icons ---------- */
 
-export const ICONS_SIZE = Object.freeze({ width: 1920, height: 800 });
+export const ICONS_SIZE = Object.freeze({ width: 1920, height: 1080 });
 
-function icon(base) {
-  return Object.freeze({ base, poster: mediaUrl(`icons/${base}.webp`), film: film(`icons/${base}`) });
+const PEXELS_LICENSE = 'Pexels License';
+
+function icon(base, credit) {
+  return Object.freeze({
+    base,
+    poster: mediaUrl(`icons/${base}.webp`),
+    film: film(`icons/${base}`),
+    credit: Object.freeze({ source: 'Pexels', license: PEXELS_LICENSE, ...credit }),
+  });
 }
 
-/** The three 2.4:1 cinema loops of the Meet our Icons reel, in reel order. */
+/**
+ * The three camera films of the Meet our Icons reel, in reel order. The
+ * Pexels License allows use and modification without attribution; each film
+ * still names its source clip and its author.
+ */
 export const ICONS_MEDIA = Object.freeze({
-  monolith: icon('icon-01-monolith'),
-  suspension: icon('icon-02-suspension'),
-  column: icon('icon-03-column-spot'),
+  pendant: icon('icon-01-pendant', {
+    title: 'Elegant Wave-Shaped Pendant Light Design',
+    author: 'Alef Morais',
+    url: 'https://www.pexels.com/video/elegant-wave-shaped-pendant-light-design-39024324/',
+  }),
+  plaster: icon('icon-02-plaster', {
+    title: 'Stylish Minimalist Interior with Decorative Vases',
+    author: 'Raphael Kim',
+    url: 'https://www.pexels.com/video/stylish-minimalist-interior-with-decorative-vases-35660680/',
+  }),
+  stair: icon('icon-03-stair', {
+    title: 'Warmly Lit Wooden Stairs in Modern Interior',
+    author: 'Alef Morais',
+    url: 'https://www.pexels.com/video/warmly-lit-wooden-stairs-in-modern-interior-39024320/',
+  }),
 });
 
 /* ---------- catalog ---------- */
@@ -103,7 +111,6 @@ export function mediaFiles(products) {
   const files = [];
   for (const id of Object.keys(HERO_MEDIA)) files.push(`hero/${id}-1280.webp`, `hero/${id}-2560.webp`, `hero/${id}.webm`, `hero/${id}.mp4`);
   for (const { slug } of Object.values(ROOM_MEDIA)) files.push(`rooms/${slug}-1600.webp`, `rooms/${slug}.webm`, `rooms/${slug}.mp4`);
-  for (const { base } of Object.values(SHOWCASE_MEDIA)) files.push(`showcase/${base}.webp`, `showcase/${base}.webm`, `showcase/${base}.mp4`);
   for (const { base } of Object.values(ICONS_MEDIA)) files.push(`icons/${base}.webp`, `icons/${base}.webm`, `icons/${base}.mp4`);
   for (const product of products) for (const finish of product.finishes.filter((f) => FINISH_IDS.includes(f))) files.push(`catalog/${product.id}-${finish}.webp`);
   return files;

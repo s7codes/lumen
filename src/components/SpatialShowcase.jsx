@@ -1,51 +1,20 @@
-import { useCallback, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useScrollReveal } from '../hooks/useScrollReveal.js';
 import { useSectionSpy } from '../hooks/useSectionLink.js';
-import { useShowcaseTheatre } from '../hooks/useShowcaseTheatre.js';
 import { launchHref, LAUNCH_PATH } from '../lib/launch-presets.js';
-import { SHOWCASE_MEDIA } from '../lib/media-manifest.js';
+import { productPhoto } from '../lib/media-manifest.js';
 import { prefetchRoute } from '../lib/route-manifest.js';
 import { SHOWCASE_3D_ID } from '../lib/routes.js';
-import { ACTS, STAGE_ROOM } from '../lib/showcase-scene.js';
-import { ArrowRight, CubeGlyph, PresetEyeGlyph, PresetGizmoGlyph, PresetLoftGlyph, PresetOrbitGlyph } from './icons.jsx';
+import { STUDIO_PILLARS } from '../lib/studio-capabilities.js';
+import { ArrowRight, PresetEyeGlyph, PresetLoftGlyph, PresetOrbitGlyph } from './icons.jsx';
 
-const STAGE_ID = 'showcase3d-stage';
-const ROOM_LABEL = `${STAGE_ROOM.label} / ${STAGE_ROOM.widthCm} x ${STAGE_ROOM.depthCm} x ${STAGE_ROOM.heightCm} cm`;
-
-const PILLARS = Object.freeze([
-  {
-    act: 'orbit',
-    index: '01',
-    title: '360-Degree Four-Wall Envelope',
-    summary: 'Circle every wall of the room, from floor level up to plan view.',
-    chips: ['Full 360-Degree Orbit', 'Up to 9 x 9 m Loft'],
-    Glyph: PresetOrbitGlyph,
-  },
-  {
-    act: 'inside',
-    index: '02',
-    title: '165 cm Eye-Level Walkthrough',
-    summary: 'Stand where you will stand, and read the light at your eye.',
-    chips: ['165 cm Eye Height', 'Live Eye Lux'],
-    Glyph: PresetEyeGlyph,
-  },
-  {
-    act: 'gizmo',
-    index: '03',
-    title: 'Direct 3D Raycast & Gizmo',
-    summary: 'Take any module and slide it along the wall under your cursor.',
-    chips: ['5 cm Grid Snap', 'X and Y Axis Locks'],
-    Glyph: PresetGizmoGlyph,
-  },
-]);
-
-// Compact quick-launch keys: the visible label stays short, the spec rides in the tooltip.
+// Quick-launch links: the visible label stays short, the spec rides in the tooltip.
 const LAUNCH_PRESETS = Object.freeze([
   {
     id: 'orbit',
     label: '360 Orbit',
-    spec: 'Orbit cutaway / yaw 360 / pitch 5-85 deg',
+    spec: 'Orbit lens / yaw 360 / pitch 5 to 85 deg',
     to: launchHref({ lens: 'orbit' }),
     Glyph: PresetOrbitGlyph,
   },
@@ -67,276 +36,150 @@ const LAUNCH_PRESETS = Object.freeze([
 
 const warmPlanner = () => prefetchRoute(LAUNCH_PATH);
 
-function hoverIntent(event) {
-  return event.pointerType !== 'touch';
+/*
+ * The exports pillar shows what the planner exports: a 1:20 elevation of a
+ * 320 x 250 cm wall (bench, linear pendant on its wires, floating shelf,
+ * corner column, three track spots) with its dimension chains and an ISO
+ * title block, drawn in carbon hairlines on the stone sheet. Decorative: the
+ * card's own heading and specification carry the words.
+ */
+function ElevationDrawing() {
+  return (
+    <svg className="showcase3d__drawing elev" viewBox="0 0 400 300" aria-hidden="true" focusable="false" data-testid="studio-elevation">
+      <defs>
+        <pattern id="studio-elevation-hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line className="elev__hatch" x1="0" y1="0" x2="0" y2="5" />
+        </pattern>
+      </defs>
+      <rect className="elev__frame" x="12" y="12" width="376" height="276" />
+      <text className="elev__label" x="24" y="31">
+        NORTH ELEVATION
+      </text>
+      <text className="elev__note" x="24" y="41">
+        WALL 320 x 250 cm / 24V BUS
+      </text>
+
+      <rect className="elev__slab-fill" x="52" y="65" width="222" height="8" />
+      <rect className="elev__slab-fill" x="52" y="228" width="222" height="8" />
+      <path className="elev__slab" d="M52 73H274M52 228H274" />
+      <path className="elev__wall" d="M64 73V228M262.4 73V228" />
+
+      <path className="elev__part" d="M105.2 73h4.4v8h-4.4zM161 73h4.4v8H161zM216.8 73h4.4v8h-4.4z" />
+      <path className="elev__wire" d="M91.9 73v58.3M172.5 73v58.3" />
+      <rect className="elev__lamp" x="85.7" y="131.3" width="93" height="3.7" />
+      <path className="elev__beam" d="M85.7 135l-9.3 65.1M178.7 135l9.3 65.1" />
+      <rect className="elev__part" x="76.4" y="200.1" width="111.6" height="27.9" />
+      <path className="elev__part" d="M104 200.1c1.5-4 14.5-4 16 0zM157 200.1c-3-3-3-11 0-14h4c3 3 3 11 0 14z" />
+      <rect className="elev__part" x="184.9" y="123.8" width="68.2" height="5" />
+      <path className="elev__part" d="M192 110.5h3.2v13.3H192zM196 112.5h3.2v11.3H196zM239 123.8c-2.5-2-2.5-8 0-10h3c2.5 2 2.5 8 0 10z" />
+      <rect className="elev__part" x="254.3" y="141.2" width="7.4" height="86.8" />
+      <path className="elev__beam" d="M258 146v78" />
+
+      <path className="elev__dim" d="M64 238v16M262.4 238v16M64 250h198.4M61 253l6-6M259.4 253l6-6" />
+      <path className="elev__dim" d="M42 73h8M42 228h8M46 73v155M43 76l6-6M43 231l6-6" />
+      <path className="elev__dim" d="M256 128.8h24M270 228h10M276 128.8v99.2M273 131.8l6-6M273 231l6-6" />
+      <text className="elev__figure" x="163.2" y="246" textAnchor="middle">
+        320
+      </text>
+      <text className="elev__figure" transform="translate(40 150.5) rotate(-90)" textAnchor="middle">
+        250
+      </text>
+      <text className="elev__figure" transform="translate(286 178.4) rotate(-90)" textAnchor="middle">
+        160
+      </text>
+
+      <path className="elev__frame" d="M280 246h108v42H280zM280 260h108M280 274h108M334 260v28" />
+      <text className="elev__note" x="285" y="255.6">
+        LUMEN SPATIAL STUDIO
+      </text>
+      <text className="elev__note" x="285" y="269.6">
+        LMN-BP-01
+      </text>
+      <text className="elev__note" x="339" y="269.6">
+        A3
+      </text>
+      <text className="elev__note" x="285" y="283.6">
+        SCALE 1:20
+      </text>
+      <text className="elev__note" x="339" y="283.6">
+        ISO 7200
+      </text>
+    </svg>
+  );
 }
 
-/** One row of the capability index: hovering previews its act, a click holds it. */
-function Pillar({ pillar, active, held, theatre }) {
+/** One capability: a 4:3 studio picture over its specification, straight on the paper. */
+function Pillar({ pillar }) {
   const reveal = useScrollReveal();
-  const { act, Glyph } = pillar;
+  const headingId = `studio-pillar-${pillar.id}-title`;
+  const photo = pillar.photo ? productPhoto(pillar.photo.product, pillar.photo.finish) : null;
   return (
-    <li ref={reveal} className="showcase3d__pillar-cell reveal-up">
-      <article
-        className="showcase3d__pillar"
-        data-active={active || undefined}
-        data-testid={`showcase-pillar-${act}`}
-        onPointerEnter={(event) => hoverIntent(event) && theatre.current?.preview(act)}
-        onPointerLeave={() => theatre.current?.endPreview(act)}
-        onClick={() => theatre.current?.pick(act)}
-      >
-        <div className="showcase3d__pillar-top" aria-hidden="true">
-          <span className="showcase3d__pillar-index mono">{pillar.index}</span>
-          <span className="showcase3d__pillar-badge">
-            <Glyph />
-          </span>
+    <li ref={reveal} className="showcase3d__cell reveal-up">
+      <article className="showcase3d__card" aria-labelledby={headingId} data-testid={`studio-pillar-${pillar.id}`}>
+        <div className="showcase3d__figure" data-kind={photo ? 'photo' : 'drawing'}>
+          {photo ? (
+            <img
+              className="showcase3d__photo"
+              src={photo.src}
+              width={photo.width}
+              height={photo.height}
+              alt={pillar.photo.alt}
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <ElevationDrawing />
+          )}
         </div>
-        <h3 className="showcase3d__pillar-title">
-          <button type="button" className="showcase3d__pillar-key" aria-pressed={held} aria-controls={STAGE_ID}>
-            {pillar.title}
-          </button>
-        </h3>
-        <p className="showcase3d__pillar-body" data-testid="showcase-pillar-summary">
-          {pillar.summary}
-        </p>
-        <ul className="showcase3d__pillar-chips" aria-label={`${pillar.title} key figures`}>
-          {pillar.chips.map((chip) => (
-            <li key={chip} className="showcase3d__pillar-chip mono" data-testid="showcase-pillar-chip">
-              {chip}
-            </li>
-          ))}
-        </ul>
+        <div className="showcase3d__body">
+          <h3 id={headingId} className="showcase3d__name">
+            <span className="showcase3d__num">{pillar.index}</span> / {pillar.title}
+          </h3>
+          <p className="showcase3d__summary">{pillar.summary}</p>
+          <dl className="showcase3d__specs">
+            {pillar.specs.map(({ label, value }) => (
+              <div key={label} className="showcase3d__spec">
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       </article>
     </li>
   );
 }
 
-/** Registration marks for the stage corners, drawn in a 100 x 100 box stretched over the canvas. */
-function StageFrame() {
-  return (
-    <svg className="theatre__frame" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <path d="M2 9V2h7M91 2h7v7M98 91v7h-7M9 98H2v-7" />
-      <path d="M48.5 50h3M50 48.5v3" className="theatre__frame-centre" />
-    </svg>
-  );
-}
-
-function Theatre({ stage, setStageNode, screenRef, theatre }) {
-  const current = ACTS.find((act) => act.id === stage.act) ?? ACTS[0];
-  return (
-    <figure
-      ref={setStageNode}
-      id={STAGE_ID}
-      className="showcase3d__stage optical reveal-cinematic"
-      data-act={stage.act}
-      data-held={stage.locked ? 'true' : undefined}
-      data-testid="showcase-stage"
-    >
-      <div className="theatre">
-        {/* Four films of the 3D Spatial Studio engine, one per act, stacked:
-            the act's film plays and crossfades in, the rest rest paused. */}
-        <div
-          ref={screenRef}
-          className="theatre__screen"
-          data-testid="showcase-stage-screen"
-          data-act={stage.act}
-          role="img"
-          aria-label={`Film of the 3D Spatial Studio engine: a ${STAGE_ROOM.widthCm} x ${STAGE_ROOM.depthCm} x ${STAGE_ROOM.heightCm} cm room with a lit shelf, linear pendant, corner column and acoustic frame on one 24V bus. ${current.caption}`}
-        >
-          {ACTS.map((act) => {
-            const media = SHOWCASE_MEDIA[act.id];
-            return (
-              <video
-                key={act.id}
-                className="theatre__film"
-                data-film={act.id}
-                data-testid={`showcase-film-${act.id}`}
-                data-active={act.id === stage.act || undefined}
-                data-poster={media.poster}
-                muted
-                loop
-                playsInline
-                preload="none"
-                disablePictureInPicture
-                tabIndex={-1}
-                aria-hidden="true"
-              >
-                <source src={media.film.webm} type="video/webm" />
-                <source src={media.film.mp4} type="video/mp4" />
-              </video>
-            );
-          })}
-        </div>
-        <div className="theatre__hud" aria-hidden="true">
-          <StageFrame />
-          <p className="theatre__bar mono">
-            <span>{ROOM_LABEL}</span>
-            <span className="theatre__act-name">
-              Act {current.index} / {current.label}
-            </span>
-          </p>
-          <p className="theatre__telemetry mono" data-testid="showcase-telemetry">
-            <span>
-              AZ <b data-hud="az" />
-            </span>
-            <span>
-              Pitch <b data-hud="pitch" />
-            </span>
-            <span>
-              Lux <b data-hud="lux" />
-            </span>
-          </p>
-          <p className="theatre__readout mono" data-hud="line" data-testid="showcase-readout" />
-        </div>
-      </div>
-
-      <div className="theatre__acts" role="group" aria-label="Stage acts">
-        {ACTS.map((act) => (
-          <button
-            key={act.id}
-            type="button"
-            className="theatre__act"
-            aria-pressed={stage.locked === act.id}
-            aria-controls={STAGE_ID}
-            data-active={stage.act === act.id || undefined}
-            data-testid={`showcase-act-${act.id}`}
-            onPointerEnter={(event) => hoverIntent(event) && theatre.current?.preview(act.id)}
-            onPointerLeave={() => theatre.current?.endPreview(act.id)}
-            onClick={() => theatre.current?.pick(act.id)}
-          >
-            <span className="theatre__act-index mono">{act.index}</span>
-            <span className="theatre__act-label">{act.label}</span>
-            <span className="theatre__act-track" aria-hidden="true">
-              <span className="theatre__act-fill" data-act-fill={act.id} />
-            </span>
-          </button>
-        ))}
-      </div>
-      <figcaption className="theatre__caption mono">
-        {stage.locked ? 'Held' : 'Auto'} / {current.caption}
-      </figcaption>
-    </figure>
-  );
-}
-
-/*
- * A light trace on the key's square perimeter. Each rect has pathLength 100,
- * so a dash is a share of the perimeter at any key width and the ribbon moves
- * at one even speed round the long and short edges alike; the trail and the
- * head share their leading edge, which tapers the ribbon toward its tail.
- */
-function CtaBorderBeam() {
-  return (
-    <svg className="launchpad__cta-beam" data-testid="cta-border-beam" aria-hidden="true" focusable="false">
-      <rect className="launchpad__cta-beam-trail" width="100%" height="100%" pathLength="100" />
-      <rect className="launchpad__cta-beam-head" width="100%" height="100%" pathLength="100" />
-    </svg>
-  );
-}
-
-/*
- * The launch bar: one hairline footer bar under the theatre and its index
- * (headline, quick-launch keys, the studio key), so a single button never
- * sits in a cavernous box. Every key stays anchored on hover: the surface
- * deepens and only its arrow travels.
- */
-function Launchpad() {
-  const reveal = useScrollReveal();
-  return (
-    <div ref={reveal} className="launchpad reveal-up" data-testid="showcase-launchpad">
-      <h3 className="launchpad__title">Step inside the 3D Spatial Workstation.</h3>
-
-      <ul className="launchpad__presets" aria-label="Quick launch presets">
-        {LAUNCH_PRESETS.map(({ id, label, spec, to, Glyph }) => (
-          <li key={id}>
-            <Link
-              to={to}
-              className="launchpad__preset"
-              data-testid={`launch-preset-${id}`}
-              title={spec}
-              onPointerEnter={warmPlanner}
-              onFocus={warmPlanner}
-            >
-              <span className="launchpad__preset-glyph">
-                <Glyph />
-              </span>
-              <span className="launchpad__preset-title">
-                <span className="visually-hidden">Launch </span>
-                {label}
-              </span>
-              <ArrowRight className="launchpad__preset-arrow" />
-            </Link>
-          </li>
-        ))}
-      </ul>
-
-      <Link
-        to={LAUNCH_PATH}
-        className="button button--primary launchpad__cta"
-        data-testid="launch-3d-studio-cta"
-        onPointerEnter={warmPlanner}
-        onFocus={warmPlanner}
-      >
-        <span className="launchpad__cta-glyph">
-          <CubeGlyph />
-        </span>
-        <span className="launchpad__cta-copy">
-          <span className="launchpad__cta-label">Launch 3D Spatial Studio</span>
-          <span className="launchpad__cta-sub" aria-hidden="true">
-            Full viewport / WebGL 2
-          </span>
-        </span>
-        <ArrowRight className="launchpad__cta-arrow" />
-        <CtaBorderBeam />
-      </Link>
-    </div>
-  );
-}
-
 /**
- * Overview showcase for the 3D Spatial Studio. The stage plays films of the
- * studio engine itself under an HTML and SVG HUD: the overview still
- * downloads no WebGL and no planner chunk until a launch key is pointed at.
+ * Overview section for the 3D Spatial Studio: an editorial specification
+ * grid on the gallery paper, set like the core modules beneath it. Four
+ * capabilities with their figures, then one carbon rule with the launch
+ * presets and the matte carbon key into the planner. Plain pictures and SVG:
+ * the overview downloads no WebGL and no planner chunk until a launch key is
+ * pointed at or focused.
  */
 export function SpatialShowcase() {
   const sectionRef = useRef(null);
   useSectionSpy(sectionRef, SHOWCASE_3D_ID);
   const reveal = useScrollReveal();
-  const stageRef = useRef(null);
-  const screenRef = useRef(null);
-  const [stage, setStage] = useState({ act: ACTS[0].id, locked: null, preview: null });
-  const theatre = useShowcaseTheatre({ stageRef, screenRef, onAct: setStage });
-
-  const setStageNode = useCallback(
-    (node) => {
-      stageRef.current = node;
-      const release = reveal(node);
-      return () => {
-        stageRef.current = null;
-        release?.();
-      };
-    },
-    [reveal],
-  );
 
   return (
     <section
       ref={sectionRef}
       id={SHOWCASE_3D_ID}
-      className="showcase3d optical"
+      className="showcase3d"
       aria-labelledby="showcase3d-title"
       data-testid="home-3d-showcase"
       tabIndex={-1}
     >
-      {/* Nocturne: a full-bleed twilight band of slate wall and warm concrete
-          wash. The theatre, its act keys and the launch bar sit on the grid. */}
-      <div className="showcase3d__inner container">
-        <header ref={reveal} className="section-head showcase3d__head reveal-up">
+      <div className="container">
+        <header ref={reveal} className="section-head reveal-up">
           <p className="index-label">
             <span className="index-label__num">03</span> / 3D Spatial Studio
           </p>
+          {/* The compound stays whole, so no line of the title ends on its hyphen. */}
           <h2 id="showcase3d-title" className="section-head__title showcase3d__title">
-            Step inside a four-walled room before a single hole is drilled.
+            Step inside a <span className="showcase3d__keep">four-walled</span> room before a single hole is drilled.
           </h2>
           <p className="section-head__lede">
             The 3D Spatial Studio builds the room to the centimetre, lights it from fixture data and lets you stand in
@@ -344,22 +187,50 @@ export function SpatialShowcase() {
           </p>
         </header>
 
-        <div className="showcase3d__rig">
-          <Theatre stage={stage} setStageNode={setStageNode} screenRef={screenRef} theatre={theatre} />
-          <ul className="showcase3d__pillars reveal-stagger">
-            {PILLARS.map((pillar) => (
-              <Pillar
-                key={pillar.index}
-                pillar={pillar}
-                active={stage.act === pillar.act}
-                held={stage.locked === pillar.act}
-                theatre={theatre}
-              />
-            ))}
-          </ul>
-        </div>
+        <ol className="showcase3d__grid reveal-stagger" aria-label="3D Spatial Studio capabilities" data-testid="studio-pillars">
+          {STUDIO_PILLARS.map((pillar) => (
+            <Pillar key={pillar.id} pillar={pillar} />
+          ))}
+        </ol>
 
-        <Launchpad />
+        <div ref={reveal} className="showcase3d__foot reveal-up" data-testid="showcase-launchpad">
+          <div className="showcase3d__launch">
+            <p className="index-label showcase3d__launch-label">Launch presets</p>
+            <ul className="showcase3d__presets" aria-label="Quick launch presets">
+              {LAUNCH_PRESETS.map(({ id, label, spec, to, Glyph }) => (
+                <li key={id}>
+                  <Link
+                    to={to}
+                    className="showcase3d__preset"
+                    data-testid={`launch-preset-${id}`}
+                    title={spec}
+                    onPointerEnter={warmPlanner}
+                    onFocus={warmPlanner}
+                  >
+                    <span className="showcase3d__preset-glyph">
+                      <Glyph />
+                    </span>
+                    <span className="showcase3d__preset-label">
+                      <span className="visually-hidden">Launch </span>
+                      {label}
+                    </span>
+                    <ArrowRight className="showcase3d__preset-arrow" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <Link
+            to={LAUNCH_PATH}
+            className="button button--primary showcase3d__cta"
+            data-testid="launch-3d-studio-cta"
+            onPointerEnter={warmPlanner}
+            onFocus={warmPlanner}
+          >
+            Open 3D Room Planner
+            <ArrowRight />
+          </Link>
+        </div>
       </div>
     </section>
   );

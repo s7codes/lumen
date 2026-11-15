@@ -1,42 +1,40 @@
 /*
- * Meet our Icons: the overview's full-bleed cinema reel. Three 2.4:1 films
- * shot on the cinema stage (scripts/media/cinema), each held for 3.0 s and
+ * Meet our Icons: the overview's full-bleed cinema reel. Three camera films
+ * of light in architecture (a timber wave pendant, low sun across sculpted
+ * plaster, a step light on an oiled timber stair), each held for 3.0 s and
  * crossfaded into the next, on a 9 s loop. This module is the clock and the
  * copy only: pure functions of time, testable in Node. The hook
  * (src/hooks/useIconsReel.js) plays the films against it.
  */
 
-/** How long each icon holds the banner. */
+/** How long each film holds the banner. */
 export const REEL_SLOT_SECONDS = 3;
 
-/** The crossfade into the next icon (CSS opacity transition, in ms). */
+/** The crossfade into the next film (CSS opacity transition, in ms). */
 export const REEL_FADE_MS = 700;
 
 /**
- * Length of every icon film. A film starts from its first frame when its icon
- * takes the banner and keeps playing through the fade out, so it must cover
- * the slot and the fade.
+ * Length of every reel film. A film starts from its first frame when it
+ * takes the banner and keeps playing through its fade out, so it must cover
+ * the slot and the fade, with room for a late frame.
  */
-export const ICON_FILM_SECONDS = 4;
+export const ICON_FILM_SECONDS = 4.5;
 
 export const ICON_REEL = Object.freeze([
   Object.freeze({
-    id: 'monolith',
+    id: 'pendant',
     index: '01',
-    label: 'Monolith Dome',
-    caption: 'A glossy obsidian dome on a travertine stem: its 2700K brass reflector dims up and sweeps its light across the stone.',
+    caption: 'A wave-shaped timber pendant draws a warm line of light under a plaster ceiling.',
   }),
   Object.freeze({
-    id: 'suspension',
+    id: 'plaster',
     index: '02',
-    label: 'Linear Pendant 150',
-    caption: 'The Linear Pendant 150 hung from the Track Bus 200 spine lays a razor-sharp 2700K pool along a dark oak table.',
+    caption: 'Low sun rakes across sculpted plaster niches and their stoneware vases.',
   }),
   Object.freeze({
-    id: 'column',
+    id: 'stair',
     index: '03',
-    label: 'Floor Column 140',
-    caption: 'The Corner Floor Column 140 and recessed ceiling grazers paint overlapping 2700K scallops down dark Venetian plaster.',
+    caption: 'A recessed step light grazes the treads of an oiled timber stair.',
   }),
 ]);
 
@@ -50,22 +48,16 @@ export function reelTime(t) {
   return ((value % span) + span) % span;
 }
 
-/** The icon holding the banner at clock t. */
+/** The film holding the banner at clock t. */
 export function reelIndexAt(t) {
   return Math.min(ICON_REEL.length - 1, Math.floor(reelTime(t) / REEL_SLOT_SECONDS));
-}
-
-/** How far through its 3 s slot the current icon is, 0 to 1. */
-export function reelProgress(t) {
-  const local = reelTime(t) - reelIndexAt(t) * REEL_SLOT_SECONDS;
-  return Math.max(0, Math.min(1, local / REEL_SLOT_SECONDS));
 }
 
 export function isReelIndex(value) {
   return Number.isInteger(value) && value >= 0 && value < ICON_REEL.length;
 }
 
-/** The icon after `index`, wrapping to the first. */
+/** The film after `index`, wrapping to the first. */
 export function nextReelIndex(index) {
   return isReelIndex(index) ? (index + 1) % ICON_REEL.length : 0;
 }

@@ -668,8 +668,10 @@ test.describe('page atmosphere', () => {
       for (const pseudo of ['::before', '::after']) {
         expect(await flow.evaluate((el, which) => getComputedStyle(el, which).content, pseudo), pseudo).toBe('none');
       }
+      // The travertine lab band, then the 3D Spatial Studio, the modules and the rooms on the paper itself.
       for (const [section, surface] of [
         ['.lab', 'rgb(239, 236, 229)'],
+        ['.showcase3d', 'rgba(0, 0, 0, 0)'],
         ['.modules', 'rgba(0, 0, 0, 0)'],
         ['.entries', 'rgba(0, 0, 0, 0)'],
       ]) {
@@ -677,10 +679,6 @@ test.describe('page atmosphere', () => {
         expect((await computedLayers(band)).image, section).toBe('none');
         expect(await band.evaluate((el) => getComputedStyle(el).backgroundColor), section).toBe(surface);
       }
-      // Nocturne: matte slate with a warm concrete floor wash, edge to edge.
-      const nocturne = flow.locator(':scope > .showcase3d');
-      expect(await nocturne.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(35, 37, 40)');
-      expect(radials((await computedLayers(nocturne)).image)).toBeGreaterThanOrEqual(1);
       for (const section of ['.lab', '.showcase3d', '.modules', '.entries']) {
         const head = flow.locator(`:scope > ${section} .section-head`);
         const look = await head.evaluate((el) => ({ rule: getComputedStyle(el).borderBottomWidth, align: getComputedStyle(el).textAlign }));

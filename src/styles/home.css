@@ -1,9 +1,9 @@
 /* Overview. A full-bleed light architectural hero opens the page (two
    interiors alternate on one calm clock), then the gallery paper alternates
    with full-bleed architectural bands: the ledger strip, the Meet our Icons
-   film, the travertine dimming band, the Nocturne twilight theatre, the
-   lit module plinths and the Explore the Lumen home rooms. A band spans the
-   page edge to edge; the copy in it keeps the grid. */
+   films, the travertine dimming band, then the 3D Spatial Studio grid, the
+   lit module plinths and the Explore the Lumen home rooms on the paper. A
+   band spans the page edge to edge; the copy in it keeps the grid. */
 
 /* Hero. One limestone gallery room photographed twice from the same stand
    (src/lib/hero-scenes.js, media in src/lib/media-manifest.js): 2K stills of
@@ -542,9 +542,9 @@
   background: var(--travertine);
 }
 
-/* Meet our Icons: the full-bleed cinema reel. Three stacked films crossfade
-   on the reel clock; a soft umber veil seats the white title, its bracketed
-   key and the hairline icon rail over any frame. */
+/* Meet our Icons: the full-bleed cinema reel. Three stacked camera films
+   crossfade on the reel clock; a soft umber veil seats the white title and
+   its bracketed key over any frame. Nothing else rides on the films. */
 
 .cinema {
   --focus-ring: #e5c799;
@@ -567,10 +567,11 @@
   overflow: hidden;
 }
 
-/* Each film keeps its subject in frame when a narrow screen crops the 2.4:1
-   picture: the crop centres on the lamp, the pendant or the column. */
+/* Each film keeps its subject in frame when a screen crops the 16:9
+   picture: a wide banner trims top and bottom, a phone trims the sides. */
 .cinema__film {
   --focus-x: 50%;
+  --focus-y: 50%;
 
   position: absolute;
   inset: 0;
@@ -579,21 +580,23 @@
   height: 100%;
   max-width: none;
   object-fit: cover;
-  object-position: var(--focus-x) 50%;
+  object-position: var(--focus-x) var(--focus-y);
   opacity: 0;
   transition: opacity 700ms var(--ease-cinematic);
 }
 
-.cinema__film[data-reel='monolith'] {
-  --focus-x: 70%;
+.cinema__film[data-reel='pendant'] {
+  --focus-x: 42%;
+  --focus-y: 38%;
 }
 
-.cinema__film[data-reel='suspension'] {
-  --focus-x: 50%;
+.cinema__film[data-reel='plaster'] {
+  --focus-x: 46%;
 }
 
-.cinema__film[data-reel='column'] {
-  --focus-x: 61%;
+.cinema__film[data-reel='stair'] {
+  --focus-x: 74%;
+  --focus-y: 44%;
 }
 
 .cinema__film[data-active] {
@@ -606,99 +609,15 @@
   }
 }
 
-/* The icon rail: three keys on 1px hairlines at the foot of the banner. The
-   icon on screen carries the reel clock as a champagne fill along its line. */
-.cinema__keys {
-  position: absolute;
-  left: 50%;
-  bottom: clamp(20px, 4vh, 36px);
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-5);
-  width: min(720px, calc(100% - 2 * var(--grid-margin)));
-  transform: translateX(-50%);
-}
-
-.cinema__key {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-  min-height: 44px;
-  padding: 8px 0 6px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.62);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.cinema__key-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  min-width: 0;
-}
-
-.cinema__key-index {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: var(--tracking-label);
-}
-
-.cinema__key-label {
-  overflow: hidden;
-  font-size: var(--text-xs);
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.cinema__key-track {
-  position: relative;
-  display: block;
-  height: 1px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.cinema__key-fill {
-  position: absolute;
-  inset: 0;
-  background: #e5c799;
-  transform: scaleX(0);
-  transform-origin: left center;
-}
-
-.cinema__key:hover,
-.cinema__key[data-active] {
-  color: #ffffff;
-}
-
-.cinema__key:focus-visible {
-  outline: 1px solid var(--focus-ring);
-  outline-offset: 4px;
-}
-
-@media (max-width: 640px) {
-  .cinema__keys {
-    gap: var(--space-4);
-  }
-
-  .cinema__key-label {
-    display: none;
-  }
-}
-
+/* Deepest behind the title, a light shade at the top and foot of the band,
+   so the white type holds over sunlit plaster as well as a dim stair. */
 .cinema__veil {
   position: absolute;
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(56% 46% at 50% 50%, rgba(14, 11, 8, 0.46) 0%, rgba(14, 11, 8, 0.14) 62%, rgba(14, 11, 8, 0) 100%),
-    linear-gradient(0deg, rgba(14, 11, 8, 0.66) 0%, rgba(14, 11, 8, 0.3) 14%, rgba(14, 11, 8, 0) 30%);
+    radial-gradient(62% 54% at 50% 50%, rgba(14, 11, 8, 0.5) 0%, rgba(14, 11, 8, 0.26) 56%, rgba(14, 11, 8, 0.1) 100%),
+    linear-gradient(180deg, rgba(14, 11, 8, 0.16) 0%, rgba(14, 11, 8, 0) 28%, rgba(14, 11, 8, 0) 72%, rgba(14, 11, 8, 0.2) 100%);
   pointer-events: none;
 }
 
@@ -1206,42 +1125,17 @@
   }
 }
 
-/* 03 / 3D Spatial Studio: Nocturne, light in the dark. A full-bleed band of
-   matte slate wall over a warm concrete floor wash. The stage plays films of
-   the 3D Spatial Studio engine, one per act, under an HTML and SVG HUD; its
-   rAF loop and its films run only while the stage is on screen and never
-   under reduced motion. Beside it, a flush index of the three capabilities
-   in alabaster on the slate. */
+/* 03 / 3D Spatial Studio: the planner as an editorial specification grid
+   on the gallery paper, set like the core modules under it. The same warm
+   plinths, carbon type, 1px hairlines and square corners: four capabilities,
+   each a 4:3 studio picture over its figures, then one carbon rule with the
+   launch presets and the matte carbon key into the planner. No films, no
+   chamber, no glow. */
 
 .showcase3d {
-  --nocturne-pad: var(--section-space);
-  --nocturne-rule: rgba(245, 242, 235, 0.55);
-
-  position: relative;
-  padding-block: var(--nocturne-pad);
-  background:
-    radial-gradient(120% 70% at 50% 108%, rgba(176, 130, 86, 0.22) 0%, rgba(176, 130, 86, 0.07) 42%, rgba(176, 130, 86, 0) 72%),
-    radial-gradient(70% 46% at 50% 0%, rgba(245, 242, 235, 0.05) 0%, rgba(245, 242, 235, 0) 72%),
-    var(--slate);
-  color: var(--chamber-ink);
+  padding-top: var(--section-space);
   /* Lands the section head 48 px under the navbar, clear of its hairline. */
-  scroll-margin-top: calc(var(--nav-height) + var(--space-7) - var(--nocturne-pad));
-}
-
-.showcase3d .index-label {
-  color: var(--chamber-ink-soft);
-}
-
-.showcase3d .index-label__num {
-  color: var(--chamber-ink-muted);
-}
-
-.showcase3d .section-head__title {
-  color: var(--chamber-ink);
-}
-
-.showcase3d .section-head__lede {
-  color: var(--chamber-ink-soft);
+  scroll-margin-top: calc(var(--nav-height) + var(--space-7) - var(--section-space));
 }
 
 .showcase3d:focus {
@@ -1252,48 +1146,47 @@
   max-width: 19ch;
 }
 
-.showcase3d__rig {
-  display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
-  column-gap: clamp(var(--space-6), 3.4vw, var(--space-8));
-  align-items: stretch;
+.showcase3d__keep {
+  white-space: nowrap;
 }
 
-/* ---------- theatre ---------- */
+.showcase3d__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(var(--space-7), 5vw, var(--space-8)) clamp(var(--space-5), 2.2vw, var(--space-6));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 
-/* The theatre settles into the twilight: a deeper slate stage with a warm
-   floor pool, framed by its corner marks rather than a box. */
-.showcase3d__stage {
+.showcase3d__cell {
+  min-width: 0;
+}
+
+/* No frame, no fill: the picture, the figures straight on the paper and one
+   hairline under the whole, like a product card. */
+.showcase3d__card {
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  border-radius: 0;
-  background:
-    radial-gradient(70% 60% at 50% 58%, rgba(232, 146, 58, 0.09) 0%, rgba(232, 146, 58, 0) 70%),
-    radial-gradient(120% 80% at 50% 0%, rgba(245, 242, 235, 0.04) 0%, rgba(245, 242, 235, 0) 60%),
-    linear-gradient(180deg, #2a2c2f 0%, #1c1e21 100%);
+  height: 100%;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--rule-section);
 }
 
-/* 3:2 at rest; beside the taller index the stage grows into the spare height
-   and the projection refits to it, so no dead band opens under the caption. */
-.theatre {
+.showcase3d__figure {
   position: relative;
-  flex: 1 0 auto;
-  aspect-ratio: 3 / 2;
-}
-
-/* The screen: one film per act, stacked; the act's film crossfades in. */
-.theatre__screen {
-  position: absolute;
-  inset: 0;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
-  background: #1c1e21;
-  cursor: crosshair;
+  background: #e4ddd1;
 }
 
-.theatre__film {
+/* The drawing sits on a stone sheet inside one hairline. */
+.showcase3d__figure[data-kind='drawing'] {
+  border: 1px solid var(--rule-frame);
+  background: var(--stone-panel);
+}
+
+.showcase3d__photo {
   position: absolute;
   inset: 0;
   display: block;
@@ -1301,699 +1194,305 @@
   height: 100%;
   max-width: none;
   object-fit: cover;
-  opacity: 0;
-  transition: opacity 600ms var(--ease-cinematic);
 }
 
-.theatre__film[data-active] {
-  opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .theatre__film {
-    transition: none;
-  }
-}
-
-/* A quiet veil under the HUD lines, so lit plaster never washes the figures
-   out. The registration legs stand 14px in and 2% of the frame along; the
-   lines start 12px past them, so a leg never crosses a letter. */
-.theatre__hud {
-  --hud-inline: calc(26px + (100% - 28px) * 0.02);
-
+.showcase3d__drawing {
   position: absolute;
   inset: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(20, 21, 23, 0.5) 0%, rgba(20, 21, 23, 0) 17%, rgba(20, 21, 23, 0) 80%, rgba(20, 21, 23, 0.52) 100%);
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.theatre__frame {
-  position: absolute;
-  inset: 14px;
-  width: calc(100% - 28px);
-  height: calc(100% - 28px);
-  overflow: visible;
-}
-
-.theatre__frame path {
+/* Carbon hairlines at one device pixel weight at any card width. */
+.elev :is(rect, path) {
   fill: none;
-  stroke: rgba(245, 242, 235, 0.3);
-  stroke-width: 1;
+  stroke: var(--ink);
   vector-effect: non-scaling-stroke;
 }
 
-.theatre__frame .theatre__frame-centre {
-  stroke: rgba(245, 242, 235, 0.16);
+.elev__frame {
+  stroke-opacity: 0.3;
+  stroke-width: 1;
 }
 
-.theatre__bar,
-.theatre__telemetry,
-.theatre__readout {
-  position: absolute;
-  font-size: var(--text-2xs);
+.elev__slab {
+  stroke-opacity: 0.86;
+  stroke-width: 1.25;
+}
+
+.elev rect.elev__slab-fill {
+  fill: url('#studio-elevation-hatch');
+  stroke: none;
+}
+
+.elev__hatch {
+  stroke: var(--ink);
+  stroke-opacity: 0.24;
+  stroke-width: 0.6;
+}
+
+.elev__wall {
+  stroke-opacity: 0.7;
+  stroke-width: 1;
+}
+
+.elev .elev__part {
+  fill: rgba(20, 19, 17, 0.05);
+  stroke-opacity: 0.74;
+  stroke-width: 1;
+}
+
+.elev .elev__lamp {
+  fill: var(--ink);
+  stroke-width: 1;
+}
+
+.elev__wire {
+  stroke-opacity: 0.5;
+  stroke-width: 0.75;
+}
+
+.elev__beam {
+  stroke-opacity: 0.36;
+  stroke-width: 0.75;
+  stroke-dasharray: 2 3;
+}
+
+.elev__dim {
+  stroke-opacity: 0.56;
+  stroke-width: 0.75;
+}
+
+.elev text {
+  font-family: var(--font-mono);
+  fill: var(--ink);
+}
+
+.elev__label {
+  font-size: 7.5px;
+  letter-spacing: 0.14em;
+  fill-opacity: 0.78;
+}
+
+.elev__note {
+  font-size: 6.2px;
+  letter-spacing: 0.08em;
+  fill-opacity: 0.62;
+}
+
+.elev__figure {
+  font-size: 8px;
+  fill-opacity: 0.74;
+}
+
+.showcase3d__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-5);
+}
+
+/* A crisp tracked capital heading, the index a step quieter. */
+.showcase3d__name {
+  font-size: 0.8125rem;
+  font-weight: var(--weight-medium);
+  line-height: 1.4;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
+  text-wrap: balance;
+  color: var(--text-primary);
 }
 
-.theatre__bar {
-  top: var(--space-5);
-  left: var(--hud-inline);
-  right: var(--hud-inline);
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-4);
-  color: var(--chamber-ink-muted);
+.showcase3d__num {
+  color: var(--text-muted);
 }
 
-.theatre__act-name {
-  color: var(--chamber-ink);
-  white-space: nowrap;
-}
-
-.theatre__telemetry {
-  left: var(--hud-inline);
-  bottom: var(--space-5);
-  display: flex;
-  gap: var(--space-4);
-  color: var(--chamber-ink-muted);
-}
-
-.theatre__telemetry b {
-  display: inline-block;
-  min-width: 3ch;
-  margin-left: 6px;
-  font-weight: var(--weight-medium);
-  color: var(--chamber-ink);
-}
-
-.theatre__readout {
-  right: var(--hud-inline);
-  bottom: var(--space-5);
-  max-width: 58%;
-  text-align: right;
-  color: #e5c799;
-}
-
-/* Act selector: four keys on one hairline rail inside the chamber. The key on
-   stage lifts to a lit surface and carries the act clock as a 2px fill; a
-   held key gets a razor-thin champagne edge. */
-.theatre__acts {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-top: 1px solid var(--chamber-rule);
-}
-
-.theatre__act {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  min-height: 56px;
-  padding: var(--space-3) var(--space-4);
-  border: 0;
-  border-right: 1px solid var(--chamber-rule);
-  background: transparent;
-  color: var(--chamber-ink-muted);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background-color var(--duration-slow) var(--ease-cinematic),
-    color var(--duration-base) var(--ease-out);
-}
-
-.theatre__act:last-child {
-  border-right: 0;
-}
-
-.theatre__act:hover {
-  color: var(--chamber-ink);
-  background: rgba(245, 242, 235, 0.03);
-}
-
-.theatre__act:focus-visible {
-  outline: 1px solid var(--focus-ring);
-  outline-offset: -1px;
-}
-
-.theatre__act[data-active] {
-  color: var(--chamber-ink);
-  background: rgba(245, 242, 235, 0.06);
-}
-
-.theatre__act[aria-pressed='true'] {
-  box-shadow: inset 0 0 0 1px rgba(229, 199, 153, 0.55);
-}
-
-.theatre__act-index {
-  flex: none;
-  font-size: var(--text-2xs);
-  color: var(--chamber-ink-muted);
-}
-
-.theatre__act[data-active] .theatre__act-index {
-  color: var(--emission-soft);
-}
-
-.theatre__act-label {
-  min-width: 0;
-  overflow: hidden;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.005em;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.theatre__act-track {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  overflow: hidden;
-}
-
-.theatre__act-fill {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, rgba(212, 136, 58, 0.55) 0%, var(--emission-soft) 100%);
-  transform: scaleX(0);
-  transform-origin: left;
-}
-
-.theatre__caption {
-  padding: var(--space-3) var(--bento-pad) var(--space-4);
-  border-top: 1px solid var(--chamber-rule);
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--chamber-ink-muted);
-}
-
-/* ---------- capability index ---------- */
-
-/* Three rows on the paper between hairlines. Index, title and line glyph
-   on the first line, one sentence under it, the key figures as naked
-   tracked text. The capability on stage inverts its index to carbon. */
-.showcase3d__pillars {
-  display: grid;
-  grid-template-rows: repeat(3, minmax(0, 1fr));
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border-top: 1px solid var(--nocturne-rule);
-}
-
-.showcase3d__pillar-cell {
-  min-width: 0;
-  border-bottom: 1px solid var(--chamber-rule);
-}
-
-.showcase3d__pillar {
-  position: relative;
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
-  grid-template-areas:
-    'index title glyph'
-    '. body body'
-    '. chips chips';
-  align-content: start;
-  column-gap: var(--space-4);
-  height: 100%;
-  padding: var(--space-5) var(--space-3) var(--space-6) 0;
-  cursor: pointer;
-  transition: background-color var(--duration-slow) var(--ease-out);
-}
-
-.showcase3d__pillar:hover {
-  background: rgba(245, 242, 235, 0.03);
-}
-
-/* The decorative top row hands its two cells to the row grid. */
-.showcase3d__pillar-top {
-  display: contents;
-}
-
-.showcase3d__pillar-index {
-  grid-area: index;
-  align-self: start;
-  justify-self: start;
-  margin-top: 4px;
-  padding: 3px 5px;
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-medium);
-  line-height: 1;
-  letter-spacing: 0.04em;
-  color: var(--chamber-ink-muted);
-  transition:
-    color var(--duration-base) var(--ease-out),
-    background-color var(--duration-base) var(--ease-out);
-}
-
-.showcase3d__pillar-badge {
-  grid-area: glyph;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  color: var(--chamber-ink-soft);
-  transition: color var(--duration-base) var(--ease-out);
-}
-
-.showcase3d__pillar-badge svg {
-  width: 26px;
-  height: 26px;
-}
-
-/* On the slate the capability on stage inverts flat to alabaster. */
-.showcase3d__pillar[data-active] .showcase3d__pillar-index {
-  background: var(--chamber-ink);
-  color: var(--slate);
-}
-
-.showcase3d__pillar[data-active] .showcase3d__pillar-badge {
-  color: var(--chamber-ink);
-}
-
-.showcase3d__pillar-title {
-  grid-area: title;
-  font-size: clamp(1.125rem, 0.95rem + 0.45vw, 1.375rem);
-  font-weight: var(--weight-regular);
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  color: var(--chamber-ink);
-}
-
-.showcase3d__pillar-key {
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  letter-spacing: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.showcase3d__pillar-key:focus-visible {
-  outline: 1px solid var(--focus-ring);
-  outline-offset: 4px;
-}
-
-.showcase3d__pillar-body {
-  grid-area: body;
-  max-width: 36ch;
-  margin-top: var(--space-2);
+.showcase3d__summary {
+  max-width: 40ch;
   font-size: var(--text-sm);
   font-weight: var(--weight-regular);
-  line-height: 1.65;
-  color: var(--chamber-ink-soft);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  text-wrap: pretty;
 }
 
-/* Key figures as naked tracked text, split by a quiet slash: no pills. */
-.showcase3d__pillar-chips {
-  grid-area: chips;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-2);
-  margin: var(--space-3) 0 0;
-  padding: 0;
-  list-style: none;
+/* The specification: label and figure per row, divided by hairlines. */
+.showcase3d__specs {
+  margin: var(--space-2) 0 0;
+  border-top: 1px solid var(--rule-section);
 }
 
-.showcase3d__pillar-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 10.5px;
-  font-weight: var(--weight-regular);
-  line-height: 1.5;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  color: var(--chamber-ink);
-}
-
-.showcase3d__pillar-chip + .showcase3d__pillar-chip::before {
-  content: '/';
-  color: var(--chamber-ink-muted);
-}
-
-/* ---------- launch bar ---------- */
-
-/* One full-width bar under the rig between an alabaster rule and a
-   hairline: the headline, three quick-launch keys and the bracketed studio
-   key. Its height is the key's (54 px) plus a 20 px inset, under 110 px on a
-   desktop; narrower frames wrap it to two rows, phones stack it. */
-.launchpad {
-  position: relative;
+.showcase3d__spec {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  grid-template-areas: 'copy presets cta';
-  align-items: center;
-  gap: var(--space-4) var(--space-5);
-  margin-top: var(--space-5);
-  padding: 20px 0;
-  border-top: 1px solid var(--nocturne-rule);
-  border-bottom: 1px solid var(--chamber-rule);
-  border-radius: 0;
-  background: none;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.5fr);
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
 }
 
-.launchpad__title {
-  grid-area: copy;
-  min-width: 0;
-  font-size: 20px;
+.showcase3d__spec:last-child {
+  border-bottom: 0;
+}
+
+.showcase3d__spec dt {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.showcase3d__spec dd {
+  margin: 0;
+  font-size: 0.8125rem;
   font-weight: var(--weight-regular);
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  text-wrap: balance;
-  color: var(--chamber-ink);
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
 }
 
-/* Quick-launch keys: a line glyph, a short label and an arrow that is the
-   only part to travel. Square alabaster hairlines that firm on hover. */
-.launchpad__presets {
-  grid-area: presets;
+/* ---------- launch rule ---------- */
+
+/* One carbon rule closes the grid: the presets on the left, the matte
+   carbon key into the planner on the right. */
+.showcase3d__foot {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4) var(--space-6);
+  margin-top: clamp(var(--space-7), 5vw, var(--space-8));
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--rule-ink);
+}
+
+.showcase3d__launch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-6);
   min-width: 0;
+}
+
+.showcase3d__presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-6);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.launchpad__preset {
+/* A line glyph, a short label and an arrow, naked on the paper: the label
+   draws its hairline on hover and only the arrow travels. */
+.showcase3d__preset {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  height: 40px;
-  padding: 0 14px 0 10px;
-  border: 1px solid rgba(245, 242, 235, 0.28);
-  border-radius: 0;
-  background: transparent;
-  color: var(--chamber-ink);
-  font-size: 13px;
+  min-height: 44px;
+  font-size: 0.84375rem;
   font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
   white-space: nowrap;
-  transition:
-    border-color var(--duration-base) var(--ease-out),
-    background-color var(--duration-base) var(--ease-out);
+  color: var(--text-primary);
 }
 
-.launchpad__preset:hover,
-.launchpad__preset:focus-visible {
-  border-color: var(--chamber-ink);
-  background: rgba(245, 242, 235, 0.05);
-}
-
-.launchpad__preset:focus-visible {
-  outline: 1px solid var(--focus-ring);
-  outline-offset: 2px;
-}
-
-.launchpad__preset-glyph {
+.showcase3d__preset-glyph {
   display: grid;
   flex: none;
   place-items: center;
   width: 22px;
   height: 22px;
+  color: var(--text-secondary);
 }
 
-.launchpad__preset-glyph svg {
+.showcase3d__preset-glyph svg {
   width: 22px;
   height: 22px;
 }
 
-.launchpad__preset-arrow {
+.showcase3d__preset-label {
+  padding-block: 2px;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 0 1px;
+  transition: background-size var(--duration-base) var(--ease-out);
+}
+
+.showcase3d__preset-arrow {
   flex: none;
   width: 12px;
   height: 12px;
-  color: var(--chamber-ink-soft);
+  color: var(--text-secondary);
   transition:
     transform var(--duration-base) var(--ease-out),
     color var(--duration-base) var(--ease-out);
 }
 
-.launchpad__preset:hover .launchpad__preset-arrow,
-.launchpad__preset:focus-visible .launchpad__preset-arrow {
-  transform: translateX(3px);
-  color: var(--chamber-ink);
+.showcase3d__preset:hover .showcase3d__preset-label,
+.showcase3d__preset:focus-visible .showcase3d__preset-label {
+  background-size: 100% 1px;
 }
 
-/* The flagship key, bracketed: two alabaster hairlines frame a tracked
-   capital label over the slate, no top or bottom edge, no fill. It stays
-   anchored on hover: a faint alabaster wash fades in under the label and
-   only the arrow moves. */
-.button.launchpad__cta {
-  grid-area: cta;
-  position: relative;
-  isolation: isolate;
+.showcase3d__preset:hover .showcase3d__preset-arrow,
+.showcase3d__preset:focus-visible .showcase3d__preset-arrow {
+  transform: translateX(3px);
+  color: var(--text-primary);
+}
+
+.button.showcase3d__cta {
   gap: var(--space-4);
-  height: auto;
-  min-height: 54px;
-  padding: 0 28px;
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  border: 0;
-  border-left: 1px solid rgba(245, 242, 235, 0.75);
-  border-right: 1px solid rgba(245, 242, 235, 0.75);
-  background: transparent;
-  color: var(--chamber-ink);
+  height: 52px;
+  padding-inline: 28px;
 }
 
-.button.launchpad__cta::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: rgba(245, 242, 235, 0.08);
-  opacity: 0;
-  transition: opacity var(--duration-base) var(--ease-out);
-}
-
-.button.launchpad__cta:hover:not(:disabled),
-.button.launchpad__cta:active:not(:disabled) {
-  border-color: var(--chamber-ink);
-  background: transparent;
-  color: var(--chamber-ink);
-}
-
-.button.launchpad__cta:hover:not(:disabled)::before,
-.button.launchpad__cta:focus-visible::before {
-  opacity: 1;
-}
-
-.launchpad__cta-glyph {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid rgba(245, 242, 235, 0.24);
-}
-
-.button.launchpad__cta .launchpad__cta-glyph svg {
-  width: 20px;
-  height: 20px;
-}
-
-/* Every glyph in the key holds still on hover; the arrow alone slides 3 px. */
-.button.launchpad__cta:hover:not(:disabled) svg {
-  transform: none;
-}
-
-.button.launchpad__cta .launchpad__cta-arrow {
-  transition: transform var(--duration-base) var(--ease-out);
-}
-
-.button.launchpad__cta:hover:not(:disabled) .launchpad__cta-arrow,
-.button.launchpad__cta:focus-visible .launchpad__cta-arrow {
-  transform: translateX(3px);
-}
-
-/* The light trace: a thin alabaster head on a champagne trail, gliding round
-   the key once every 6 s. Each dash starts one dash length back, so both
-   share a leading edge. Laid over the border box, on the key's own edge. */
-.button.launchpad__cta .launchpad__cta-beam {
-  position: absolute;
-  inset: -1px;
-  width: calc(100% + 2px);
-  height: calc(100% + 2px);
-  overflow: visible;
-  pointer-events: none;
-}
-
-.launchpad__cta-beam rect {
-  fill: none;
-  stroke-linecap: square;
-}
-
-.launchpad__cta-beam-trail {
-  stroke: rgba(229, 199, 153, 0.7);
-  stroke-width: 1;
-  stroke-dasharray: 26 74;
-  stroke-dashoffset: 26;
-  animation: cta-beam-trail 6s linear infinite;
-}
-
-.launchpad__cta-beam-head {
-  stroke: #f5f2eb;
-  stroke-width: 1.5;
-  stroke-dasharray: 7 93;
-  stroke-dashoffset: 7;
-  animation: cta-beam-head 6s linear infinite;
-}
-
-@keyframes cta-beam-trail {
-  from {
-    stroke-dashoffset: 26;
-  }
-
-  to {
-    stroke-dashoffset: -74;
-  }
-}
-
-@keyframes cta-beam-head {
-  from {
-    stroke-dashoffset: 7;
-  }
-
-  to {
-    stroke-dashoffset: -93;
-  }
-}
-
-.launchpad__cta-copy {
-  display: grid;
-  gap: 3px;
-  text-align: left;
-}
-
-.launchpad__cta-label {
-  line-height: 1.1;
-}
-
-.launchpad__cta-sub {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.62;
-}
-
-/* Narrower desktops: the headline takes the first row, keys the second. */
-@media (max-width: 1279px) {
-  .launchpad {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      'copy copy'
-      'presets cta';
-  }
-}
-
-@media (max-width: 1099px) {
-  .showcase3d__rig {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: var(--space-6);
-  }
-
-  .showcase3d__pillars {
-    grid-template-rows: none;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    column-gap: var(--space-5);
-  }
-}
-
-@media (max-width: 799px) {
-  .showcase3d__pillars {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .theatre {
-    aspect-ratio: 4 / 3;
-  }
-
-  .theatre__bar span + span {
-    display: none;
-  }
-
-  .theatre__readout {
-    left: var(--hud-inline);
-    right: var(--hud-inline);
-    bottom: calc(var(--space-5) + 20px);
-    max-width: none;
-    text-align: left;
-  }
-
-  .theatre__acts {
+@media (max-width: 1199px) {
+  .showcase3d__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
 
-  .theatre__act:nth-child(2n) {
-    border-right: 0;
-  }
-
-  .theatre__act:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--chamber-rule);
-  }
-
-  .launchpad {
+@media (max-width: 639px) {
+  .showcase3d__grid {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      'copy'
-      'presets'
-      'cta';
   }
 
-  .launchpad__presets li {
-    flex: 1 1 auto;
+  .showcase3d__foot {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .launchpad__preset {
+  .button.showcase3d__cta {
+    order: -1;
+    justify-content: space-between;
     width: 100%;
   }
 
-  .launchpad__preset-arrow {
-    margin-left: auto;
+  .showcase3d__launch {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
-  .button.launchpad__cta {
+  .showcase3d__presets {
+    flex-direction: column;
+    align-items: stretch;
     width: 100%;
-    gap: var(--space-3);
-    padding: 0 var(--space-5);
   }
 
-  .launchpad__cta-arrow {
+  .showcase3d__presets li + li {
+    border-top: 1px solid var(--rule);
+  }
+
+  .showcase3d__preset {
+    width: 100%;
+  }
+
+  .showcase3d__preset-arrow {
     margin-left: auto;
-  }
-}
-
-/* Small phones: the key keeps its label on one line; the spec sub-line is decorative. */
-@media (max-width: 419px) {
-  .launchpad__cta-sub {
-    display: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .launchpad__cta-beam rect {
-    animation-play-state: paused;
-  }
-
-  .button.launchpad__cta::before,
-  .button.launchpad__cta .launchpad__cta-arrow,
-  .launchpad__preset-arrow {
-    transition: none;
   }
 }
 

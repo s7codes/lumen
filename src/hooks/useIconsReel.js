@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { isReelIndex, nextReelIndex, REEL_FADE_MS, REEL_SLOT_SECONDS } from '../lib/icons-reel.js';
+import { useEffect } from 'react';
+import { nextReelIndex, REEL_FADE_MS, REEL_SLOT_SECONDS } from '../lib/icons-reel.js';
 import { frameDelta } from '../lib/spring.js';
 import { shouldPlay, VIEW_THRESHOLD } from '../lib/viewport-video.js';
 
@@ -9,33 +9,27 @@ const REEL_MAX_DT = 0.25;
 const NEAR_MARGIN = '400px 0px';
 
 /**
- * Drives the Meet our Icons reel. The films obey the overview's viewport rule
- * (src/lib/viewport-video.js, shouldPlay): one rAF clock runs only while the
- * banner is on screen in a visible tab, without reduced motion or save-data,
- * and hands the banner to the next icon every REEL_SLOT_SECONDS. Each icon's
- * film starts from its first frame as it fades in and keeps playing through
- * its own fade out, then pauses; nothing else decodes.
+ * Drives the Meet our Icons reel on a plain DOM clock: React renders the
+ * banner once and never hears about the reel again. The films obey the
+ * overview's viewport rule (src/lib/viewport-video.js, shouldPlay): one rAF
+ * clock runs only while the banner is on screen in a visible tab, without
+ * reduced motion or save-data, and hands the banner to the next film every
+ * REEL_SLOT_SECONDS, round and round. Each film starts from its first frame
+ * as it fades in and keeps playing through its own fade out, then pauses;
+ * nothing else decodes.
  *
- * React hears only about icon changes (every 3 s) through `onIndex`; the
- * hairline progress fill is written straight to the DOM each frame. The
- * section mirrors the loop as data-playing and counts automatic advances in
- * data-cycles. Returns a ref to the controller: pick(index) jumps to an icon
- * and restarts its 3 s.
+ * The film on screen carries data-active (the CSS crossfade). The section
+ * mirrors the loop as data-icon (the film on screen), data-playing and
+ * data-cycles (automatic advances), so tests read the clock without timers.
  */
-export function useIconsReel({ sectionRef, onIndex }) {
-  const controller = useRef(null);
-  const onIndexRef = useRef(onIndex);
-  useEffect(() => {
-    onIndexRef.current = onIndex;
-  });
-
+export function useIconsReel(sectionRef) {
   useEffect(() => {
     const section = sectionRef.current;
     if (!section || typeof IntersectionObserver === 'undefined') return undefined;
     const films = [...section.querySelectorAll('video[data-reel]')];
-    const fills = [...section.querySelectorAll('[data-key-fill]')];
+    if (films.length === 0) return undefined;
     const reducedQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const s = { index: 0, slot: 0, frame: 0, last: 0, inView: false, reduced: reducedQuery.matches, fading: new Map(), cycles: 0, fill: -1 };
+    const s = { index: 0, slot: 0, frame: 0, last: 0, inView: false, reduced: reducedQuery.matches, fading: new Map(), cycles: 0 };
 
     const wanted = () =>
       shouldPlay({
@@ -50,12 +44,18 @@ export function useIconsReel({ sectionRef, onIndex }) {
       section.dataset.playing = playing ? 'true' : 'false';
     };
 
-    const writeFill = (value) => {
-      if (Math.abs(value - s.fill) < 0.002) return;
-      s.fill = value;
-      fills.forEach((el, i) => {
-        el.style.transform = `scaleX(${i === s.index ? value.toFixed(3) : '0'})`;
+    /**
+     * Puts film `index` on screen: the crossfade is the CSS transition on
+     * data-active. Only real changes reach the DOM, so a restart in view
+     * writes nothing and observers see one mutation per hand-over.
+     */
+    const show = (index) => {
+      films.forEach((el, i) => {
+        if (i === index && !el.hasAttribute('data-active')) el.setAttribute('data-active', 'true');
+        else if (i !== index && el.hasAttribute('data-active')) el.removeAttribute('data-active');
       });
+      const id = films[index].dataset.reel;
+      if (section.dataset.icon !== id) section.dataset.icon = id;
     };
 
     const revealPosters = () => {
@@ -87,24 +87,19 @@ export function useIconsReel({ sectionRef, onIndex }) {
       for (const el of films) if (!el.paused) el.pause();
     };
 
-    /** Hands the banner to icon `index`: its film from the first frame, the last one fading out. */
-    const go = (index, now = performance.now()) => {
+    /** Hands the banner to film `index`: from its first frame, the last one fading out behind it. */
+    const go = (index, now) => {
       const previous = s.index;
       s.index = index;
       s.slot = 0;
-      s.fill = -1;
-      writeFill(0);
-      onIndexRef.current?.(index);
+      show(index);
       const film = films[index];
-      if (!film) return;
       rewind(film);
-      if (s.frame) {
-        prime(index);
-        prime(nextReelIndex(index));
-        start(film);
-        s.fading.delete(index);
-        if (previous !== index && films[previous]) s.fading.set(previous, now + REEL_FADE_MS + 60);
-      }
+      prime(index);
+      prime(nextReelIndex(index));
+      start(film);
+      s.fading.delete(index);
+      if (previous !== index) s.fading.set(previous, now + REEL_FADE_MS + 60);
     };
 
     const loop = (now) => {
@@ -122,7 +117,6 @@ export function useIconsReel({ sectionRef, onIndex }) {
         section.dataset.cycles = String(s.cycles);
         go(nextReelIndex(s.index), now);
       }
-      writeFill(Math.min(1, s.slot / REEL_SLOT_SECONDS));
       s.frame = requestAnimationFrame(loop);
     };
 
@@ -141,12 +135,10 @@ export function useIconsReel({ sectionRef, onIndex }) {
         s.last = performance.now();
         s.frame = requestAnimationFrame(loop);
         setPlaying(true);
-        // Entering view restarts the icon on screen, so its film and its 3 s run together.
+        // Entering view restarts the film on screen, so its picture and its 3 s run together.
         go(s.index, s.last);
       } else if (s.frame) {
         stop();
-        s.fill = -1;
-        writeFill(s.reduced ? 1 : Math.min(1, s.slot / REEL_SLOT_SECONDS));
       }
     };
 
@@ -175,33 +167,13 @@ export function useIconsReel({ sectionRef, onIndex }) {
       sync();
     };
 
+    show(0);
     setPlaying(false);
     section.dataset.cycles = '0';
-    writeFill(s.reduced ? 1 : 0);
     view.observe(section);
     near.observe(section);
     document.addEventListener('visibilitychange', sync);
     reducedQuery.addEventListener('change', onReducedChange);
-
-    controller.current = {
-      pick(index) {
-        if (!isReelIndex(index)) return;
-        if (s.frame) {
-          go(index);
-          return;
-        }
-        // At rest (reduced motion, save-data or off screen): show that icon's poster.
-        s.index = index;
-        s.slot = 0;
-        s.fill = -1;
-        writeFill(s.reduced ? 1 : 0);
-        revealPosters();
-        onIndexRef.current?.(index);
-      },
-      get index() {
-        return s.index;
-      },
-    };
 
     return () => {
       stop();
@@ -209,10 +181,6 @@ export function useIconsReel({ sectionRef, onIndex }) {
       near.disconnect();
       document.removeEventListener('visibilitychange', sync);
       reducedQuery.removeEventListener('change', onReducedChange);
-      controller.current = null;
     };
   }, [sectionRef]);
-
-  return controller;
 }
-
