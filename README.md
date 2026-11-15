@@ -1,7 +1,7 @@
 # LUMEN - Architectural Lighting, Modular Shelving & 3D Spatial CAD Platform (v9.0.0)
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v9.2.0-e8923a)
+![Release](https://img.shields.io/badge/release-v9.3.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 **Live production: [https://lumen.s7codes.dev](https://lumen.s7codes.dev)**, served from a Hetzner Cloud VPS
@@ -9,23 +9,22 @@ by the Docker Compose and Caddy kit in this repository.
 
 | Playwright E2E | Rendering | AI integration | Backend |
 | --- | --- | --- | --- |
-| 323 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
+| 329 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
 
-Current release: **v9.2.0**, the camera footage and editorial studio release. Meet our Icons now
-plays real camera footage of architectural interiors instead of rendered films: a wave-shaped
-timber pendant drawing a warm line of light under a plaster ceiling, low sun raking across
-sculpted plaster niches and their stoneware vases, and a recessed step light grazing an oiled
-timber stair. Each 1920 x 1080 clip holds the banner for 3 s and crossfades into the next on a
-continuous 9 s loop, under nothing but the centred Meet our Icons title and its Discover More key:
-the rail of named keys and progress bars is gone. The clips are Pexels originals (Pexels License),
-credited in `src/lib/media-manifest.js` and cut, graded and encoded by
-`scripts/media/make-footage.mjs`. The dark 03 / 3D Spatial Studio theatre and its four rendered
-films are gone too: the section now sits on the gallery paper like Core Modules beneath it, as
-four capability cards (four-wall envelope, 165 cm eye-level walkthrough, 24V SELV bus and acoustic
-RT60, architectural CAD exports), each a 4:3 studio photograph or a 1:20 elevation over a hairline
-specification whose figures are the planner engines' own, closed by one carbon rule with three
-launch presets and a matte carbon Open 3D Room Planner key. The cinema stage that rendered the old
-films has left the repository. The v9.0.0 photographs are unchanged.
+Current release: **v9.3.0**, the X-ray studio release. 03 / 3D Spatial Studio is one wide
+instrument now: the warm 2K hero photograph and a 1:20 CAD elevation of the same wall, split by a
+carbon divider that follows a drag, steps with the arrow keys and glides to 50/50 X-Ray Split,
+2K Optical Photo or 1:20 CAD Blueprint. The blueprint is drawn through the camera the photograph
+was rendered with (the path tracer's shift lens, 4.75 m off the wall), from the render's own
+furniture and the planner's own parts, so every line lands on its photographed edge: the ceiling
+track and its three 24 deg grazers with their aiming lines, the Linear Pendant 150 on its wires
+and feed, the Floating Shelf 110 on its hidden cleat, the Floor Column 140, the travertine console
+and the limestone ashlar. Over it sit the 100, 250 and 500 lx contours of the render's light rig,
+the 165 cm walkthrough horizon with its sightline ticks, the planner's 24V SELV run from a 150 W
+DALI-2 driver node at 1.09% drop, the room's Sabine octaves, a level staff, dimension chains and an
+ISO title block. The four capabilities follow as an image-free ledger: pointing at one brings its
+callouts forward, choosing one opens the blueprint to them. The drawing engine loads as its own
+chunk once the stage comes near. The v9.2.0 media are byte-identical.
 
 ## 1. Executive Overview
 
@@ -57,7 +56,7 @@ comes from the same code everywhere.
   +--------------------------------------------------------------------------+
   | Client studios                                                           |
   |   RoomPlannerPage   room3d/: WebGL2 studio, GLSL, IBL, OBJ, PNG, DXF     |
-  |   HomePage          2K stills, camera films, editorial studio grid       |
+  |   HomePage          2K stills, camera films, X-ray photo and blueprint   |
   |   ConciergePanel    Lumen AI chat, applies MCP clientActions as one undo |
   |   Catalog, Bag, Checkout, CommandPalette, AccountPage                    |
   +------------------------------------+-------------------------------------+
@@ -95,7 +94,8 @@ comes from the same code everywhere.
 `src/components/room3d/`, `src/lib/pbr-materials.js`, `src/lib/room-scene.js`, `src/lib/room-walkthrough.js`
 
 - three r187 on WebGL2 through React Three Fiber, shipped in a lazy `RoomCanvas` chunk: a cold
-  load of `/` requests no Three.js code; the homepage shows the studio as photographs and figures.
+  load of `/` requests no Three.js code; the homepage shows the studio as a photograph in register
+  with its own 1:20 blueprint.
 - Custom GLSL: a soft-penumbra window gobo shader (an 8% feather at the glass widening to 28% deep
   in the room), additive volumetric beams, and an `onBeforeCompile` analytic specular patch.
 - Procedural PBR: 8 materials (walnut, oak, obsidian, steel, felt, chalk, parquet, plaster)
@@ -110,7 +110,7 @@ comes from the same code everywhere.
 
 ### 2K photography and camera footage
 
-`public/media/`, `src/lib/media-manifest.js`, `src/lib/viewport-video.js`, `src/lib/icons-reel.js`, `src/lib/studio-capabilities.js`, `scripts/media/`
+`public/media/`, `src/lib/media-manifest.js`, `src/lib/viewport-video.js`, `src/lib/icons-reel.js`, `src/lib/studio-capabilities.js`, `src/lib/xray-blueprint.js`, `scripts/media/`
 
 - 68 files: two hero scenes (1280 and 2560 w WebP, VP9 WebM and H.264 MP4 films), three 4:5 rooms,
   three Meet our Icons camera films with posters, and 42 catalog finishes, every URL versioned
@@ -128,9 +128,12 @@ comes from the same code everywhere.
   furniture, rendered as separate light passes (sky, sun, each LED channel), cleaned by a guided
   a-trous filter on albedo-demodulated light and graded through AgX. Light transport is linear, so
   every hero and room film frame is a weighted sum of those passes: seamless 60 fps loops.
-- The 3D Spatial Studio grid (`src/lib/studio-capabilities.js`) pairs those stills with the
-  planner's figures: envelope ranges, the 165 cm lens, the 24V bus, the Sabine octaves and the
-  1:20 exports. A Node test reads every figure back against the engine constants.
+- The 3D Spatial Studio X-ray (`src/lib/xray-blueprint.js`) pushes the hero scene
+  (`scripts/media/studio/src/scenes/hero.js`) through its own camera into the 2560 x 1440 warm
+  still: the visible edges of every part, iso-lux contours from the render's light rig, the
+  planner's bus run and the walkthrough horizon, one SVG over the photograph in one frame. Its
+  figures (`src/lib/xray-figures.js`) and the ledger's (`src/lib/studio-capabilities.js`) are read
+  back against the engines in Node, and the photograph is sampled under the drawing's lines.
 - `createViewportVideo`: an `IntersectionObserver` plays a film only on screen in a visible tab,
   pauses it at once off screen, waits for the pointer on hover films and leaves reduced-motion
   visitors on the poster; a film fades in only once it is actually playing.
@@ -198,7 +201,7 @@ npm install
 npm run dev                  # app and API on http://127.0.0.1:5173
 npm run build && npm start   # the build and /api from one process on http://127.0.0.1:8787
 npx playwright install chromium
-npx playwright test          # builds, serves dist/ with vite preview, runs all 323 tests
+npx playwright test          # builds, serves dist/ with vite preview, runs all 329 tests
 ```
 
 ### Hetzner VPS with Docker Compose and Caddy
