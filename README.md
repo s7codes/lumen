@@ -1,7 +1,7 @@
 # LUMEN - Architectural Lighting, Modular Shelving & 3D Spatial CAD Platform (v9.0.0)
 
 [![Playwright E2E](https://github.com/s7codes/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/s7codes/lumen/actions/workflows/ci.yml)
-![Release](https://img.shields.io/badge/release-v9.0.0-e8923a)
+![Release](https://img.shields.io/badge/release-v9.1.0-e8923a)
 ![License: MIT](https://img.shields.io/badge/license-MIT-2a2825)
 
 **Live production: [https://lumen.s7codes.dev](https://lumen.s7codes.dev)**, served from a Hetzner Cloud VPS
@@ -9,22 +9,23 @@ by the Docker Compose and Caddy kit in this repository.
 
 | Playwright E2E | Rendering | AI integration | Backend |
 | --- | --- | --- | --- |
-| 328 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
+| 330 tests against the production build | WebGL2 with custom GLSL shaders | JSON-RPC 2.0 MCP server and SSE agent | Zero-dependency hardened Node.js |
 
-Current release: **v9.0.0**, the real media and cinema release. The overview now shows photographs
-and films instead of drawings. The hero is one limestone gallery room photographed twice from the
-same stand, architectural daylight and the same room after dusk on its 2700K channels, as 2K WebP
-stills (1280 and 2560 w) under looping films of the room's own light, with a Daylight / Warm 2700K
-switch and fixture keys placed on the real fixtures. The three Explore the Lumen home rooms are
-1600 x 2000 photographs whose films turn the room from day to dusk on hover. The 3D Spatial
-Studio theatre plays four 60 fps films captured from the studio engine itself, its HUD read from
-the same choreography as the frame on screen. Every catalog part is a 1600 x 1200 studio
-photograph in each finish it ships in (42 in all), and a swatch crossfades the plinth to that
-finish. The stills are path-traced renders of the planner's own parametric parts and furniture,
-so the photograph and the planner show the same object. Films play only on screen, pause the
-moment they leave it and rest on their posters under reduced motion; the production server
-streams them with byte ranges (206) and an immutable one-year policy under a `media-src 'self'`
-policy, all from `public/media/` on the same origin.
+Current release: **v9.1.0**, the icons reel and CAD cinema release. Meet our Icons is now a
+full-bleed reel of three 2.4:1 films that hold the banner for 3 s each and crossfade on a 9 s loop
+while it is on screen: a glossy obsidian dome lamp on travertine whose 2700K brass reflector dims
+up and sweeps the stone, the Linear Pendant 150 on its Track Bus 200 spine laying a razor-sharp
+pool along a dark oak table, and the Floor Column 140 among overlapping plaster scallops. A
+hairline rail of three keys carries the 3 s clock and jumps to any icon. The four 3D Spatial
+Studio films are new as well: an obsidian CAD calibration chamber with a 50 cm hairline lattice,
+the planner's own fixtures and 2700K beams on all four walls, filmed as a 360-degree envelope that
+rises toward plan view, a 165 cm eye-level walkthrough with its horizon datum, heading tape and
+live lux targets, the raycast and X / Y / Z gizmo with laser dimensions and 5 cm snap ticks, and
+a false-colour iso-lux field with 100, 250, 350 and 500 lx rings, a live PEAK reading, measurement
+nodes and a scan wave. Every figure in those films comes from the same functions the theatre HUD
+reads. All seven films come from a deterministic accumulation renderer (anti-aliasing, depth of
+field, motion blur, soft and line-source shadows, equiangular haze), so they are free of grain
+by construction. The v9.0.0 photographs are unchanged.
 
 ## 1. Executive Overview
 
@@ -109,16 +110,26 @@ comes from the same code everywhere.
 
 ### 2K photography and cinema media
 
-`public/media/`, `src/lib/media-manifest.js`, `src/lib/viewport-video.js`, `src/lib/showcase-film.js`, `scripts/media/`
+`public/media/`, `src/lib/media-manifest.js`, `src/lib/viewport-video.js`, `src/lib/showcase-film.js`, `src/lib/icons-reel.js`, `scripts/media/`
 
-- 71 files: two hero scenes (1280 and 2560 w WebP, VP9 WebM and H.264 MP4 films), three 4:5 rooms,
-  four showcase acts with posters and 42 catalog finishes, every URL versioned with `?v=`.
+- 80 files: two hero scenes (1280 and 2560 w WebP, VP9 WebM and H.264 MP4 films), three 4:5 rooms,
+  four showcase acts and three Meet our Icons films with posters, and 42 catalog finishes, every
+  URL versioned with `?v=`.
+- Meet our Icons (`src/lib/icons-reel.js`, `useIconsReel`): one rAF clock, running only while the
+  banner is on screen under the viewport rule, hands the banner to the next 1920 x 800 film every
+  3 s; each film starts from its first frame as it fades in and pauses after its fade out, and
+  reduced-motion or save-data visitors stay on the posters with the keys still switching them.
+- The cinema stage (`scripts/media/cinema/`) shoots the icons and the showcase acts: each frame is
+  the mean of 40 to 112 sub-frames on fixed stratified patterns, with haze integrated by
+  equiangular sampling, graded through AgX with a sub-LSB ordered dither.
 - Stills are path-traced (three-gpu-pathtracer) from the planner's parametric CAD parts and
   furniture, rendered as separate light passes (sky, sun, each LED channel), cleaned by a guided
   a-trous filter on albedo-demodulated light and graded through AgX. Light transport is linear, so
   every hero and room film frame is a weighted sum of those passes: seamless 60 fps loops.
-- The showcase films are captures of `RoomCanvas` itself, posed frame by frame from
-  `src/lib/showcase-film.js`; the overview HUD reads the same functions against the film clock.
+- The showcase films are posed frame by frame from `src/lib/showcase-film.js` and annotated from
+  `src/lib/showcase-scene.js`: the iso-lux field is evaluated per pixel from `lightSources`, the
+  PEAK is `floorPeak` at the film's DALI-2 level, and the overview HUD reads the same functions
+  against the film clock.
 - `createViewportVideo`: an `IntersectionObserver` plays a film only on screen in a visible tab,
   pauses it at once off screen, waits for the pointer on hover films and leaves reduced-motion
   visitors on the poster; a film fades in only once it is actually playing.
@@ -186,7 +197,7 @@ npm install
 npm run dev                  # app and API on http://127.0.0.1:5173
 npm run build && npm start   # the build and /api from one process on http://127.0.0.1:8787
 npx playwright install chromium
-npx playwright test          # builds, serves dist/ with vite preview, runs all 328 tests
+npx playwright test          # builds, serves dist/ with vite preview, runs all 330 tests
 ```
 
 ### Hetzner VPS with Docker Compose and Caddy
