@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { FILM_SECONDS, filmBearing, filmDimPct, filmFloorUnder, filmShelf } from '../lib/showcase-film.js';
-import { ACT_SECONDS, buildLuxField, EYE_FOV_DEG, EYE_HEIGHT_CM, eyeHeading, eyeIlluminance, illuminance, isActId, nextAct, PENDANT, SHELF, shelfDimensions } from '../lib/showcase-scene.js';
+import { ACT_SECONDS, EYE_FOV_DEG, EYE_HEIGHT_CM, eyeHeading, eyeIlluminance, floorPeak, illuminance, ISO_LEVELS, isActId, nextAct, PENDANT, SHELF, shelfDimensions } from '../lib/showcase-scene.js';
 import { frameDelta } from '../lib/spring.js';
 
 // A resumed tab or a long frame advances the act clock by at most this much.
@@ -8,6 +8,7 @@ const THEATRE_MAX_DT = 0.25;
 const UP = [0, 1, 0];
 const PENDANT_FLOOR = [(PENDANT.x0 + PENDANT.x1) / 2, 0, PENDANT.z];
 const STAGE_ASPECT = 1.5;
+const ISO_LINE = `Iso-lux ${ISO_LEVELS.join(' / ')} lx`;
 
 function pad(n, width) {
   return String(Math.max(0, Math.round(n))).padStart(width, '0');
@@ -61,7 +62,6 @@ export function useShowcaseTheatre({ stageRef, screenRef, onAct }) {
     };
 
     const reducedQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const field = buildLuxField();
     const s = {
       auto: 'orbit',
       locked: null,
@@ -164,14 +164,16 @@ export function useShowcaseTheatre({ stageRef, screenRef, onAct }) {
         key = illuminance([shelf.x + SHELF.widthCm / 2, 0, 40], UP, shelf);
         line = `X: ${d.x} cm / Y: ${d.y} cm / R: ${d.r} cm / C: ${d.c} cm`;
       } else if (s.act === 'isolux') {
-        key = field.surfaces[0].peak * (filmDimPct(s.act, t) / 100);
-        line = `Iso-lux 100 / 250 / 500 lx / Floor peak ${Math.round(key)} lx`;
+        // The PEAK the film prints over the floor: the same reading at the same DALI-2 level.
+        const dim = filmDimPct(s.act, t);
+        key = floorPeak(dim);
+        line = `${ISO_LINE} / Floor peak ${Math.round(key)} lx`;
       } else {
         key = illuminance(PENDANT_FLOOR, UP);
         line = '24V DC daisy chain / 5 nodes / 2700K';
       }
       const probe = s.pointer ? filmFloorUnder(s.act, t, s.pointer.x, s.pointer.y, STAGE_ASPECT) : null;
-      write(hud.lux, pad(probe ? illuminance(probe, UP, shelf) : key, 3));
+      write(hud.lux, pad(probe ? illuminance(probe, UP, shelf, filmDimPct(s.act, t) / 100) : key, 3));
       write(hud.line, line);
     };
 

@@ -1,16 +1,5 @@
 import { expect, test } from '@playwright/test';
 import {
-  breathe,
-  CINEMA_ACT_IDS,
-  CINEMA_ACT_SECONDS,
-  CINEMA_DISSOLVE_SECONDS,
-  CINEMA_LOOP_SECONDS,
-  cinemaCamera,
-  cinemaLayers,
-  dominantAct,
-  loopTime,
-} from '../src/lib/icons-cinema.js';
-import {
   HERO_CROSSFADE_SECONDS,
   HERO_CYCLE_SECONDS,
   HERO_FRAME,
@@ -39,20 +28,6 @@ test.beforeEach(async ({ page }) => {
   await installCspRecorder(page);
 });
 
-function nextFrames(page) {
-  return page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-}
-
-/** A cheap fingerprint of the canvas pixels: changes whenever the frame does. */
-function canvasPrint(canvas) {
-  return canvas.evaluate((el) => {
-    const { data } = el.getContext('2d').getImageData(0, 0, el.width, el.height);
-    let sum = 0;
-    for (let i = 0; i < data.length; i += 4 * 97) sum += data[i] + data[i + 1] * 3 + data[i + 2] * 7;
-    return sum;
-  });
-}
-
 function edgeToEdge(page, locator) {
   return Promise.all([locator.boundingBox(), page.evaluate(() => document.documentElement.clientWidth)]).then(([box, width]) => ({
     left: Math.round(box.x),
@@ -60,54 +35,8 @@ function edgeToEdge(page, locator) {
   }));
 }
 
-test.describe('meet our icons clock', () => {
-  test('three 4.5 s acts cross-dissolve on a 13.5 s loop and every camera hands over without a jump', () => {
-    expect(CINEMA_ACT_IDS).toEqual(['obsidian', 'aperture', 'track']);
-    expect(CINEMA_ACT_SECONDS).toBe(4.5);
-    expect(CINEMA_LOOP_SECONDS).toBe(13.5);
-    expect(loopTime(-1)).toBeCloseTo(12.5, 9);
-    expect(loopTime(27.25)).toBeCloseTo(0.25, 9);
-    expect(loopTime(Number.NaN)).toBe(0);
-
-    // Mid-act a single opaque layer owns the frame.
-    expect(cinemaLayers(1)).toHaveLength(1);
-    expect(cinemaLayers(1)[0]).toMatchObject({ index: 0, id: 'obsidian', weight: 1 });
-
-    for (let act = 0; act < 3; act += 1) {
-      const end = (act + 1) * CINEMA_ACT_SECONDS;
-      const start = end - CINEMA_DISSOLVE_SECONDS;
-      let last = 0;
-      for (let k = 1; k < 24; k += 1) {
-        const layers = cinemaLayers(start + (k / 24) * CINEMA_DISSOLVE_SECONDS);
-        expect(layers).toHaveLength(2);
-        expect(layers[0]).toMatchObject({ index: act, weight: 1 });
-        expect(layers[1].index).toBe((act + 1) % 3);
-        // The incoming act fades in on a monotonic, smooth weight.
-        expect(layers[1].weight).toBeGreaterThanOrEqual(last);
-        expect(layers[1].weight).toBeLessThanOrEqual(1);
-        last = layers[1].weight;
-      }
-      expect(last).toBeGreaterThan(0.95);
-      expect(dominantAct(start + CINEMA_DISSOLVE_SECONDS * 0.25)).toBe(act);
-      expect(dominantAct(start + CINEMA_DISSOLVE_SECONDS * 0.75)).toBe((act + 1) % 3);
-
-      // The camera the incoming act used while dissolving is the one it keeps.
-      const before = cinemaLayers(end - 1e-6)[1];
-      const after = cinemaLayers(end + 1e-6)[0];
-      expect(after.index).toBe(before.index);
-      expect(after.progress).toBeCloseTo(before.progress, 5);
-      const a = cinemaCamera(before.id, before.progress);
-      const b = cinemaCamera(after.id, after.progress);
-      for (const key of ['x', 'y', 'scale', 'rot']) expect(b[key]).toBeCloseTo(a[key], 4);
-    }
-
-    // Light sources swell gently, never below 1 - depth and never above 1.
-    for (let t = 0; t < 20; t += 0.37) {
-      const level = breathe(t, 4.2, 0.1);
-      expect(level).toBeGreaterThanOrEqual(0.9 - 1e-9);
-      expect(level).toBeLessThanOrEqual(1 + 1e-9);
-    }
-
+test.describe('overview rooms', () => {
+  test('the three rooms are 4:5 photographs, each with its luminaire in the frame and a film of its light', () => {
     // The three rooms: 4:5 photographs, each with its luminaire placed in the
     // frame for the hover glow, and a film of its light.
     expect(INTERIOR_SCENE_IDS).toEqual(['dining', 'bedroom', 'studio']);
@@ -368,94 +297,6 @@ test.describe('light architectural hero', () => {
         expect(onTop, `${spot.id} at ${size}`).toBe(true);
       }
     }
-  });
-});
-
-test.describe('meet our icons cinema', () => {
-  test('a full-bleed 2D canvas film with a centred title and a bracketed Discover More, playing only while on screen', async ({ page }) => {
-    const errors = collectRuntimeErrors(page);
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/');
-    const cinema = page.getByTestId('icons-cinema');
-    const canvas = page.getByTestId('icons-cinema-canvas');
-    // Below the fold at load: nothing paints a frame nobody sees.
-    await expect(cinema).toHaveAttribute('data-playing', 'false');
-    await cinema.scrollIntoViewIfNeeded();
-    await expect(cinema).toHaveAttribute('data-playing', 'true');
-
-    expect(await edgeToEdge(page, cinema)).toEqual({ left: 0, gap: 0 });
-    // clamp(460px, 76vh, 760px): 76vh of a 900 px viewport.
-    expect(Math.round((await cinema.boundingBox()).height)).toBe(684);
-    expect(await canvas.evaluate((el) => [Boolean(el.getContext('2d')), el.getContext('webgl'), el.getContext('webgl2')])).toEqual([true, null, null]);
-
-    const title = cinema.getByRole('heading', { level: 2, name: 'Meet our Icons' });
-    await expect(title).toHaveCSS('font-weight', '380');
-    await expect(title).toHaveCSS('color', 'rgb(255, 255, 255)');
-    const [titleBox, cinemaBox] = await Promise.all([title.boundingBox(), cinema.boundingBox()]);
-    expect(Math.abs(titleBox.x + titleBox.width / 2 - (cinemaBox.x + cinemaBox.width / 2))).toBeLessThanOrEqual(1);
-
-    const cta = cinema.getByRole('link', { name: 'Discover More' });
-    await expect(cta).toHaveAttribute('href', '/catalog');
-    const look = await cta.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return {
-        left: style.borderLeft,
-        right: style.borderRight,
-        top: style.borderTopWidth,
-        bottom: style.borderBottomWidth,
-        radius: style.borderTopLeftRadius,
-        padding: style.padding,
-        size: style.fontSize,
-        tracking: style.letterSpacing,
-        transform: style.textTransform,
-      };
-    });
-    expect(look).toEqual({
-      left: '1px solid rgba(255, 255, 255, 0.75)',
-      right: '1px solid rgba(255, 255, 255, 0.75)',
-      top: '0px',
-      bottom: '0px',
-      radius: '0px',
-      padding: '7.2px 20px',
-      size: '11.2px',
-      tracking: '1.568px',
-      transform: 'uppercase',
-    });
-
-    // Only the title and its key sit over the film: no act caption anywhere.
-    await expect(cinema.locator('[data-cinema-caption], .cinema__caption')).toHaveCount(0);
-    expect((await cinema.innerText()).replace(/\s+/g, ' ').trim().toLowerCase()).toBe('meet our icons discover more');
-
-    // The frames move, and the acts advance through Act III, the anodized track.
-    const first = await canvasPrint(canvas);
-    await expect.poll(() => canvasPrint(canvas)).not.toBe(first);
-    await expect(cinema).toHaveAttribute('data-act', 'aperture', { timeout: 15_000 });
-    await expect(cinema).toHaveAttribute('data-act', 'track', { timeout: 15_000 });
-
-    // Scrolled away, the loop stops.
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await expect(cinema).toHaveAttribute('data-playing', 'false');
-    expect(await readCspViolations(page)).toEqual([]);
-    expect(errors).toEqual([]);
-  });
-
-  test('under reduced motion the film is one composed still of Act I and never starts its loop', async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.setViewportSize({ width: 360, height: 800 });
-    await page.goto('/');
-    const cinema = page.getByTestId('icons-cinema');
-    const canvas = page.getByTestId('icons-cinema-canvas');
-    await cinema.scrollIntoViewIfNeeded();
-    await nextFrames(page);
-    await expect(cinema).toHaveAttribute('data-playing', 'false');
-    await expect(cinema).toHaveAttribute('data-act', 'obsidian');
-    const still = await canvasPrint(canvas);
-    expect(still).toBeGreaterThan(0);
-    await page.waitForTimeout(600);
-    expect(await canvasPrint(canvas)).toBe(still);
-    // clamp(460px, 76vh, 760px) on a phone: 76vh of 800 px.
-    expect(Math.round((await cinema.boundingBox()).height)).toBe(608);
-    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });
 });
 

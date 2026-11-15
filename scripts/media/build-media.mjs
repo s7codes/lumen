@@ -59,15 +59,16 @@ export function writeStill(passes, weights, grade, outputs) {
   }
 }
 
+// A film may cap its rate (constrained quality): webmBitrate for VP9, mp4MaxRate / mp4BufSize for x264.
 const ENCODERS = {
-  webm: (crf) => ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv', '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', String(crf), '-deadline', 'good', '-cpu-used', '2', '-row-mt', '1', '-tile-columns', '2', '-frame-parallel', '0', '-auto-alt-ref', '1', '-lag-in-frames', '25', '-g', '240', '-pix_fmt', 'yuv420p', '-an'],
-  mp4: (crf) => ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv', '-c:v', 'libx264', '-preset', 'slow', '-crf', String(crf), '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-g', '120', '-an'],
+  webm: (crf, o = {}) => ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv', '-c:v', 'libvpx-vp9', '-b:v', o.webmBitrate ?? '0', '-crf', String(crf), '-deadline', 'good', '-cpu-used', '2', '-row-mt', '1', '-tile-columns', '2', '-frame-parallel', '0', '-auto-alt-ref', '1', '-lag-in-frames', '25', '-g', '240', '-pix_fmt', 'yuv420p', '-an'],
+  mp4: (crf, o = {}) => ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv', '-c:v', 'libx264', '-preset', 'slow', '-crf', String(crf), ...(o.mp4MaxRate ? ['-maxrate', o.mp4MaxRate, '-bufsize', o.mp4BufSize ?? o.mp4MaxRate] : []), '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-g', '120', '-an'],
 };
 
 /** Encodes the deliverables from a lossless intermediate. */
-export function encodeFilm(master, base, { webmCrf = 34, mp4Crf = 24, poster = null } = {}) {
+export function encodeFilm(master, base, { webmCrf = 34, mp4Crf = 24, poster = null, ...rate } = {}) {
   for (const [ext, args] of Object.entries(ENCODERS)) {
-    const r = spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', master, ...args(ext === 'webm' ? webmCrf : mp4Crf), `${base}.${ext}`]);
+    const r = spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', master, ...args(ext === 'webm' ? webmCrf : mp4Crf, rate), `${base}.${ext}`]);
     if (r.status !== 0) throw new Error(r.stderr.toString());
   }
   if (poster) {

@@ -1,4 +1,4 @@
-import { ACT_SECONDS, eyeHeading, gizmoPose, ORBIT_DEG_PER_S, ORBIT_PITCH, SHELF, STAGE_ROOM, wrap360 } from './showcase-scene.js';
+import { ACT_SECONDS, eyeHeading, gizmoPose, gizmoTrack, ORBIT_DEG_PER_S, SHELF, STAGE_ROOM, wrap360 } from './showcase-scene.js';
 
 /*
  * The four showcase films: what the 3D Spatial Studio engine was filmed
@@ -23,6 +23,12 @@ export const FILM_SECONDS = Object.freeze({ orbit: 360 / ORBIT_DEG_PER_S, inside
 
 /** Media files under /media/showcase/, one per act. */
 export const FILM_FILES = Object.freeze({ orbit: '01-envelope', inside: '02-walkthrough', gizmo: '03-raycast-gizmo', isolux: '04-iso-lux' });
+
+/**
+ * The envelope film's elevation: one swell per turn, from a low
+ * architectural eye (14 deg) up toward plan view (70 deg) and back.
+ */
+export const FILM_ORBIT_PITCH = Object.freeze({ min: 14, max: 70 });
 
 /** The eye-level lens of the walkthrough film. */
 export const FILM_EYE = Object.freeze({ heightCm: 165, fovDeg: 78, xCm: STAGE_ROOM.widthCm / 2, zCm: 392 });
@@ -57,16 +63,16 @@ export function filmCamera(act, t) {
         fovDeg: FILM_EYE.fovDeg,
       };
     case 'gizmo':
-      return { mode: 'orbit', yaw: -24 + 4 * Math.sin(TAU * phase), pitch: 14, zoom: 1.85 };
+      return { mode: 'orbit', yaw: -24 + 4 * Math.sin(TAU * phase), pitch: 14, zoom: 2.35 };
     case 'isolux':
       return { mode: 'orbit', yaw: 14 * Math.sin(TAU * phase), pitch: 56, zoom: 1.08 };
     case 'orbit':
     default:
-      // One full turn, and two swells of pitch through ORBIT_PITCH, per film.
+      // One full turn per film, rising from FILM_ORBIT_PITCH.min to plan view and back down.
       return {
         mode: 'orbit',
         yaw: wrapSigned(-32 + 360 * phase),
-        pitch: (ORBIT_PITCH.min + ORBIT_PITCH.max) / 2 - ((ORBIT_PITCH.max - ORBIT_PITCH.min) / 2) * Math.cos(2 * TAU * phase),
+        pitch: (FILM_ORBIT_PITCH.min + FILM_ORBIT_PITCH.max) / 2 - ((FILM_ORBIT_PITCH.max - FILM_ORBIT_PITCH.min) / 2) * Math.cos(TAU * phase),
         zoom: 1.2,
       };
   }
@@ -80,6 +86,12 @@ function wrapSigned(deg) {
 export function filmShelf(act, t) {
   if (act !== 'gizmo') return { ...SHELF.home, axis: null, lock: 0 };
   return gizmoPose(filmTime(act, t));
+}
+
+/** Where the drag holds the shelf before the snap: the ghost the gizmo film draws. */
+export function filmDrag(act, t) {
+  if (act !== 'gizmo') return { ...SHELF.home, axis: null, lock: 0 };
+  return gizmoTrack(filmTime(act, t));
 }
 
 /** DALI-2 level of the pendant channel: the iso-lux film breathes 55 to 100 percent. */

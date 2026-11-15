@@ -40,7 +40,11 @@ import {
   buildLuxField,
   eyeFrustum,
   eyeIlluminance,
+  floorPeak,
+  floorPeakPoint,
   gizmoPose,
+  gizmoTrack,
+  illuminance,
   ISO_LEVELS,
   isoSegments,
   ORBIT_DEG_PER_S,
@@ -50,7 +54,7 @@ import {
   SNAP_CM,
   STAGE_ROOM,
 } from '../src/lib/showcase-scene.js';
-import { FILM_FILES, FILM_FPS, FILM_SECONDS, filmBearing, filmCamera, filmDimPct, filmFloorUnder, filmShelf, filmView } from '../src/lib/showcase-film.js';
+import { FILM_FILES, FILM_FPS, FILM_ORBIT_PITCH, FILM_SECONDS, filmBearing, filmCamera, filmDimPct, filmDrag, filmFloorUnder, filmShelf, filmView } from '../src/lib/showcase-film.js';
 import { SHOWCASE_MEDIA } from '../src/lib/media-manifest.js';
 import { holdEngineChunk } from './support/engine-gates.js';
 import { collectFailedResponses, collectRuntimeErrors, horizontalOverflow, installCspRecorder, mediaPath, playhead, readCspViolations } from './support/runtime-guards.js';
@@ -590,7 +594,7 @@ function fillScale(page, act) {
 }
 
 test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => {
-  test('engine: four acts, 5 cm gizmo ticks, an eye-level lens landed on the shell and a lit field with all three iso-lines', () => {
+  test('engine: four acts, 5 cm gizmo ticks, an eye-level lens landed on the shell and a lit field with all four iso-lines', () => {
     expect(ACT_IDS).toEqual(['orbit', 'inside', 'gizmo', 'isolux']);
     expect(ACT_SECONDS).toBe(7);
     expect(ACT_DURATION_MS).toBe(7000);
@@ -641,6 +645,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     expect(ring.length).toBeGreaterThanOrEqual(8);
     for (const [a, b] of ring) for (const [i, j] of [a, b]) expect(Math.abs(Math.hypot(i - 4, j - 4) - 3)).toBeLessThan(0.35);
 
+    expect(ISO_LEVELS).toEqual([100, 250, 350, 500]);
     const field = buildLuxField();
     expect(field.surfaces.map((surface) => surface.id)).toEqual(['floor', 'north', 'east', 'south', 'west']);
     const floor = field.surfaces[0];
@@ -652,6 +657,21 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
       for (const [a] of segments) expect(a[1]).toBeGreaterThan(0);
     }
     expect(floor.labels.every((entry) => Array.isArray(entry.anchor))).toBe(true);
+
+    // The PEAK the iso-lux film prints: the floor maximum at full output, read
+    // at the same point as the pendant's DALI-2 level breathes down to 55 %.
+    expect(floorPeak(100)).toBeCloseTo(floor.peak, -1);
+    expect(floorPeak(100)).toBeGreaterThanOrEqual(floor.peak);
+    expect(floorPeak(55)).toBeLessThan(floorPeak(100));
+    expect(floorPeak(55)).toBeGreaterThan(300);
+    expect(illuminance(floorPeakPoint(), [0, 1, 0], { x: 140, y: 145 }, 1)).toBeCloseTo(floorPeak(100), 9);
+    // The drag the gizmo film draws as its ghost snaps to the pose it lands on.
+    for (let t = 0; t < ACT_SECONDS; t += 0.07) {
+      const raw = gizmoTrack(t);
+      const pose = gizmoPose(t);
+      expect(pose.x).toBe(Math.round(raw.x / SNAP_CM) * SNAP_CM);
+      expect(pose.y).toBe(Math.round(raw.y / SNAP_CM) * SNAP_CM);
+    }
   });
 
   test('launch links: lens and scale read against the planner allow-lists and leave the address bar clean', () => {
@@ -738,14 +758,18 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
       // And one frame of motion is small: no jump anywhere in the loop.
       if (a.mode === 'orbit') expect(Math.abs(((c.yaw - a.yaw + 540) % 360) - 180)).toBeLessThan(0.5);
     }
-    // The orbit is the calm turntable: one full turn at 20 deg/s, pitch through 27 to 35 deg.
+    // The orbit is the calm turntable: one full turn at 20 deg/s, rising from a
+    // low architectural eye at 14 deg toward plan view at 70 deg and back.
     const yaws = Array.from({ length: 181 }, (_, i) => filmCamera('orbit', i / 10).yaw);
     let turned = 0;
     for (let i = 1; i < yaws.length; i += 1) turned += ((yaws[i] - yaws[i - 1] + 540) % 360) - 180;
     expect(turned).toBeCloseTo(360, 6);
     const pitches = Array.from({ length: 181 }, (_, i) => filmCamera('orbit', i / 10).pitch);
-    expect(Math.min(...pitches)).toBeCloseTo(ORBIT_PITCH.min, 6);
-    expect(Math.max(...pitches)).toBeCloseTo(ORBIT_PITCH.max, 6);
+    expect(FILM_ORBIT_PITCH).toEqual({ min: 14, max: 70 });
+    expect(Math.min(...pitches)).toBeCloseTo(FILM_ORBIT_PITCH.min, 6);
+    expect(Math.max(...pitches)).toBeCloseTo(FILM_ORBIT_PITCH.max, 6);
+    expect(filmCamera('orbit', 0).pitch).toBeCloseTo(FILM_ORBIT_PITCH.min, 6);
+    expect(filmCamera('orbit', 9).pitch).toBeCloseTo(FILM_ORBIT_PITCH.max, 6);
     // The gizmo film slides the shelf on 5 cm ticks and brings it home; iso-lux breathes the pendant 55 to 100 percent.
     for (let t = 0; t < 7; t += 0.11) {
       const pose = filmShelf('gizmo', t);
@@ -753,6 +777,8 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
       expect(pose.y % SNAP_CM).toBe(0);
     }
     expect(filmShelf('gizmo', 0)).toMatchObject({ x: 140, y: 145 });
+    expect(filmDrag('gizmo', 2.2).x).toBeGreaterThan(filmShelf('gizmo', 0).x);
+    expect(filmDrag('orbit', 2.2)).toMatchObject({ x: 140, y: 145 });
     expect(filmDimPct('isolux', 0)).toBe(100);
     expect(filmDimPct('isolux', 3.5)).toBe(55);
     expect(filmDimPct('orbit', 3.5)).toBe(100);
@@ -894,7 +920,7 @@ test.describe('scroll-spy navbar, showcase theatre and studio launchpad', () => 
     await expect(stage).not.toHaveAttribute('data-held');
     await page.mouse.move(4, 400);
     await expect(stage).toHaveAttribute('data-act', 'isolux', { timeout: 20_000 });
-    await expect(readout).toHaveText(/^Iso-lux 100 \/ 250 \/ 500 lx \/ Floor peak \d+ lx$/);
+    await expect(readout).toHaveText(/^Iso-lux 100 \/ 250 \/ 350 \/ 500 lx \/ Floor peak \d+ lx$/);
     await expect.poll(() => page.getByTestId('showcase-film-isolux').evaluate((el) => !el.paused)).toBe(true);
 
     // Hovering a capability card previews its act and lights the card; leaving hands the stage back.

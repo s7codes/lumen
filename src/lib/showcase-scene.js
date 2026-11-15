@@ -27,13 +27,13 @@ export const PULSE_SPACING_CM = 96;
 export const SNAP_CM = 5;
 export const EYE_HEIGHT_CM = 165;
 export const EYE_FOV_DEG = 78;
-export const ISO_LEVELS = Object.freeze([100, 250, 500]);
+export const ISO_LEVELS = Object.freeze([100, 250, 350, 500]);
 
 export const ACTS = Object.freeze([
   Object.freeze({ id: 'orbit', index: '01', label: '360-Degree Orbit', caption: 'Four-wall orbit, 2700K wash and a live 24V daisy chain.' }),
   Object.freeze({ id: 'inside', index: '02', label: '165 cm Eye Level', caption: 'A 78 deg lens at 165 cm sweeps the north, east and west walls.' }),
   Object.freeze({ id: 'gizmo', index: '03', label: 'Raycast & Gizmo', caption: 'A ray takes the shelf; the gizmo slides it on 5 cm ticks.' }),
-  Object.freeze({ id: 'isolux', index: '04', label: 'Iso-Lux Field', caption: 'Floor and wall illuminance with 100, 250 and 500 lx iso-lines.' }),
+  Object.freeze({ id: 'isolux', index: '04', label: 'Iso-Lux Field', caption: 'Floor and wall illuminance with 100, 250, 350 and 500 lx iso-lines.' }),
 ]);
 export const ACT_IDS = Object.freeze(ACTS.map((act) => act.id));
 
@@ -249,14 +249,18 @@ function box(min, max, palette) {
   return { min, max, palette };
 }
 
-/** Static objects as boxes; the shelf is added per frame because it moves. */
+/**
+ * Static objects as boxes; the shelf is added per frame because it moves.
+ * The stage is a calibration chamber: three obsidian plinths stand clear of
+ * the eye-level walkthrough and of the pendant's floor field.
+ */
 export const OBJECTS = Object.freeze([
   {
-    id: 'platform',
+    id: 'plinths',
     boxes: [
-      box([180, 0, 392], [460, 26, 500], 'platform'),
-      box([186, 26, 398], [454, 40, 484], 'cushion'),
-      box([180, 26, 484], [460, 74, 504], 'platform'),
+      box([78, 0, 398], [124, 92, 444], 'plinth'),
+      box([508, 0, 268], [572, 46, 332], 'plinth'),
+      box([92, 0, 102], [128, 118, 138], 'plinth'),
     ],
   },
   { id: 'column', boxes: [box([606, 0, 8], [632, 188, 34], 'alu'), box([609, 188, 11], [629, 192, 31], 'emitter')] },
@@ -296,6 +300,15 @@ export function snapCm(value) {
 export const GIZMO_PHASES = Object.freeze({ lock: 0.1, x: 0.43, y: 0.73, home: 0.965 });
 
 export function gizmoPose(t) {
+  const track = gizmoTrack(t);
+  return { x: snapCm(track.x), y: snapCm(track.y), axis: track.axis, lock: track.lock };
+}
+
+/**
+ * The drag itself, before the 5 cm snap: where the cursor holds the shelf.
+ * The planner draws this as the ghost; the shelf lands on the snapped tick.
+ */
+export function gizmoTrack(t) {
   const { home } = SHELF;
   const dx = 150;
   const dy = 45;
@@ -322,37 +335,40 @@ export function gizmoPose(t) {
     axis = 'xy';
     lock = 1 - smoothstep(0.82, 1, (t - yEnd) / (ACT_SECONDS - yEnd));
   }
-  return { x: snapCm(x), y: snapCm(y), axis, lock };
+  return { x, y, axis, lock };
 }
 
 /* ---------- photometry ---------- */
 
 /**
  * Point sources in cd with a cos^m distribution round their axis. The
- * linear pendant is three points along its 150 cm body; the shelf carries a
- * grazing downlight that follows it; the corner column throws an uplight.
+ * linear pendant is three points along its 150 cm body (its DALI-2 level
+ * `dim` scales them); the shelf carries a grazing downlight that follows
+ * it; the corner column throws an uplight. The cinema stage that films the
+ * iso-lux act evaluates these same sources per pixel.
  */
-function sources(shelf) {
+export function lightSources(shelf = SHELF.home, dim = 1) {
   const shelfX = shelf.x + SHELF.widthCm / 2;
   const down = [0, -1, 0];
+  const pendant = 1100 * dim;
   return [
-    { p: [270, PENDANT_Y - 1, PENDANT_Z], i: 1100, m: 1.2, axis: down },
-    { p: [320, PENDANT_Y - 1, PENDANT_Z], i: 1100, m: 1.2, axis: down },
-    { p: [370, PENDANT_Y - 1, PENDANT_Z], i: 1100, m: 1.2, axis: down },
+    { p: [270, PENDANT_Y - 1, PENDANT_Z], i: pendant, m: 1.2, axis: down },
+    { p: [320, PENDANT_Y - 1, PENDANT_Z], i: pendant, m: 1.2, axis: down },
+    { p: [370, PENDANT_Y - 1, PENDANT_Z], i: pendant, m: 1.2, axis: down },
     { p: [shelfX, shelf.y - 1, 16], i: 240, m: 2.4, axis: down },
     { p: [619, 192, 21], i: 380, m: 3, axis: [0, 1, 0] },
   ];
 }
 
-const AMBIENT_LX = 14;
+export const AMBIENT_LX = 14;
 // Each source is a luminaire, not a point: its size keeps a surface a
 // hand's width away from blowing out (r^2 + r0^2, r0 = 0.25 m).
-const SOURCE_SIZE_M2 = 0.0625;
+export const SOURCE_SIZE_M2 = 0.0625;
 
-/** Illuminance in lx on a surface at `p` (cm) with unit normal `n`. */
-export function illuminance(p, n, shelf = SHELF.home) {
+/** Illuminance in lx on a surface at `p` (cm) with unit normal `n`; `dim` is the pendant's level (0-1). */
+export function illuminance(p, n, shelf = SHELF.home, dim = 1) {
   let e = AMBIENT_LX;
-  for (const s of sources(shelf)) {
+  for (const s of lightSources(shelf, dim)) {
     const v = [(p[0] - s.p[0]) / 100, (p[1] - s.p[1]) / 100, (p[2] - s.p[2]) / 100];
     const r2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
     if (r2 < 1e-4) continue;
@@ -370,6 +386,29 @@ export function illuminance(p, n, shelf = SHELF.home) {
 export function eyeIlluminance(headingDeg) {
   const h = headingDeg * DEG;
   return illuminance(OBSERVER, [Math.sin(h), 0, -Math.cos(h)]);
+}
+
+let peakPoint = null;
+
+/** The brightest floor point at full output, found once on a 2 cm lattice under the pendant. */
+export function floorPeakPoint() {
+  if (peakPoint) return peakPoint;
+  let best = -1;
+  for (let x = PENDANT.x0 - 60; x <= PENDANT.x1 + 60; x += 2) {
+    for (let z = PENDANT.z - 120; z <= PENDANT.z + 120; z += 2) {
+      const e = illuminance([x, 0, z], [0, 1, 0]);
+      if (e > best) {
+        best = e;
+        peakPoint = Object.freeze([x, 0, z]);
+      }
+    }
+  }
+  return peakPoint;
+}
+
+/** The floor peak reading (lx) with the pendant at `dimPct` percent: what the iso-lux film labels PEAK. */
+export function floorPeak(dimPct = 100) {
+  return illuminance(floorPeakPoint(), [0, 1, 0], SHELF.home, dimPct / 100);
 }
 
 const GRID_CM = 20;

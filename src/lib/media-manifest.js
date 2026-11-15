@@ -4,11 +4,13 @@ import { FINISH_IDS, getProduct } from '../data/products.js';
  * Every photograph and film the storefront ships, served from public/media/
  * on the same origin (no hotlinks, so img-src and media-src stay 'self').
  * The stills are path-traced renders of the planner's own parametric parts
- * and rooms; the showcase films are captures of the 3D Spatial Studio
- * engine. Pure data: the components, the server tests and the E2E suite all
+ * and rooms; the Meet our Icons reel and the showcase films are shot on the
+ * accumulation cinema stage (scripts/media/cinema), the showcase acts in a
+ * CAD chamber posed and labelled by the same functions the overview HUD
+ * reads. Pure data: the components, the server tests and the E2E suite all
  * read the same paths and sizes.
  *
- * Each URL carries the release as a query (?v=9.0.0), so /media/* can be
+ * Each URL carries the release as a query (?v=9.1.0), so /media/* can be
  * cached for a year as immutable and a new release is still a new URL.
  */
 
@@ -69,6 +71,21 @@ export const SHOWCASE_MEDIA = Object.freeze({
   isolux: act('04-iso-lux'),
 });
 
+/* ---------- meet our icons ---------- */
+
+export const ICONS_SIZE = Object.freeze({ width: 1920, height: 800 });
+
+function icon(base) {
+  return Object.freeze({ base, poster: mediaUrl(`icons/${base}.webp`), film: film(`icons/${base}`) });
+}
+
+/** The three 2.4:1 cinema loops of the Meet our Icons reel, in reel order. */
+export const ICONS_MEDIA = Object.freeze({
+  monolith: icon('icon-01-monolith'),
+  suspension: icon('icon-02-suspension'),
+  column: icon('icon-03-column-spot'),
+});
+
 /* ---------- catalog ---------- */
 
 export const CATALOG_SIZE = Object.freeze({ width: 1600, height: 1200 });
@@ -87,6 +104,7 @@ export function mediaFiles(products) {
   for (const id of Object.keys(HERO_MEDIA)) files.push(`hero/${id}-1280.webp`, `hero/${id}-2560.webp`, `hero/${id}.webm`, `hero/${id}.mp4`);
   for (const { slug } of Object.values(ROOM_MEDIA)) files.push(`rooms/${slug}-1600.webp`, `rooms/${slug}.webm`, `rooms/${slug}.mp4`);
   for (const { base } of Object.values(SHOWCASE_MEDIA)) files.push(`showcase/${base}.webp`, `showcase/${base}.webm`, `showcase/${base}.mp4`);
+  for (const { base } of Object.values(ICONS_MEDIA)) files.push(`icons/${base}.webp`, `icons/${base}.webm`, `icons/${base}.mp4`);
   for (const product of products) for (const finish of product.finishes.filter((f) => FINISH_IDS.includes(f))) files.push(`catalog/${product.id}-${finish}.webp`);
   return files;
 }

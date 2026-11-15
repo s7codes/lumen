@@ -542,8 +542,9 @@
   background: var(--travertine);
 }
 
-/* Meet our Icons: the full-bleed film. The canvas paints the loop; a soft
-   umber veil seats the white title and the bracketed key over any frame. */
+/* Meet our Icons: the full-bleed cinema reel. Three stacked films crossfade
+   on the reel clock; a soft umber veil seats the white title, its bracketed
+   key and the hairline icon rail over any frame. */
 
 .cinema {
   --focus-ring: #e5c799;
@@ -559,13 +560,136 @@
   isolation: isolate;
 }
 
-.cinema__canvas {
+.cinema__reel {
   position: absolute;
   inset: 0;
   z-index: -2;
+  overflow: hidden;
+}
+
+/* Each film keeps its subject in frame when a narrow screen crops the 2.4:1
+   picture: the crop centres on the lamp, the pendant or the column. */
+.cinema__film {
+  --focus-x: 50%;
+
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
+  max-width: none;
+  object-fit: cover;
+  object-position: var(--focus-x) 50%;
+  opacity: 0;
+  transition: opacity 700ms var(--ease-cinematic);
+}
+
+.cinema__film[data-reel='monolith'] {
+  --focus-x: 70%;
+}
+
+.cinema__film[data-reel='suspension'] {
+  --focus-x: 50%;
+}
+
+.cinema__film[data-reel='column'] {
+  --focus-x: 61%;
+}
+
+.cinema__film[data-active] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cinema__film {
+    transition: none;
+  }
+}
+
+/* The icon rail: three keys on 1px hairlines at the foot of the banner. The
+   icon on screen carries the reel clock as a champagne fill along its line. */
+.cinema__keys {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(20px, 4vh, 36px);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
+  width: min(720px, calc(100% - 2 * var(--grid-margin)));
+  transform: translateX(-50%);
+}
+
+.cinema__key {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 0 6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.62);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cinema__key-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.cinema__key-index {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+}
+
+.cinema__key-label {
+  overflow: hidden;
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cinema__key-track {
+  position: relative;
+  display: block;
+  height: 1px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.cinema__key-fill {
+  position: absolute;
+  inset: 0;
+  background: #e5c799;
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+.cinema__key:hover,
+.cinema__key[data-active] {
+  color: #ffffff;
+}
+
+.cinema__key:focus-visible {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 4px;
+}
+
+@media (max-width: 640px) {
+  .cinema__keys {
+    gap: var(--space-4);
+  }
+
+  .cinema__key-label {
+    display: none;
+  }
 }
 
 .cinema__veil {
@@ -574,7 +698,7 @@
   z-index: -1;
   background:
     radial-gradient(56% 46% at 50% 50%, rgba(14, 11, 8, 0.46) 0%, rgba(14, 11, 8, 0.14) 62%, rgba(14, 11, 8, 0) 100%),
-    linear-gradient(0deg, rgba(14, 11, 8, 0.4) 0%, rgba(14, 11, 8, 0) 26%);
+    linear-gradient(0deg, rgba(14, 11, 8, 0.66) 0%, rgba(14, 11, 8, 0.3) 14%, rgba(14, 11, 8, 0) 30%);
   pointer-events: none;
 }
 
