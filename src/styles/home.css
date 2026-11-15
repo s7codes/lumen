@@ -1125,12 +1125,11 @@
   }
 }
 
-/* 03 / 3D Spatial Studio: the planner as an editorial specification grid
-   on the gallery paper, set like the core modules under it. The same warm
-   plinths, carbon type, 1px hairlines and square corners: four capabilities,
-   each a 4:3 studio picture over its figures, then one carbon rule with the
-   launch presets and the matte carbon key into the planner. No films, no
-   chamber, no glow. */
+/* 03 / 3D Spatial Studio: one wide X-ray stage on the gallery paper, the
+   warm 2K photograph and its 1:20 blueprint in a single registration, then
+   the four capabilities as an image-free ledger hung from the stage's
+   hairline, then one carbon rule with the launch presets and the matte
+   carbon key into the planner. Square corners, 1px hairlines, no glow. */
 
 .showcase3d {
   padding-top: var(--section-space);
@@ -1150,147 +1149,559 @@
   white-space: nowrap;
 }
 
-.showcase3d__grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: clamp(var(--space-7), 5vw, var(--space-8)) clamp(var(--space-5), 2.2vw, var(--space-6));
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.showcase3d__cell {
+.showcase3d__instrument {
   min-width: 0;
 }
 
-/* No frame, no fill: the picture, the figures straight on the paper and one
-   hairline under the whole, like a product card. */
-.showcase3d__card {
+/* ---------- X-ray stage ---------- */
+
+.xray {
+  --xray-paper: #f5f2eb;
+  --xray-sheet: #efece4;
+  --xray-ink: #141311;
+  --xray-graphite: #6e6a63;
+  margin: 0;
+  border: 1px solid var(--rule-ink);
+  background: var(--xray-paper);
+}
+
+/* The bar: the drawing's name on the left, the three quick views on the right. */
+.xray__bar {
   display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--rule-section);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  min-height: 48px;
+  padding: 6px 6px 6px var(--space-4);
+  border-bottom: 1px solid var(--rule-ink);
+  background: var(--paper);
 }
 
-.showcase3d__figure {
+.xray__title {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.xray__title-key {
+  margin-right: var(--space-2);
+  color: var(--text-primary);
+}
+
+.xray__views {
+  display: flex;
+  border: 1px solid var(--rule-section);
+}
+
+.xray__view {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.xray__view + .xray__view {
+  border-left: 1px solid var(--rule-section);
+}
+
+.xray__view:hover {
+  color: var(--text-primary);
+}
+
+/* The view on screen inverts flat: carbon key, paper type. */
+.xray__view[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.xray__view-short {
+  display: none;
+}
+
+/* The stage: both layers share one 16:9 frame, so the drawing never drifts off the photograph. */
+.xray__stage {
+  --xray-split: 52;
   position: relative;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
   overflow: hidden;
-  background: #e4ddd1;
+  background: #cbb79f;
+  cursor: ew-resize;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-/* The drawing sits on a stone sheet inside one hairline. */
-.showcase3d__figure[data-kind='drawing'] {
-  border: 1px solid var(--rule-frame);
-  background: var(--stone-panel);
+.xray__layer {
+  position: absolute;
+  inset: 0;
 }
 
-.showcase3d__photo {
+/* The wipe moves only under the stage's own clock: no CSS easing, not even the reduced-motion blanket. */
+.xray__layer--cad {
+  clip-path: inset(0 0 0 calc(var(--xray-split) * 1%));
+  transition: none;
+}
+
+.xray__frame {
+  position: absolute;
+  inset: 0;
+}
+
+/* Identical mapping on both layers: the picture fills the frame as the SVG fills its viewBox. */
+.xray__photo,
+.xray__svg {
   position: absolute;
   inset: 0;
   display: block;
   width: 100%;
   height: 100%;
   max-width: none;
-  object-fit: cover;
 }
 
-.showcase3d__drawing {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
+.xray__photo {
+  object-fit: fill;
+  -webkit-user-drag: none;
 }
 
-/* Carbon hairlines at one device pixel weight at any card width. */
-.elev :is(rect, path) {
+.xray__paper {
+  fill: var(--xray-paper);
+}
+
+/* Carbon hairlines at a constant screen weight; amber only for light and the bus run. */
+.xr {
+  --w: 1;
+  --boost: 1;
   fill: none;
-  stroke: var(--ink);
+  stroke: var(--xray-ink);
+  stroke-width: calc(var(--w) * var(--boost) * 1px);
   vector-effect: non-scaling-stroke;
+  transition:
+    opacity var(--duration-base) var(--ease-out),
+    stroke-width var(--duration-base) var(--ease-out);
 }
 
-.elev__frame {
-  stroke-opacity: 0.3;
-  stroke-width: 1;
-}
-
-.elev__slab {
-  stroke-opacity: 0.86;
-  stroke-width: 1.25;
-}
-
-.elev rect.elev__slab-fill {
-  fill: url('#studio-elevation-hatch');
+.xr--band {
+  fill: #ebe7de;
   stroke: none;
 }
 
-.elev__hatch {
-  stroke: var(--ink);
-  stroke-opacity: 0.24;
-  stroke-width: 0.6;
+.xr--band[data-tone='return'] {
+  fill: #e4dfd4;
 }
 
-.elev__wall {
-  stroke-opacity: 0.7;
-  stroke-width: 1;
+.xr--joint {
+  --w: 0.75;
+  stroke: var(--xray-graphite);
+  stroke-opacity: 0.42;
 }
 
-.elev .elev__part {
-  fill: rgba(20, 19, 17, 0.05);
-  stroke-opacity: 0.74;
-  stroke-width: 1;
+.xr--heavy {
+  --w: 1.6;
 }
 
-.elev .elev__lamp {
-  fill: var(--ink);
-  stroke-width: 1;
+.xr--part {
+  --w: 1.1;
 }
 
-.elev__wire {
-  stroke-opacity: 0.5;
-  stroke-width: 0.75;
+.xr--fine {
+  --w: 0.75;
+  stroke-opacity: 0.86;
 }
 
-.elev__beam {
-  stroke-opacity: 0.36;
-  stroke-width: 0.75;
+.xr--hidden {
+  --w: 0.9;
+  stroke-dasharray: 4 3;
+  stroke-opacity: 0.72;
+}
+
+.xr--lux {
+  stroke: var(--lumen-amber);
+}
+
+.xr--lux[data-level='500'] {
+  --w: 1.35;
+}
+
+.xr--lux[data-level='250'] {
+  stroke-dasharray: 7 4;
+}
+
+.xr--lux[data-level='100'] {
+  stroke-dasharray: 1.5 3.5;
+}
+
+.xr--beam {
+  --w: 0.9;
+  stroke: var(--lumen-amber);
   stroke-dasharray: 2 3;
 }
 
-.elev__dim {
-  stroke-opacity: 0.56;
-  stroke-width: 0.75;
+.xr--aim {
+  --w: 0.8;
+  stroke: var(--lumen-amber);
+  stroke-dasharray: 1 3;
 }
 
-.elev text {
+.xr--datum {
+  stroke-dasharray: 18 5 3 5;
+}
+
+.xr--bus {
+  --w: 1.6;
+  stroke: var(--lumen-amber);
+  stroke-dasharray: 9 5;
+}
+
+.xr--node {
+  --w: 1.3;
+  fill: var(--xray-paper);
+  stroke: var(--lumen-amber);
+}
+
+.xr--hub {
+  --w: 1.2;
+  stroke: var(--lumen-amber);
+  stroke-dasharray: 4 3;
+}
+
+.xr--dim,
+.xr--level {
+  --w: 0.85;
+  stroke: var(--xray-graphite);
+}
+
+/* Notes set in type over the drawing at their frame point, knocked out of the linework. */
+.xray__labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.xray__label {
+  --tx: 0%;
+  --ty: -100%;
+  position: absolute;
+  padding: 1px 4px;
   font-family: var(--font-mono);
-  fill: var(--ink);
+  font-size: 0.6875rem;
+  line-height: 1.25;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  color: var(--xray-ink);
+  background: var(--xray-paper);
+  transform-origin: 0 0;
+  transform: translate(var(--tx), var(--ty));
+  transition:
+    opacity var(--duration-base) var(--ease-out),
+    background-color var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out);
 }
 
-.elev__label {
-  font-size: 7.5px;
-  letter-spacing: 0.14em;
-  fill-opacity: 0.78;
+.xray__label[data-anchor='middle'] {
+  --tx: -50%;
 }
 
-.elev__note {
-  font-size: 6.2px;
+.xray__label[data-anchor='end'] {
+  --tx: -100%;
+}
+
+.xray__label[data-baseline='center'] {
+  --ty: -50%;
+}
+
+.xray__label[data-baseline='below'] {
+  --ty: 0%;
+}
+
+.xray__label[data-rotate] {
+  transform: rotate(-90deg) translate(var(--tx), var(--ty));
+}
+
+/* Phone-only notes take the place of what a phone hides. */
+.xray__label[data-tier='phone'] {
+  display: none;
+}
+
+/* A capability in focus: its layers and notes come forward, the rest step back. */
+.xray:not([data-focus='none']) :where(.xr[data-group]:not(.xr--band), .xray__label[data-group], .xray__sheet-row, .xray__octaves) {
+  opacity: 0.24;
+}
+
+.xray[data-focus='envelope'] .xr[data-group='envelope'],
+.xray[data-focus='eye-level'] .xr[data-group='eye-level'],
+.xray[data-focus='bus'] .xr[data-group='bus'],
+.xray[data-focus='exports'] .xr[data-group='exports'] {
+  --boost: 1.7;
+  opacity: 1;
+}
+
+.xray[data-focus='envelope'] .xray__label[data-group='envelope'],
+.xray[data-focus='eye-level'] .xray__label[data-group='eye-level'],
+.xray[data-focus='bus'] .xray__label[data-group='bus'],
+.xray[data-focus='exports'] .xray__label[data-group='exports'],
+.xray[data-focus='bus'] .xray__sheet-row[data-group='bus'] {
+  opacity: 1;
+  background: var(--xray-ink);
+  color: var(--xray-paper);
+}
+
+.xray[data-focus='bus'] .xray__octaves,
+.xray[data-focus='exports'] .xray__sheet-row,
+.xray[data-focus='exports'] .xray__octaves {
+  opacity: 1;
+}
+
+.xray[data-focus='exports'] .xray__sheet-title {
+  background: var(--xray-ink);
+  color: var(--xray-paper);
+}
+
+/* The title block, stacked under the blueprint badge in the top right corner. */
+.xray__sheet {
+  position: absolute;
+  top: 76px;
+  right: 12px;
+  width: 236px;
+  border: 1px solid var(--xray-ink);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  color: var(--xray-ink);
+  background: var(--xray-paper);
+  pointer-events: none;
+}
+
+.xray__sheet-title {
+  padding: 6px 8px 5px;
+  font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
-  fill-opacity: 0.62;
+  border-bottom: 1px solid var(--xray-ink);
+  transition:
+    background-color var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out);
 }
 
-.elev__figure {
-  font-size: 8px;
-  fill-opacity: 0.74;
+.xray__sheet-firm {
+  padding: 5px 8px;
 }
 
-.showcase3d__body {
+/* The scale stamp: three cells between hairlines. */
+.xray__sheet-stamp {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  border-bottom: 1px solid var(--xray-ink);
+}
+
+.xray__sheet-stamp > span {
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.xray__sheet-stamp > span + span {
+  border-left: 1px solid var(--rule-frame);
+}
+
+.xray__sheet-rows {
+  margin: 0;
+}
+
+.xray__sheet-row {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--rule-frame);
+  transition:
+    opacity var(--duration-base) var(--ease-out),
+    background-color var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out);
+}
+
+.xray__sheet-row dt {
+  color: inherit;
+  opacity: 0.66;
+}
+
+.xray__sheet-row dd {
+  margin: 0;
+}
+
+/* The room's reverberation in six octave bars, 125 Hz to 4 kHz. */
+.xray__octaves {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  height: 52px;
+  padding: 6px 8px 4px;
+  border-bottom: 1px solid var(--rule-frame);
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+
+.xray__octave {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  justify-items: center;
+  min-height: 0;
+}
+
+.xray__octave-bar {
+  align-self: end;
+  width: 9px;
+  background: var(--xray-ink);
+}
+
+.xray__octave-label {
+  font-size: 0.625rem;
+  color: var(--xray-graphite);
+}
+
+.xray__sheet-firm {
+  font-size: 0.625rem;
+  color: var(--xray-graphite);
+}
+
+/* Corner badges: carbon over the photograph, a hairline paper stamp over the drawing. */
+.xray__badge {
+  position: absolute;
+  top: 12px;
+  margin: 0;
+  padding: 5px 9px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.xray__badge--photo {
+  left: 12px;
+  color: var(--xray-paper);
+  background: var(--xray-ink);
+}
+
+.xray__badge--cad {
+  right: 12px;
+  color: var(--xray-ink);
+  background: var(--xray-paper);
+  border: 1px solid var(--xray-ink);
+}
+
+.xray__badge-short {
+  display: none;
+}
+
+/* The divider: a 1px carbon line and a matte carbon handle, moved on the compositor. */
+.xray__divider {
+  position: absolute;
+  inset: 0;
+  transform: translateX(calc(var(--xray-split) * 1%));
+  pointer-events: none;
+  transition: none;
+}
+
+.xray__divider::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -0.5px;
+  width: 1px;
+  background: var(--xray-ink);
+}
+
+.xray__handle {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 84px;
+  padding: 8px 10px 7px;
+  color: var(--xray-paper);
+  background: var(--xray-ink);
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.xray__handle:focus-visible {
+  outline: 2px solid var(--xray-paper);
+  outline-offset: 0;
+  box-shadow: 0 0 0 4px var(--xray-ink);
+  border-radius: 0;
+}
+
+/* A handle taken by the pointer keeps focus for the arrow keys but shows no ring. */
+.xray__stage[data-input='pointer'] .xray__handle:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.xray__glyph {
+  width: 40px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+}
+
+.xray__readout {
+  min-height: 1.2em;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------- capability ledger ---------- */
+
+/* Four columns hung from the stage's hairline: the figures, no pictures. */
+.showcase3d__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--rule-ink);
+  border-top: 0;
+}
+
+.showcase3d__cell {
+  min-width: 0;
+}
+
+.showcase3d__cell + .showcase3d__cell {
+  border-left: 1px solid var(--rule-section);
+}
+
+.showcase3d__card {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding-top: var(--space-5);
+  height: 100%;
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  cursor: pointer;
+  transition: box-shadow var(--duration-base) var(--ease-out);
+}
+
+/* The capability in focus takes a carbon rule along its top edge. */
+.showcase3d__card[data-active] {
+  box-shadow: inset 0 2px 0 var(--ink);
 }
 
 /* A crisp tracked capital heading, the index a step quieter. */
@@ -1302,6 +1713,12 @@
   text-transform: uppercase;
   text-wrap: balance;
   color: var(--text-primary);
+}
+
+.showcase3d__toggle {
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
 }
 
 .showcase3d__num {
@@ -1319,7 +1736,7 @@
 
 /* The specification: label and figure per row, divided by hairlines. */
 .showcase3d__specs {
-  margin: var(--space-2) 0 0;
+  margin: auto 0 0;
   border-top: 1px solid var(--rule-section);
 }
 
@@ -1351,6 +1768,94 @@
   line-height: 1.45;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
+}
+
+/* Laptops: the title block keeps its name and scale; the notes step back. */
+@media (max-width: 1279px) {
+  .xray__sheet {
+    width: auto;
+  }
+
+  .xray__sheet-rows,
+  .xray__octaves,
+  .xray__sheet-firm {
+    display: none;
+  }
+
+  .xray__sheet-stamp {
+    border-bottom: 0;
+  }
+}
+
+@media (max-width: 1099px) {
+  .xray__label[data-tier='2'] {
+    display: none;
+  }
+}
+
+/* Phones: a square stage on the lit half of the frame, short keys, the essential notes only. */
+@media (max-width: 640px) {
+  .xray__bar {
+    padding: 8px;
+  }
+
+  .xray__title {
+    padding-left: var(--space-2);
+  }
+
+  .xray__views {
+    flex: 1 1 100%;
+  }
+
+  .xray__view {
+    flex: 1 1 0;
+    padding: 0 8px;
+  }
+
+  .xray__view-long,
+  .xray__badge-long {
+    display: none;
+  }
+
+  .xray__view-short,
+  .xray__badge-short {
+    display: inline;
+  }
+
+  .xray__stage {
+    aspect-ratio: 1 / 1;
+  }
+
+  /* The 2560 px frame cropped to x 1100 to 2540, the same crop on both layers. */
+  .xray__frame {
+    inset: 0 auto 0 -76.39%;
+    aspect-ratio: 16 / 9;
+  }
+
+  .xray__sheet,
+  .xray__label:not([data-phone]) {
+    display: none;
+  }
+
+  .xray__label[data-tier='phone'] {
+    display: block;
+  }
+
+  .xray__handle {
+    min-width: 76px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xr,
+  .xray__label,
+  .xray__sheet-title,
+  .xray__sheet-row,
+  .xray__octaves,
+  .xray__view,
+  .showcase3d__card {
+    transition: none;
+  }
 }
 
 /* ---------- launch rule ---------- */
@@ -1454,11 +1959,24 @@
   .showcase3d__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .showcase3d__cell:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .showcase3d__cell:nth-child(n + 3) {
+    border-top: 1px solid var(--rule-section);
+  }
 }
 
 @media (max-width: 639px) {
   .showcase3d__grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .showcase3d__cell + .showcase3d__cell {
+    border-top: 1px solid var(--rule-section);
+    border-left: 0;
   }
 
   .showcase3d__foot {

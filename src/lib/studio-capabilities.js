@@ -1,18 +1,17 @@
 /*
  * 03 / 3D Spatial Studio on the overview: the room planner's four
- * capabilities as an editorial specification grid, each paired with the
- * studio photograph of a part it plans (the exports pillar shows a drawing
- * instead). Pure data with no planner import, so the overview bundle stays
+ * capabilities as the image-free ledger under the X-ray stage, each id the
+ * name of the blueprint callouts it highlights (src/lib/xray-blueprint.js
+ * groups). Pure data with no planner import, so the overview bundle stays
  * free of the studio engines. Every figure is the engines' own figure:
  * tests/spatial-studio-editorial.spec.js reads each one back against
  * room-3d.js, room-walkthrough.js, illuminance-field.js, electrical.js,
  * drivers.js, room-physics.js, blueprint-sheet.js and dxf-export.js.
  */
 
-function pillar({ specs, photo = null, ...rest }) {
+function pillar({ specs, ...rest }) {
   return Object.freeze({
     ...rest,
-    photo: photo ? Object.freeze(photo) : null,
     specs: Object.freeze(specs.map(([label, value]) => Object.freeze({ label, value }))),
   });
 }
@@ -23,7 +22,6 @@ export const STUDIO_PILLARS = Object.freeze([
     index: '01',
     title: 'Four-Wall Envelope',
     summary: 'Dimensioned room geometry to the centimetre (W x L x H) with full 360-degree orbit and plan views.',
-    photo: { product: 'linear-pendant-150', finish: 'walnut', alt: 'Linear Suspension Pendant 150 in walnut, hung in the corner of a daylight room' },
     specs: [
       ['Width', '240 to 900 cm'],
       ['Length', '200 to 900 cm'],
@@ -36,7 +34,6 @@ export const STUDIO_PILLARS = Object.freeze([
     index: '02',
     title: '165 cm Eye-Level Walkthrough',
     summary: 'First-person walkthrough at human eye height with live wall illuminance readings.',
-    photo: { product: 'wall-sconce-80', finish: 'walnut', alt: 'Vertical Architectural Sconce 80 in walnut at eye height on a plaster wall' },
     specs: [
       ['Eye height', '165 cm'],
       ['Lens', '78 deg / 50 to 92 deg'],
@@ -49,7 +46,6 @@ export const STUDIO_PILLARS = Object.freeze([
     index: '03',
     title: '24V SELV Bus & Acoustic RT60',
     summary: 'Automatic 24V DC driver load balancing, daisy-chain validation and Sabine RT60 acoustics.',
-    photo: { product: 'power-hub-dali', finish: 'obsidian', alt: 'Recessed 24V DALI-2 Bus Hub in obsidian, the feed of the bus, on a plaster wall' },
     specs: [
       ['Bus', '24V DC SELV / 150 W per run'],
       ['Drivers', '60 W and 150 W'],
