@@ -4,7 +4,7 @@ import { SESSION_STORAGE_KEY } from '../src/lib/auth.js';
 import { padIndex } from '../src/lib/format.js';
 import { createRoomState, importFromWallStudio, ROOM_STORAGE_KEY, serializeRoomState } from '../src/lib/room-3d.js';
 import { layoutFromPreset, serializeLayout, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
-import { holdProjectSaves } from './support/cloud-gates.js';
+import { holdProjectSaves, holdProjectTrips } from './support/cloud-gates.js';
 import {
   collectRuntimeErrors,
   horizontalOverflow,
@@ -125,8 +125,11 @@ test.describe('lumen cloud client', () => {
 
     await page.goto('/room-3d');
     const save = page.getByTestId('save-room-to-cloud');
+    // The key is busy for one round trip: hold the save until that state has been read.
+    const releaseSave = await holdProjectSaves(page);
     await save.click();
     await expect(save).toBeDisabled();
+    releaseSave();
     await expect(save).toHaveAttribute('data-state', 'saved');
     await expect(page.getByTestId('toast-message').last()).toHaveText('Room saved to Lumen Cloud. Revision 01.');
     await expect(save).toHaveAttribute('data-state', 'idle', { timeout: 5000 });
@@ -137,8 +140,11 @@ test.describe('lumen cloud client', () => {
     await save.click();
     await expect(page.getByTestId('toast-message').last()).toHaveText('Atelier Loft saved to Lumen Cloud. Revision 01.');
 
+    // The loading state lasts one round trip: hold it until it has been read, as a busy runner can answer first.
+    const releaseLoad = await holdProjectTrips(page);
     await page.goto('/account');
     await expect(page.getByTestId('projects-loading')).toBeVisible();
+    releaseLoad();
     const cards = page.getByTestId('saved-project');
     await expect(cards).toHaveCount(2);
     await expect(cards.nth(0)).toHaveAttribute('data-project', 'room');

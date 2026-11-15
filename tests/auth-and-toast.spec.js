@@ -4,6 +4,7 @@ import { SESSION_STORAGE_KEY } from '../src/lib/auth.js';
 import { formatUsd, padIndex } from '../src/lib/format.js';
 import { createRoomState, ROOM_STORAGE_KEY, serializeRoomState } from '../src/lib/room-3d.js';
 import { layoutFromPreset, serializeLayout, summarizeWall, WALL_STORAGE_KEY } from '../src/lib/wall-studio.js';
+import { holdProjectTrips } from './support/cloud-gates.js';
 import {
   collectRuntimeErrors,
   horizontalOverflow,
@@ -171,11 +172,15 @@ test.describe('account dashboard', () => {
       // An empty local room draft: opening the card must check the saved revision out over it.
       [ROOM_KEY, JSON.stringify(serializeRoomState(createRoomState()))],
     ]);
+    // Hold the projects round trip until the loading state has been read: on a busy runner the
+    // cloud can answer before the first poll, and the dashboard is up to date already.
+    const release = await holdProjectTrips(page);
     await page.goto('/account');
     await expect(page.getByRole('heading', { level: 2, name: 'Saved Spatial Projects' })).toBeVisible();
     await expect(page.getByRole('heading', { level: 2, name: 'Order History' })).toBeVisible();
     await expect(page.getByTestId('projects-loading')).toBeVisible();
     await expect(page.getByTestId('account-fact-sync')).toHaveText('Syncing');
+    release();
 
     const projects = page.getByTestId('saved-project');
     await expect(projects).toHaveCount(1);
