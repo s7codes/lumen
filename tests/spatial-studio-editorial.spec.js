@@ -835,9 +835,27 @@ test.describe('3D spatial studio x-ray stage on a touch screen', () => {
           }),
       );
 
-    let box = await canvas.boundingBox();
+    // Each gesture starts on a stage that sits whole on screen and still: a fling can carry it out
+    // of view or under the sticky navbar, so it is brought back to the middle of the viewport first.
+    const centreStage = async () => {
+      await canvas.evaluate((el) => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      await scrollSettled();
+      return canvas.boundingBox();
+    };
+    // What a touch at a point lands on: the handle, the picture around it, or something else.
+    const landsOn = (point) =>
+      page.evaluate(([px, py]) => {
+        const target = document.elementFromPoint(px, py);
+        const stage = document.querySelector('[data-testid="xray-canvas"]');
+        const grip = document.querySelector('[data-testid="xray-handle"]');
+        if (!stage.contains(target)) return 'elsewhere';
+        return grip.contains(target) ? 'handle' : 'picture';
+      }, point);
+
+    let box = await centreStage();
     const x = box.x + box.width * 0.7;
     const y = box.y + box.height * 0.6;
+    expect(await landsOn([x, y])).toBe('picture');
     const before = await page.evaluate(() => window.scrollY);
     await swipe([[x, y], [x + 1, y - 30], [x + 2, y - 90], [x + 2, y - 160], [x + 2, y - 220]]);
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before + 40);
@@ -847,10 +865,10 @@ test.describe('3D spatial studio x-ray stage on a touch screen', () => {
 
     // On the picture, clear of the handle: the touch lands on the drawing (Chrome captures it there)
     // and the divider takes it over once it travels sideways, all the way to the end of the swipe.
-    box = await canvas.boundingBox();
-    const grip = await handle.boundingBox();
+    box = await centreStage();
     const above = box.y + box.height * 0.25;
-    expect(above).toBeLessThan(grip.y - 20);
+    const start = [box.x + box.width * 0.6, above];
+    expect(await landsOn(start)).toBe('picture');
     await swipe([0.6, 0.56, 0.45, 0.35, 0.25].map((f) => [box.x + box.width * f, above]));
     await expect(handle).toHaveAttribute('aria-valuenow', '25');
     await expect(canvas).toHaveAttribute('data-motion', 'idle');
@@ -859,12 +877,15 @@ test.describe('3D spatial studio x-ray stage on a touch screen', () => {
     // On the handle itself the drag starts at once.
     const held = await handle.boundingBox();
     const centre = [held.x + held.width / 2, held.y + held.height / 2];
+    expect(await landsOn(centre)).toBe('handle');
     await swipe([centre, [centre[0] + 12, centre[1]], [centre[0] + 60, centre[1] + 4], [box.x + box.width * 0.6, centre[1] + 6]]);
     await expect(handle).toHaveAttribute('aria-valuenow', '60');
     await expect(canvas).toHaveAttribute('data-motion', 'idle');
 
     // A tap that stays put glides the divider to where it landed.
-    await swipe([[box.x + box.width * 0.8, above]]);
+    const tap = [box.x + box.width * 0.8, above];
+    expect(await landsOn(tap)).toBe('picture');
+    await swipe([tap]);
     await expect(handle).toHaveAttribute('aria-valuenow', '80');
     await expect(canvas).toHaveAttribute('data-motion', 'idle');
     expect(await readCspViolations(page)).toEqual([]);
