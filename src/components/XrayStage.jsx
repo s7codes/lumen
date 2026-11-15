@@ -313,6 +313,12 @@ export function XrayStage({ focus = null, apiRef = null }) {
       m.pendingX = null;
       land(value);
     };
+    // Only the stage's own capture ending closes a drag. Chrome captures a touch to the element it
+    // lands on (an SVG rect, the photograph), and when the drag takes the capture for the stage
+    // that element's lostpointercapture bubbles up here too: it must not end the gesture.
+    const onLost = (event) => {
+      if (event.target === stage) onUp(event);
+    };
     const onKey = (event) => {
       const next = splitForKey(event.key, m.value, event.shiftKey);
       if (next === null) return;
@@ -340,7 +346,7 @@ export function XrayStage({ focus = null, apiRef = null }) {
     stage.addEventListener('pointermove', onMove);
     stage.addEventListener('pointerup', onUp);
     stage.addEventListener('pointercancel', onUp);
-    stage.addEventListener('lostpointercapture', onUp);
+    stage.addEventListener('lostpointercapture', onLost);
     handle.addEventListener('keydown', onKey);
     handle.addEventListener('blur', onBlur);
     paint(m.value);
@@ -352,7 +358,7 @@ export function XrayStage({ focus = null, apiRef = null }) {
       stage.removeEventListener('pointermove', onMove);
       stage.removeEventListener('pointerup', onUp);
       stage.removeEventListener('pointercancel', onUp);
-      stage.removeEventListener('lostpointercapture', onUp);
+      stage.removeEventListener('lostpointercapture', onLost);
       handle.removeEventListener('keydown', onKey);
       handle.removeEventListener('blur', onBlur);
       halt();

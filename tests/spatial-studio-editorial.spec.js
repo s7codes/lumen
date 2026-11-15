@@ -807,10 +807,10 @@ test.describe('3D spatial studio x-ray stage', () => {
 test.describe('3D spatial studio x-ray stage on a touch screen', () => {
   test.use({ hasTouch: true });
 
-  test('a vertical swipe across the stage scrolls the page and leaves the divider, a sideways swipe carries it and a tap sets it', async ({ page }) => {
+  test('a vertical swipe scrolls past the stage, a sideways swipe on the picture or the handle carries the divider and a tap sets it', async ({ page }) => {
     const errors = collectRuntimeErrors(page);
     const { canvas, handle } = await openStage(page, { width: 390, height: 844 });
-    // Real touch input through the browser, so pan-y and the pointer events behave as on a phone.
+    // Real touch input through the browser, so pan-y, implicit capture and the pointer events behave as on a phone.
     const cdp = await page.context().newCDPSession(page);
     const touch = (type, point) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: point ? [{ x: point[0], y: point[1] }] : [] });
     const swipe = async (points) => {
@@ -818,6 +818,22 @@ test.describe('3D spatial studio x-ray stage on a touch screen', () => {
       for (const point of points.slice(1)) await touch('touchMove', point);
       await touch('touchEnd');
     };
+    // A swipe flings the page: the next gesture starts once the page has held still for six frames.
+    const scrollSettled = () =>
+      page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            let last = window.scrollY;
+            let still = 0;
+            const tick = () => {
+              still = window.scrollY === last ? still + 1 : 0;
+              last = window.scrollY;
+              if (still >= 6) resolve();
+              else requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+          }),
+      );
 
     let box = await canvas.boundingBox();
     const x = box.x + box.width * 0.7;
@@ -825,18 +841,30 @@ test.describe('3D spatial studio x-ray stage on a touch screen', () => {
     const before = await page.evaluate(() => window.scrollY);
     await swipe([[x, y], [x + 1, y - 30], [x + 2, y - 90], [x + 2, y - 160], [x + 2, y - 220]]);
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before + 40);
+    await scrollSettled();
     await expect(canvas).toHaveAttribute('data-motion', 'idle');
     await expect(handle).toHaveAttribute('aria-valuenow', '52');
 
+    // On the picture, clear of the handle: the touch lands on the drawing (Chrome captures it there)
+    // and the divider takes it over once it travels sideways, all the way to the end of the swipe.
     box = await canvas.boundingBox();
-    const row = box.y + box.height * 0.5;
-    await swipe([0.6, 0.56, 0.45, 0.35, 0.25].map((f) => [box.x + box.width * f, row]));
+    const grip = await handle.boundingBox();
+    const above = box.y + box.height * 0.25;
+    expect(above).toBeLessThan(grip.y - 20);
+    await swipe([0.6, 0.56, 0.45, 0.35, 0.25].map((f) => [box.x + box.width * f, above]));
     await expect(handle).toHaveAttribute('aria-valuenow', '25');
     await expect(canvas).toHaveAttribute('data-motion', 'idle');
     expect(Math.abs((await clipLeft(page)) - 25)).toBeLessThanOrEqual(0.5);
 
+    // On the handle itself the drag starts at once.
+    const held = await handle.boundingBox();
+    const centre = [held.x + held.width / 2, held.y + held.height / 2];
+    await swipe([centre, [centre[0] + 12, centre[1]], [centre[0] + 60, centre[1] + 4], [box.x + box.width * 0.6, centre[1] + 6]]);
+    await expect(handle).toHaveAttribute('aria-valuenow', '60');
+    await expect(canvas).toHaveAttribute('data-motion', 'idle');
+
     // A tap that stays put glides the divider to where it landed.
-    await swipe([[box.x + box.width * 0.8, row]]);
+    await swipe([[box.x + box.width * 0.8, above]]);
     await expect(handle).toHaveAttribute('aria-valuenow', '80');
     await expect(canvas).toHaveAttribute('data-motion', 'idle');
     expect(await readCspViolations(page)).toEqual([]);
